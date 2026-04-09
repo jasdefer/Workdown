@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh api:*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Define work item file format' --milestone 'Phase 0: Design & Specification' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Define schema configuration format' --milestone 'Phase 0: Design & Specification' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Define state machine configuration' --milestone 'Phase 0: Design & Specification' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Define relation model' --milestone 'Phase 0: Design & Specification' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Define .workdown project configuration' --milestone 'Phase 0: Design & Specification' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Initialize Rust project' --milestone 'Phase 1: Project Setup' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Set up CI with GitHub Actions' --milestone 'Phase 1: Project Setup' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Implement frontmatter parser' --milestone 'Phase 2: Core Library' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Implement schema loader' --milestone 'Phase 2: Core Library' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Implement ID resolution' --milestone 'Phase 2: Core Library' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Implement work item store' --milestone 'Phase 2: Core Library' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Implement `workdown init`' --milestone 'Phase 3: CLI Commands' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Implement `workdown validate`' --milestone 'Phase 3: CLI Commands' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Implement `workdown add`' --milestone 'Phase 3: CLI Commands' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Implement `workdown query`' --milestone 'Phase 3: CLI Commands' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Implement board view' --milestone 'Phase 4: Views' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Implement tree view' --milestone 'Phase 4: Views' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Implement dependency graph' --milestone 'Phase 4: Views' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'Create Dockerfile' --milestone 'Phase 5: Distribution' --body ':*)",
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'CI integration examples' --milestone 'Phase 5: Distribution' --body ':*)"
+    ]
+  }
+}
