@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workdown.dev/schemas/resources.schema.json",
+  "title": "Workdown Resources",
+  "description": "Validates the structure of a project's resources.yaml file. Resources are named lists of entities (people, teams, sprints, etc.) that work item fields can reference.",
+  "type": "object",
+  "patternProperties": {
+    "^[a-z_][a-z0-9_]*$": {
+      "type": "array",
+      "description": "A resource list. Each entry must have a unique id. Other fields are freeform.",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier within this resource list. This is the value used in work item fields.",
+            "pattern": "^[a-z_][a-z0-9_-]*$"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable display name."
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}

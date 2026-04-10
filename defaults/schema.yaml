@@ -1,0 +1,135 @@
+# Default Workdown Schema — copied into your project by `workdown init`.
+# Customize to fit your project. Each field picks a type from the type system
+# and configures it with concrete values (allowed choices, defaults, etc.).
+
+fields:
+  id:
+    type: string
+    required: false
+    default: $filename
+    description: Unique identifier. Defaults to filename without .md extension.
+
+  title:
+    type: string
+    required: false
+    default: $filename_pretty
+    description: Display name. Falls back to prettified filename if not set.
+
+  type:
+    type: choice
+    values: [epic, task, bug, spike]
+    required: true
+    default: task
+
+  status:
+    type: choice
+    values: [backlog, open, in_progress, review, done, closed]
+    required: true
+    default: backlog
+
+  priority:
+    type: choice
+    values: [critical, high, medium, low]
+    required: false
+
+  assignee:
+    type: string
+    required: false
+    resource: people
+
+  tags:
+    type: list
+    required: false
+
+  created:
+    type: date
+    required: true
+    default: $today
+
+  updated:
+    type: date
+    required: false
+
+  # Relations
+  parent:
+    type: link
+    required: false
+    allow_cycles: false
+
+  depends_on:
+    type: links
+    required: false
+    allow_cycles: false
+
+  related_to:
+    type: links
+    required: false
+    allow_cycles: true
+
+  duplicates:
+    type: links
+    required: false
+    allow_cycles: true
+
+  # Computed fields — uncomment and adjust as needed:
+  #
+  # start_date:
+  #   type: date
+  #   required: false
+  #   aggregate:
+  #     function: min
+  #     error_on_missing: false
+  #
+  # end_date:
+  #   type: date
+  #   required: false
+  #   aggregate:
+  #     function: max
+  #     error_on_missing: false
+
+# ── Rules ──────────────────────────────────────────────────
+# Cross-field, cross-item, and collection-wide validation.
+# See schema.schema.json for the formal rule syntax definition.
+
+rules:
+  # Level 2: Cross-field, same item
+  - name: in-progress-needs-assignee
+    description: Work items in progress must have an assignee
+    match:
+      status: in_progress
+    require:
+      assignee: required
+
+  - name: bugs-need-priority
+    description: Bugs must have a priority set
+    match:
+      type: bug
+    require:
+      priority: required
+
+  # Level 3: Relationship-based — uncomment and adjust as needed:
+  #
+  # - name: parent-not-backlog-when-child-active
+  #   description: Parent cannot be in backlog if a child is in progress
+  #   match:
+  #     status: in_progress
+  #   require:
+  #     parent.status:
+  #       not: backlog
+  #
+  # - name: epic-children-types
+  #   description: Epic children must be tasks or bugs
+  #   match:
+  #     type: epic
+  #   require:
+  #     children.type:
+  #       values: [task, bug]
+
+  # Level 4: Collection-wide — uncomment and adjust as needed:
+  #
+  # - name: wip-limit
+  #   description: At most 5 items in progress at once
+  #   match:
+  #     status: in_progress
+  #   count:
+  #     max: 5

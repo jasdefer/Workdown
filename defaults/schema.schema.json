@@ -1,0 +1,460 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workdown.dev/schemas/schema.schema.json",
+  "title": "Workdown Schema",
+  "description": "Validates the structure of a project's schema.yaml file, which defines work item fields and validation rules.",
+  "type": "object",
+  "properties": {
+    "fields": {
+      "$ref": "#/$defs/fields"
+    },
+    "rules": {
+      "$ref": "#/$defs/rules"
+    }
+  },
+  "required": ["fields"],
+  "additionalProperties": false,
+
+  "$defs": {
+
+    "fields": {
+      "type": "object",
+      "description": "Map of field names to field definitions. Each field picks a type from the type system and configures it.",
+      "patternProperties": {
+        "^[a-z_][a-z0-9_]*$": {
+          "$ref": "#/$defs/field"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "field": {
+      "type": "object",
+      "description": "A single field definition.",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["string", "choice", "multichoice", "integer", "float", "date", "boolean", "list", "link", "links"],
+          "description": "The built-in type for this field."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable explanation of the field."
+        },
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this field must be present on every work item."
+        },
+        "default": {
+          "description": "Default value applied by `workdown add`. Can be a literal value or a generator ($filename, $filename_pretty, $uuid, $today, $max_plus_one).",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "number" },
+            { "type": "boolean" }
+          ]
+        },
+        "values": {
+          "type": "array",
+          "description": "Allowed values. Required for choice and multichoice types.",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Regex pattern the value must match. Only valid for string type."
+        },
+        "min": {
+          "type": "number",
+          "description": "Minimum allowed value. Only valid for integer and float types."
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum allowed value. Only valid for integer and float types."
+        },
+        "allow_cycles": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether circular references are allowed. Only valid for link and links types."
+        },
+        "resource": {
+          "type": "string",
+          "description": "Name of a resource section in resources.yaml. The field value must match an id from that resource. Only valid for string and list types.",
+          "pattern": "^[a-z_][a-z0-9_]*$"
+        },
+        "aggregate": {
+          "$ref": "#/$defs/aggregate",
+          "description": "Aggregation config for computed fields that propagate up the parent chain."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "type": { "const": "choice" } }
+          },
+          "then": {
+            "required": ["values"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "multichoice" } }
+          },
+          "then": {
+            "required": ["values"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["string", "date", "boolean", "list", "link", "links"] } }
+          },
+          "then": {
+            "properties": {
+              "values": false,
+              "min": false,
+              "max": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["choice", "multichoice"] } }
+          },
+          "then": {
+            "properties": {
+              "pattern": false,
+              "min": false,
+              "max": false,
+              "allow_cycles": false,
+              "resource": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["integer", "float"] } }
+          },
+          "then": {
+            "properties": {
+              "values": false,
+              "pattern": false,
+              "allow_cycles": false,
+              "resource": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "string" } }
+          },
+          "then": {
+            "properties": {
+              "values": false,
+              "min": false,
+              "max": false,
+              "allow_cycles": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["date", "boolean"] } }
+          },
+          "then": {
+            "properties": {
+              "resource": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["link", "links"] } }
+          },
+          "then": {
+            "properties": {
+              "values": false,
+              "pattern": false,
+              "min": false,
+              "max": false,
+              "resource": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["string", "choice", "multichoice", "list", "link", "links"] } }
+          },
+          "then": {
+            "properties": {
+              "aggregate": false
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+
+    "aggregate": {
+      "type": "object",
+      "description": "Aggregation config. The field is set manually on leaf items and computed automatically up the parent chain.",
+      "required": ["function"],
+      "properties": {
+        "function": {
+          "type": "string",
+          "enum": ["sum", "min", "max", "average", "median", "count", "all", "any", "none"],
+          "description": "The aggregation function. Available functions depend on the field type: integer/float support sum, min, max, average, median, count; date supports min, max; boolean supports all, any, none."
+        },
+        "error_on_missing": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to report an error if a leaf item in the hierarchy is missing this field."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "rules": {
+      "type": "array",
+      "description": "Validation rules for cross-field, cross-item, and collection-wide constraints.",
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    },
+
+    "field_reference": {
+      "type": "string",
+      "description": "A field name on the current item, or a dot-notation path that traverses a relationship. The first segment of a dot path must be a link/links field or its inverse (e.g. 'children' for the inverse of 'parent'). Only one level of traversal is supported.",
+      "examples": ["status", "parent.status", "children.type", "depends_on.status"],
+      "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)?$"
+    },
+
+    "condition": {
+      "description": "A condition that a field must satisfy. The YAML/JSON type determines the meaning: a scalar means equality, an array means membership (one of), an object uses an explicit operator.",
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Equality: field must equal this string value."
+        },
+        {
+          "type": "number",
+          "description": "Equality: field must equal this numeric value."
+        },
+        {
+          "type": "boolean",
+          "description": "Equality: field must equal this boolean value."
+        },
+        {
+          "type": "array",
+          "description": "Membership: field must be one of these values.",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" }
+            ]
+          },
+          "minItems": 1
+        },
+        {
+          "type": "object",
+          "description": "Explicit operator. When multiple operators are specified, all must be satisfied (AND).",
+          "properties": {
+            "not": {
+              "description": "Field must not equal this value. If an array, field must not equal any value in the list.",
+              "oneOf": [
+                { "type": "string" },
+                { "type": "number" },
+                { "type": "boolean" },
+                {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      { "type": "string" },
+                      { "type": "number" },
+                      { "type": "boolean" }
+                    ]
+                  },
+                  "minItems": 1
+                }
+              ]
+            },
+            "is_set": {
+              "type": "boolean",
+              "description": "true = field must have a value; false = field must be null/absent."
+            },
+            "all": {
+              "$ref": "#/$defs/condition",
+              "description": "Every related item must satisfy this condition. Only valid when the field reference traverses a one-to-many relationship (links field or inverse of a link field)."
+            },
+            "any": {
+              "$ref": "#/$defs/condition",
+              "description": "At least one related item must satisfy this condition. Only valid when the field reference traverses a one-to-many relationship."
+            },
+            "none": {
+              "$ref": "#/$defs/condition",
+              "description": "No related item may satisfy this condition. Only valid when the field reference traverses a one-to-many relationship."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "assertion": {
+      "description": "An assertion that must hold for a field. A keyword string ('required' or 'forbidden') for common checks, or an object with explicit operators.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["required", "forbidden"],
+          "description": "'required' = field must be set; 'forbidden' = field must not be set."
+        },
+        {
+          "type": "object",
+          "description": "Explicit operator. When multiple operators are specified, all must be satisfied (AND).",
+          "properties": {
+            "required": {
+              "type": "boolean",
+              "description": "true = field must be set."
+            },
+            "forbidden": {
+              "type": "boolean",
+              "description": "true = field must NOT be set."
+            },
+            "values": {
+              "type": "array",
+              "description": "Field must be one of these values (subset of the field's defined values).",
+              "items": {
+                "oneOf": [
+                  { "type": "string" },
+                  { "type": "number" },
+                  { "type": "boolean" }
+                ]
+              },
+              "minItems": 1
+            },
+            "not": {
+              "description": "Field must not equal this value. If an array, field must not equal any value in the list.",
+              "oneOf": [
+                { "type": "string" },
+                { "type": "number" },
+                { "type": "boolean" },
+                {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      { "type": "string" },
+                      { "type": "number" },
+                      { "type": "boolean" }
+                    ]
+                  },
+                  "minItems": 1
+                }
+              ]
+            },
+            "eq_field": {
+              "$ref": "#/$defs/field_reference",
+              "description": "Field must equal the value of the referenced field."
+            },
+            "lt_field": {
+              "$ref": "#/$defs/field_reference",
+              "description": "Field must be less than the value of the referenced field."
+            },
+            "lte_field": {
+              "$ref": "#/$defs/field_reference",
+              "description": "Field must be less than or equal to the value of the referenced field."
+            },
+            "gt_field": {
+              "$ref": "#/$defs/field_reference",
+              "description": "Field must be greater than the value of the referenced field."
+            },
+            "gte_field": {
+              "$ref": "#/$defs/field_reference",
+              "description": "Field must be greater than or equal to the value of the referenced field."
+            },
+            "min_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Related items (via link/links) must number at least this many."
+            },
+            "max_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Related items (via link/links) must number at most this many."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "rule": {
+      "type": "object",
+      "description": "A single validation rule.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique identifier for the rule. Use kebab-case.",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable explanation, shown in validation output."
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["error", "warning"],
+          "default": "error",
+          "description": "error = validation fails; warning = advisory, does not fail validation."
+        },
+        "match": {
+          "type": "object",
+          "description": "Selects which work items this rule applies to. If omitted, the rule applies to all items. When multiple fields are specified, all conditions must be true (AND).",
+          "patternProperties": {
+            "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)?$": {
+              "$ref": "#/$defs/condition"
+            }
+          },
+          "additionalProperties": false
+        },
+        "require": {
+          "type": "object",
+          "description": "Assertions that must hold for each matching item. When multiple fields are specified, all assertions must be true (AND).",
+          "patternProperties": {
+            "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)?$": {
+              "$ref": "#/$defs/assertion"
+            }
+          },
+          "additionalProperties": false
+        },
+        "count": {
+          "type": "object",
+          "description": "Limits how many items in the entire project may match. Used for collection-wide rules like WIP limits.",
+          "properties": {
+            "min": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "At least this many items must match."
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "At most this many items may match."
+            }
+          },
+          "additionalProperties": false,
+          "anyOf": [
+            { "required": ["min"] },
+            { "required": ["max"] }
+          ]
+        }
+      },
+      "anyOf": [
+        { "required": ["name", "require"] },
+        { "required": ["name", "count"] }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

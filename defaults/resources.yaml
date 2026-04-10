@@ -1,0 +1,26 @@
+# Workdown Resources — copied into your project by `workdown init`.
+# Define named lists of entities that work item fields can reference.
+# Link a field to a resource with `resource: <name>` in schema.yaml.
+# See resources.schema.json for the formal structure.
+
+people:
+  # - id: alice
+  #   name: Alice Smith
+  #   email: alice@example.com
+  # - id: bob
+  #   name: Bob Jones
+  #   email: bob@example.com
+
+# Add more resource types as needed, e.g.:
+#
+# teams:
+#   - id: backend
+#     name: Backend Team
+#   - id: frontend
+#     name: Frontend Team
+#
+# sprints:
+#   - id: sprint-1
+#     name: Sprint 1
+#     start: 2026-04-01
+#     end: 2026-04-14
