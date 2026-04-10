@@ -1,0 +1,19 @@
+[package]
+name = "workdown"
+version = "0.1.0"
+edition = "2021"
+description = "Git-based project management — work items as Markdown files"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "wrap_help"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+walkdir = "2"
+
+[profile.release]
+strip = true
+lto = true

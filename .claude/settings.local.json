@@ -23,7 +23,10 @@
       "Bash(gh issue create --repo jasdefer/Workdown --title 'Create Dockerfile' --milestone 'Phase 5: Distribution' --body ':*)",
       "Bash(gh issue create --repo jasdefer/Workdown --title 'CI integration examples' --milestone 'Phase 5: Distribution' --body ':*)",
       "Bash(gh issue:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(docker --version)",
+      "Bash(docker run:*)",
+      "Bash(git stash:*)"
     ]
   }
 }
