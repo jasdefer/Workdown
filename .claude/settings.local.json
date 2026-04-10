@@ -21,7 +21,9 @@
       "Bash(gh issue create --repo jasdefer/Workdown --title 'Implement tree view' --milestone 'Phase 4: Views' --body ':*)",
       "Bash(gh issue create --repo jasdefer/Workdown --title 'Implement dependency graph' --milestone 'Phase 4: Views' --body ':*)",
       "Bash(gh issue create --repo jasdefer/Workdown --title 'Create Dockerfile' --milestone 'Phase 5: Distribution' --body ':*)",
-      "Bash(gh issue create --repo jasdefer/Workdown --title 'CI integration examples' --milestone 'Phase 5: Distribution' --body ':*)"
+      "Bash(gh issue create --repo jasdefer/Workdown --title 'CI integration examples' --milestone 'Phase 5: Distribution' --body ':*)",
+      "Bash(gh issue:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }
