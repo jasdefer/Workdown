@@ -1,5 +1,7 @@
 //! Parsers for work item files (frontmatter + Markdown) and schema definitions.
 
+pub mod schema;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
