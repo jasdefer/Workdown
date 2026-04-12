@@ -26,7 +26,15 @@
       "Bash(git checkout:*)",
       "Bash(docker --version)",
       "Bash(docker run:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(gh repo:*)",
+      "Bash(git log:*)",
+      "Bash(xargs git:*)",
+      "Bash(cargo test:*)",
+      "Bash(xargs grep:*)",
+      "Bash(cargo build:*)",
+      "Bash(git:*)"
     ]
   }
 }
