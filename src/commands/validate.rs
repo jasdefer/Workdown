@@ -27,9 +27,9 @@ pub fn run_validate(config: &Config, project_root: &Path, format: ValidateFormat
     let store = Store::load(&items_path, &schema)
         .map_err(|e| anyhow::anyhow!("failed to read items directory: {e}"))?;
 
-    let diagnostics = store.diagnostics().to_vec();
+    let mut diagnostics = store.diagnostics().to_vec();
+    diagnostics.extend(store.detect_cycles(&schema));
 
-    // TODO: cycle detection (store.detect_cycles)
     // TODO: rule engine
 
     let has_errors = diagnostics.iter().any(|d| d.severity == Severity::Error);

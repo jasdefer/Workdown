@@ -9,6 +9,7 @@
 //! reports all findings.
 
 mod coerce;
+mod cycles;
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -198,6 +199,20 @@ impl Store {
     /// Whether the store contains no items.
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
+    }
+
+    /// Detect cycles in link fields where `allow_cycles` is `false`.
+    ///
+    /// Returns one diagnostic per unique cycle found. Each diagnostic
+    /// identifies the field and the chain of IDs forming the cycle
+    /// (last element repeats the first to close it).
+    pub fn detect_cycles(&self, schema: &Schema) -> Vec<Diagnostic> {
+        cycles::detect_cycles(self, schema)
+    }
+
+    /// Access the items map (crate-internal).
+    pub(crate) fn items_map(&self) -> &HashMap<String, WorkItem> {
+        &self.items
     }
 }
 
