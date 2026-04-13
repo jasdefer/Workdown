@@ -5,7 +5,7 @@
 //! the rule engine that *executes* them lives elsewhere (workdown validate).
 
 use indexmap::IndexMap;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 // ── Top-level schema ──────────────────────────────────────────────────
 
@@ -85,7 +85,7 @@ pub struct FieldDef {
 }
 
 /// The 10 built-in field types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FieldType {
     String,
@@ -267,7 +267,7 @@ pub(crate) struct RawRule {
 }
 
 /// Rule severity level.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     #[default]
