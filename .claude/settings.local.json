@@ -34,7 +34,9 @@
       "Bash(cargo test:*)",
       "Bash(xargs grep:*)",
       "Bash(cargo build:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh run:*)"
     ]
   }
 }

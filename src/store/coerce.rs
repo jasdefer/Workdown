@@ -32,20 +32,18 @@ pub(crate) fn coerce_fields(
         }
 
         match raw.frontmatter.get(name) {
-            Some(value) if !value.is_null() => {
-                match coerce_value(value, def) {
-                    Ok(field_value) => {
-                        fields.insert(name.clone(), field_value);
-                    }
-                    Err(error) => {
-                        errors.push(StoreError::Coercion {
-                            item_id: raw.id.clone(),
-                            field: name.clone(),
-                            error,
-                        });
-                    }
+            Some(value) if !value.is_null() => match coerce_value(value, def) {
+                Ok(field_value) => {
+                    fields.insert(name.clone(), field_value);
                 }
-            }
+                Err(error) => {
+                    errors.push(StoreError::Coercion {
+                        item_id: raw.id.clone(),
+                        field: name.clone(),
+                        error,
+                    });
+                }
+            },
             _ => {
                 // Value is absent or null.
                 if def.required {
@@ -167,12 +165,10 @@ fn coerce_multichoice(
 }
 
 fn coerce_integer(value: &serde_yaml::Value, def: &FieldDef) -> Result<FieldValue, CoercionError> {
-    let n = value
-        .as_i64()
-        .ok_or_else(|| CoercionError::TypeMismatch {
-            expected: FieldType::Integer,
-            got: yaml_type_name(value).into(),
-        })?;
+    let n = value.as_i64().ok_or_else(|| CoercionError::TypeMismatch {
+        expected: FieldType::Integer,
+        got: yaml_type_name(value).into(),
+    })?;
 
     if let Some(min) = def.min {
         if (n as f64) < min {
@@ -197,12 +193,10 @@ fn coerce_integer(value: &serde_yaml::Value, def: &FieldDef) -> Result<FieldValu
 }
 
 fn coerce_float(value: &serde_yaml::Value, def: &FieldDef) -> Result<FieldValue, CoercionError> {
-    let n = value
-        .as_f64()
-        .ok_or_else(|| CoercionError::TypeMismatch {
-            expected: FieldType::Float,
-            got: yaml_type_name(value).into(),
-        })?;
+    let n = value.as_f64().ok_or_else(|| CoercionError::TypeMismatch {
+        expected: FieldType::Float,
+        got: yaml_type_name(value).into(),
+    })?;
 
     if let Some(min) = def.min {
         if n < min {
@@ -449,7 +443,10 @@ mod tests {
         assert_eq!(errors.len(), 1);
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::TypeMismatch { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::TypeMismatch { .. },
+                ..
+            }
         ));
     }
 
@@ -469,7 +466,10 @@ mod tests {
         assert!(fields.get("code").is_none());
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::PatternMismatch { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::PatternMismatch { .. },
+                ..
+            }
         ));
     }
 
@@ -498,7 +498,10 @@ mod tests {
         assert!(fields.get("status").is_none());
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::InvalidChoice { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::InvalidChoice { .. },
+                ..
+            }
         ));
     }
 
@@ -512,7 +515,10 @@ mod tests {
 
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::TypeMismatch { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::TypeMismatch { .. },
+                ..
+            }
         ));
     }
 
@@ -523,7 +529,10 @@ mod tests {
         let mut def = field(FieldType::Multichoice);
         def.values = Some(vec!["a".into(), "b".into(), "c".into()]);
         let s = schema(vec![("labels", def)]);
-        let raw = raw_item("t", vec![("labels", yaml_seq(vec![yaml_str("a"), yaml_str("b")]))]);
+        let raw = raw_item(
+            "t",
+            vec![("labels", yaml_seq(vec![yaml_str("a"), yaml_str("b")]))],
+        );
         let (fields, errors) = coerce_fields(&raw, &s);
 
         assert!(errors.is_empty());
@@ -538,12 +547,18 @@ mod tests {
         let mut def = field(FieldType::Multichoice);
         def.values = Some(vec!["a".into(), "b".into()]);
         let s = schema(vec![("labels", def)]);
-        let raw = raw_item("t", vec![("labels", yaml_seq(vec![yaml_str("a"), yaml_str("x")]))]);
+        let raw = raw_item(
+            "t",
+            vec![("labels", yaml_seq(vec![yaml_str("a"), yaml_str("x")]))],
+        );
         let (_, errors) = coerce_fields(&raw, &s);
 
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::InvalidMultichoice { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::InvalidMultichoice { .. },
+                ..
+            }
         ));
     }
 
@@ -557,7 +572,10 @@ mod tests {
 
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::TypeMismatch { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::TypeMismatch { .. },
+                ..
+            }
         ));
     }
 
@@ -584,14 +602,20 @@ mod tests {
         let (_, errors) = coerce_fields(&raw, &s);
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::OutOfRange { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::OutOfRange { .. },
+                ..
+            }
         ));
 
         let raw = raw_item("t", vec![("priority", yaml_int(11))]);
         let (_, errors) = coerce_fields(&raw, &s);
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::OutOfRange { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::OutOfRange { .. },
+                ..
+            }
         ));
     }
 
@@ -603,7 +627,10 @@ mod tests {
 
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::TypeMismatch { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::TypeMismatch { .. },
+                ..
+            }
         ));
     }
 
@@ -640,7 +667,10 @@ mod tests {
 
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::OutOfRange { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::OutOfRange { .. },
+                ..
+            }
         ));
     }
 
@@ -664,7 +694,10 @@ mod tests {
 
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::InvalidDate { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::InvalidDate { .. },
+                ..
+            }
         ));
     }
 
@@ -676,7 +709,10 @@ mod tests {
 
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::InvalidDate { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::InvalidDate { .. },
+                ..
+            }
         ));
     }
 
@@ -714,7 +750,10 @@ mod tests {
 
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::TypeMismatch { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::TypeMismatch { .. },
+                ..
+            }
         ));
     }
 
@@ -723,7 +762,10 @@ mod tests {
     #[test]
     fn coerce_list_valid() {
         let s = schema(vec![("tags", field(FieldType::List))]);
-        let raw = raw_item("t", vec![("tags", yaml_seq(vec![yaml_str("a"), yaml_str("b")]))]);
+        let raw = raw_item(
+            "t",
+            vec![("tags", yaml_seq(vec![yaml_str("a"), yaml_str("b")]))],
+        );
         let (fields, errors) = coerce_fields(&raw, &s);
 
         assert!(errors.is_empty());
@@ -736,12 +778,18 @@ mod tests {
     #[test]
     fn coerce_list_rejects_non_string_elements() {
         let s = schema(vec![("tags", field(FieldType::List))]);
-        let raw = raw_item("t", vec![("tags", yaml_seq(vec![yaml_str("a"), yaml_int(1)]))]);
+        let raw = raw_item(
+            "t",
+            vec![("tags", yaml_seq(vec![yaml_str("a"), yaml_int(1)]))],
+        );
         let (_, errors) = coerce_fields(&raw, &s);
 
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::TypeMismatch { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::TypeMismatch { .. },
+                ..
+            }
         ));
     }
 
@@ -765,7 +813,10 @@ mod tests {
 
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::TypeMismatch { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::TypeMismatch { .. },
+                ..
+            }
         ));
     }
 
@@ -795,7 +846,10 @@ mod tests {
 
         assert!(matches!(
             &errors[0],
-            StoreError::Coercion { error: CoercionError::TypeMismatch { .. }, .. }
+            StoreError::Coercion {
+                error: CoercionError::TypeMismatch { .. },
+                ..
+            }
         ));
     }
 
@@ -804,7 +858,10 @@ mod tests {
     #[test]
     fn unknown_field_produces_warning() {
         let s = schema(vec![("title", field(FieldType::String))]);
-        let raw = raw_item("t", vec![("title", yaml_str("Hi")), ("bogus", yaml_str("x"))]);
+        let raw = raw_item(
+            "t",
+            vec![("title", yaml_str("Hi")), ("bogus", yaml_str("x"))],
+        );
         let (fields, errors) = coerce_fields(&raw, &s);
 
         assert_eq!(fields.len(), 1);

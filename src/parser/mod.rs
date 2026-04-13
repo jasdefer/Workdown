@@ -58,10 +58,7 @@ pub(crate) fn parse_work_item_file(path: &Path) -> Result<RawWorkItem, ParseErro
 ///
 /// `content` is the full text of the Markdown file. `path` is used for
 /// ID derivation (filename) and error messages — no I/O happens here.
-pub(crate) fn parse_work_item(
-    content: &str,
-    path: &Path,
-) -> Result<RawWorkItem, ParseError> {
+pub(crate) fn parse_work_item(content: &str, path: &Path) -> Result<RawWorkItem, ParseError> {
     let mut lines = content.lines();
 
     // First line must be `---`
@@ -109,9 +106,7 @@ pub(crate) fn parse_work_item(
     let mut frontmatter: HashMap<String, serde_yaml::Value> = match value {
         serde_yaml::Value::Mapping(mapping) => mapping
             .into_iter()
-            .filter_map(|(key, value)| {
-                key.as_str().map(|key| (key.to_owned(), value))
-            })
+            .filter_map(|(key, value)| key.as_str().map(|key| (key.to_owned(), value)))
             .collect(),
         serde_yaml::Value::Null => {
             // Empty frontmatter (just `---\n---`) is valid — no fields set.
@@ -445,4 +440,3 @@ tags: [a, b, c]
         assert!(!is_valid_id("fix login"));
     }
 }
-

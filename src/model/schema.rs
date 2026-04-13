@@ -353,9 +353,7 @@ impl<'de> Deserialize<'de> for Condition {
 /// Parse a [`Condition`] from a raw YAML value.
 fn condition_from_value(value: &serde_yaml::Value) -> Result<Condition, String> {
     match value {
-        serde_yaml::Value::String(s) => {
-            Ok(Condition::Equals(ConditionValue::String(s.clone())))
-        }
+        serde_yaml::Value::String(s) => Ok(Condition::Equals(ConditionValue::String(s.clone()))),
         serde_yaml::Value::Number(n) => {
             let f = n.as_f64().ok_or("unsupported numeric type in condition")?;
             Ok(Condition::Equals(ConditionValue::Number(f)))
@@ -376,9 +374,7 @@ fn condition_from_value(value: &serde_yaml::Value) -> Result<Condition, String> 
     }
 }
 
-fn condition_operator_from_map(
-    map: &serde_yaml::Mapping,
-) -> Result<ConditionOperator, String> {
+fn condition_operator_from_map(map: &serde_yaml::Mapping) -> Result<ConditionOperator, String> {
     let mut op = ConditionOperator {
         not: None,
         is_set: None,
@@ -388,15 +384,13 @@ fn condition_operator_from_map(
     };
 
     for (key, value) in map {
-        let key_str = key.as_str().ok_or("condition operator key must be a string")?;
+        let key_str = key
+            .as_str()
+            .ok_or("condition operator key must be a string")?;
         match key_str {
             "not" => op.not = Some(negation_from_value(value)?),
             "is_set" => {
-                op.is_set = Some(
-                    value
-                        .as_bool()
-                        .ok_or("is_set must be a boolean")?,
-                );
+                op.is_set = Some(value.as_bool().ok_or("is_set must be a boolean")?);
             }
             "all" => op.all = Some(Box::new(condition_from_value(value)?)),
             "any" => op.any = Some(Box::new(condition_from_value(value)?)),
@@ -506,9 +500,7 @@ fn assertion_from_value(value: &serde_yaml::Value) -> Result<Assertion, String> 
     }
 }
 
-fn assertion_operator_from_map(
-    map: &serde_yaml::Mapping,
-) -> Result<AssertionOperator, String> {
+fn assertion_operator_from_map(map: &serde_yaml::Mapping) -> Result<AssertionOperator, String> {
     let mut op = AssertionOperator {
         required: None,
         forbidden: None,
@@ -524,7 +516,9 @@ fn assertion_operator_from_map(
     };
 
     for (key, value) in map {
-        let key_str = key.as_str().ok_or("assertion operator key must be a string")?;
+        let key_str = key
+            .as_str()
+            .ok_or("assertion operator key must be a string")?;
         match key_str {
             "required" => {
                 op.required = Some(value.as_bool().ok_or("required must be a boolean")?);
@@ -542,24 +536,44 @@ fn assertion_operator_from_map(
             }
             "not" => op.not = Some(negation_from_value(value)?),
             "eq_field" => {
-                op.eq_field =
-                    Some(value.as_str().ok_or("eq_field must be a string")?.to_owned());
+                op.eq_field = Some(
+                    value
+                        .as_str()
+                        .ok_or("eq_field must be a string")?
+                        .to_owned(),
+                );
             }
             "lt_field" => {
-                op.lt_field =
-                    Some(value.as_str().ok_or("lt_field must be a string")?.to_owned());
+                op.lt_field = Some(
+                    value
+                        .as_str()
+                        .ok_or("lt_field must be a string")?
+                        .to_owned(),
+                );
             }
             "lte_field" => {
-                op.lte_field =
-                    Some(value.as_str().ok_or("lte_field must be a string")?.to_owned());
+                op.lte_field = Some(
+                    value
+                        .as_str()
+                        .ok_or("lte_field must be a string")?
+                        .to_owned(),
+                );
             }
             "gt_field" => {
-                op.gt_field =
-                    Some(value.as_str().ok_or("gt_field must be a string")?.to_owned());
+                op.gt_field = Some(
+                    value
+                        .as_str()
+                        .ok_or("gt_field must be a string")?
+                        .to_owned(),
+                );
             }
             "gte_field" => {
-                op.gte_field =
-                    Some(value.as_str().ok_or("gte_field must be a string")?.to_owned());
+                op.gte_field = Some(
+                    value
+                        .as_str()
+                        .ok_or("gte_field must be a string")?
+                        .to_owned(),
+                );
             }
             "min_count" => {
                 op.min_count = Some(

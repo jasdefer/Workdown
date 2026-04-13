@@ -61,10 +61,7 @@ pub enum CoercionError {
     TypeMismatch { expected: FieldType, got: String },
 
     #[error("'{value}' is not one of the allowed values: {allowed:?}")]
-    InvalidChoice {
-        value: String,
-        allowed: Vec<String>,
-    },
+    InvalidChoice { value: String, allowed: Vec<String> },
 
     #[error("invalid values {values:?}, allowed: {allowed:?}")]
     InvalidMultichoice {
@@ -131,9 +128,7 @@ impl Store {
             .max_depth(1)
             .sort_by_file_name()
         {
-            let entry = entry.map_err(|e| {
-                std::io::Error::new(std::io::ErrorKind::Other, e)
-            })?;
+            let entry = entry.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             let path = entry.into_path();
             if path.extension().is_some_and(|ext| ext == "md") {
                 paths.push(path);
@@ -188,9 +183,7 @@ impl Store {
             for (field_name, field_value) in &item.fields {
                 let targets: Vec<&str> = match field_value {
                     FieldValue::Link(target) => vec![target.as_str()],
-                    FieldValue::Links(targets) => {
-                        targets.iter().map(|s| s.as_str()).collect()
-                    }
+                    FieldValue::Links(targets) => targets.iter().map(|s| s.as_str()).collect(),
                     _ => continue,
                 };
 
@@ -305,11 +298,7 @@ mod tests {
                 description: None,
                 required: true,
                 default: None,
-                values: Some(vec![
-                    "open".into(),
-                    "in_progress".into(),
-                    "done".into(),
-                ]),
+                values: Some(vec!["open".into(), "in_progress".into(), "done".into()]),
                 pattern: None,
                 min: None,
                 max: None,
@@ -377,14 +366,11 @@ mod tests {
     }
 
     /// Create a temp directory with work item files for testing.
-    fn setup_items_dir(
-        items: Vec<(&str, &str)>,
-    ) -> (tempfile::TempDir, PathBuf) {
+    fn setup_items_dir(items: Vec<(&str, &str)>) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let items_path = dir.path().to_path_buf();
         for (filename, content) in items {
-            fs::write(items_path.join(filename), content)
-                .expect("failed to write test file");
+            fs::write(items_path.join(filename), content).expect("failed to write test file");
         }
         (dir, items_path)
     }
@@ -455,7 +441,10 @@ mod tests {
         assert_eq!(store.len(), 1);
         assert!(store.get("good").is_some());
         assert!(store.has_errors());
-        assert!(store.errors().iter().any(|e| matches!(e, StoreError::Parse { .. })));
+        assert!(store
+            .errors()
+            .iter()
+            .any(|e| matches!(e, StoreError::Parse { .. })));
     }
 
     #[test]
@@ -562,7 +551,10 @@ mod tests {
         let schema = test_schema();
         let store = Store::load(&path, &schema).unwrap();
 
-        assert!(!store.errors().iter().any(|e| matches!(e, StoreError::BrokenLink { .. })));
+        assert!(!store
+            .errors()
+            .iter()
+            .any(|e| matches!(e, StoreError::BrokenLink { .. })));
     }
 
     // ── Inverse relations ────────────────────────────────────────────
@@ -615,10 +607,8 @@ mod tests {
 
     #[test]
     fn referring_items_empty_when_no_links() {
-        let (_dir, path) = setup_items_dir(vec![(
-            "task-a.md",
-            "---\ntitle: A\nstatus: open\n---\n",
-        )]);
+        let (_dir, path) =
+            setup_items_dir(vec![("task-a.md", "---\ntitle: A\nstatus: open\n---\n")]);
         let schema = test_schema();
         let store = Store::load(&path, &schema).unwrap();
 

@@ -8,8 +8,8 @@ use std::path::Path;
 use indexmap::IndexMap;
 
 use crate::model::schema::{
-    AggregateFunction, Assertion, Condition, CountConstraint, DefaultValue, FieldDef,
-    FieldType, Generator, RawRule, RawSchema, Rule, Schema,
+    AggregateFunction, Assertion, Condition, CountConstraint, DefaultValue, FieldDef, FieldType,
+    Generator, RawRule, RawSchema, Rule, Schema,
 };
 
 // ── Public API ────────────────────────────────────────────────────────
@@ -19,8 +19,7 @@ use crate::model::schema::{
 /// Performs serde deserialization followed by semantic validation.
 /// Returns all validation errors at once (does not stop at the first).
 pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
-    let raw: RawSchema =
-        serde_yaml::from_str(yaml).map_err(SchemaLoadError::InvalidYaml)?;
+    let raw: RawSchema = serde_yaml::from_str(yaml).map_err(SchemaLoadError::InvalidYaml)?;
 
     let mut errors = Vec::new();
 
@@ -148,10 +147,7 @@ fn is_valid_field_reference(reference: &str) -> bool {
     }
 }
 
-fn validate_fields(
-    fields: &IndexMap<String, FieldDef>,
-    errors: &mut Vec<SchemaValidationError>,
-) {
+fn validate_fields(fields: &IndexMap<String, FieldDef>, errors: &mut Vec<SchemaValidationError>) {
     for (name, field) in fields {
         if !is_valid_field_name(name) {
             errors.push(field_error(
@@ -180,31 +176,60 @@ fn validate_type_specific_properties(
                     name,
                     format!("'values' is required for type '{}'", field.field_type),
                 )),
-                Some(v) if v.is_empty() => errors.push(field_error(
-                    name,
-                    "'values' must not be empty",
-                )),
+                Some(v) if v.is_empty() => {
+                    errors.push(field_error(name, "'values' must not be empty"))
+                }
                 _ => {}
             }
             // Reject invalid properties
             reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
             reject_prop(name, "min", &field.min, field.field_type, errors);
             reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(name, "allow_cycles", &field.allow_cycles, field.field_type, errors);
+            reject_prop(
+                name,
+                "allow_cycles",
+                &field.allow_cycles,
+                field.field_type,
+                errors,
+            );
             reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(name, "aggregate", &field.aggregate, field.field_type, errors);
+            reject_prop(
+                name,
+                "aggregate",
+                &field.aggregate,
+                field.field_type,
+                errors,
+            );
         }
         FieldType::String => {
             reject_prop(name, "values", &field.values, field.field_type, errors);
             reject_prop(name, "min", &field.min, field.field_type, errors);
             reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(name, "allow_cycles", &field.allow_cycles, field.field_type, errors);
-            reject_prop(name, "aggregate", &field.aggregate, field.field_type, errors);
+            reject_prop(
+                name,
+                "allow_cycles",
+                &field.allow_cycles,
+                field.field_type,
+                errors,
+            );
+            reject_prop(
+                name,
+                "aggregate",
+                &field.aggregate,
+                field.field_type,
+                errors,
+            );
         }
         FieldType::Integer | FieldType::Float => {
             reject_prop(name, "values", &field.values, field.field_type, errors);
             reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(name, "allow_cycles", &field.allow_cycles, field.field_type, errors);
+            reject_prop(
+                name,
+                "allow_cycles",
+                &field.allow_cycles,
+                field.field_type,
+                errors,
+            );
             reject_prop(name, "resource", &field.resource, field.field_type, errors);
         }
         FieldType::Date => {
@@ -212,7 +237,13 @@ fn validate_type_specific_properties(
             reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
             reject_prop(name, "min", &field.min, field.field_type, errors);
             reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(name, "allow_cycles", &field.allow_cycles, field.field_type, errors);
+            reject_prop(
+                name,
+                "allow_cycles",
+                &field.allow_cycles,
+                field.field_type,
+                errors,
+            );
             reject_prop(name, "resource", &field.resource, field.field_type, errors);
         }
         FieldType::Boolean => {
@@ -220,7 +251,13 @@ fn validate_type_specific_properties(
             reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
             reject_prop(name, "min", &field.min, field.field_type, errors);
             reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(name, "allow_cycles", &field.allow_cycles, field.field_type, errors);
+            reject_prop(
+                name,
+                "allow_cycles",
+                &field.allow_cycles,
+                field.field_type,
+                errors,
+            );
             reject_prop(name, "resource", &field.resource, field.field_type, errors);
         }
         FieldType::List => {
@@ -228,8 +265,20 @@ fn validate_type_specific_properties(
             reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
             reject_prop(name, "min", &field.min, field.field_type, errors);
             reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(name, "allow_cycles", &field.allow_cycles, field.field_type, errors);
-            reject_prop(name, "aggregate", &field.aggregate, field.field_type, errors);
+            reject_prop(
+                name,
+                "allow_cycles",
+                &field.allow_cycles,
+                field.field_type,
+                errors,
+            );
+            reject_prop(
+                name,
+                "aggregate",
+                &field.aggregate,
+                field.field_type,
+                errors,
+            );
         }
         FieldType::Link | FieldType::Links => {
             reject_prop(name, "values", &field.values, field.field_type, errors);
@@ -237,7 +286,13 @@ fn validate_type_specific_properties(
             reject_prop(name, "min", &field.min, field.field_type, errors);
             reject_prop(name, "max", &field.max, field.field_type, errors);
             reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(name, "aggregate", &field.aggregate, field.field_type, errors);
+            reject_prop(
+                name,
+                "aggregate",
+                &field.aggregate,
+                field.field_type,
+                errors,
+            );
         }
     }
 }
@@ -326,8 +381,7 @@ fn validate_default_compatibility(
                 Generator::Uuid => field.field_type == FieldType::String,
                 Generator::Today => field.field_type == FieldType::Date,
                 Generator::MaxPlusOne => {
-                    field.field_type == FieldType::Integer
-                        || field.field_type == FieldType::Float
+                    field.field_type == FieldType::Integer || field.field_type == FieldType::Float
                 }
             };
             if !compatible {
@@ -381,8 +435,7 @@ fn validate_default_compatibility(
             }
         }
         DefaultValue::Float(_) => {
-            if field.field_type != FieldType::Integer && field.field_type != FieldType::Float
-            {
+            if field.field_type != FieldType::Integer && field.field_type != FieldType::Float {
                 errors.push(field_error(
                     name,
                     format!(
@@ -508,9 +561,7 @@ fn validate_field_reference(
         if !fields.contains_key(parts[0]) {
             errors.push(rule_error(
                 rule_name,
-                format!(
-                    "'{reference}' in '{section}' does not match any defined field"
-                ),
+                format!("'{reference}' in '{section}' does not match any defined field"),
             ));
         }
     } else {
@@ -519,9 +570,9 @@ fn validate_field_reference(
         let first = parts[0];
         let second = parts[1];
 
-        let is_link_field = fields.get(first).is_some_and(|f| {
-            f.field_type == FieldType::Link || f.field_type == FieldType::Links
-        });
+        let is_link_field = fields
+            .get(first)
+            .is_some_and(|f| f.field_type == FieldType::Link || f.field_type == FieldType::Links);
         let is_inverse = is_known_inverse(first, fields);
 
         if !is_link_field && !is_inverse {
@@ -537,9 +588,7 @@ fn validate_field_reference(
         if !fields.contains_key(second) {
             errors.push(rule_error(
                 rule_name,
-                format!(
-                    "'{second}' in '{reference}' ({section}) does not match any defined field"
-                ),
+                format!("'{second}' in '{reference}' ({section}) does not match any defined field"),
             ));
         }
     }
@@ -609,9 +658,7 @@ fn validate_assertion_quantifiers(
     if has_count && !is_one_to_many_reference(reference, fields) {
         errors.push(rule_error(
             rule_name,
-            format!(
-                "min_count/max_count on '{reference}' require a one-to-many relationship"
-            ),
+            format!("min_count/max_count on '{reference}' require a one-to-many relationship"),
         ));
     }
 }
@@ -772,7 +819,9 @@ rules:
             SchemaLoadError::Validation(e) => e,
             other => panic!("expected Validation error, got: {other}"),
         };
-        assert!(errors.iter().any(|e| e.message.contains("'values' is required")));
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("'values' is required")));
     }
 
     #[test]
@@ -788,7 +837,9 @@ fields:
             SchemaLoadError::Validation(e) => e,
             other => panic!("expected Validation error, got: {other}"),
         };
-        assert!(errors.iter().any(|e| e.message.contains("'min' is not valid")));
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("'min' is not valid")));
     }
 
     #[test]
@@ -858,7 +909,10 @@ fields:
             other => panic!("expected Validation error, got: {other}"),
         };
         // Should have at least 2 errors: bad name + choice without values, and min on string
-        assert!(errors.len() >= 2, "expected multiple errors, got: {errors:?}");
+        assert!(
+            errors.len() >= 2,
+            "expected multiple errors, got: {errors:?}"
+        );
     }
 
     // ── Default compatibility ─────────────────────────────────────
@@ -876,9 +930,7 @@ fields:
             SchemaLoadError::Validation(e) => e,
             other => panic!("expected Validation error, got: {other}"),
         };
-        assert!(errors
-            .iter()
-            .any(|e| e.message.contains("not compatible")));
+        assert!(errors.iter().any(|e| e.message.contains("not compatible")));
     }
 
     #[test]
@@ -983,9 +1035,7 @@ rules:
             SchemaLoadError::Validation(e) => e,
             other => panic!("expected Validation error, got: {other}"),
         };
-        assert!(errors
-            .iter()
-            .any(|e| e.message.contains("kebab-case")));
+        assert!(errors.iter().any(|e| e.message.contains("kebab-case")));
     }
 
     #[test]
@@ -1092,9 +1142,8 @@ fields:
 
     #[test]
     fn load_from_nonexistent_path_returns_default() {
-        let schema =
-            load_schema_or_default(std::path::Path::new("/nonexistent/schema.yaml"))
-                .expect("should fall back to defaults");
+        let schema = load_schema_or_default(std::path::Path::new("/nonexistent/schema.yaml"))
+            .expect("should fall back to defaults");
         assert!(schema.fields.contains_key("status"));
     }
 }
