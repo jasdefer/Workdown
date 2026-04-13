@@ -75,6 +75,12 @@ pub struct FieldDef {
     #[serde(default)]
     pub allow_cycles: Option<bool>,
 
+    /// Inverse relationship name. Only valid for `link`/`links` types.
+    /// Allows dot-notation traversal in rules (e.g. `parent` with `inverse: children`
+    /// enables `children.type` references).
+    #[serde(default)]
+    pub inverse: Option<String>,
+
     /// Resource section in `resources.yaml` that constrains this field's values.
     #[serde(default)]
     pub resource: Option<String>,

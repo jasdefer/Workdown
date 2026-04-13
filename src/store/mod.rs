@@ -221,7 +221,6 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::diagnostic::FieldValueError;
     use crate::model::schema::{FieldDef, FieldType};
     use indexmap::IndexMap;
     use std::fs;
@@ -243,6 +242,7 @@ mod tests {
                 min: None,
                 max: None,
                 allow_cycles: None,
+                inverse: None,
                 resource: None,
                 aggregate: None,
             },
@@ -260,6 +260,7 @@ mod tests {
                 min: None,
                 max: None,
                 allow_cycles: None,
+                inverse: None,
                 resource: None,
                 aggregate: None,
             },
@@ -277,6 +278,7 @@ mod tests {
                 min: None,
                 max: None,
                 allow_cycles: Some(false),
+                inverse: Some("children".into()),
                 resource: None,
                 aggregate: None,
             },
@@ -294,6 +296,7 @@ mod tests {
                 min: None,
                 max: None,
                 allow_cycles: Some(false),
+                inverse: Some("dependents".into()),
                 resource: None,
                 aggregate: None,
             },
@@ -311,6 +314,7 @@ mod tests {
                 min: None,
                 max: None,
                 allow_cycles: None,
+                inverse: None,
                 resource: None,
                 aggregate: None,
             },

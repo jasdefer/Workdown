@@ -40,7 +40,9 @@
       "Bash(gh milestone:*)",
       "Bash(grep -n \"#\\\\[cfg\\(test\\)\\\\]\" /c/Users/justu/source/repos/workdown/src/**/*.rs)",
       "Bash(cargo --version)",
-      "Bash(rustc --version)"
+      "Bash(rustc --version)",
+      "Bash(docker exec pensive_goldberg:*)",
+      "Bash(docker exec:*)"
     ]
   }
 }

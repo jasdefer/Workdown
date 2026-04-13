@@ -29,8 +29,7 @@ pub fn run_validate(config: &Config, project_root: &Path, format: ValidateFormat
 
     let mut diagnostics = store.diagnostics().to_vec();
     diagnostics.extend(store.detect_cycles(&schema));
-
-    // TODO: rule engine
+    diagnostics.extend(crate::rules::evaluate(&store, &schema));
 
     let has_errors = diagnostics.iter().any(|d| d.severity == Severity::Error);
 

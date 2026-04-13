@@ -426,6 +426,7 @@ mod tests {
             min: None,
             max: None,
             allow_cycles: None,
+            inverse: None,
             resource: None,
             aggregate: None,
         }

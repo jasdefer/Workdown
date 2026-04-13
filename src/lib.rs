@@ -7,4 +7,5 @@ pub mod cli;
 pub mod commands;
 pub mod model;
 pub mod parser;
+pub mod rules;
 pub mod store;

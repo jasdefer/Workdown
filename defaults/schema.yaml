@@ -55,21 +55,25 @@ fields:
     type: link
     required: false
     allow_cycles: false
+    inverse: children
 
   depends_on:
     type: links
     required: false
     allow_cycles: false
+    inverse: dependents
 
   related_to:
     type: links
     required: false
     allow_cycles: true
+    inverse: related_items
 
   duplicates:
     type: links
     required: false
     allow_cycles: true
+    inverse: duplicated_by
 
   # Computed fields — uncomment and adjust as needed:
   #
