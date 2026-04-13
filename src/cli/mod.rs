@@ -34,7 +34,11 @@ pub enum Command {
         name: Option<String>,
     },
     /// Validate all work items against the schema
-    Validate,
+    Validate {
+        /// Output format: human-readable or JSON
+        #[arg(long, value_enum, default_value_t = ValidateFormat::Human)]
+        format: ValidateFormat,
+    },
     /// Create a new work item
     Add {
         /// Title of the work item
@@ -48,6 +52,15 @@ pub enum Command {
     Tree,
     /// Show dependency graph
     Graph,
+}
+
+/// Output format for the `validate` command.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum ValidateFormat {
+    /// Styled, human-readable output (default).
+    Human,
+    /// Machine-readable JSON output.
+    Json,
 }
 
 /// Initialize the tracing subscriber for CLI logging.

@@ -10,7 +10,7 @@ fn main() -> ExitCode {
     cli::init_logging(cli.verbose, cli.quiet);
 
     match run(&cli) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(err) => {
             tracing::error!("{err:#}");
             ExitCode::FAILURE
@@ -18,7 +18,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(cli: &cli::Cli) -> anyhow::Result<()> {
+fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
     tracing::debug!("workdown v{}", env!("CARGO_PKG_VERSION"));
     tracing::debug!(config = %cli.config.display(), "using config");
 
@@ -35,7 +35,7 @@ fn run(cli: &cli::Cli) -> anyhow::Result<()> {
                     cli::output::warning("Already initialized (.workdown/ exists, skipping)");
                 }
             }
-            Ok(())
+            Ok(ExitCode::SUCCESS)
         }
 
         // All other commands need the project config.
@@ -46,9 +46,17 @@ fn run(cli: &cli::Cli) -> anyhow::Result<()> {
 
             match cmd {
                 cli::Command::Init { .. } => unreachable!(),
-                cli::Command::Validate => {
+                cli::Command::Validate { format } => {
                     tracing::info!("validating work items");
-                    anyhow::bail!("not yet implemented — coming in Phase 3");
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    let has_errors =
+                        workdown::commands::validate::run_validate(&config, &project_root, *format)?;
+                    if has_errors {
+                        Ok(ExitCode::FAILURE)
+                    } else {
+                        Ok(ExitCode::SUCCESS)
+                    }
                 }
                 cli::Command::Add { title } => {
                     tracing::info!(title, "creating work item");
