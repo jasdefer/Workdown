@@ -54,6 +54,7 @@ pub(crate) fn parse_work_item_file(path: &Path) -> Result<RawWorkItem, ParseErro
 /// Parses the YAML frontmatter, extracts the body, and resolves the work item ID:
 /// - If the frontmatter contains an `id` field, that value is used (must be a string).
 /// - Otherwise, the filename without `.md` is used.
+///
 /// The resolved ID is validated for format (kebab-case).
 ///
 /// `content` is the full text of the Markdown file. `path` is used for

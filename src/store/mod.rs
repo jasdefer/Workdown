@@ -128,7 +128,7 @@ impl Store {
             .max_depth(1)
             .sort_by_file_name()
         {
-            let entry = entry.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            let entry = entry.map_err(std::io::Error::other)?;
             let path = entry.into_path();
             if path.extension().is_some_and(|ext| ext == "md") {
                 paths.push(path);

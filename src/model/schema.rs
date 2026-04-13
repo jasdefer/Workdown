@@ -267,17 +267,12 @@ pub(crate) struct RawRule {
 }
 
 /// Rule severity level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
+    #[default]
     Error,
     Warning,
-}
-
-impl Default for Severity {
-    fn default() -> Self {
-        Self::Error
-    }
 }
 
 /// Collection-wide count constraint.
