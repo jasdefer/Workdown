@@ -2,10 +2,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
-mod cli;
-mod model;
-mod parser;
-mod store;
+use workdown::cli;
 
 fn main() -> ExitCode {
     let cli = cli::Cli::parse();
@@ -61,12 +58,10 @@ fn run(cli: &cli::Cli) -> anyhow::Result<()> {
 mod tests {
     use clap::CommandFactory;
 
-    use crate::cli::Cli;
+    use workdown::cli::Cli;
 
     #[test]
     fn verify_cli() {
-        // Validates that the clap derive definition is internally consistent
-        // (no conflicting args, missing values, etc.)
         Cli::command().debug_assert();
     }
 }

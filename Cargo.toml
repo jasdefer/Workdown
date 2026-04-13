@@ -7,12 +7,17 @@ description = "Git-based project management — work items as Markdown files"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive", "wrap_help"] }
+indexmap = { version = "2", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+regex = "1"
 walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"
 
 [profile.release]
 strip = true
