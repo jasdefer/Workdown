@@ -4,6 +4,7 @@
 //! The repo is the single source of truth.
 
 pub mod cli;
+pub mod commands;
 pub mod model;
 pub mod parser;
 pub mod store;

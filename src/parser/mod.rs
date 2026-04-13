@@ -1,5 +1,6 @@
-//! Parsers for work item files (frontmatter + Markdown) and schema definitions.
+//! Parsers for work item files (frontmatter + Markdown), schema, and config.
 
+pub mod config;
 pub mod schema;
 
 use std::collections::HashMap;

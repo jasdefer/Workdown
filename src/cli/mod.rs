@@ -1,3 +1,5 @@
+pub mod output;
+
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
@@ -26,7 +28,11 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Initialize a new workdown project in the current directory
-    Init,
+    Init {
+        /// Project name (defaults to current directory name)
+        #[arg(long)]
+        name: Option<String>,
+    },
     /// Validate all work items against the schema
     Validate,
     /// Create a new work item
