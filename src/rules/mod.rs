@@ -7,8 +7,6 @@ pub(crate) mod assertion;
 pub mod condition;
 pub(crate) mod resolve;
 
-use std::collections::HashMap;
-
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::model::schema::{Condition, ConditionOperator, Schema};
 use crate::model::{FieldValue, WorkItem};
@@ -78,35 +76,17 @@ pub fn evaluate(store: &Store, schema: &Schema) -> Vec<Diagnostic> {
 
 // ── Evaluation context ──────────────────────────────────────────────
 
-/// Shared context for rule evaluation, threading store, schema, and the
-/// inverse name table through all evaluation functions.
+/// Shared context for rule evaluation, threading store and schema
+/// through all evaluation functions.
 pub(crate) struct EvalContext<'a> {
     pub store: &'a Store,
     pub schema: &'a Schema,
-    /// Maps inverse names to their original link field names.
-    /// E.g., `"children" -> "parent"`.
-    pub inverse_table: HashMap<String, String>,
 }
 
 impl<'a> EvalContext<'a> {
     pub fn new(store: &'a Store, schema: &'a Schema) -> Self {
-        Self {
-            store,
-            schema,
-            inverse_table: build_inverse_table(schema),
-        }
+        Self { store, schema }
     }
-}
-
-/// Build the inverse name table from the schema's link/links field definitions.
-fn build_inverse_table(schema: &Schema) -> HashMap<String, String> {
-    let mut table = HashMap::new();
-    for (field_name, field_def) in &schema.fields {
-        if let Some(ref inverse) = field_def.inverse {
-            table.insert(inverse.clone(), field_name.clone());
-        }
-    }
-    table
 }
 
 // ── Condition matching ──────────────────────────────────────────────
@@ -213,15 +193,15 @@ fn eval_quantifiers_on_many(values: &[Option<&FieldValue>], op: &ConditionOperat
 mod tests {
     use super::*;
     use crate::model::schema::{
-        Assertion, ConditionValue, CountConstraint, FieldDef, FieldType, NegationValue, Rule,
+        Assertion, ConditionValue, CountConstraint, FieldDefinition, FieldType, NegationValue, Rule,
         Severity,
     };
     use indexmap::IndexMap;
     use std::fs;
     use std::path::PathBuf;
 
-    fn base_field(ft: FieldType) -> FieldDef {
-        FieldDef {
+    fn base_field(ft: FieldType) -> FieldDefinition {
+        FieldDefinition {
             field_type: ft,
             description: None,
             required: false,
@@ -242,7 +222,7 @@ mod tests {
         fields.insert("title".to_owned(), base_field(FieldType::String));
         fields.insert(
             "status".to_owned(),
-            FieldDef {
+            FieldDefinition {
                 required: true,
                 values: Some(vec![
                     "backlog".into(),
@@ -255,7 +235,7 @@ mod tests {
         );
         fields.insert(
             "type_field".to_owned(),
-            FieldDef {
+            FieldDefinition {
                 values: Some(vec!["task".into(), "bug".into(), "epic".into()]),
                 ..base_field(FieldType::Choice)
             },
@@ -264,7 +244,7 @@ mod tests {
         fields.insert("priority".to_owned(), base_field(FieldType::String));
         fields.insert(
             "parent".to_owned(),
-            FieldDef {
+            FieldDefinition {
                 allow_cycles: Some(false),
                 inverse: Some("children".into()),
                 ..base_field(FieldType::Link)
@@ -272,13 +252,14 @@ mod tests {
         );
         fields.insert(
             "depends_on".to_owned(),
-            FieldDef {
+            FieldDefinition {
                 allow_cycles: Some(false),
                 inverse: Some("dependents".into()),
                 ..base_field(FieldType::Links)
             },
         );
-        Schema { fields, rules }
+        let inverse_table = Schema::build_inverse_table(&fields);
+        Schema { fields, rules, inverse_table }
     }
 
     fn setup_items(items: Vec<(&str, &str)>) -> (tempfile::TempDir, PathBuf) {
@@ -290,15 +271,14 @@ mod tests {
         (dir, path)
     }
 
-    // ── build_inverse_table ─────────────────────────────────────
+    // ── inverse_table ──────────────────────────────────────────
 
     #[test]
     fn inverse_table_built_from_schema() {
         let schema = test_schema_with_rules(vec![]);
-        let table = build_inverse_table(&schema);
-        assert_eq!(table.get("children"), Some(&"parent".to_owned()));
-        assert_eq!(table.get("dependents"), Some(&"depends_on".to_owned()));
-        assert_eq!(table.get("nonexistent"), None);
+        assert_eq!(schema.inverse_table.get("children"), Some(&"parent".to_owned()));
+        assert_eq!(schema.inverse_table.get("dependents"), Some(&"depends_on".to_owned()));
+        assert_eq!(schema.inverse_table.get("nonexistent"), None);
     }
 
     // ── L2: Cross-field rules ───────────────────────────────────

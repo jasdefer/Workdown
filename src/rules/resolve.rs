@@ -82,7 +82,7 @@ pub(crate) fn resolve_field_ref<'a>(
     }
 
     // Check if relationship is an inverse name
-    if let Some(original_field) = ctx.inverse_table.get(relationship) {
+    if let Some(original_field) = ctx.schema.inverse_table.get(relationship) {
         let related = ctx.store.referring_items(&item.id, original_field);
         let values = related
             .iter()
@@ -118,7 +118,7 @@ pub(crate) fn resolve_related_items<'a>(
     }
 
     // Check inverse table
-    if let Some(original_field) = ctx.inverse_table.get(reference) {
+    if let Some(original_field) = ctx.schema.inverse_table.get(reference) {
         return ctx.store.referring_items(&item.id, original_field);
     }
 
@@ -130,14 +130,14 @@ pub(crate) fn resolve_related_items<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::schema::{FieldDef, FieldType, Schema};
+    use crate::model::schema::{FieldDefinition, FieldType, Schema};
     use crate::store::Store;
     use indexmap::IndexMap;
     use std::fs;
     use std::path::PathBuf;
 
-    fn base_field(ft: FieldType) -> FieldDef {
-        FieldDef {
+    fn base_field(ft: FieldType) -> FieldDefinition {
+        FieldDefinition {
             field_type: ft,
             description: None,
             required: false,
@@ -158,7 +158,7 @@ mod tests {
         fields.insert("title".to_owned(), base_field(FieldType::String));
         fields.insert(
             "status".to_owned(),
-            FieldDef {
+            FieldDefinition {
                 required: true,
                 values: Some(vec!["open".into(), "done".into()]),
                 ..base_field(FieldType::Choice)
@@ -166,14 +166,14 @@ mod tests {
         );
         fields.insert(
             "type_field".to_owned(),
-            FieldDef {
+            FieldDefinition {
                 values: Some(vec!["task".into(), "epic".into()]),
                 ..base_field(FieldType::Choice)
             },
         );
         fields.insert(
             "parent".to_owned(),
-            FieldDef {
+            FieldDefinition {
                 allow_cycles: Some(false),
                 inverse: Some("children".into()),
                 ..base_field(FieldType::Link)
@@ -181,15 +181,17 @@ mod tests {
         );
         fields.insert(
             "depends_on".to_owned(),
-            FieldDef {
+            FieldDefinition {
                 allow_cycles: Some(false),
                 inverse: Some("dependents".into()),
                 ..base_field(FieldType::Links)
             },
         );
+        let inverse_table = Schema::build_inverse_table(&fields);
         Schema {
             fields,
             rules: vec![],
+            inverse_table,
         }
     }
 

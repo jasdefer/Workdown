@@ -141,7 +141,7 @@ fn canonicalize_cycle(cycle_body: &[String]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::schema::FieldDef;
+    use crate::model::schema::FieldDefinition;
     use indexmap::IndexMap;
     use std::fs;
     use std::path::PathBuf;
@@ -157,8 +157,8 @@ mod tests {
         (dir, items_path)
     }
 
-    fn field(ft: FieldType) -> FieldDef {
-        FieldDef {
+    fn field(ft: FieldType) -> FieldDefinition {
+        FieldDefinition {
             field_type: ft,
             description: None,
             required: false,
@@ -174,27 +174,27 @@ mod tests {
         }
     }
 
-    fn link_field(allow_cycles: bool) -> FieldDef {
-        FieldDef {
+    fn link_field(allow_cycles: bool) -> FieldDefinition {
+        FieldDefinition {
             allow_cycles: Some(allow_cycles),
             ..field(FieldType::Link)
         }
     }
 
-    fn links_field(allow_cycles: bool) -> FieldDef {
-        FieldDef {
+    fn links_field(allow_cycles: bool) -> FieldDefinition {
+        FieldDefinition {
             allow_cycles: Some(allow_cycles),
             ..field(FieldType::Links)
         }
     }
 
-    fn schema_with(fields: Vec<(&str, FieldDef)>) -> Schema {
+    fn schema_with(fields: Vec<(&str, FieldDefinition)>) -> Schema {
         let mut map = IndexMap::new();
         // Always include title + status so items parse cleanly.
         map.insert("title".to_owned(), field(FieldType::String));
         map.insert(
             "status".to_owned(),
-            FieldDef {
+            FieldDefinition {
                 required: true,
                 values: Some(vec!["open".into(), "done".into()]),
                 ..field(FieldType::Choice)
@@ -203,9 +203,11 @@ mod tests {
         for (name, def) in fields {
             map.insert(name.to_owned(), def);
         }
+        let inverse_table = Schema::build_inverse_table(&map);
         Schema {
             fields: map,
             rules: vec![],
+            inverse_table,
         }
     }
 

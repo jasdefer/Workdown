@@ -1,6 +1,6 @@
 //! Field coercion: convert raw `serde_yaml::Value` fields into typed [`FieldValue`]s.
 //!
-//! Operates on a single [`RawWorkItem`] and the project [`Schema`].
+//! Operates on a single [`crate::parser::RawWorkItem`] and the project [`Schema`].
 //! Produces a map of successfully coerced fields plus a list of
 //! [`Diagnostic`]s for fields that failed coercion or violated constraints.
 
@@ -9,8 +9,9 @@ use std::collections::HashMap;
 use regex::Regex;
 
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind, FieldValueError};
-use crate::model::schema::{FieldDef, FieldType, Schema, Severity};
-use crate::model::{FieldValue, RawWorkItem};
+use crate::model::schema::{FieldDefinition, FieldType, Schema, Severity};
+use crate::model::FieldValue;
+use crate::parser::RawWorkItem;
 
 /// Coerce raw frontmatter values into typed [`FieldValue`]s according to the schema.
 ///
@@ -80,7 +81,7 @@ pub(crate) fn coerce_fields(
 /// Coerce a single YAML value into a [`FieldValue`] according to the field definition.
 fn coerce_value(
     value: &serde_yaml::Value,
-    def: &FieldDef,
+    def: &FieldDefinition,
 ) -> Result<FieldValue, FieldValueError> {
     match def.field_type {
         FieldType::String => coerce_string(value, def),
@@ -100,7 +101,7 @@ fn coerce_value(
 
 fn coerce_string(
     value: &serde_yaml::Value,
-    def: &FieldDef,
+    def: &FieldDefinition,
 ) -> Result<FieldValue, FieldValueError> {
     let s = value
         .as_str()
@@ -127,7 +128,7 @@ fn coerce_string(
 
 fn coerce_choice(
     value: &serde_yaml::Value,
-    def: &FieldDef,
+    def: &FieldDefinition,
 ) -> Result<FieldValue, FieldValueError> {
     let s = value
         .as_str()
@@ -150,7 +151,7 @@ fn coerce_choice(
 
 fn coerce_multichoice(
     value: &serde_yaml::Value,
-    def: &FieldDef,
+    def: &FieldDefinition,
 ) -> Result<FieldValue, FieldValueError> {
     let seq = value
         .as_sequence()
@@ -189,7 +190,7 @@ fn coerce_multichoice(
 
 fn coerce_integer(
     value: &serde_yaml::Value,
-    def: &FieldDef,
+    def: &FieldDefinition,
 ) -> Result<FieldValue, FieldValueError> {
     let n = value
         .as_i64()
@@ -222,7 +223,7 @@ fn coerce_integer(
 
 fn coerce_float(
     value: &serde_yaml::Value,
-    def: &FieldDef,
+    def: &FieldDefinition,
 ) -> Result<FieldValue, FieldValueError> {
     let n = value
         .as_f64()
@@ -400,23 +401,27 @@ fn is_valid_date(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::schema::FieldDef;
+    use crate::model::schema::FieldDefinition;
+    use indexmap::IndexMap;
     use std::path::PathBuf;
 
     /// Build a minimal schema with the given fields.
-    fn schema(fields: Vec<(&str, FieldDef)>) -> Schema {
+    fn schema(fields: Vec<(&str, FieldDefinition)>) -> Schema {
+        let fields: IndexMap<String, FieldDefinition> = fields
+            .into_iter()
+            .map(|(name, def)| (name.to_owned(), def))
+            .collect();
+        let inverse_table = Schema::build_inverse_table(&fields);
         Schema {
-            fields: fields
-                .into_iter()
-                .map(|(name, def)| (name.to_owned(), def))
-                .collect(),
+            fields,
             rules: vec![],
+            inverse_table,
         }
     }
 
-    /// Build a minimal FieldDef for a given type.
-    fn field(field_type: FieldType) -> FieldDef {
-        FieldDef {
+    /// Build a minimal FieldDefinition for a given type.
+    fn field(field_type: FieldType) -> FieldDefinition {
+        FieldDefinition {
             field_type,
             description: None,
             required: false,

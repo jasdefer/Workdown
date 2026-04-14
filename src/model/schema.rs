@@ -4,6 +4,8 @@
 //! project's field configuration and validation rules. They are data only —
 //! the rule engine that *executes* them lives elsewhere (workdown validate).
 
+use std::collections::HashMap;
+
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
@@ -17,9 +19,25 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone)]
 pub struct Schema {
     /// Field definitions, insertion-order preserved (matters for board columns).
-    pub fields: IndexMap<String, FieldDef>,
+    pub fields: IndexMap<String, FieldDefinition>,
     /// Validation rules (cross-field, cross-item, collection-wide).
     pub rules: Vec<Rule>,
+    /// Maps inverse names to their original link field names.
+    /// E.g., `"children" -> "parent"`. Computed once at schema load time.
+    pub inverse_table: HashMap<String, String>,
+}
+
+impl Schema {
+    /// Build the inverse name table from the schema's link/links field definitions.
+    pub fn build_inverse_table(fields: &IndexMap<String, FieldDefinition>) -> HashMap<String, String> {
+        let mut table = HashMap::new();
+        for (field_name, field_def) in fields {
+            if let Some(ref inverse) = field_def.inverse {
+                table.insert(inverse.clone(), field_name.clone());
+            }
+        }
+        table
+    }
 }
 
 /// The raw deserialization target for `schema.yaml`.
@@ -28,7 +46,7 @@ pub struct Schema {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawSchema {
-    pub fields: IndexMap<String, FieldDef>,
+    pub fields: IndexMap<String, FieldDefinition>,
     #[serde(default)]
     pub rules: Vec<RawRule>,
 }
@@ -38,7 +56,7 @@ pub(crate) struct RawSchema {
 /// A single field definition from the `fields:` section of `schema.yaml`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct FieldDef {
+pub struct FieldDefinition {
     /// The built-in type for this field.
     #[serde(rename = "type")]
     pub field_type: FieldType,

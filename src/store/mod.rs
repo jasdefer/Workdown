@@ -221,7 +221,7 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::schema::{FieldDef, FieldType};
+    use crate::model::schema::{FieldDefinition, FieldType};
     use indexmap::IndexMap;
     use std::fs;
     use std::path::PathBuf;
@@ -232,7 +232,7 @@ mod tests {
 
         fields.insert(
             "title".to_owned(),
-            FieldDef {
+            FieldDefinition {
                 field_type: FieldType::String,
                 description: None,
                 required: false,
@@ -250,7 +250,7 @@ mod tests {
 
         fields.insert(
             "status".to_owned(),
-            FieldDef {
+            FieldDefinition {
                 field_type: FieldType::Choice,
                 description: None,
                 required: true,
@@ -268,7 +268,7 @@ mod tests {
 
         fields.insert(
             "parent".to_owned(),
-            FieldDef {
+            FieldDefinition {
                 field_type: FieldType::Link,
                 description: None,
                 required: false,
@@ -286,7 +286,7 @@ mod tests {
 
         fields.insert(
             "depends_on".to_owned(),
-            FieldDef {
+            FieldDefinition {
                 field_type: FieldType::Links,
                 description: None,
                 required: false,
@@ -304,7 +304,7 @@ mod tests {
 
         fields.insert(
             "tags".to_owned(),
-            FieldDef {
+            FieldDefinition {
                 field_type: FieldType::List,
                 description: None,
                 required: false,
@@ -320,9 +320,11 @@ mod tests {
             },
         );
 
+        let inverse_table = Schema::build_inverse_table(&fields);
         Schema {
             fields,
             rules: vec![],
+            inverse_table,
         }
     }
 

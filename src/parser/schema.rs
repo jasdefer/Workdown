@@ -8,7 +8,7 @@ use std::path::Path;
 use indexmap::IndexMap;
 
 use crate::model::schema::{
-    AggregateFunction, Assertion, Condition, CountConstraint, DefaultValue, FieldDef, FieldType,
+    AggregateFunction, Assertion, Condition, CountConstraint, DefaultValue, FieldDefinition, FieldType,
     Generator, RawRule, RawSchema, Rule, Schema,
 };
 
@@ -43,9 +43,12 @@ pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
         })
         .collect();
 
+    let inverse_table = Schema::build_inverse_table(&raw.fields);
+
     Ok(Schema {
         fields: raw.fields,
         rules,
+        inverse_table,
     })
 }
 
@@ -147,7 +150,7 @@ fn is_valid_field_reference(reference: &str) -> bool {
     }
 }
 
-fn validate_fields(fields: &IndexMap<String, FieldDef>, errors: &mut Vec<SchemaValidationError>) {
+fn validate_fields(fields: &IndexMap<String, FieldDefinition>, errors: &mut Vec<SchemaValidationError>) {
     let mut seen_inverses = std::collections::HashMap::new();
 
     for (name, field) in fields {
@@ -168,8 +171,8 @@ fn validate_fields(fields: &IndexMap<String, FieldDef>, errors: &mut Vec<SchemaV
 /// Validate the `inverse` property on a field definition.
 fn validate_inverse_property(
     name: &str,
-    field: &FieldDef,
-    fields: &IndexMap<String, FieldDef>,
+    field: &FieldDefinition,
+    fields: &IndexMap<String, FieldDefinition>,
     seen_inverses: &mut std::collections::HashMap<String, String>,
     errors: &mut Vec<SchemaValidationError>,
 ) {
@@ -221,7 +224,7 @@ fn validate_inverse_property(
 /// Check that only properties valid for the field's type are set.
 fn validate_type_specific_properties(
     name: &str,
-    field: &FieldDef,
+    field: &FieldDefinition,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     match field.field_type {
@@ -379,7 +382,7 @@ fn reject_prop<T: std::fmt::Debug>(
 /// Check that the aggregate function is compatible with the field type.
 fn validate_aggregate_compatibility(
     name: &str,
-    field: &FieldDef,
+    field: &FieldDefinition,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     let agg = match &field.aggregate {
@@ -427,7 +430,7 @@ fn validate_aggregate_compatibility(
 /// Check that the default value is compatible with the field type.
 fn validate_default_compatibility(
     name: &str,
-    field: &FieldDef,
+    field: &FieldDefinition,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     let default = match &field.default {
@@ -526,7 +529,7 @@ fn validate_default_compatibility(
 
 fn validate_raw_rules(
     rules: &[RawRule],
-    fields: &IndexMap<String, FieldDef>,
+    fields: &IndexMap<String, FieldDefinition>,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     let mut seen_names = std::collections::HashSet::new();
@@ -606,7 +609,7 @@ fn validate_field_reference(
     rule_name: &str,
     reference: &str,
     section: &str,
-    fields: &IndexMap<String, FieldDef>,
+    fields: &IndexMap<String, FieldDefinition>,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     if !is_valid_field_reference(reference) {
@@ -661,7 +664,7 @@ fn validate_field_reference(
 /// Check if a name is a defined inverse relation in the schema.
 ///
 /// Returns `true` when any link/links field has `inverse: <name>`.
-fn is_defined_inverse(name: &str, fields: &IndexMap<String, FieldDef>) -> bool {
+fn is_defined_inverse(name: &str, fields: &IndexMap<String, FieldDefinition>) -> bool {
     fields
         .values()
         .any(|f| f.inverse.as_deref() == Some(name))
@@ -673,7 +676,7 @@ fn validate_condition_quantifiers(
     rule_name: &str,
     reference: &str,
     condition: &Condition,
-    fields: &IndexMap<String, FieldDef>,
+    fields: &IndexMap<String, FieldDefinition>,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     let has_quantifier = match condition {
@@ -697,7 +700,7 @@ fn validate_assertion_quantifiers(
     rule_name: &str,
     reference: &str,
     assertion: &Assertion,
-    fields: &IndexMap<String, FieldDef>,
+    fields: &IndexMap<String, FieldDefinition>,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     let has_count = match assertion {
@@ -714,7 +717,7 @@ fn validate_assertion_quantifiers(
 }
 
 /// Does a field reference point to a one-to-many relationship?
-fn is_one_to_many_reference(reference: &str, fields: &IndexMap<String, FieldDef>) -> bool {
+fn is_one_to_many_reference(reference: &str, fields: &IndexMap<String, FieldDefinition>) -> bool {
     let parts: Vec<&str> = reference.split('.').collect();
     let first = parts[0];
 

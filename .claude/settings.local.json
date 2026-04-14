@@ -42,7 +42,9 @@
       "Bash(cargo --version)",
       "Bash(rustc --version)",
       "Bash(docker exec pensive_goldberg:*)",
-      "Bash(docker exec:*)"
+      "Bash(docker exec:*)",
+      "Bash(gh label:*)",
+      "Bash(cargo check:*)"
     ]
   }
 }
