@@ -112,7 +112,7 @@ fn targets<'a>(store: &'a Store, node_id: &str, field_name: &str) -> Vec<&'a str
     store
         .get(node_id)
         .and_then(|item| item.fields.get(field_name))
-        .map(|fv| match fv {
+        .map(|field_value| match field_value {
             FieldValue::Link(t) => vec![t.as_str()],
             FieldValue::Links(ts) => ts.iter().map(|id| id.as_str()).collect(),
             _ => vec![],
@@ -236,10 +236,10 @@ mod tests {
             ("b.md", "---\nstatus: open\nparent: a\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = detect_cycles(&store, &schema);
+        let diagnostics = detect_cycles(&store, &schema);
 
-        assert_eq!(diags.len(), 1);
-        match &diags[0].kind {
+        assert_eq!(diagnostics.len(), 1);
+        match &diagnostics[0].kind {
             DiagnosticKind::Cycle { field, chain } => {
                 assert_eq!(field, "parent");
                 assert_eq!(*chain, ids(&["a", "b", "a"]));
@@ -255,10 +255,10 @@ mod tests {
             ("a.md", "---\nstatus: open\nparent: a\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = detect_cycles(&store, &schema);
+        let diagnostics = detect_cycles(&store, &schema);
 
-        assert_eq!(diags.len(), 1);
-        match &diags[0].kind {
+        assert_eq!(diagnostics.len(), 1);
+        match &diagnostics[0].kind {
             DiagnosticKind::Cycle { field, chain } => {
                 assert_eq!(field, "parent");
                 assert_eq!(*chain, ids(&["a", "a"]));
@@ -276,10 +276,10 @@ mod tests {
             ("a.md", "---\nstatus: open\nparent: c\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = detect_cycles(&store, &schema);
+        let diagnostics = detect_cycles(&store, &schema);
 
-        assert_eq!(diags.len(), 1);
-        match &diags[0].kind {
+        assert_eq!(diagnostics.len(), 1);
+        match &diagnostics[0].kind {
             DiagnosticKind::Cycle { chain, .. } => {
                 assert_eq!(*chain, ids(&["a", "c", "b", "a"]));
             }
@@ -296,10 +296,10 @@ mod tests {
             ("c.md", "---\nstatus: open\ndepends_on: [a]\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = detect_cycles(&store, &schema);
+        let diagnostics = detect_cycles(&store, &schema);
 
-        assert_eq!(diags.len(), 1);
-        match &diags[0].kind {
+        assert_eq!(diagnostics.len(), 1);
+        match &diagnostics[0].kind {
             DiagnosticKind::Cycle { field, chain } => {
                 assert_eq!(field, "depends_on");
                 assert_eq!(*chain, ids(&["a", "b", "c", "a"]));
@@ -318,12 +318,12 @@ mod tests {
             ("d.md", "---\nstatus: open\nparent: c\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = detect_cycles(&store, &schema);
+        let diagnostics = detect_cycles(&store, &schema);
 
-        assert_eq!(diags.len(), 2);
-        let mut chains: Vec<Vec<WorkItemId>> = diags
+        assert_eq!(diagnostics.len(), 2);
+        let mut chains: Vec<Vec<WorkItemId>> = diagnostics
             .iter()
-            .map(|d| match &d.kind {
+            .map(|diagnostic| match &diagnostic.kind {
                 DiagnosticKind::Cycle { chain, .. } => chain.clone(),
                 other => panic!("expected Cycle, got {other:?}"),
             })
@@ -343,7 +343,7 @@ mod tests {
         let store = Store::load(&path, &schema).unwrap();
         let cycle_diags: Vec<_> = detect_cycles(&store, &schema)
             .into_iter()
-            .filter(|d| matches!(d.kind, DiagnosticKind::Cycle { .. }))
+            .filter(|diagnostic| matches!(diagnostic.kind, DiagnosticKind::Cycle { .. }))
             .collect();
         assert!(cycle_diags.is_empty());
     }
@@ -389,10 +389,10 @@ mod tests {
             ("b.md", "---\nstatus: open\nparent: a\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = detect_cycles(&store, &schema);
+        let diagnostics = detect_cycles(&store, &schema);
 
-        assert_eq!(diags.len(), 1);
-        match &diags[0].kind {
+        assert_eq!(diagnostics.len(), 1);
+        match &diagnostics[0].kind {
             DiagnosticKind::Cycle { field, .. } => assert_eq!(field, "parent"),
             other => panic!("expected Cycle, got {other:?}"),
         }
@@ -407,10 +407,10 @@ mod tests {
             ("c.md", "---\nstatus: open\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = detect_cycles(&store, &schema);
+        let diagnostics = detect_cycles(&store, &schema);
 
-        assert_eq!(diags.len(), 1);
-        match &diags[0].kind {
+        assert_eq!(diagnostics.len(), 1);
+        match &diagnostics[0].kind {
             DiagnosticKind::Cycle { field, chain } => {
                 assert_eq!(field, "depends_on");
                 assert_eq!(*chain, ids(&["a", "b", "a"]));
@@ -427,10 +427,10 @@ mod tests {
             ("b.md", "---\nstatus: open\nparent: a\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = detect_cycles(&store, &schema);
+        let diagnostics = detect_cycles(&store, &schema);
 
-        for d in &diags {
-            assert_eq!(d.severity, Severity::Error);
+        for diagnostic in &diagnostics {
+            assert_eq!(diagnostic.severity, Severity::Error);
         }
     }
 }

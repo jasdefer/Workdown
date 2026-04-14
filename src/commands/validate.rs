@@ -31,7 +31,7 @@ pub fn run_validate(config: &Config, project_root: &Path, format: ValidateFormat
     diagnostics.extend(store.detect_cycles(&schema));
     diagnostics.extend(crate::rules::evaluate(&store, &schema));
 
-    let has_errors = diagnostics.iter().any(|d| d.severity == Severity::Error);
+    let has_errors = diagnostics.iter().any(|diagnostic| diagnostic.severity == Severity::Error);
 
     match format {
         ValidateFormat::Human => render_human(&diagnostics, &store),
@@ -54,8 +54,8 @@ fn render_human(diagnostics: &[Diagnostic], store: &Store) {
     let (grouped, ungrouped) = group_by_file(diagnostics, store);
 
     let mut first = true;
-    for (path, mut diags) in grouped {
-        sort_by_severity(&mut diags);
+    for (path, mut file_diagnostics) in grouped {
+        sort_by_severity(&mut file_diagnostics);
 
         if !first {
             eprintln!();
@@ -63,9 +63,9 @@ fn render_human(diagnostics: &[Diagnostic], store: &Store) {
         first = false;
 
         cli::output::header(&path.display().to_string());
-        for d in &diags {
-            let line = format_diagnostic_line(d);
-            match d.severity {
+        for diagnostic in &file_diagnostics {
+            let line = format_diagnostic_line(diagnostic);
+            match diagnostic.severity {
                 Severity::Warning => cli::output::warning(&line),
                 Severity::Error => cli::output::error(&line),
             }
@@ -80,17 +80,17 @@ fn render_human(diagnostics: &[Diagnostic], store: &Store) {
             eprintln!();
         }
 
-        for d in &ungrouped {
-            let line = format_diagnostic_line(d);
-            match d.severity {
+        for diagnostic in &ungrouped {
+            let line = format_diagnostic_line(diagnostic);
+            match diagnostic.severity {
                 Severity::Warning => cli::output::warning(&line),
                 Severity::Error => cli::output::error(&line),
             }
         }
     }
 
-    let error_count = diagnostics.iter().filter(|d| d.severity == Severity::Error).count();
-    let warning_count = diagnostics.iter().filter(|d| d.severity == Severity::Warning).count();
+    let error_count = diagnostics.iter().filter(|diagnostic| diagnostic.severity == Severity::Error).count();
+    let warning_count = diagnostics.iter().filter(|diagnostic| diagnostic.severity == Severity::Warning).count();
     cli::output::validation_summary(error_count, warning_count);
 }
 
@@ -116,10 +116,10 @@ fn group_by_file<'a>(
     let mut grouped: BTreeMap<PathBuf, Vec<&Diagnostic>> = BTreeMap::new();
     let mut ungrouped: Vec<&Diagnostic> = Vec::new();
 
-    for d in diagnostics {
-        match file_for_diagnostic(d, store) {
-            Some(path) => grouped.entry(path).or_default().push(d),
-            None => ungrouped.push(d),
+    for diagnostic in diagnostics {
+        match file_for_diagnostic(diagnostic, store) {
+            Some(path) => grouped.entry(path).or_default().push(diagnostic),
+            None => ungrouped.push(diagnostic),
         }
     }
 
@@ -127,8 +127,8 @@ fn group_by_file<'a>(
 }
 
 /// Try to resolve a diagnostic to the source file it belongs to.
-fn file_for_diagnostic(d: &Diagnostic, store: &Store) -> Option<PathBuf> {
-    match &d.kind {
+fn file_for_diagnostic(diagnostic: &Diagnostic, store: &Store) -> Option<PathBuf> {
+    match &diagnostic.kind {
         DiagnosticKind::FileError { path, .. } => Some(path.clone()),
 
         DiagnosticKind::InvalidFieldValue { item_id, .. }
@@ -147,16 +147,16 @@ fn file_for_diagnostic(d: &Diagnostic, store: &Store) -> Option<PathBuf> {
 }
 
 /// Sort diagnostics so warnings come first, errors last.
-fn sort_by_severity(diags: &mut [&Diagnostic]) {
-    diags.sort_by_key(|d| match d.severity {
+fn sort_by_severity(diagnostics: &mut [&Diagnostic]) {
+    diagnostics.sort_by_key(|diagnostic| match diagnostic.severity {
         Severity::Warning => 0,
         Severity::Error => 1,
     });
 }
 
 /// Format the message part of a diagnostic (without the severity icon).
-fn format_diagnostic_line(d: &Diagnostic) -> String {
-    match &d.kind {
+fn format_diagnostic_line(diagnostic: &Diagnostic) -> String {
+    match &diagnostic.kind {
         // For item-level diagnostics under a file header, omit the item_id
         // (the file header already provides context) and show field + detail.
         DiagnosticKind::InvalidFieldValue { field, detail, .. } => {
@@ -178,6 +178,6 @@ fn format_diagnostic_line(d: &Diagnostic) -> String {
         }
 
         // File-level and ungrouped — use the full Display impl.
-        _ => d.to_string(),
+        _ => diagnostic.to_string(),
     }
 }

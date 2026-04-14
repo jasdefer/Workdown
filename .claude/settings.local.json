@@ -44,7 +44,8 @@
       "Bash(docker exec pensive_goldberg:*)",
       "Bash(docker exec:*)",
       "Bash(gh label:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(find src:*)"
     ]
   }
 }

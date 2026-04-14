@@ -54,7 +54,7 @@ pub(crate) fn resolve_field_ref<'a>(
                 let target_value = item
                     .fields
                     .get(relationship)
-                    .and_then(|fv| match fv {
+                    .and_then(|field_value| match field_value {
                         FieldValue::Link(target_id) => ctx.store.get(target_id.as_str()),
                         _ => None,
                     })
@@ -86,7 +86,7 @@ pub(crate) fn resolve_field_ref<'a>(
         let related = ctx.store.referring_items(item.id.as_str(), original_field);
         let values = related
             .iter()
-            .map(|rel_item| rel_item.fields.get(field_name))
+            .map(|related_item| related_item.fields.get(field_name))
             .collect();
         return ResolvedValues::Many(values);
     }
@@ -269,8 +269,8 @@ mod tests {
                 assert_eq!(values.len(), 2);
                 let strs: Vec<&str> = values
                     .iter()
-                    .filter_map(|v| match v {
-                        Some(FieldValue::Choice(s)) => Some(s.as_str()),
+                    .filter_map(|value| match value {
+                        Some(FieldValue::Choice(choice)) => Some(choice.as_str()),
                         _ => None,
                     })
                     .collect();

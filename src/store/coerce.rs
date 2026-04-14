@@ -137,7 +137,7 @@ fn coerce_choice(
             got: yaml_type_name(value).into(),
         })?;
 
-    if !allowed.iter().any(|v| v == s) {
+    if !allowed.iter().any(|allowed_value| allowed_value == s) {
         return Err(FieldValueError::InvalidChoice {
             value: s.to_owned(),
             allowed: allowed.to_vec(),
@@ -171,7 +171,7 @@ fn coerce_multichoice(
 
     let invalid: Vec<String> = result
         .iter()
-        .filter(|v| !allowed.contains(v))
+        .filter(|value| !allowed.contains(value))
         .cloned()
         .collect();
     if !invalid.is_empty() {
@@ -849,10 +849,10 @@ mod tests {
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
         assert_eq!(fields.len(), 1);
-        assert!(diagnostics.iter().any(|d| {
-            d.severity == Severity::Warning
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.severity == Severity::Warning
                 && matches!(
-                    &d.kind,
+                    &diagnostic.kind,
                     DiagnosticKind::UnknownField { field, .. } if field == "bogus"
                 )
         }));
@@ -867,8 +867,8 @@ mod tests {
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
         assert!(fields.is_empty());
-        assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
+        assert!(diagnostics.iter().any(|diagnostic| matches!(
+            &diagnostic.kind,
             DiagnosticKind::MissingRequired { field, .. } if field == "title"
         )));
     }
@@ -882,8 +882,8 @@ mod tests {
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
         assert!(fields.get("title").is_none());
-        assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
+        assert!(diagnostics.iter().any(|diagnostic| matches!(
+            &diagnostic.kind,
             DiagnosticKind::MissingRequired { field, .. } if field == "title"
         )));
     }

@@ -185,7 +185,7 @@ impl Store {
     pub fn has_errors(&self) -> bool {
         self.diagnostics
             .iter()
-            .any(|d| d.severity == Severity::Error)
+            .any(|diagnostic| diagnostic.severity == Severity::Error)
     }
 
     /// Whether any diagnostics (errors or warnings) were collected.
@@ -302,12 +302,12 @@ mod tests {
         assert_eq!(store.len(), 2);
         assert!(!store.has_diagnostics());
 
-        let a = store.get("task-a").unwrap();
-        assert_eq!(a.fields["title"], FieldValue::String("Task A".into()));
-        assert_eq!(a.fields["status"], FieldValue::Choice("open".into()));
+        let task_a = store.get("task-a").unwrap();
+        assert_eq!(task_a.fields["title"], FieldValue::String("Task A".into()));
+        assert_eq!(task_a.fields["status"], FieldValue::Choice("open".into()));
 
-        let b = store.get("task-b").unwrap();
-        assert_eq!(b.fields["status"], FieldValue::Choice("done".into()));
+        let task_b = store.get("task-b").unwrap();
+        assert_eq!(task_b.fields["status"], FieldValue::Choice("done".into()));
     }
 
     #[test]
@@ -351,7 +351,7 @@ mod tests {
         assert!(store
             .diagnostics()
             .iter()
-            .any(|d| matches!(&d.kind, DiagnosticKind::FileError { .. })));
+            .any(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::FileError { .. })));
     }
 
     #[test]
@@ -365,8 +365,8 @@ mod tests {
 
         assert_eq!(store.len(), 1); // item still loaded
         assert!(store.has_errors());
-        assert!(store.diagnostics().iter().any(|d| matches!(
-            &d.kind,
+        assert!(store.diagnostics().iter().any(|diagnostic| matches!(
+            &diagnostic.kind,
             DiagnosticKind::MissingRequired { field, .. } if field == "status"
         )));
     }
@@ -381,8 +381,8 @@ mod tests {
         let store = Store::load(&path, &schema).unwrap();
 
         assert_eq!(store.len(), 1);
-        assert!(store.diagnostics().iter().any(|d| matches!(
-            &d.kind,
+        assert!(store.diagnostics().iter().any(|diagnostic| matches!(
+            &diagnostic.kind,
             DiagnosticKind::UnknownField { field, .. } if field == "bogus"
         )));
     }
@@ -406,8 +406,8 @@ mod tests {
         let item = store.get("task-a").unwrap();
         assert_eq!(item.fields["title"], FieldValue::String("First".into()));
 
-        assert!(store.diagnostics().iter().any(|d| matches!(
-            &d.kind,
+        assert!(store.diagnostics().iter().any(|diagnostic| matches!(
+            &diagnostic.kind,
             DiagnosticKind::DuplicateId { id, .. } if id == "task-a"
         )));
     }
@@ -423,8 +423,8 @@ mod tests {
         let schema = test_schema();
         let store = Store::load(&path, &schema).unwrap();
 
-        assert!(store.diagnostics().iter().any(|d| matches!(
-            &d.kind,
+        assert!(store.diagnostics().iter().any(|diagnostic| matches!(
+            &diagnostic.kind,
             DiagnosticKind::BrokenLink { target_id, .. } if target_id == "nonexistent"
         )));
     }
@@ -441,7 +441,7 @@ mod tests {
         let broken: Vec<_> = store
             .diagnostics()
             .iter()
-            .filter(|d| matches!(&d.kind, DiagnosticKind::BrokenLink { .. }))
+            .filter(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::BrokenLink { .. }))
             .collect();
         assert_eq!(broken.len(), 2);
     }
@@ -461,7 +461,7 @@ mod tests {
         assert!(!store
             .diagnostics()
             .iter()
-            .any(|d| matches!(&d.kind, DiagnosticKind::BrokenLink { .. })));
+            .any(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::BrokenLink { .. })));
     }
 
     // ── Inverse relations ────────────────────────────────────────────
@@ -485,8 +485,8 @@ mod tests {
         let children = store.referring_items("epic", "parent");
         assert_eq!(children.len(), 2);
 
-        assert!(children.iter().any(|i| i.id == "task-a"));
-        assert!(children.iter().any(|i| i.id == "task-b"));
+        assert!(children.iter().any(|item| item.id == "task-a"));
+        assert!(children.iter().any(|item| item.id == "task-b"));
     }
 
     #[test]
@@ -539,7 +539,7 @@ mod tests {
         let parse_errors: Vec<_> = store
             .diagnostics()
             .iter()
-            .filter(|d| matches!(&d.kind, DiagnosticKind::FileError { .. }))
+            .filter(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::FileError { .. }))
             .collect();
         assert_eq!(parse_errors.len(), 2);
     }
@@ -557,7 +557,7 @@ mod tests {
 
         let items: Vec<_> = store.all_items().collect();
         assert_eq!(items.len(), 2);
-        assert!(items.iter().any(|i| i.id == "task-a"));
-        assert!(items.iter().any(|i| i.id == "task-b"));
+        assert!(items.iter().any(|item| item.id == "task-a"));
+        assert!(items.iter().any(|item| item.id == "task-b"));
     }
 }

@@ -37,7 +37,7 @@ pub fn evaluate(store: &Store, schema: &Schema) -> Vec<Diagnostic> {
             for (field_ref, assertion) in &rule.require {
                 if let Some(detail) = check_assertion(item, field_ref, assertion, &ctx) {
                     let detail = match &rule.description {
-                        Some(desc) => format!("{desc} — {detail}"),
+                        Some(description) => format!("{description} — {detail}"),
                         None => detail,
                     };
                     diagnostics.push(Diagnostic {
@@ -54,15 +54,15 @@ pub fn evaluate(store: &Store, schema: &Schema) -> Vec<Diagnostic> {
 
         // Phase 3: Check collection-wide count constraint.
         if let Some(ref count) = rule.count {
-            let n = matching.len();
-            let violated = count.min.is_some_and(|min| n < min as usize)
-                || count.max.is_some_and(|max| n > max as usize);
+            let matching_count = matching.len();
+            let violated = count.min.is_some_and(|min| matching_count < min as usize)
+                || count.max.is_some_and(|max| matching_count > max as usize);
             if violated {
                 diagnostics.push(Diagnostic {
                     severity: rule.severity,
                     kind: DiagnosticKind::CountViolation {
                         rule: rule.name.clone(),
-                        count: n,
+                        count: matching_count,
                         min: count.min,
                         max: count.max,
                     },
@@ -129,11 +129,11 @@ fn eval_condition_on_resolved(resolved: &ResolvedValues, condition: &Condition) 
         ResolvedValues::Single(value) => eval_condition(*value, condition),
         ResolvedValues::Many(values) => {
             // Check for explicit quantifiers in the condition.
-            if let Condition::Operator(op) = condition {
-                return eval_quantifiers_on_many(values, op);
+            if let Condition::Operator(operator) = condition {
+                return eval_quantifiers_on_many(values, operator);
             }
             // No quantifier on a Many result: default to `all` semantics.
-            values.iter().all(|v| eval_condition(*v, condition))
+            values.iter().all(|value| eval_condition(*value, condition))
         }
     }
 }
@@ -142,39 +142,46 @@ fn eval_condition_on_resolved(resolved: &ResolvedValues, condition: &Condition) 
 ///
 /// If no quantifiers are present, falls back to `all` semantics applied to
 /// the non-quantifier parts of the operator.
-fn eval_quantifiers_on_many(values: &[Option<&FieldValue>], op: &ConditionOperator) -> bool {
-    let has_quantifier = op.all.is_some() || op.any.is_some() || op.none.is_some();
+fn eval_quantifiers_on_many(
+    values: &[Option<&FieldValue>],
+    operator: &ConditionOperator,
+) -> bool {
+    let has_quantifier =
+        operator.all.is_some() || operator.any.is_some() || operator.none.is_some();
 
     if has_quantifier {
-        if let Some(ref inner) = op.all {
-            if !values.iter().all(|v| eval_condition(*v, inner)) {
+        if let Some(ref inner) = operator.all {
+            if !values.iter().all(|value| eval_condition(*value, inner)) {
                 return false;
             }
         }
-        if let Some(ref inner) = op.any {
-            if !values.iter().any(|v| eval_condition(*v, inner)) {
+        if let Some(ref inner) = operator.any {
+            if !values.iter().any(|value| eval_condition(*value, inner)) {
                 return false;
             }
         }
-        if let Some(ref inner) = op.none {
-            if values.iter().any(|v| eval_condition(*v, inner)) {
+        if let Some(ref inner) = operator.none {
+            if values.iter().any(|value| eval_condition(*value, inner)) {
                 return false;
             }
         }
 
         // Also check non-quantifier operators if present (is_set, not).
         // These apply to each value individually with `all` semantics.
-        let has_non_quantifier = op.is_set.is_some() || op.not.is_some();
+        let has_non_quantifier = operator.is_set.is_some() || operator.not.is_some();
         if has_non_quantifier {
-            let scalar_op = ConditionOperator {
-                not: op.not.clone(),
-                is_set: op.is_set,
+            let scalar_operator = ConditionOperator {
+                not: operator.not.clone(),
+                is_set: operator.is_set,
                 all: None,
                 any: None,
                 none: None,
             };
-            let scalar_cond = Condition::Operator(scalar_op);
-            if !values.iter().all(|v| eval_condition(*v, &scalar_cond)) {
+            let scalar_condition = Condition::Operator(scalar_operator);
+            if !values
+                .iter()
+                .all(|value| eval_condition(*value, &scalar_condition))
+            {
                 return false;
             }
         }
@@ -182,8 +189,10 @@ fn eval_quantifiers_on_many(values: &[Option<&FieldValue>], op: &ConditionOperat
         true
     } else {
         // No quantifiers — default to `all` semantics for the whole operator.
-        let cond = Condition::Operator(op.clone());
-        values.iter().all(|v| eval_condition(*v, &cond))
+        let condition = Condition::Operator(operator.clone());
+        values
+            .iter()
+            .all(|value| eval_condition(*value, &condition))
     }
 }
 
@@ -276,17 +285,17 @@ mod tests {
             description: Some("Must have assignee when in progress".into()),
             severity: Severity::Error,
             match_conditions: {
-                let mut m = IndexMap::new();
-                m.insert(
+                let mut conditions = IndexMap::new();
+                conditions.insert(
                     "status".into(),
                     Condition::Equals(ConditionValue::String("in_progress".into())),
                 );
-                m
+                conditions
             },
             require: {
-                let mut r = IndexMap::new();
-                r.insert("assignee".into(), Assertion::Required);
-                r
+                let mut assertions = IndexMap::new();
+                assertions.insert("assignee".into(), Assertion::Required);
+                assertions
             },
             count: None,
         };
@@ -297,11 +306,11 @@ mod tests {
             "---\nstatus: in_progress\n---\n",
         )]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = evaluate(&store, &schema);
+        let diagnostics = evaluate(&store, &schema);
 
-        let rule_violations: Vec<_> = diags
+        let rule_violations: Vec<_> = diagnostics
             .iter()
-            .filter(|d| matches!(&d.kind, DiagnosticKind::RuleViolation { .. }))
+            .filter(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::RuleViolation { .. }))
             .collect();
         assert_eq!(rule_violations.len(), 1);
         assert_eq!(rule_violations[0].severity, Severity::Error);
@@ -314,17 +323,17 @@ mod tests {
             description: None,
             severity: Severity::Error,
             match_conditions: {
-                let mut m = IndexMap::new();
-                m.insert(
+                let mut conditions = IndexMap::new();
+                conditions.insert(
                     "status".into(),
                     Condition::Equals(ConditionValue::String("in_progress".into())),
                 );
-                m
+                conditions
             },
             require: {
-                let mut r = IndexMap::new();
-                r.insert("assignee".into(), Assertion::Required);
-                r
+                let mut assertions = IndexMap::new();
+                assertions.insert("assignee".into(), Assertion::Required);
+                assertions
             },
             count: None,
         };
@@ -335,11 +344,11 @@ mod tests {
             "---\nstatus: open\n---\n",
         )]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = evaluate(&store, &schema);
+        let diagnostics = evaluate(&store, &schema);
 
-        assert!(diags
+        assert!(diagnostics
             .iter()
-            .all(|d| !matches!(&d.kind, DiagnosticKind::RuleViolation { .. })));
+            .all(|diagnostic| !matches!(&diagnostic.kind, DiagnosticKind::RuleViolation { .. })));
     }
 
     #[test]
@@ -349,17 +358,17 @@ mod tests {
             description: None,
             severity: Severity::Error,
             match_conditions: {
-                let mut m = IndexMap::new();
-                m.insert(
+                let mut conditions = IndexMap::new();
+                conditions.insert(
                     "status".into(),
                     Condition::Equals(ConditionValue::String("in_progress".into())),
                 );
-                m
+                conditions
             },
             require: {
-                let mut r = IndexMap::new();
-                r.insert("assignee".into(), Assertion::Required);
-                r
+                let mut assertions = IndexMap::new();
+                assertions.insert("assignee".into(), Assertion::Required);
+                assertions
             },
             count: None,
         };
@@ -370,11 +379,11 @@ mod tests {
             "---\nstatus: in_progress\nassignee: alice\n---\n",
         )]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = evaluate(&store, &schema);
+        let diagnostics = evaluate(&store, &schema);
 
-        assert!(diags
+        assert!(diagnostics
             .iter()
-            .all(|d| !matches!(&d.kind, DiagnosticKind::RuleViolation { .. })));
+            .all(|diagnostic| !matches!(&diagnostic.kind, DiagnosticKind::RuleViolation { .. })));
     }
 
     #[test]
@@ -385,9 +394,9 @@ mod tests {
             severity: Severity::Warning,
             match_conditions: IndexMap::new(),
             require: {
-                let mut r = IndexMap::new();
-                r.insert("title".into(), Assertion::Required);
-                r
+                let mut assertions = IndexMap::new();
+                assertions.insert("title".into(), Assertion::Required);
+                assertions
             },
             count: None,
         };
@@ -398,11 +407,11 @@ mod tests {
             ("task-b.md", "---\nstatus: open\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = evaluate(&store, &schema);
+        let diagnostics = evaluate(&store, &schema);
 
-        let violations: Vec<_> = diags
+        let violations: Vec<_> = diagnostics
             .iter()
-            .filter(|d| matches!(&d.kind, DiagnosticKind::RuleViolation { .. }))
+            .filter(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::RuleViolation { .. }))
             .collect();
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].severity, Severity::Warning);
@@ -417,12 +426,12 @@ mod tests {
             description: None,
             severity: Severity::Error,
             match_conditions: {
-                let mut m = IndexMap::new();
-                m.insert(
+                let mut conditions = IndexMap::new();
+                conditions.insert(
                     "status".into(),
                     Condition::Equals(ConditionValue::String("in_progress".into())),
                 );
-                m
+                conditions
             },
             require: IndexMap::new(),
             count: Some(CountConstraint {
@@ -437,10 +446,10 @@ mod tests {
             ("task-b.md", "---\nstatus: in_progress\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = evaluate(&store, &schema);
+        let diagnostics = evaluate(&store, &schema);
 
-        assert!(diags.iter().any(|d| matches!(
-            &d.kind,
+        assert!(diagnostics.iter().any(|diagnostic| matches!(
+            &diagnostic.kind,
             DiagnosticKind::CountViolation { rule, count, max, .. }
             if rule == "wip-limit" && *count == 2 && *max == Some(1)
         )));
@@ -453,12 +462,12 @@ mod tests {
             description: None,
             severity: Severity::Error,
             match_conditions: {
-                let mut m = IndexMap::new();
-                m.insert(
+                let mut conditions = IndexMap::new();
+                conditions.insert(
                     "status".into(),
                     Condition::Equals(ConditionValue::String("in_progress".into())),
                 );
-                m
+                conditions
             },
             require: IndexMap::new(),
             count: Some(CountConstraint {
@@ -473,11 +482,11 @@ mod tests {
             "---\nstatus: in_progress\n---\n",
         )]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = evaluate(&store, &schema);
+        let diagnostics = evaluate(&store, &schema);
 
-        assert!(!diags
+        assert!(!diagnostics
             .iter()
-            .any(|d| matches!(&d.kind, DiagnosticKind::CountViolation { .. })));
+            .any(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::CountViolation { .. })));
     }
 
     // ── L3: Relationship-based ──────────────────────────────────
@@ -489,16 +498,16 @@ mod tests {
             description: None,
             severity: Severity::Error,
             match_conditions: {
-                let mut m = IndexMap::new();
-                m.insert(
+                let mut conditions = IndexMap::new();
+                conditions.insert(
                     "status".into(),
                     Condition::Equals(ConditionValue::String("in_progress".into())),
                 );
-                m
+                conditions
             },
             require: {
-                let mut r = IndexMap::new();
-                r.insert(
+                let mut assertions = IndexMap::new();
+                assertions.insert(
                     "parent.status".into(),
                     Assertion::Operator(crate::model::schema::AssertionOperator {
                         required: None,
@@ -516,7 +525,7 @@ mod tests {
                         max_count: None,
                     }),
                 );
-                r
+                assertions
             },
             count: None,
         };
@@ -527,10 +536,10 @@ mod tests {
             ("task-a.md", "---\nstatus: in_progress\nparent: epic\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = evaluate(&store, &schema);
+        let diagnostics = evaluate(&store, &schema);
 
-        assert!(diags.iter().any(|d| matches!(
-            &d.kind,
+        assert!(diagnostics.iter().any(|diagnostic| matches!(
+            &diagnostic.kind,
             DiagnosticKind::RuleViolation { rule, .. } if rule == "parent-not-backlog"
         )));
     }
@@ -544,8 +553,8 @@ mod tests {
             description: None,
             severity: Severity::Warning,
             match_conditions: {
-                let mut m = IndexMap::new();
-                m.insert(
+                let mut conditions = IndexMap::new();
+                conditions.insert(
                     "children.status".into(),
                     Condition::Operator(ConditionOperator {
                         all: Some(Box::new(Condition::Equals(ConditionValue::String(
@@ -557,11 +566,11 @@ mod tests {
                         is_set: None,
                     }),
                 );
-                m
+                conditions
             },
             require: {
-                let mut r = IndexMap::new();
-                r.insert(
+                let mut assertions = IndexMap::new();
+                assertions.insert(
                     "status".into(),
                     Assertion::Operator(crate::model::schema::AssertionOperator {
                         required: None,
@@ -577,7 +586,7 @@ mod tests {
                         max_count: None,
                     }),
                 );
-                r
+                assertions
             },
             count: None,
         };
@@ -589,11 +598,11 @@ mod tests {
             ("child-b.md", "---\nstatus: done\nparent: epic\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = evaluate(&store, &schema);
+        let diagnostics = evaluate(&store, &schema);
 
         // Epic matches (all children done) but its status is "open" not "done"
-        assert!(diags.iter().any(|d| matches!(
-            &d.kind,
+        assert!(diagnostics.iter().any(|diagnostic| matches!(
+            &diagnostic.kind,
             DiagnosticKind::RuleViolation { rule, item_id, .. }
             if rule == "close-parent" && item_id == "epic"
         )));
@@ -607,8 +616,8 @@ mod tests {
             description: None,
             severity: Severity::Warning,
             match_conditions: {
-                let mut m = IndexMap::new();
-                m.insert(
+                let mut conditions = IndexMap::new();
+                conditions.insert(
                     "children.status".into(),
                     Condition::Operator(ConditionOperator {
                         all: Some(Box::new(Condition::Equals(ConditionValue::String(
@@ -620,11 +629,11 @@ mod tests {
                         is_set: None,
                     }),
                 );
-                m
+                conditions
             },
             require: {
-                let mut r = IndexMap::new();
-                r.insert(
+                let mut assertions = IndexMap::new();
+                assertions.insert(
                     "status".into(),
                     Assertion::Operator(crate::model::schema::AssertionOperator {
                         required: None,
@@ -640,7 +649,7 @@ mod tests {
                         max_count: None,
                     }),
                 );
-                r
+                assertions
             },
             count: None,
         };
@@ -651,11 +660,11 @@ mod tests {
             ("leaf.md", "---\nstatus: open\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = evaluate(&store, &schema);
+        let diagnostics = evaluate(&store, &schema);
 
         // The leaf matches the rule (vacuously) so the require should fire
-        assert!(diags.iter().any(|d| matches!(
-            &d.kind,
+        assert!(diagnostics.iter().any(|diagnostic| matches!(
+            &diagnostic.kind,
             DiagnosticKind::RuleViolation { item_id, .. } if item_id == "leaf"
         )));
     }
@@ -670,9 +679,9 @@ mod tests {
             severity: Severity::Warning,
             match_conditions: IndexMap::new(),
             require: {
-                let mut r = IndexMap::new();
-                r.insert("assignee".into(), Assertion::Required);
-                r
+                let mut assertions = IndexMap::new();
+                assertions.insert("assignee".into(), Assertion::Required);
+                assertions
             },
             count: None,
         };
@@ -683,11 +692,11 @@ mod tests {
             "---\nstatus: open\n---\n",
         )]);
         let store = Store::load(&path, &schema).unwrap();
-        let diags = evaluate(&store, &schema);
+        let diagnostics = evaluate(&store, &schema);
 
-        let violations: Vec<_> = diags
+        let violations: Vec<_> = diagnostics
             .iter()
-            .filter(|d| matches!(&d.kind, DiagnosticKind::RuleViolation { .. }))
+            .filter(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::RuleViolation { .. }))
             .collect();
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].severity, Severity::Warning);

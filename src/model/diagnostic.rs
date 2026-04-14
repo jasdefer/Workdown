@@ -181,7 +181,7 @@ impl std::fmt::Display for Diagnostic {
                 )
             }
             DiagnosticKind::DuplicateId { id, paths } => {
-                let files: Vec<_> = paths.iter().map(|p| p.display().to_string()).collect();
+                let files: Vec<_> = paths.iter().map(|path| path.display().to_string()).collect();
                 write!(f, "duplicate ID '{id}': {}", files.join(", "))
             }
             DiagnosticKind::Cycle { field, chain } => {
