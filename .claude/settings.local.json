@@ -45,7 +45,8 @@
       "Bash(docker exec:*)",
       "Bash(gh label:*)",
       "Bash(cargo check:*)",
-      "Bash(find src:*)"
+      "Bash(find src:*)",
+      "WebSearch"
     ]
   }
 }

@@ -49,7 +49,24 @@ pub enum Command {
         set: Vec<String>,
     },
     /// Query and filter work items
-    Query,
+    Query {
+        /// Filter expression (repeatable, combined with AND).
+        /// Examples: status=open, "points>3", "title~login", assignee?
+        #[arg(long = "where", value_name = "EXPR")]
+        where_clauses: Vec<String>,
+
+        /// Sort by field (repeatable for multi-sort). Format: field or field:desc
+        #[arg(long = "sort", value_name = "FIELD[:dir]")]
+        sort: Vec<String>,
+
+        /// Columns to display (comma-separated). Default: id + required fields.
+        #[arg(long = "fields", value_name = "FIELD,...")]
+        fields: Option<String>,
+
+        /// Output format
+        #[arg(long = "format", value_enum, default_value_t = QueryFormat::Table)]
+        format: QueryFormat,
+    },
     /// Show Kanban board view
     Board,
     /// Show parent-child tree view
@@ -63,6 +80,15 @@ pub enum Command {
 pub enum ValidateFormat {
     /// Styled, human-readable output (default).
     Human,
+    /// Machine-readable JSON output.
+    Json,
+}
+
+/// Output format for the `query` command.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum QueryFormat {
+    /// Styled table output (default).
+    Table,
     /// Machine-readable JSON output.
     Json,
 }

@@ -84,9 +84,24 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         Err(error) => Err(error.into()),
                     }
                 }
-                cli::Command::Query => {
+                cli::Command::Query {
+                    where_clauses,
+                    sort,
+                    fields,
+                    format,
+                } => {
                     tracing::info!("querying work items");
-                    anyhow::bail!("not yet implemented — coming in Phase 3");
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    workdown::commands::query::run_query(
+                        &config,
+                        &project_root,
+                        where_clauses,
+                        sort,
+                        fields.as_deref(),
+                        *format,
+                    )?;
+                    Ok(ExitCode::SUCCESS)
                 }
                 cli::Command::Board => {
                     tracing::info!("rendering board view");
