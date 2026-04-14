@@ -42,8 +42,8 @@ impl Schema {
     pub fn build_inverse_table(fields: &IndexMap<String, FieldDefinition>) -> HashMap<String, String> {
         let mut table = HashMap::new();
         for (field_name, field_def) in fields {
-            if let Some(ref inverse) = field_def.inverse {
-                table.insert(inverse.clone(), field_name.clone());
+            if let Some(inverse) = field_def.inverse() {
+                table.insert(inverse.to_owned(), field_name.clone());
             }
         }
         table
@@ -56,17 +56,123 @@ impl Schema {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawSchema {
-    pub fields: IndexMap<String, FieldDefinition>,
+    pub fields: IndexMap<String, RawFieldDefinition>,
     #[serde(default)]
     pub rules: Vec<RawRule>,
 }
 
 // ── Field definitions ─────────────────────────────────────────────────
 
-/// A single field definition from the `fields:` section of `schema.yaml`.
+/// A validated field definition with type-specific configuration
+/// encoded in [`FieldTypeConfig`].
+///
+/// Produced by converting a [`RawFieldDefinition`] after schema validation.
+/// Invalid states (e.g., a Boolean with `values`) are unrepresentable.
+#[derive(Debug, Clone)]
+pub struct FieldDefinition {
+    /// Type-specific configuration (replaces flat optional fields).
+    pub type_config: FieldTypeConfig,
+
+    /// Human-readable explanation.
+    pub description: Option<String>,
+
+    /// Whether this field must be present on every work item.
+    pub required: bool,
+
+    /// Default value applied by `workdown add`.
+    pub default: Option<DefaultValue>,
+
+    /// Resource section in `resources.yaml` that constrains this field's values.
+    pub resource: Option<String>,
+
+    /// Aggregation config for computed fields.
+    pub aggregate: Option<AggregateConfig>,
+}
+
+impl FieldDefinition {
+    /// Create a new field definition with only type-specific config.
+    /// All shared fields default to `None`/`false`.
+    pub fn new(type_config: FieldTypeConfig) -> Self {
+        Self {
+            type_config,
+            description: None,
+            required: false,
+            default: None,
+            resource: None,
+            aggregate: None,
+        }
+    }
+
+    /// Returns the [`FieldType`] discriminant for this field.
+    pub fn field_type(&self) -> FieldType {
+        match &self.type_config {
+            FieldTypeConfig::String { .. } => FieldType::String,
+            FieldTypeConfig::Choice { .. } => FieldType::Choice,
+            FieldTypeConfig::Multichoice { .. } => FieldType::Multichoice,
+            FieldTypeConfig::Integer { .. } => FieldType::Integer,
+            FieldTypeConfig::Float { .. } => FieldType::Float,
+            FieldTypeConfig::Date => FieldType::Date,
+            FieldTypeConfig::Boolean => FieldType::Boolean,
+            FieldTypeConfig::List => FieldType::List,
+            FieldTypeConfig::Link { .. } => FieldType::Link,
+            FieldTypeConfig::Links { .. } => FieldType::Links,
+        }
+    }
+
+    /// Returns the inverse name if this is a Link/Links field with one set.
+    pub fn inverse(&self) -> Option<&str> {
+        match &self.type_config {
+            FieldTypeConfig::Link { inverse, .. } | FieldTypeConfig::Links { inverse, .. } => {
+                inverse.as_deref()
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Per-type configuration for a field definition.
+///
+/// Each variant carries only the fields that are valid for that type,
+/// making invalid combinations unrepresentable.
+#[derive(Debug, Clone)]
+pub enum FieldTypeConfig {
+    String {
+        pattern: Option<String>,
+    },
+    Choice {
+        values: Vec<String>,
+    },
+    Multichoice {
+        values: Vec<String>,
+    },
+    Integer {
+        min: Option<f64>,
+        max: Option<f64>,
+    },
+    Float {
+        min: Option<f64>,
+        max: Option<f64>,
+    },
+    Date,
+    Boolean,
+    List,
+    Link {
+        allow_cycles: Option<bool>,
+        inverse: Option<String>,
+    },
+    Links {
+        allow_cycles: Option<bool>,
+        inverse: Option<String>,
+    },
+}
+
+/// The raw deserialization target for a single field in `schema.yaml`.
+///
+/// This flat struct mirrors the YAML layout. After validation it is
+/// converted into a [`FieldDefinition`] with a [`FieldTypeConfig`].
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct FieldDefinition {
+pub(crate) struct RawFieldDefinition {
     /// The built-in type for this field.
     #[serde(rename = "type")]
     pub field_type: FieldType,
@@ -104,8 +210,6 @@ pub struct FieldDefinition {
     pub allow_cycles: Option<bool>,
 
     /// Inverse relationship name. Only valid for `link`/`links` types.
-    /// Allows dot-notation traversal in rules (e.g. `parent` with `inverse: children`
-    /// enables `children.type` references).
     #[serde(default)]
     pub inverse: Option<String>,
 

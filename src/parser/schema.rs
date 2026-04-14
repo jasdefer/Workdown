@@ -8,8 +8,8 @@ use std::path::Path;
 use indexmap::IndexMap;
 
 use crate::model::schema::{
-    AggregateFunction, Assertion, Condition, CountConstraint, DefaultValue, FieldDefinition, FieldType,
-    Generator, RawRule, RawSchema, Rule, Schema,
+    AggregateFunction, Assertion, Condition, CountConstraint, DefaultValue, FieldDefinition,
+    FieldType, FieldTypeConfig, Generator, RawFieldDefinition, RawRule, RawSchema, Rule, Schema,
 };
 
 // ── Public API ────────────────────────────────────────────────────────
@@ -23,8 +23,18 @@ pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
 
     let mut errors = Vec::new();
 
+    // Validate raw field definitions (type-specific properties, defaults, aggregates, inverses).
     validate_fields(&raw.fields, &mut errors);
-    validate_raw_rules(&raw.rules, &raw.fields, &mut errors);
+
+    // Convert raw fields → typed FieldDefinition with FieldTypeConfig.
+    let fields: IndexMap<String, FieldDefinition> = raw
+        .fields
+        .into_iter()
+        .map(|(name, raw_field)| (name, convert_field(raw_field)))
+        .collect();
+
+    // Validate rules against the converted fields.
+    validate_raw_rules(&raw.rules, &fields, &mut errors);
 
     if !errors.is_empty() {
         return Err(SchemaLoadError::Validation(errors));
@@ -43,10 +53,10 @@ pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
         })
         .collect();
 
-    let inverse_table = Schema::build_inverse_table(&raw.fields);
+    let inverse_table = Schema::build_inverse_table(&fields);
 
     Ok(Schema {
-        fields: raw.fields,
+        fields,
         rules,
         inverse_table,
     })
@@ -150,7 +160,7 @@ fn is_valid_field_reference(reference: &str) -> bool {
     }
 }
 
-fn validate_fields(fields: &IndexMap<String, FieldDefinition>, errors: &mut Vec<SchemaValidationError>) {
+fn validate_fields(fields: &IndexMap<String, RawFieldDefinition>, errors: &mut Vec<SchemaValidationError>) {
     let mut seen_inverses = std::collections::HashMap::new();
 
     for (name, field) in fields {
@@ -168,11 +178,11 @@ fn validate_fields(fields: &IndexMap<String, FieldDefinition>, errors: &mut Vec<
     }
 }
 
-/// Validate the `inverse` property on a field definition.
+/// Validate the `inverse` property on a raw field definition.
 fn validate_inverse_property(
     name: &str,
-    field: &FieldDefinition,
-    fields: &IndexMap<String, FieldDefinition>,
+    field: &RawFieldDefinition,
+    fields: &IndexMap<String, RawFieldDefinition>,
     seen_inverses: &mut std::collections::HashMap<String, String>,
     errors: &mut Vec<SchemaValidationError>,
 ) {
@@ -224,7 +234,7 @@ fn validate_inverse_property(
 /// Check that only properties valid for the field's type are set.
 fn validate_type_specific_properties(
     name: &str,
-    field: &FieldDefinition,
+    field: &RawFieldDefinition,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     match field.field_type {
@@ -379,10 +389,54 @@ fn reject_prop<T: std::fmt::Debug>(
     }
 }
 
+/// Convert a raw (flat) field definition into a typed [`FieldDefinition`]
+/// with a [`FieldTypeConfig`] variant. Called after validation passes,
+/// so type-specific fields are guaranteed to be present where required.
+fn convert_field(raw: RawFieldDefinition) -> FieldDefinition {
+    let type_config = match raw.field_type {
+        FieldType::String => FieldTypeConfig::String {
+            pattern: raw.pattern,
+        },
+        FieldType::Choice => FieldTypeConfig::Choice {
+            values: raw.values.unwrap_or_default(),
+        },
+        FieldType::Multichoice => FieldTypeConfig::Multichoice {
+            values: raw.values.unwrap_or_default(),
+        },
+        FieldType::Integer => FieldTypeConfig::Integer {
+            min: raw.min,
+            max: raw.max,
+        },
+        FieldType::Float => FieldTypeConfig::Float {
+            min: raw.min,
+            max: raw.max,
+        },
+        FieldType::Date => FieldTypeConfig::Date,
+        FieldType::Boolean => FieldTypeConfig::Boolean,
+        FieldType::List => FieldTypeConfig::List,
+        FieldType::Link => FieldTypeConfig::Link {
+            allow_cycles: raw.allow_cycles,
+            inverse: raw.inverse,
+        },
+        FieldType::Links => FieldTypeConfig::Links {
+            allow_cycles: raw.allow_cycles,
+            inverse: raw.inverse,
+        },
+    };
+    FieldDefinition {
+        type_config,
+        description: raw.description,
+        required: raw.required,
+        default: raw.default,
+        resource: raw.resource,
+        aggregate: raw.aggregate,
+    }
+}
+
 /// Check that the aggregate function is compatible with the field type.
 fn validate_aggregate_compatibility(
     name: &str,
-    field: &FieldDefinition,
+    field: &RawFieldDefinition,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     let agg = match &field.aggregate {
@@ -430,7 +484,7 @@ fn validate_aggregate_compatibility(
 /// Check that the default value is compatible with the field type.
 fn validate_default_compatibility(
     name: &str,
-    field: &FieldDefinition,
+    field: &RawFieldDefinition,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     let default = match &field.default {
@@ -639,7 +693,7 @@ fn validate_field_reference(
 
         let is_link_field = fields
             .get(first)
-            .is_some_and(|f| f.field_type == FieldType::Link || f.field_type == FieldType::Links);
+            .is_some_and(|f| f.field_type() == FieldType::Link || f.field_type() == FieldType::Links);
         let is_inverse = is_defined_inverse(first, fields);
 
         if !is_link_field && !is_inverse {
@@ -665,9 +719,7 @@ fn validate_field_reference(
 ///
 /// Returns `true` when any link/links field has `inverse: <name>`.
 fn is_defined_inverse(name: &str, fields: &IndexMap<String, FieldDefinition>) -> bool {
-    fields
-        .values()
-        .any(|f| f.inverse.as_deref() == Some(name))
+    fields.values().any(|f| f.inverse() == Some(name))
 }
 
 /// Check that quantifiers (all/any/none) in conditions are only used
@@ -728,7 +780,7 @@ fn is_one_to_many_reference(reference: &str, fields: &IndexMap<String, FieldDefi
 
     // links field is one-to-many (forward traversal)
     if let Some(field) = fields.get(first) {
-        return field.field_type == FieldType::Links;
+        return field.field_type() == FieldType::Links;
     }
 
     false
@@ -751,16 +803,22 @@ mod tests {
         assert!(schema.fields.contains_key("parent"));
 
         let status = &schema.fields["status"];
-        assert_eq!(status.field_type, FieldType::Choice);
+        assert_eq!(status.field_type(), FieldType::Choice);
         assert!(status.required);
-        assert_eq!(
-            status.values.as_ref().unwrap(),
-            &["backlog", "open", "in_progress", "review", "done", "closed"]
-        );
+        match &status.type_config {
+            FieldTypeConfig::Choice { values } => assert_eq!(
+                values,
+                &["backlog", "open", "in_progress", "review", "done", "closed"]
+            ),
+            other => panic!("expected Choice, got: {other:?}"),
+        }
 
         let parent = &schema.fields["parent"];
-        assert_eq!(parent.field_type, FieldType::Link);
-        assert_eq!(parent.allow_cycles, Some(false));
+        assert_eq!(parent.field_type(), FieldType::Link);
+        match &parent.type_config {
+            FieldTypeConfig::Link { allow_cycles, .. } => assert_eq!(*allow_cycles, Some(false)),
+            other => panic!("expected Link, got: {other:?}"),
+        }
     }
 
     #[test]

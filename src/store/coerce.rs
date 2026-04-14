@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use regex::Regex;
 
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind, FieldValueError};
-use crate::model::schema::{FieldDefinition, FieldType, Schema, Severity};
+use crate::model::schema::{FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity};
 use crate::model::FieldValue;
 use crate::parser::RawWorkItem;
 
@@ -83,17 +83,17 @@ fn coerce_value(
     value: &serde_yaml::Value,
     def: &FieldDefinition,
 ) -> Result<FieldValue, FieldValueError> {
-    match def.field_type {
-        FieldType::String => coerce_string(value, def),
-        FieldType::Choice => coerce_choice(value, def),
-        FieldType::Multichoice => coerce_multichoice(value, def),
-        FieldType::Integer => coerce_integer(value, def),
-        FieldType::Float => coerce_float(value, def),
-        FieldType::Date => coerce_date(value),
-        FieldType::Boolean => coerce_boolean(value),
-        FieldType::List => coerce_list(value),
-        FieldType::Link => coerce_link(value),
-        FieldType::Links => coerce_links(value),
+    match &def.type_config {
+        FieldTypeConfig::String { pattern } => coerce_string(value, pattern.as_deref()),
+        FieldTypeConfig::Choice { values } => coerce_choice(value, values),
+        FieldTypeConfig::Multichoice { values } => coerce_multichoice(value, values),
+        FieldTypeConfig::Integer { min, max } => coerce_integer(value, *min, *max),
+        FieldTypeConfig::Float { min, max } => coerce_float(value, *min, *max),
+        FieldTypeConfig::Date => coerce_date(value),
+        FieldTypeConfig::Boolean => coerce_boolean(value),
+        FieldTypeConfig::List => coerce_list(value),
+        FieldTypeConfig::Link { .. } => coerce_link(value),
+        FieldTypeConfig::Links { .. } => coerce_links(value),
     }
 }
 
@@ -101,7 +101,7 @@ fn coerce_value(
 
 fn coerce_string(
     value: &serde_yaml::Value,
-    def: &FieldDefinition,
+    pattern: Option<&str>,
 ) -> Result<FieldValue, FieldValueError> {
     let s = value
         .as_str()
@@ -110,15 +110,15 @@ fn coerce_string(
             got: yaml_type_name(value).into(),
         })?;
 
-    if let Some(pattern) = &def.pattern {
+    if let Some(pattern) = pattern {
         let re = Regex::new(pattern).map_err(|e| FieldValueError::InvalidPattern {
-            pattern: pattern.clone(),
+            pattern: pattern.to_owned(),
             error: e.to_string(),
         })?;
         if !re.is_match(s) {
             return Err(FieldValueError::PatternMismatch {
                 value: s.to_owned(),
-                pattern: pattern.clone(),
+                pattern: pattern.to_owned(),
             });
         }
     }
@@ -128,7 +128,7 @@ fn coerce_string(
 
 fn coerce_choice(
     value: &serde_yaml::Value,
-    def: &FieldDefinition,
+    allowed: &[String],
 ) -> Result<FieldValue, FieldValueError> {
     let s = value
         .as_str()
@@ -137,13 +137,11 @@ fn coerce_choice(
             got: yaml_type_name(value).into(),
         })?;
 
-    if let Some(values) = &def.values {
-        if !values.iter().any(|v| v == s) {
-            return Err(FieldValueError::InvalidChoice {
-                value: s.to_owned(),
-                allowed: values.clone(),
-            });
-        }
+    if !allowed.iter().any(|v| v == s) {
+        return Err(FieldValueError::InvalidChoice {
+            value: s.to_owned(),
+            allowed: allowed.to_vec(),
+        });
     }
 
     Ok(FieldValue::Choice(s.to_owned()))
@@ -151,7 +149,7 @@ fn coerce_choice(
 
 fn coerce_multichoice(
     value: &serde_yaml::Value,
-    def: &FieldDefinition,
+    allowed: &[String],
 ) -> Result<FieldValue, FieldValueError> {
     let seq = value
         .as_sequence()
@@ -171,18 +169,16 @@ fn coerce_multichoice(
         result.push(s.to_owned());
     }
 
-    if let Some(allowed) = &def.values {
-        let invalid: Vec<String> = result
-            .iter()
-            .filter(|v| !allowed.contains(v))
-            .cloned()
-            .collect();
-        if !invalid.is_empty() {
-            return Err(FieldValueError::InvalidMultichoice {
-                values: invalid,
-                allowed: allowed.clone(),
-            });
-        }
+    let invalid: Vec<String> = result
+        .iter()
+        .filter(|v| !allowed.contains(v))
+        .cloned()
+        .collect();
+    if !invalid.is_empty() {
+        return Err(FieldValueError::InvalidMultichoice {
+            values: invalid,
+            allowed: allowed.to_vec(),
+        });
     }
 
     Ok(FieldValue::Multichoice(result))
@@ -190,7 +186,8 @@ fn coerce_multichoice(
 
 fn coerce_integer(
     value: &serde_yaml::Value,
-    def: &FieldDefinition,
+    min: Option<f64>,
+    max: Option<f64>,
 ) -> Result<FieldValue, FieldValueError> {
     let n = value
         .as_i64()
@@ -199,20 +196,20 @@ fn coerce_integer(
             got: yaml_type_name(value).into(),
         })?;
 
-    if let Some(min) = def.min {
+    if let Some(min) = min {
         if (n as f64) < min {
             return Err(FieldValueError::OutOfRange {
                 value: n as f64,
                 min: Some(min),
-                max: def.max,
+                max,
             });
         }
     }
-    if let Some(max) = def.max {
+    if let Some(max) = max {
         if (n as f64) > max {
             return Err(FieldValueError::OutOfRange {
                 value: n as f64,
-                min: def.min,
+                min,
                 max: Some(max),
             });
         }
@@ -223,7 +220,8 @@ fn coerce_integer(
 
 fn coerce_float(
     value: &serde_yaml::Value,
-    def: &FieldDefinition,
+    min: Option<f64>,
+    max: Option<f64>,
 ) -> Result<FieldValue, FieldValueError> {
     let n = value
         .as_f64()
@@ -232,20 +230,20 @@ fn coerce_float(
             got: yaml_type_name(value).into(),
         })?;
 
-    if let Some(min) = def.min {
+    if let Some(min) = min {
         if n < min {
             return Err(FieldValueError::OutOfRange {
                 value: n,
                 min: Some(min),
-                max: def.max,
+                max,
             });
         }
     }
-    if let Some(max) = def.max {
+    if let Some(max) = max {
         if n > max {
             return Err(FieldValueError::OutOfRange {
                 value: n,
-                min: def.min,
+                min,
                 max: Some(max),
             });
         }
@@ -401,7 +399,7 @@ fn is_valid_date(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::schema::FieldDefinition;
+    use crate::model::schema::{FieldDefinition, FieldTypeConfig};
     use indexmap::IndexMap;
     use std::path::PathBuf;
 
@@ -416,24 +414,6 @@ mod tests {
             fields,
             rules: vec![],
             inverse_table,
-        }
-    }
-
-    /// Build a minimal FieldDefinition for a given type.
-    fn field(field_type: FieldType) -> FieldDefinition {
-        FieldDefinition {
-            field_type,
-            description: None,
-            required: false,
-            default: None,
-            values: None,
-            pattern: None,
-            min: None,
-            max: None,
-            allow_cycles: None,
-            inverse: None,
-            resource: None,
-            aggregate: None,
         }
     }
 
@@ -485,7 +465,7 @@ mod tests {
 
     #[test]
     fn coerce_string_valid() {
-        let s = schema(vec![("title", field(FieldType::String))]);
+        let s = schema(vec![("title", FieldDefinition::new(FieldTypeConfig::String { pattern: None }))]);
         let raw = raw_item("t", vec![("title", yaml_str("Hello"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
@@ -495,7 +475,7 @@ mod tests {
 
     #[test]
     fn coerce_string_rejects_number() {
-        let s = schema(vec![("title", field(FieldType::String))]);
+        let s = schema(vec![("title", FieldDefinition::new(FieldTypeConfig::String { pattern: None }))]);
         let raw = raw_item("t", vec![("title", yaml_int(42))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
@@ -507,8 +487,9 @@ mod tests {
 
     #[test]
     fn coerce_string_with_pattern() {
-        let mut def = field(FieldType::String);
-        def.pattern = Some(r"^[A-Z]{3}-\d+$".to_owned());
+        let def = FieldDefinition::new(FieldTypeConfig::String {
+            pattern: Some(r"^[A-Z]{3}-\d+$".to_owned()),
+        });
         let s = schema(vec![("code", def)]);
 
         let raw = raw_item("t", vec![("code", yaml_str("ABC-123"))]);
@@ -528,8 +509,9 @@ mod tests {
 
     #[test]
     fn coerce_choice_valid() {
-        let mut def = field(FieldType::Choice);
-        def.values = Some(vec!["open".into(), "closed".into()]);
+        let def = FieldDefinition::new(FieldTypeConfig::Choice {
+            values: vec!["open".into(), "closed".into()],
+        });
         let s = schema(vec![("status", def)]);
         let raw = raw_item("t", vec![("status", yaml_str("open"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
@@ -540,8 +522,9 @@ mod tests {
 
     #[test]
     fn coerce_choice_invalid_value() {
-        let mut def = field(FieldType::Choice);
-        def.values = Some(vec!["open".into(), "closed".into()]);
+        let def = FieldDefinition::new(FieldTypeConfig::Choice {
+            values: vec!["open".into(), "closed".into()],
+        });
         let s = schema(vec![("status", def)]);
         let raw = raw_item("t", vec![("status", yaml_str("unknown"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
@@ -554,8 +537,9 @@ mod tests {
 
     #[test]
     fn coerce_choice_rejects_number() {
-        let mut def = field(FieldType::Choice);
-        def.values = Some(vec!["open".into()]);
+        let def = FieldDefinition::new(FieldTypeConfig::Choice {
+            values: vec!["open".into()],
+        });
         let s = schema(vec![("status", def)]);
         let raw = raw_item("t", vec![("status", yaml_int(1))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
@@ -569,8 +553,9 @@ mod tests {
 
     #[test]
     fn coerce_multichoice_valid() {
-        let mut def = field(FieldType::Multichoice);
-        def.values = Some(vec!["a".into(), "b".into(), "c".into()]);
+        let def = FieldDefinition::new(FieldTypeConfig::Multichoice {
+            values: vec!["a".into(), "b".into(), "c".into()],
+        });
         let s = schema(vec![("labels", def)]);
         let raw = raw_item(
             "t",
@@ -587,8 +572,9 @@ mod tests {
 
     #[test]
     fn coerce_multichoice_invalid_values() {
-        let mut def = field(FieldType::Multichoice);
-        def.values = Some(vec!["a".into(), "b".into()]);
+        let def = FieldDefinition::new(FieldTypeConfig::Multichoice {
+            values: vec!["a".into(), "b".into()],
+        });
         let s = schema(vec![("labels", def)]);
         let raw = raw_item(
             "t",
@@ -603,8 +589,9 @@ mod tests {
 
     #[test]
     fn coerce_multichoice_rejects_string() {
-        let mut def = field(FieldType::Multichoice);
-        def.values = Some(vec!["a".into()]);
+        let def = FieldDefinition::new(FieldTypeConfig::Multichoice {
+            values: vec!["a".into()],
+        });
         let s = schema(vec![("labels", def)]);
         let raw = raw_item("t", vec![("labels", yaml_str("a"))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
@@ -618,7 +605,7 @@ mod tests {
 
     #[test]
     fn coerce_integer_valid() {
-        let s = schema(vec![("priority", field(FieldType::Integer))]);
+        let s = schema(vec![("priority", FieldDefinition::new(FieldTypeConfig::Integer { min: None, max: None }))]);
         let raw = raw_item("t", vec![("priority", yaml_int(42))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
@@ -628,9 +615,10 @@ mod tests {
 
     #[test]
     fn coerce_integer_out_of_range() {
-        let mut def = field(FieldType::Integer);
-        def.min = Some(1.0);
-        def.max = Some(10.0);
+        let def = FieldDefinition::new(FieldTypeConfig::Integer {
+            min: Some(1.0),
+            max: Some(10.0),
+        });
         let s = schema(vec![("priority", def)]);
 
         let raw = raw_item("t", vec![("priority", yaml_int(0))]);
@@ -648,7 +636,7 @@ mod tests {
 
     #[test]
     fn coerce_integer_rejects_string() {
-        let s = schema(vec![("priority", field(FieldType::Integer))]);
+        let s = schema(vec![("priority", FieldDefinition::new(FieldTypeConfig::Integer { min: None, max: None }))]);
         let raw = raw_item("t", vec![("priority", yaml_str("high"))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
 
@@ -661,7 +649,7 @@ mod tests {
 
     #[test]
     fn coerce_float_valid() {
-        let s = schema(vec![("weight", field(FieldType::Float))]);
+        let s = schema(vec![("weight", FieldDefinition::new(FieldTypeConfig::Float { min: None, max: None }))]);
         let raw = raw_item("t", vec![("weight", yaml_float(3.14))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
@@ -671,7 +659,7 @@ mod tests {
 
     #[test]
     fn coerce_float_from_integer() {
-        let s = schema(vec![("weight", field(FieldType::Float))]);
+        let s = schema(vec![("weight", FieldDefinition::new(FieldTypeConfig::Float { min: None, max: None }))]);
         let raw = raw_item("t", vec![("weight", yaml_int(5))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
@@ -681,9 +669,10 @@ mod tests {
 
     #[test]
     fn coerce_float_out_of_range() {
-        let mut def = field(FieldType::Float);
-        def.min = Some(0.0);
-        def.max = Some(1.0);
+        let def = FieldDefinition::new(FieldTypeConfig::Float {
+            min: Some(0.0),
+            max: Some(1.0),
+        });
         let s = schema(vec![("ratio", def)]);
         let raw = raw_item("t", vec![("ratio", yaml_float(1.5))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
@@ -697,7 +686,7 @@ mod tests {
 
     #[test]
     fn coerce_date_valid() {
-        let s = schema(vec![("created", field(FieldType::Date))]);
+        let s = schema(vec![("created", FieldDefinition::new(FieldTypeConfig::Date))]);
         let raw = raw_item("t", vec![("created", yaml_str("2026-01-15"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
@@ -707,7 +696,7 @@ mod tests {
 
     #[test]
     fn coerce_date_invalid_format() {
-        let s = schema(vec![("created", field(FieldType::Date))]);
+        let s = schema(vec![("created", FieldDefinition::new(FieldTypeConfig::Date))]);
         let raw = raw_item("t", vec![("created", yaml_str("01/15/2026"))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
 
@@ -718,7 +707,7 @@ mod tests {
 
     #[test]
     fn coerce_date_invalid_day() {
-        let s = schema(vec![("created", field(FieldType::Date))]);
+        let s = schema(vec![("created", FieldDefinition::new(FieldTypeConfig::Date))]);
         let raw = raw_item("t", vec![("created", yaml_str("2026-02-30"))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
 
@@ -729,7 +718,7 @@ mod tests {
 
     #[test]
     fn coerce_date_leap_year() {
-        let s = schema(vec![("created", field(FieldType::Date))]);
+        let s = schema(vec![("created", FieldDefinition::new(FieldTypeConfig::Date))]);
 
         let raw = raw_item("t", vec![("created", yaml_str("2024-02-29"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
@@ -745,7 +734,7 @@ mod tests {
 
     #[test]
     fn coerce_boolean_valid() {
-        let s = schema(vec![("active", field(FieldType::Boolean))]);
+        let s = schema(vec![("active", FieldDefinition::new(FieldTypeConfig::Boolean))]);
         let raw = raw_item("t", vec![("active", yaml_bool(true))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
@@ -755,7 +744,7 @@ mod tests {
 
     #[test]
     fn coerce_boolean_rejects_string() {
-        let s = schema(vec![("active", field(FieldType::Boolean))]);
+        let s = schema(vec![("active", FieldDefinition::new(FieldTypeConfig::Boolean))]);
         let raw = raw_item("t", vec![("active", yaml_str("true"))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
 
@@ -768,7 +757,7 @@ mod tests {
 
     #[test]
     fn coerce_list_valid() {
-        let s = schema(vec![("tags", field(FieldType::List))]);
+        let s = schema(vec![("tags", FieldDefinition::new(FieldTypeConfig::List))]);
         let raw = raw_item(
             "t",
             vec![("tags", yaml_seq(vec![yaml_str("a"), yaml_str("b")]))],
@@ -784,7 +773,7 @@ mod tests {
 
     #[test]
     fn coerce_list_rejects_non_string_elements() {
-        let s = schema(vec![("tags", field(FieldType::List))]);
+        let s = schema(vec![("tags", FieldDefinition::new(FieldTypeConfig::List))]);
         let raw = raw_item(
             "t",
             vec![("tags", yaml_seq(vec![yaml_str("a"), yaml_int(1)]))],
@@ -800,7 +789,7 @@ mod tests {
 
     #[test]
     fn coerce_link_valid() {
-        let s = schema(vec![("parent", field(FieldType::Link))]);
+        let s = schema(vec![("parent", FieldDefinition::new(FieldTypeConfig::Link { allow_cycles: None, inverse: None }))]);
         let raw = raw_item("t", vec![("parent", yaml_str("auth-epic"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
@@ -810,7 +799,7 @@ mod tests {
 
     #[test]
     fn coerce_link_rejects_number() {
-        let s = schema(vec![("parent", field(FieldType::Link))]);
+        let s = schema(vec![("parent", FieldDefinition::new(FieldTypeConfig::Link { allow_cycles: None, inverse: None }))]);
         let raw = raw_item("t", vec![("parent", yaml_int(1))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
 
@@ -823,7 +812,7 @@ mod tests {
 
     #[test]
     fn coerce_links_valid() {
-        let s = schema(vec![("depends_on", field(FieldType::Links))]);
+        let s = schema(vec![("depends_on", FieldDefinition::new(FieldTypeConfig::Links { allow_cycles: None, inverse: None }))]);
         let raw = raw_item(
             "t",
             vec![("depends_on", yaml_seq(vec![yaml_str("a"), yaml_str("b")]))],
@@ -839,7 +828,7 @@ mod tests {
 
     #[test]
     fn coerce_links_rejects_string() {
-        let s = schema(vec![("depends_on", field(FieldType::Links))]);
+        let s = schema(vec![("depends_on", FieldDefinition::new(FieldTypeConfig::Links { allow_cycles: None, inverse: None }))]);
         let raw = raw_item("t", vec![("depends_on", yaml_str("a"))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
 
@@ -852,7 +841,7 @@ mod tests {
 
     #[test]
     fn unknown_field_produces_warning() {
-        let s = schema(vec![("title", field(FieldType::String))]);
+        let s = schema(vec![("title", FieldDefinition::new(FieldTypeConfig::String { pattern: None }))]);
         let raw = raw_item(
             "t",
             vec![("title", yaml_str("Hi")), ("bogus", yaml_str("x"))],
@@ -871,7 +860,7 @@ mod tests {
 
     #[test]
     fn missing_required_field() {
-        let mut def = field(FieldType::String);
+        let mut def = FieldDefinition::new(FieldTypeConfig::String { pattern: None });
         def.required = true;
         let s = schema(vec![("title", def)]);
         let raw = raw_item("t", vec![]);
@@ -886,7 +875,7 @@ mod tests {
 
     #[test]
     fn null_value_treated_as_absent() {
-        let mut def = field(FieldType::String);
+        let mut def = FieldDefinition::new(FieldTypeConfig::String { pattern: None });
         def.required = true;
         let s = schema(vec![("title", def)]);
         let raw = raw_item("t", vec![("title", serde_yaml::Value::Null)]);
@@ -902,8 +891,8 @@ mod tests {
     #[test]
     fn id_field_skipped() {
         let s = schema(vec![
-            ("id", field(FieldType::String)),
-            ("title", field(FieldType::String)),
+            ("id", FieldDefinition::new(FieldTypeConfig::String { pattern: None })),
+            ("title", FieldDefinition::new(FieldTypeConfig::String { pattern: None })),
         ]);
         let raw = raw_item("t", vec![("title", yaml_str("Hi"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
@@ -915,10 +904,11 @@ mod tests {
 
     #[test]
     fn multiple_errors_collected() {
-        let mut title_def = field(FieldType::String);
+        let mut title_def = FieldDefinition::new(FieldTypeConfig::String { pattern: None });
         title_def.required = true;
-        let mut status_def = field(FieldType::Choice);
-        status_def.values = Some(vec!["open".into()]);
+        let status_def = FieldDefinition::new(FieldTypeConfig::Choice {
+            values: vec!["open".into()],
+        });
         let s = schema(vec![("title", title_def), ("status", status_def)]);
 
         // title is missing (required), status has wrong value

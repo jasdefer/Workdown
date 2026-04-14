@@ -4,7 +4,7 @@
 //! (dot-notation forward) or `"children.type"` (dot-notation inverse)
 //! against a work item and the store.
 
-use crate::model::schema::FieldType;
+use crate::model::schema::{FieldType, FieldTypeConfig};
 use crate::model::{FieldValue, WorkItem};
 
 use super::EvalContext;
@@ -48,8 +48,8 @@ pub(crate) fn resolve_field_ref<'a>(
 
     // Check if relationship is a forward link/links field
     if let Some(field_def) = ctx.schema.fields.get(relationship) {
-        match field_def.field_type {
-            FieldType::Link => {
+        match &field_def.type_config {
+            FieldTypeConfig::Link { .. } => {
                 // Follow the single link
                 let target_value = item
                     .fields
@@ -61,7 +61,7 @@ pub(crate) fn resolve_field_ref<'a>(
                     .and_then(|target| target.fields.get(field_name));
                 return ResolvedValues::Single(target_value);
             }
-            FieldType::Links => {
+            FieldTypeConfig::Links { .. } => {
                 // Follow multiple links
                 let values = match item.fields.get(relationship) {
                     Some(FieldValue::Links(target_ids)) => target_ids
@@ -107,7 +107,7 @@ pub(crate) fn resolve_related_items<'a>(
 ) -> Vec<&'a WorkItem> {
     // Bare reference — no dot. Check if it's a links field or inverse.
     if let Some(field_def) = ctx.schema.fields.get(reference) {
-        if field_def.field_type == FieldType::Links {
+        if field_def.field_type() == FieldType::Links {
             return match item.fields.get(reference) {
                 Some(FieldValue::Links(ids)) => {
                     ids.iter().filter_map(|id| ctx.store.get(id)).collect()
@@ -130,62 +130,42 @@ pub(crate) fn resolve_related_items<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::schema::{FieldDefinition, FieldType, Schema};
+    use crate::model::schema::{FieldDefinition, FieldTypeConfig, Schema};
     use crate::store::Store;
     use indexmap::IndexMap;
     use std::fs;
     use std::path::PathBuf;
 
-    fn base_field(ft: FieldType) -> FieldDefinition {
-        FieldDefinition {
-            field_type: ft,
-            description: None,
-            required: false,
-            default: None,
-            values: None,
-            pattern: None,
-            min: None,
-            max: None,
-            allow_cycles: None,
-            inverse: None,
-            resource: None,
-            aggregate: None,
-        }
-    }
-
     fn test_schema() -> Schema {
         let mut fields = IndexMap::new();
-        fields.insert("title".to_owned(), base_field(FieldType::String));
         fields.insert(
-            "status".to_owned(),
-            FieldDefinition {
-                required: true,
-                values: Some(vec!["open".into(), "done".into()]),
-                ..base_field(FieldType::Choice)
-            },
+            "title".to_owned(),
+            FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
         );
+        let mut status = FieldDefinition::new(FieldTypeConfig::Choice {
+            values: vec!["open".into(), "done".into()],
+        });
+        status.required = true;
+        fields.insert("status".to_owned(), status);
         fields.insert(
             "type_field".to_owned(),
-            FieldDefinition {
-                values: Some(vec!["task".into(), "epic".into()]),
-                ..base_field(FieldType::Choice)
-            },
+            FieldDefinition::new(FieldTypeConfig::Choice {
+                values: vec!["task".into(), "epic".into()],
+            }),
         );
         fields.insert(
             "parent".to_owned(),
-            FieldDefinition {
+            FieldDefinition::new(FieldTypeConfig::Link {
                 allow_cycles: Some(false),
                 inverse: Some("children".into()),
-                ..base_field(FieldType::Link)
-            },
+            }),
         );
         fields.insert(
             "depends_on".to_owned(),
-            FieldDefinition {
+            FieldDefinition::new(FieldTypeConfig::Links {
                 allow_cycles: Some(false),
                 inverse: Some("dependents".into()),
-                ..base_field(FieldType::Links)
-            },
+            }),
         );
         let inverse_table = Schema::build_inverse_table(&fields);
         Schema {

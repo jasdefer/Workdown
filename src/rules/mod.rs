@@ -193,70 +193,56 @@ fn eval_quantifiers_on_many(values: &[Option<&FieldValue>], op: &ConditionOperat
 mod tests {
     use super::*;
     use crate::model::schema::{
-        Assertion, ConditionValue, CountConstraint, FieldDefinition, FieldType, NegationValue, Rule,
-        Severity,
+        Assertion, ConditionValue, CountConstraint, FieldDefinition, FieldTypeConfig, NegationValue,
+        Rule, Severity,
     };
     use indexmap::IndexMap;
     use std::fs;
     use std::path::PathBuf;
 
-    fn base_field(ft: FieldType) -> FieldDefinition {
-        FieldDefinition {
-            field_type: ft,
-            description: None,
-            required: false,
-            default: None,
-            values: None,
-            pattern: None,
-            min: None,
-            max: None,
-            allow_cycles: None,
-            inverse: None,
-            resource: None,
-            aggregate: None,
-        }
-    }
-
     fn test_schema_with_rules(rules: Vec<Rule>) -> Schema {
         let mut fields = IndexMap::new();
-        fields.insert("title".to_owned(), base_field(FieldType::String));
         fields.insert(
-            "status".to_owned(),
-            FieldDefinition {
-                required: true,
-                values: Some(vec![
-                    "backlog".into(),
-                    "open".into(),
-                    "in_progress".into(),
-                    "done".into(),
-                ]),
-                ..base_field(FieldType::Choice)
-            },
+            "title".to_owned(),
+            FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
         );
+        let mut status = FieldDefinition::new(FieldTypeConfig::Choice {
+            values: vec![
+                "backlog".into(),
+                "open".into(),
+                "in_progress".into(),
+                "done".into(),
+            ],
+        });
+        status.required = true;
+        fields.insert("status".to_owned(), status);
         fields.insert(
             "type_field".to_owned(),
-            FieldDefinition {
-                values: Some(vec!["task".into(), "bug".into(), "epic".into()]),
-                ..base_field(FieldType::Choice)
-            },
+            FieldDefinition::new(FieldTypeConfig::Choice {
+                values: vec!["task".into(), "bug".into(), "epic".into()],
+            }),
         );
-        fields.insert("assignee".to_owned(), base_field(FieldType::String));
-        fields.insert("priority".to_owned(), base_field(FieldType::String));
+        fields.insert(
+            "assignee".to_owned(),
+            FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
+        );
+        fields.insert(
+            "priority".to_owned(),
+            FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
+        );
         fields.insert(
             "parent".to_owned(),
-            FieldDefinition {
+            FieldDefinition::new(FieldTypeConfig::Link {
                 allow_cycles: Some(false),
                 inverse: Some("children".into()),
-                ..base_field(FieldType::Link)
-            },
+            }),
         );
         fields.insert(
             "depends_on".to_owned(),
-            FieldDefinition {
+            FieldDefinition::new(FieldTypeConfig::Links {
                 allow_cycles: Some(false),
                 inverse: Some("dependents".into()),
-                ..base_field(FieldType::Links)
-            },
+            }),
         );
         let inverse_table = Schema::build_inverse_table(&fields);
         Schema { fields, rules, inverse_table }

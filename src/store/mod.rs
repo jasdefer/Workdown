@@ -221,7 +221,7 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::schema::{FieldDefinition, FieldType};
+    use crate::model::schema::{FieldDefinition, FieldTypeConfig};
     use indexmap::IndexMap;
     use std::fs;
     use std::path::PathBuf;
@@ -232,92 +232,34 @@ mod tests {
 
         fields.insert(
             "title".to_owned(),
-            FieldDefinition {
-                field_type: FieldType::String,
-                description: None,
-                required: false,
-                default: None,
-                values: None,
-                pattern: None,
-                min: None,
-                max: None,
-                allow_cycles: None,
-                inverse: None,
-                resource: None,
-                aggregate: None,
-            },
+            FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
         );
 
-        fields.insert(
-            "status".to_owned(),
-            FieldDefinition {
-                field_type: FieldType::Choice,
-                description: None,
-                required: true,
-                default: None,
-                values: Some(vec!["open".into(), "in_progress".into(), "done".into()]),
-                pattern: None,
-                min: None,
-                max: None,
-                allow_cycles: None,
-                inverse: None,
-                resource: None,
-                aggregate: None,
-            },
-        );
+        let mut status = FieldDefinition::new(FieldTypeConfig::Choice {
+            values: vec!["open".into(), "in_progress".into(), "done".into()],
+        });
+        status.required = true;
+        fields.insert("status".to_owned(), status);
 
         fields.insert(
             "parent".to_owned(),
-            FieldDefinition {
-                field_type: FieldType::Link,
-                description: None,
-                required: false,
-                default: None,
-                values: None,
-                pattern: None,
-                min: None,
-                max: None,
+            FieldDefinition::new(FieldTypeConfig::Link {
                 allow_cycles: Some(false),
                 inverse: Some("children".into()),
-                resource: None,
-                aggregate: None,
-            },
+            }),
         );
 
         fields.insert(
             "depends_on".to_owned(),
-            FieldDefinition {
-                field_type: FieldType::Links,
-                description: None,
-                required: false,
-                default: None,
-                values: None,
-                pattern: None,
-                min: None,
-                max: None,
+            FieldDefinition::new(FieldTypeConfig::Links {
                 allow_cycles: Some(false),
                 inverse: Some("dependents".into()),
-                resource: None,
-                aggregate: None,
-            },
+            }),
         );
 
         fields.insert(
             "tags".to_owned(),
-            FieldDefinition {
-                field_type: FieldType::List,
-                description: None,
-                required: false,
-                default: None,
-                values: None,
-                pattern: None,
-                min: None,
-                max: None,
-                allow_cycles: None,
-                inverse: None,
-                resource: None,
-                aggregate: None,
-            },
+            FieldDefinition::new(FieldTypeConfig::List),
         );
 
         let inverse_table = Schema::build_inverse_table(&fields);

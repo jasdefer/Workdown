@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
-use crate::model::schema::{FieldType, Schema, Severity};
+use crate::model::schema::{FieldTypeConfig, Schema, Severity};
 use crate::model::FieldValue;
 
 use super::Store;
@@ -21,10 +21,12 @@ pub(crate) fn detect_cycles(store: &Store, schema: &Schema) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
 
     for (field_name, field_def) in &schema.fields {
-        if !matches!(field_def.field_type, FieldType::Link | FieldType::Links) {
-            continue;
-        }
-        if field_def.allow_cycles != Some(false) {
+        let allow_cycles = match &field_def.type_config {
+            FieldTypeConfig::Link { allow_cycles, .. }
+            | FieldTypeConfig::Links { allow_cycles, .. } => allow_cycles,
+            _ => continue,
+        };
+        if *allow_cycles != Some(false) {
             continue;
         }
         detect_cycles_in_field(store, field_name, &mut diagnostics);
@@ -141,7 +143,7 @@ fn canonicalize_cycle(cycle_body: &[String]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::schema::FieldDefinition;
+    use crate::model::schema::{FieldDefinition, FieldTypeConfig};
     use indexmap::IndexMap;
     use std::fs;
     use std::path::PathBuf;
@@ -157,49 +159,32 @@ mod tests {
         (dir, items_path)
     }
 
-    fn field(ft: FieldType) -> FieldDefinition {
-        FieldDefinition {
-            field_type: ft,
-            description: None,
-            required: false,
-            default: None,
-            values: None,
-            pattern: None,
-            min: None,
-            max: None,
-            allow_cycles: None,
-            inverse: None,
-            resource: None,
-            aggregate: None,
-        }
-    }
-
     fn link_field(allow_cycles: bool) -> FieldDefinition {
-        FieldDefinition {
+        FieldDefinition::new(FieldTypeConfig::Link {
             allow_cycles: Some(allow_cycles),
-            ..field(FieldType::Link)
-        }
+            inverse: None,
+        })
     }
 
     fn links_field(allow_cycles: bool) -> FieldDefinition {
-        FieldDefinition {
+        FieldDefinition::new(FieldTypeConfig::Links {
             allow_cycles: Some(allow_cycles),
-            ..field(FieldType::Links)
-        }
+            inverse: None,
+        })
     }
 
     fn schema_with(fields: Vec<(&str, FieldDefinition)>) -> Schema {
         let mut map = IndexMap::new();
         // Always include title + status so items parse cleanly.
-        map.insert("title".to_owned(), field(FieldType::String));
         map.insert(
-            "status".to_owned(),
-            FieldDefinition {
-                required: true,
-                values: Some(vec!["open".into(), "done".into()]),
-                ..field(FieldType::Choice)
-            },
+            "title".to_owned(),
+            FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
         );
+        let mut status = FieldDefinition::new(FieldTypeConfig::Choice {
+            values: vec!["open".into(), "done".into()],
+        });
+        status.required = true;
+        map.insert("status".to_owned(), status);
         for (name, def) in fields {
             map.insert(name.to_owned(), def);
         }
@@ -368,7 +353,7 @@ mod tests {
 
     #[test]
     fn allow_cycles_none_skipped() {
-        let schema = schema_with(vec![("custom_link", field(FieldType::Link))]);
+        let schema = schema_with(vec![("custom_link", FieldDefinition::new(FieldTypeConfig::Link { allow_cycles: None, inverse: None }))]);
         let (_dir, path) = setup_items_dir(vec![
             ("a.md", "---\nstatus: open\ncustom_link: b\n---\n"),
             ("b.md", "---\nstatus: open\ncustom_link: a\n---\n"),
