@@ -16,7 +16,7 @@ use std::path::Path;
 
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::model::schema::{Schema, Severity};
-use crate::model::{FieldValue, WorkItem};
+use crate::model::{FieldValue, WorkItem, WorkItemId};
 use crate::parser;
 
 // ── Store ────────────────────────────────────────────────────────────
@@ -28,12 +28,12 @@ use crate::parser;
 /// collected rather than aborting — query the store even if some items failed.
 pub struct Store {
     /// Work items indexed by ID.
-    items: HashMap<String, WorkItem>,
+    items: HashMap<WorkItemId, WorkItem>,
     /// Pre-computed reverse links: `field_name → target_id → [source_ids]`.
     ///
     /// For example, if item "login-task" has `parent: auth-epic`, then
     /// `reverse_links["parent"]["auth-epic"]` contains `"login-task"`.
-    reverse_links: HashMap<String, HashMap<String, Vec<String>>>,
+    reverse_links: HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
     /// All diagnostics collected during loading.
     diagnostics: Vec<Diagnostic>,
 }
@@ -62,7 +62,7 @@ impl Store {
 
         // 2. Parse each file and check ID uniqueness.
         let mut items = HashMap::new();
-        let mut seen_ids: HashMap<String, std::path::PathBuf> = HashMap::new();
+        let mut seen_ids: HashMap<WorkItemId, std::path::PathBuf> = HashMap::new();
 
         for path in &paths {
             let raw = match parser::parse_work_item_file(path) {
@@ -108,24 +108,25 @@ impl Store {
         }
 
         // 4. Build reverse links and detect broken references.
-        let mut reverse_links: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
+        let mut reverse_links: HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>> =
+            HashMap::new();
 
         for item in items.values() {
             for (field_name, field_value) in &item.fields {
-                let targets: Vec<&str> = match field_value {
-                    FieldValue::Link(target) => vec![target.as_str()],
-                    FieldValue::Links(targets) => targets.iter().map(|s| s.as_str()).collect(),
+                let targets: Vec<&WorkItemId> = match field_value {
+                    FieldValue::Link(target) => vec![target],
+                    FieldValue::Links(targets) => targets.iter().collect(),
                     _ => continue,
                 };
 
                 for target_id in targets {
-                    if !items.contains_key(target_id) {
+                    if !items.contains_key(target_id.as_str()) {
                         diagnostics.push(Diagnostic {
                             severity: Severity::Error,
                             kind: DiagnosticKind::BrokenLink {
                                 item_id: item.id.clone(),
                                 field: field_name.clone(),
-                                target_id: target_id.to_owned(),
+                                target_id: target_id.clone(),
                             },
                         });
                     }
@@ -133,7 +134,7 @@ impl Store {
                     reverse_links
                         .entry(field_name.clone())
                         .or_default()
-                        .entry(target_id.to_owned())
+                        .entry(target_id.clone())
                         .or_default()
                         .push(item.id.clone());
                 }
@@ -174,6 +175,7 @@ impl Store {
             .unwrap_or_default()
     }
 
+
     /// All diagnostics collected during loading.
     pub fn diagnostics(&self) -> &[Diagnostic] {
         &self.diagnostics
@@ -211,7 +213,7 @@ impl Store {
     }
 
     /// Access the items map (crate-internal).
-    pub(crate) fn items_map(&self) -> &HashMap<String, WorkItem> {
+    pub(crate) fn items_map(&self) -> &HashMap<WorkItemId, WorkItem> {
         &self.items
     }
 }
@@ -483,9 +485,8 @@ mod tests {
         let children = store.referring_items("epic", "parent");
         assert_eq!(children.len(), 2);
 
-        let child_ids: Vec<&str> = children.iter().map(|i| i.id.as_str()).collect();
-        assert!(child_ids.contains(&"task-a"));
-        assert!(child_ids.contains(&"task-b"));
+        assert!(children.iter().any(|i| i.id == "task-a"));
+        assert!(children.iter().any(|i| i.id == "task-b"));
     }
 
     #[test]
@@ -503,11 +504,11 @@ mod tests {
 
         let dependents_a = store.referring_items("task-a", "depends_on");
         assert_eq!(dependents_a.len(), 1);
-        assert_eq!(dependents_a[0].id, "task-c");
+        assert!(dependents_a[0].id == "task-c");
 
         let dependents_b = store.referring_items("task-b", "depends_on");
         assert_eq!(dependents_b.len(), 1);
-        assert_eq!(dependents_b[0].id, "task-c");
+        assert!(dependents_b[0].id == "task-c");
     }
 
     #[test]
@@ -554,9 +555,9 @@ mod tests {
         let schema = test_schema();
         let store = Store::load(&path, &schema).unwrap();
 
-        let ids: Vec<&str> = store.all_items().map(|i| i.id.as_str()).collect();
-        assert_eq!(ids.len(), 2);
-        assert!(ids.contains(&"task-a"));
-        assert!(ids.contains(&"task-b"));
+        let items: Vec<_> = store.all_items().collect();
+        assert_eq!(items.len(), 2);
+        assert!(items.iter().any(|i| i.id == "task-a"));
+        assert!(items.iter().any(|i| i.id == "task-b"));
     }
 }

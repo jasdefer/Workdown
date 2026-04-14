@@ -6,13 +6,15 @@ pub mod schema;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::model::WorkItemId;
+
 /// A work item as parsed from a Markdown file, before type coercion.
 /// Has a resolved ID but raw YAML field values. Internal intermediate — the
 /// store converts this into a [`WorkItem`] with typed fields.
 #[derive(Debug)]
 pub(crate) struct RawWorkItem {
     /// Resolved ID: from frontmatter `id` field if present, otherwise filename without `.md`.
-    pub id: String,
+    pub id: WorkItemId,
     /// Field names to their raw YAML values, as written in the frontmatter.
     /// The `id` field (if present in frontmatter) is excluded — use `id` above.
     pub frontmatter: HashMap<String, serde_yaml::Value>,
@@ -136,7 +138,7 @@ pub(crate) fn parse_work_item(content: &str, path: &Path) -> Result<RawWorkItem,
     };
 
     // Resolve ID: frontmatter `id` field takes precedence over filename.
-    let id = if let Some(id_value) = frontmatter.remove("id") {
+    let id_str = if let Some(id_value) = frontmatter.remove("id") {
         id_value
             .as_str()
             .ok_or_else(|| ParseError::IdNotString {
@@ -152,12 +154,14 @@ pub(crate) fn parse_work_item(content: &str, path: &Path) -> Result<RawWorkItem,
     };
 
     // Validate ID format: non-empty, lowercase alphanumeric + hyphens, starts with a letter.
-    if !is_valid_id(&id) {
+    if !is_valid_id(&id_str) {
         return Err(ParseError::InvalidId {
             path: path.to_path_buf(),
-            id,
+            id: id_str,
         });
     }
+
+    let id = WorkItemId::from(id_str);
 
     // The opening `---\n` plus everything we consumed gives us the body offset.
     let opening_delimiter_len = content.lines().next().unwrap().len() + 1;

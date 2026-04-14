@@ -136,7 +136,7 @@ fn file_for_diagnostic(d: &Diagnostic, store: &Store) -> Option<PathBuf> {
         | DiagnosticKind::UnknownField { item_id, .. }
         | DiagnosticKind::BrokenLink { item_id, .. }
         | DiagnosticKind::RuleViolation { item_id, .. } => {
-            store.get(item_id).map(|item| item.source_path.clone())
+            store.get(item_id.as_str()).map(|item| item.source_path.clone())
         }
 
         // These span multiple files or the whole collection.

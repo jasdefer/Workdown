@@ -55,7 +55,7 @@ pub(crate) fn resolve_field_ref<'a>(
                     .fields
                     .get(relationship)
                     .and_then(|fv| match fv {
-                        FieldValue::Link(target_id) => ctx.store.get(target_id),
+                        FieldValue::Link(target_id) => ctx.store.get(target_id.as_str()),
                         _ => None,
                     })
                     .and_then(|target| target.fields.get(field_name));
@@ -66,7 +66,7 @@ pub(crate) fn resolve_field_ref<'a>(
                 let values = match item.fields.get(relationship) {
                     Some(FieldValue::Links(target_ids)) => target_ids
                         .iter()
-                        .filter_map(|id| ctx.store.get(id))
+                        .filter_map(|id| ctx.store.get(id.as_str()))
                         .map(|target| target.fields.get(field_name))
                         .collect(),
                     _ => vec![],
@@ -83,7 +83,7 @@ pub(crate) fn resolve_field_ref<'a>(
 
     // Check if relationship is an inverse name
     if let Some(original_field) = ctx.schema.inverse_table.get(relationship) {
-        let related = ctx.store.referring_items(&item.id, original_field);
+        let related = ctx.store.referring_items(item.id.as_str(), original_field);
         let values = related
             .iter()
             .map(|rel_item| rel_item.fields.get(field_name))
@@ -110,7 +110,7 @@ pub(crate) fn resolve_related_items<'a>(
         if field_def.field_type() == FieldType::Links {
             return match item.fields.get(reference) {
                 Some(FieldValue::Links(ids)) => {
-                    ids.iter().filter_map(|id| ctx.store.get(id)).collect()
+                    ids.iter().filter_map(|id| ctx.store.get(id.as_str())).collect()
                 }
                 _ => vec![],
             };
@@ -119,7 +119,7 @@ pub(crate) fn resolve_related_items<'a>(
 
     // Check inverse table
     if let Some(original_field) = ctx.schema.inverse_table.get(reference) {
-        return ctx.store.referring_items(&item.id, original_field);
+        return ctx.store.referring_items(item.id.as_str(), original_field);
     }
 
     vec![]

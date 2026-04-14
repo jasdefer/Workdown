@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use serde::Serialize;
 
 use super::schema::{FieldType, Severity};
+use super::WorkItemId;
 
 // ── Core types ───────────────────────────────────────────────────────
 
@@ -40,20 +41,20 @@ pub enum DiagnosticKind {
 
     /// A field value doesn't match the schema's type or constraints.
     InvalidFieldValue {
-        item_id: String,
+        item_id: WorkItemId,
         field: String,
         detail: FieldValueError,
     },
 
     /// A required field is missing from the frontmatter.
     MissingRequired {
-        item_id: String,
+        item_id: WorkItemId,
         field: String,
     },
 
     /// A field in the frontmatter is not defined in the schema.
     UnknownField {
-        item_id: String,
+        item_id: WorkItemId,
         field: String,
     },
 
@@ -61,28 +62,28 @@ pub enum DiagnosticKind {
 
     /// A link/links field references an ID that doesn't exist.
     BrokenLink {
-        item_id: String,
+        item_id: WorkItemId,
         field: String,
-        target_id: String,
+        target_id: WorkItemId,
     },
 
     /// Two or more files resolved to the same ID.
     DuplicateId {
-        id: String,
+        id: WorkItemId,
         paths: Vec<PathBuf>,
     },
 
     /// A circular reference chain was detected in a non-cyclic link field.
     Cycle {
         field: String,
-        chain: Vec<String>,
+        chain: Vec<WorkItemId>,
     },
 
     // ── Rule-level ────────────────────────────────────────────────
 
     /// A schema rule was violated by a specific item.
     RuleViolation {
-        item_id: String,
+        item_id: WorkItemId,
         rule: String,
         detail: String,
     },
@@ -184,7 +185,8 @@ impl std::fmt::Display for Diagnostic {
                 write!(f, "duplicate ID '{id}': {}", files.join(", "))
             }
             DiagnosticKind::Cycle { field, chain } => {
-                write!(f, "cycle in '{field}': {}", chain.join(" → "))
+                let ids: Vec<&str> = chain.iter().map(|id| id.as_str()).collect();
+                write!(f, "cycle in '{field}': {}", ids.join(" \u{2192} "))
             }
             DiagnosticKind::RuleViolation {
                 item_id,

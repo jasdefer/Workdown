@@ -114,35 +114,31 @@ fn check_operator(
 
     // values assertion — all values must be in the allowed set
     if let Some(ref allowed) = op.values {
-        for val in &values_to_check {
-            if let Some(fv) = val {
-                if !allowed.iter().any(|cv| field_value_matches(fv, cv)) {
-                    return Some(format!(
-                        "'{field_ref}' value '{}' is not one of {:?}",
-                        format_field_value(fv),
-                        format_condition_values(allowed),
-                    ));
-                }
+        for fv in values_to_check.iter().flatten() {
+            if !allowed.iter().any(|cv| field_value_matches(fv, cv)) {
+                return Some(format!(
+                    "'{field_ref}' value '{}' is not one of {:?}",
+                    format_field_value(fv),
+                    format_condition_values(allowed),
+                ));
             }
         }
     }
 
     // not assertion — no value may match the negation
     if let Some(ref neg) = op.not {
-        for val in &values_to_check {
-            if let Some(fv) = val {
-                let matches = match neg {
-                    NegationValue::Single(cv) => field_value_matches(fv, cv),
-                    NegationValue::Multiple(cvs) => {
-                        cvs.iter().any(|cv| field_value_matches(fv, cv))
-                    }
-                };
-                if matches {
-                    return Some(format!(
-                        "'{field_ref}' value '{}' is not allowed",
-                        format_field_value(fv),
-                    ));
+        for fv in values_to_check.iter().flatten() {
+            let matches = match neg {
+                NegationValue::Single(cv) => field_value_matches(fv, cv),
+                NegationValue::Multiple(cvs) => {
+                    cvs.iter().any(|cv| field_value_matches(fv, cv))
                 }
+            };
+            if matches {
+                return Some(format!(
+                    "'{field_ref}' value '{}' is not allowed",
+                    format_field_value(fv),
+                ));
             }
         }
     }
@@ -254,15 +250,17 @@ pub(crate) fn compare_field_values(a: &FieldValue, b: &FieldValue) -> Option<Ord
 
 fn format_field_value(fv: &FieldValue) -> String {
     match fv {
-        FieldValue::String(s)
-        | FieldValue::Choice(s)
-        | FieldValue::Date(s)
-        | FieldValue::Link(s) => s.clone(),
+        FieldValue::String(s) | FieldValue::Choice(s) | FieldValue::Date(s) => s.clone(),
+        FieldValue::Link(id) => id.to_string(),
         FieldValue::Integer(i) => i.to_string(),
         FieldValue::Float(f) => f.to_string(),
         FieldValue::Boolean(b) => b.to_string(),
-        FieldValue::Multichoice(v) | FieldValue::List(v) | FieldValue::Links(v) => {
+        FieldValue::Multichoice(v) | FieldValue::List(v) => {
             format!("[{}]", v.join(", "))
+        }
+        FieldValue::Links(ids) => {
+            let strs: Vec<&str> = ids.iter().map(|id| id.as_str()).collect();
+            format!("[{}]", strs.join(", "))
         }
     }
 }

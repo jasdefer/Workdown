@@ -10,7 +10,7 @@ use regex::Regex;
 
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind, FieldValueError};
 use crate::model::schema::{FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity};
-use crate::model::FieldValue;
+use crate::model::{FieldValue, WorkItemId};
 use crate::parser::RawWorkItem;
 
 /// Coerce raw frontmatter values into typed [`FieldValue`]s according to the schema.
@@ -310,7 +310,7 @@ fn coerce_link(value: &serde_yaml::Value) -> Result<FieldValue, FieldValueError>
             got: yaml_type_name(value).into(),
         })?;
 
-    Ok(FieldValue::Link(s.to_owned()))
+    Ok(FieldValue::Link(WorkItemId::from(s.to_owned())))
 }
 
 fn coerce_links(value: &serde_yaml::Value) -> Result<FieldValue, FieldValueError> {
@@ -329,7 +329,7 @@ fn coerce_links(value: &serde_yaml::Value) -> Result<FieldValue, FieldValueError
                 expected: FieldType::Links,
                 got: format!("sequence containing {}", yaml_type_name(item)),
             })?;
-        result.push(s.to_owned());
+        result.push(WorkItemId::from(s.to_owned()));
     }
 
     Ok(FieldValue::Links(result))
@@ -420,7 +420,7 @@ mod tests {
     /// Build a RawWorkItem with the given frontmatter.
     fn raw_item(id: &str, frontmatter: Vec<(&str, serde_yaml::Value)>) -> RawWorkItem {
         RawWorkItem {
-            id: id.to_owned(),
+            id: WorkItemId::from(id.to_owned()),
             frontmatter: frontmatter
                 .into_iter()
                 .map(|(k, v)| (k.to_owned(), v))
@@ -794,7 +794,7 @@ mod tests {
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
-        assert_eq!(fields["parent"], FieldValue::Link("auth-epic".into()));
+        assert_eq!(fields["parent"], FieldValue::Link(WorkItemId::from("auth-epic".to_owned())));
     }
 
     #[test]
@@ -822,7 +822,7 @@ mod tests {
         assert!(diagnostics.is_empty());
         assert_eq!(
             fields["depends_on"],
-            FieldValue::Links(vec!["a".into(), "b".into()])
+            FieldValue::Links(vec![WorkItemId::from("a".to_owned()), WorkItemId::from("b".to_owned())])
         );
     }
 

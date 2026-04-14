@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::model::schema::{FieldTypeConfig, Schema, Severity};
-use crate::model::FieldValue;
+use crate::model::{FieldValue, WorkItemId};
 
 use super::Store;
 
@@ -47,13 +47,16 @@ enum Color {
 fn detect_cycles_in_field(store: &Store, field_name: &str, diagnostics: &mut Vec<Diagnostic>) {
     let items = store.items_map();
 
-    let mut color: HashMap<&str, Color> = items.keys().map(|id| (id.as_str(), Color::White)).collect();
+    let mut color: HashMap<&str, Color> = items
+        .keys()
+        .map(|id| (id.as_str(), Color::White))
+        .collect();
 
     // Sort for deterministic traversal order.
     let mut ids: Vec<&str> = color.keys().copied().collect();
     ids.sort();
 
-    let mut path: Vec<String> = Vec::new();
+    let mut path: Vec<WorkItemId> = Vec::new();
 
     for id in ids {
         if color[id] == Color::White {
@@ -67,11 +70,11 @@ fn dfs<'store>(
     field_name: &str,
     node: &'store str,
     color: &mut HashMap<&'store str, Color>,
-    path: &mut Vec<String>,
+    path: &mut Vec<WorkItemId>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     color.insert(node, Color::Gray);
-    path.push(node.to_owned());
+    path.push(WorkItemId::from(node.to_owned()));
 
     for target in targets(store, node, field_name) {
         // Skip broken links (already reported by Store::load).
@@ -111,7 +114,7 @@ fn targets<'a>(store: &'a Store, node_id: &str, field_name: &str) -> Vec<&'a str
         .and_then(|item| item.fields.get(field_name))
         .map(|fv| match fv {
             FieldValue::Link(t) => vec![t.as_str()],
-            FieldValue::Links(ts) => ts.iter().map(|s| s.as_str()).collect(),
+            FieldValue::Links(ts) => ts.iter().map(|id| id.as_str()).collect(),
             _ => vec![],
         })
         .unwrap_or_default()
@@ -121,7 +124,7 @@ fn targets<'a>(store: &'a Store, node_id: &str, field_name: &str) -> Vec<&'a str
 ///
 /// Input: `["b", "c", "a"]` (the cycle body from the DFS path).
 /// Output: `["a", "b", "c", "a"]` (rotated + closed).
-fn canonicalize_cycle(cycle_body: &[String]) -> Vec<String> {
+fn canonicalize_cycle(cycle_body: &[WorkItemId]) -> Vec<WorkItemId> {
     let min_pos = cycle_body
         .iter()
         .enumerate()
@@ -196,6 +199,11 @@ mod tests {
         }
     }
 
+    /// Convert a list of string slices into a `Vec<WorkItemId>` for test assertions.
+    fn ids(strs: &[&str]) -> Vec<WorkItemId> {
+        strs.iter().map(|s| WorkItemId::from(s.to_string())).collect()
+    }
+
     // ── Tests ───────────────────────────────────────────────────────
 
     #[test]
@@ -234,7 +242,7 @@ mod tests {
         match &diags[0].kind {
             DiagnosticKind::Cycle { field, chain } => {
                 assert_eq!(field, "parent");
-                assert_eq!(chain, &vec!["a", "b", "a"]);
+                assert_eq!(*chain, ids(&["a", "b", "a"]));
             }
             other => panic!("expected Cycle, got {other:?}"),
         }
@@ -253,7 +261,7 @@ mod tests {
         match &diags[0].kind {
             DiagnosticKind::Cycle { field, chain } => {
                 assert_eq!(field, "parent");
-                assert_eq!(chain, &vec!["a", "a"]);
+                assert_eq!(*chain, ids(&["a", "a"]));
             }
             other => panic!("expected Cycle, got {other:?}"),
         }
@@ -273,7 +281,7 @@ mod tests {
         assert_eq!(diags.len(), 1);
         match &diags[0].kind {
             DiagnosticKind::Cycle { chain, .. } => {
-                assert_eq!(chain, &vec!["a", "c", "b", "a"]);
+                assert_eq!(*chain, ids(&["a", "c", "b", "a"]));
             }
             other => panic!("expected Cycle, got {other:?}"),
         }
@@ -294,7 +302,7 @@ mod tests {
         match &diags[0].kind {
             DiagnosticKind::Cycle { field, chain } => {
                 assert_eq!(field, "depends_on");
-                assert_eq!(chain, &vec!["a", "b", "c", "a"]);
+                assert_eq!(*chain, ids(&["a", "b", "c", "a"]));
             }
             other => panic!("expected Cycle, got {other:?}"),
         }
@@ -313,16 +321,16 @@ mod tests {
         let diags = detect_cycles(&store, &schema);
 
         assert_eq!(diags.len(), 2);
-        let mut chains: Vec<Vec<String>> = diags
+        let mut chains: Vec<Vec<WorkItemId>> = diags
             .iter()
             .map(|d| match &d.kind {
                 DiagnosticKind::Cycle { chain, .. } => chain.clone(),
                 other => panic!("expected Cycle, got {other:?}"),
             })
             .collect();
-        chains.sort();
-        assert_eq!(chains[0], vec!["a", "b", "a"]);
-        assert_eq!(chains[1], vec!["c", "d", "c"]);
+        chains.sort_by(|a, b| a[0].as_str().cmp(b[0].as_str()));
+        assert_eq!(chains[0], ids(&["a", "b", "a"]));
+        assert_eq!(chains[1], ids(&["c", "d", "c"]));
     }
 
     #[test]
@@ -405,7 +413,7 @@ mod tests {
         match &diags[0].kind {
             DiagnosticKind::Cycle { field, chain } => {
                 assert_eq!(field, "depends_on");
-                assert_eq!(chain, &vec!["a", "b", "a"]);
+                assert_eq!(*chain, ids(&["a", "b", "a"]));
             }
             other => panic!("expected Cycle, got {other:?}"),
         }

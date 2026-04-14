@@ -101,12 +101,12 @@ pub(crate) fn field_value_matches(fv: &FieldValue, cv: &ConditionValue) -> bool 
         (FieldValue::String(s), ConditionValue::String(cs)) => s == cs,
         (FieldValue::Choice(s), ConditionValue::String(cs)) => s == cs,
         (FieldValue::Date(s), ConditionValue::String(cs)) => s == cs,
-        (FieldValue::Link(s), ConditionValue::String(cs)) => s == cs,
+        (FieldValue::Link(s), ConditionValue::String(cs)) => s.as_str() == cs,
 
         // Multichoice/List: membership check
         (FieldValue::Multichoice(vals), ConditionValue::String(cs)) => vals.iter().any(|v| v == cs),
         (FieldValue::List(vals), ConditionValue::String(cs)) => vals.iter().any(|v| v == cs),
-        (FieldValue::Links(vals), ConditionValue::String(cs)) => vals.iter().any(|v| v == cs),
+        (FieldValue::Links(vals), ConditionValue::String(cs)) => vals.iter().any(|v| v.as_str() == cs.as_str()),
 
         // Numeric field types match numeric condition values
         (FieldValue::Integer(i), ConditionValue::Number(n)) => *i as f64 == *n,
