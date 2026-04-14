@@ -1,7 +1,10 @@
 //! Core data types: work items, schema definitions, and project configuration.
 
+pub mod assertion;
+pub mod condition;
 pub mod config;
 pub mod diagnostic;
+pub mod rule;
 pub mod schema;
 
 use std::collections::HashMap;
