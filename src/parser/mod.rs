@@ -178,7 +178,7 @@ pub(crate) fn parse_work_item(content: &str, path: &Path) -> Result<RawWorkItem,
 
 /// Check whether an ID is valid: non-empty, starts with a lowercase letter,
 /// contains only lowercase letters, digits, and hyphens, and doesn't end with a hyphen.
-fn is_valid_id(id: &str) -> bool {
+pub(crate) fn is_valid_id(id: &str) -> bool {
     if id.is_empty() {
         return false;
     }

@@ -11,6 +11,8 @@
 mod coerce;
 mod cycles;
 
+pub(crate) use coerce::coerce_fields;
+
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -146,6 +148,15 @@ impl Store {
             reverse_links,
             diagnostics,
         })
+    }
+
+    /// Insert a new work item into the store.
+    ///
+    /// Used by `workdown add` to enable rule evaluation on the newly created item.
+    /// Does not rebuild reverse links — callers that need accurate reverse links
+    /// after insertion should reload the store.
+    pub fn insert(&mut self, item: WorkItem) {
+        self.items.insert(item.id.clone(), item);
     }
 
     /// Look up a work item by its ID.

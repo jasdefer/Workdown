@@ -43,6 +43,10 @@ pub enum Command {
     Add {
         /// Title of the work item
         title: String,
+
+        /// Set a field value (repeatable). Format: key=value. Values are parsed as YAML.
+        #[arg(long = "set", value_name = "KEY=VALUE")]
+        set: Vec<String>,
     },
     /// Query and filter work items
     Query,

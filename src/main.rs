@@ -58,9 +58,31 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         Ok(ExitCode::SUCCESS)
                     }
                 }
-                cli::Command::Add { title } => {
+                cli::Command::Add { title, set } => {
                     tracing::info!(title, "creating work item");
-                    anyhow::bail!("not yet implemented — coming in Phase 3");
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    match workdown::commands::add::run_add(&config, &project_root, title, set) {
+                        Ok(outcome) => {
+                            cli::output::success(&format!(
+                                "Created {}",
+                                outcome.path.display()
+                            ));
+                            for warning in &outcome.warnings {
+                                cli::output::warning(&warning.to_string());
+                            }
+                            Ok(ExitCode::SUCCESS)
+                        }
+                        Err(workdown::commands::add::AddError::ValidationFailed {
+                            diagnostics,
+                        }) => {
+                            for diagnostic in &diagnostics {
+                                cli::output::error(&diagnostic.to_string());
+                            }
+                            Ok(ExitCode::FAILURE)
+                        }
+                        Err(error) => Err(error.into()),
+                    }
                 }
                 cli::Command::Query => {
                     tracing::info!("querying work items");

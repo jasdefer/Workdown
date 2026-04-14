@@ -18,6 +18,8 @@ regex = "1"
 walkdir = "2"
 console = "0.15"
 comfy-table = "7"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
 tempfile = "3"
