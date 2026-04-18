@@ -6,17 +6,25 @@
 use crate::model::schema::{FieldType, Schema};
 use crate::model::{FieldValue, WorkItem};
 use crate::query::types::{Comparison, FieldReference, Operator, Predicate};
+use crate::resolve::{resolve_field_ref, ResolvedValues};
+use crate::store::Store;
 
 // ── Error ───────────────────────────────────────────────────────────
 
 /// Errors produced during predicate evaluation.
 #[derive(Debug, thiserror::Error)]
 pub enum QueryEvalError {
-    #[error("related field queries are not yet supported")]
-    RelatedFieldNotSupported,
-
     #[error("invalid regex: {0}")]
     InvalidRegex(String),
+
+    #[error("'{relation}' is not a relation field (type {actual_type:?}); dot notation requires a link or links field or an inverse relation")]
+    NotARelation {
+        relation: String,
+        actual_type: FieldType,
+    },
+
+    #[error("'{relation}' is not a defined field or inverse relation")]
+    UnknownRelation { relation: String },
 }
 
 // ── Public API ──────────────────────────────────────────────────────
@@ -28,12 +36,13 @@ pub fn matches_predicate(
     item: &WorkItem,
     predicate: &Predicate,
     schema: &Schema,
+    store: &Store,
 ) -> Result<bool, QueryEvalError> {
     match predicate {
-        Predicate::Comparison(comparison) => eval_comparison(item, comparison, schema),
+        Predicate::Comparison(comparison) => eval_comparison(item, comparison, schema, store),
         Predicate::And(predicates) => {
             for predicate in predicates {
-                if !matches_predicate(item, predicate, schema)? {
+                if !matches_predicate(item, predicate, schema, store)? {
                     return Ok(false);
                 }
             }
@@ -41,13 +50,13 @@ pub fn matches_predicate(
         }
         Predicate::Or(predicates) => {
             for predicate in predicates {
-                if matches_predicate(item, predicate, schema)? {
+                if matches_predicate(item, predicate, schema, store)? {
                     return Ok(true);
                 }
             }
             Ok(false)
         }
-        Predicate::Not(inner) => Ok(!matches_predicate(item, inner, schema)?),
+        Predicate::Not(inner) => Ok(!matches_predicate(item, inner, schema, store)?),
     }
 }
 
@@ -57,14 +66,76 @@ fn eval_comparison(
     item: &WorkItem,
     comparison: &Comparison,
     schema: &Schema,
+    store: &Store,
 ) -> Result<bool, QueryEvalError> {
-    let field_name = match &comparison.field {
-        FieldReference::Local(name) => name.as_str(),
-        FieldReference::Related { .. } => return Err(QueryEvalError::RelatedFieldNotSupported),
-    };
+    match &comparison.field {
+        FieldReference::Local(name) => {
+            let field_value = item.fields.get(name);
+            let field_type = schema
+                .fields
+                .get(name)
+                .map(|definition| definition.field_type());
+            eval_single(field_value, field_type, comparison)
+        }
+        FieldReference::Related { relation, field } => {
+            validate_relation(relation, schema)?;
 
-    let field_value = item.fields.get(field_name);
+            let reference = format!("{relation}.{field}");
+            let resolved = resolve_field_ref(item, &reference, schema, store);
 
+            // Use the target field's schema type for type-aware comparison.
+            let field_type = schema
+                .fields
+                .get(field.as_str())
+                .map(|definition| definition.field_type());
+
+            match resolved {
+                ResolvedValues::Single(field_value) => {
+                    eval_single(field_value, field_type, comparison)
+                }
+                ResolvedValues::Many(values) => {
+                    // "Any" semantics: matches if at least one resolved
+                    // value satisfies the predicate.
+                    for value in values.iter() {
+                        if eval_single(*value, field_type, comparison)? {
+                            return Ok(true);
+                        }
+                    }
+                    Ok(false)
+                }
+            }
+        }
+    }
+}
+
+/// Validate that a relation segment (the part before the dot) is a link,
+/// links, or defined inverse. Returns an error otherwise.
+fn validate_relation(relation: &str, schema: &Schema) -> Result<(), QueryEvalError> {
+    if let Some(field_def) = schema.fields.get(relation) {
+        let field_type = field_def.field_type();
+        return match field_type {
+            FieldType::Link | FieldType::Links => Ok(()),
+            _ => Err(QueryEvalError::NotARelation {
+                relation: relation.to_owned(),
+                actual_type: field_type,
+            }),
+        };
+    }
+    if schema.inverse_table.contains_key(relation) {
+        return Ok(());
+    }
+    Err(QueryEvalError::UnknownRelation {
+        relation: relation.to_owned(),
+    })
+}
+
+/// Evaluate a comparison against a single resolved field value. Used for
+/// both local fields and each value produced by a related-field lookup.
+fn eval_single(
+    field_value: Option<&FieldValue>,
+    field_type: Option<FieldType>,
+    comparison: &Comparison,
+) -> Result<bool, QueryEvalError> {
     // IsSet / IsNotSet don't need a value.
     match comparison.operator {
         Operator::IsSet => return Ok(field_value.is_some()),
@@ -72,18 +143,10 @@ fn eval_comparison(
         _ => {}
     }
 
-    // All other operators require a value to be present.
     let field_value = match field_value {
         Some(value) => value,
         None => return Ok(false),
     };
-
-    // Determine the field type from the schema. If the field isn't in the
-    // schema, fall back to string comparison.
-    let field_type = schema
-        .fields
-        .get(field_name)
-        .map(|definition| definition.field_type());
 
     match field_type {
         Some(FieldType::Integer) => eval_integer(field_value, comparison),
@@ -314,6 +377,23 @@ mod tests {
     use indexmap::IndexMap;
     use std::path::PathBuf;
 
+    /// Build an empty store for tests that only use local fields.
+    fn empty_store(schema: &Schema) -> Store {
+        let dir = tempfile::tempdir().unwrap();
+        Store::load(dir.path(), schema).unwrap()
+    }
+
+    /// Wrapper: evaluates a predicate using an empty store. Use for tests
+    /// that only exercise local-field predicates.
+    fn check(
+        item: &WorkItem,
+        predicate: &Predicate,
+        schema: &Schema,
+    ) -> Result<bool, QueryEvalError> {
+        let store = empty_store(schema);
+        matches_predicate(item, predicate, schema, &store)
+    }
+
     /// Build a test schema with common field types.
     fn test_schema() -> Schema {
         let mut fields = IndexMap::new();
@@ -409,7 +489,7 @@ mod tests {
         let schema = test_schema();
         let item = make_item("t1", vec![("status", FieldValue::Choice("open".into()))]);
         let predicate = comparison("status", Operator::Equal, "open");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     #[test]
@@ -417,7 +497,7 @@ mod tests {
         let schema = test_schema();
         let item = make_item("t1", vec![("status", FieldValue::Choice("done".into()))]);
         let predicate = comparison("status", Operator::Equal, "open");
-        assert!(!matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(!check(&item, &predicate, &schema).unwrap());
     }
 
     #[test]
@@ -425,7 +505,7 @@ mod tests {
         let schema = test_schema();
         let item = make_item("t1", vec![("status", FieldValue::Choice("open".into()))]);
         let predicate = comparison("status", Operator::NotEqual, "done");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     // ── Integer comparison ──────────────────────────────────────
@@ -435,7 +515,7 @@ mod tests {
         let schema = test_schema();
         let item = make_item("t1", vec![("points", FieldValue::Integer(5))]);
         let predicate = comparison("points", Operator::GreaterThan, "3");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     #[test]
@@ -443,7 +523,7 @@ mod tests {
         let schema = test_schema();
         let item = make_item("t1", vec![("points", FieldValue::Integer(2))]);
         let predicate = comparison("points", Operator::GreaterThan, "3");
-        assert!(!matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(!check(&item, &predicate, &schema).unwrap());
     }
 
     #[test]
@@ -451,7 +531,7 @@ mod tests {
         let schema = test_schema();
         let item = make_item("t1", vec![("points", FieldValue::Integer(5))]);
         let predicate = comparison("points", Operator::Equal, "5");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     #[test]
@@ -459,7 +539,7 @@ mod tests {
         let schema = test_schema();
         let item = make_item("t1", vec![("points", FieldValue::Integer(3))]);
         let predicate = comparison("points", Operator::LessOrEqual, "3");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     // ── Float comparison ────────────────────────────────────────
@@ -469,7 +549,7 @@ mod tests {
         let schema = test_schema();
         let item = make_item("t1", vec![("weight", FieldValue::Float(1.5))]);
         let predicate = comparison("weight", Operator::GreaterOrEqual, "1.5");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     // ── Boolean comparison ──────────────────────────────────────
@@ -479,7 +559,7 @@ mod tests {
         let schema = test_schema();
         let item = make_item("t1", vec![("active", FieldValue::Boolean(true))]);
         let predicate = comparison("active", Operator::Equal, "true");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     #[test]
@@ -487,7 +567,7 @@ mod tests {
         let schema = test_schema();
         let item = make_item("t1", vec![("active", FieldValue::Boolean(true))]);
         let predicate = comparison("active", Operator::Equal, "false");
-        assert!(!matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(!check(&item, &predicate, &schema).unwrap());
     }
 
     // ── Contains ────────────────────────────────────────────────
@@ -500,7 +580,7 @@ mod tests {
             vec![("title", FieldValue::String("Fix login bug".into()))],
         );
         let predicate = comparison("title", Operator::Contains, "login");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     #[test]
@@ -514,7 +594,7 @@ mod tests {
             )],
         );
         let predicate = comparison("tags", Operator::Equal, "auth");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     #[test]
@@ -528,7 +608,7 @@ mod tests {
             )],
         );
         let predicate = comparison("labels", Operator::Equal, "backend");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     // ── Regex ───────────────────────────────────────────────────
@@ -541,7 +621,7 @@ mod tests {
             vec![("title", FieldValue::String("Fix-login-bug".into()))],
         );
         let predicate = comparison("title", Operator::Matches, "/^Fix-.*/");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     #[test]
@@ -552,7 +632,7 @@ mod tests {
             vec![("title", FieldValue::String("fix-login-bug".into()))],
         );
         let predicate = comparison("title", Operator::Matches, "/^Fix-.*/i");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     // ── IsSet / IsNotSet ────────────────────────────────────────
@@ -565,7 +645,7 @@ mod tests {
             vec![("title", FieldValue::String("Something".into()))],
         );
         let predicate = comparison("title", Operator::IsSet, "");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     #[test]
@@ -573,7 +653,7 @@ mod tests {
         let schema = test_schema();
         let item = make_item("t1", vec![]);
         let predicate = comparison("title", Operator::IsSet, "");
-        assert!(!matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(!check(&item, &predicate, &schema).unwrap());
     }
 
     #[test]
@@ -581,7 +661,7 @@ mod tests {
         let schema = test_schema();
         let item = make_item("t1", vec![]);
         let predicate = comparison("title", Operator::IsNotSet, "");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     // ── Missing field ───────────────────────────────────────────
@@ -591,7 +671,7 @@ mod tests {
         let schema = test_schema();
         let item = make_item("t1", vec![]);
         let predicate = comparison("points", Operator::GreaterThan, "3");
-        assert!(!matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(!check(&item, &predicate, &schema).unwrap());
     }
 
     // ── And / Or / Not composition ──────────────────────────────
@@ -610,7 +690,7 @@ mod tests {
             comparison("status", Operator::Equal, "open"),
             comparison("points", Operator::GreaterThan, "3"),
         ]);
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     #[test]
@@ -627,7 +707,7 @@ mod tests {
             comparison("status", Operator::Equal, "open"),
             comparison("points", Operator::GreaterThan, "3"),
         ]);
-        assert!(!matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(!check(&item, &predicate, &schema).unwrap());
     }
 
     #[test]
@@ -638,7 +718,7 @@ mod tests {
             comparison("status", Operator::Equal, "open"),
             comparison("status", Operator::Equal, "done"),
         ]);
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     #[test]
@@ -646,27 +726,7 @@ mod tests {
         let schema = test_schema();
         let item = make_item("t1", vec![("status", FieldValue::Choice("open".into()))]);
         let predicate = Predicate::Not(Box::new(comparison("status", Operator::Equal, "done")));
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
-    }
-
-    // ── Related field error ─────────────────────────────────────
-
-    #[test]
-    fn related_field_returns_error() {
-        let schema = test_schema();
-        let item = make_item("t1", vec![]);
-        let predicate = Predicate::Comparison(Comparison {
-            field: FieldReference::Related {
-                relation: "parent".to_owned(),
-                field: "status".to_owned(),
-            },
-            operator: Operator::Equal,
-            value: "open".to_owned(),
-        });
-        assert!(matches!(
-            matches_predicate(&item, &predicate, &schema),
-            Err(QueryEvalError::RelatedFieldNotSupported)
-        ));
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     // ── Date comparison (lexicographic) ─────────────────────────
@@ -679,7 +739,7 @@ mod tests {
             vec![("due_date", FieldValue::Date("2026-03-15".into()))],
         );
         let predicate = comparison("due_date", Operator::GreaterThan, "2026-03-01");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     // ── Link comparison ─────────────────────────────────────────
@@ -692,7 +752,7 @@ mod tests {
             vec![("parent", FieldValue::Link(WorkItemId::from("epic-1".to_owned())))],
         );
         let predicate = comparison("parent", Operator::Equal, "epic-1");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
     }
 
     // ── Links membership ────────────────────────────────────────
@@ -711,6 +771,245 @@ mod tests {
             )],
         );
         let predicate = comparison("depends_on", Operator::Equal, "task-a");
-        assert!(matches_predicate(&item, &predicate, &schema).unwrap());
+        assert!(check(&item, &predicate, &schema).unwrap());
+    }
+
+    // ── Cross-item (related-field) predicates ───────────────────
+
+    /// Load a store from a set of in-memory markdown files.
+    fn store_from_files(
+        schema: &Schema,
+        files: Vec<(&str, &str)>,
+    ) -> (tempfile::TempDir, Store) {
+        let dir = tempfile::tempdir().unwrap();
+        for (name, content) in files {
+            std::fs::write(dir.path().join(name), content).unwrap();
+        }
+        let store = Store::load(dir.path(), schema).unwrap();
+        (dir, store)
+    }
+
+    fn related_comparison(
+        relation: &str,
+        field: &str,
+        operator: Operator,
+        value: &str,
+    ) -> Predicate {
+        Predicate::Comparison(Comparison {
+            field: FieldReference::Related {
+                relation: relation.to_owned(),
+                field: field.to_owned(),
+            },
+            operator,
+            value: value.to_owned(),
+        })
+    }
+
+    #[test]
+    fn related_forward_link_match() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![
+                ("epic.md", "---\nstatus: open\n---\n"),
+                ("task-a.md", "---\nstatus: done\nparent: epic\n---\n"),
+            ],
+        );
+        let item = store.get("task-a").unwrap();
+        let predicate = related_comparison("parent", "status", Operator::Equal, "open");
+        assert!(matches_predicate(item, &predicate, &schema, &store).unwrap());
+    }
+
+    #[test]
+    fn related_forward_link_no_match() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![
+                ("epic.md", "---\nstatus: done\n---\n"),
+                ("task-a.md", "---\nstatus: done\nparent: epic\n---\n"),
+            ],
+        );
+        let item = store.get("task-a").unwrap();
+        let predicate = related_comparison("parent", "status", Operator::Equal, "open");
+        assert!(!matches_predicate(item, &predicate, &schema, &store).unwrap());
+    }
+
+    #[test]
+    fn related_forward_link_missing_target() {
+        // task has parent: missing but target doesn't exist in store.
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![
+                ("task-a.md", "---\nstatus: done\nparent: missing\n---\n"),
+            ],
+        );
+        let item = store.get("task-a").unwrap();
+        let predicate = related_comparison("parent", "status", Operator::Equal, "open");
+        assert!(!matches_predicate(item, &predicate, &schema, &store).unwrap());
+    }
+
+    #[test]
+    fn related_forward_link_unset_relation() {
+        // Task with no parent at all.
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![("task-a.md", "---\nstatus: open\n---\n")],
+        );
+        let item = store.get("task-a").unwrap();
+        let predicate = related_comparison("parent", "status", Operator::Equal, "open");
+        assert!(!matches_predicate(item, &predicate, &schema, &store).unwrap());
+    }
+
+    #[test]
+    fn related_forward_links_any_matches() {
+        // depends_on (links) — "any" semantics: true if any dep has open status.
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![
+                ("dep-a.md", "---\nstatus: done\n---\n"),
+                ("dep-b.md", "---\nstatus: open\n---\n"),
+                ("task.md", "---\nstatus: open\ndepends_on: [dep-a, dep-b]\n---\n"),
+            ],
+        );
+        let item = store.get("task").unwrap();
+        let predicate = related_comparison("depends_on", "status", Operator::Equal, "open");
+        assert!(matches_predicate(item, &predicate, &schema, &store).unwrap());
+    }
+
+    #[test]
+    fn related_forward_links_none_match() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![
+                ("dep-a.md", "---\nstatus: done\n---\n"),
+                ("dep-b.md", "---\nstatus: done\n---\n"),
+                ("task.md", "---\nstatus: open\ndepends_on: [dep-a, dep-b]\n---\n"),
+            ],
+        );
+        let item = store.get("task").unwrap();
+        let predicate = related_comparison("depends_on", "status", Operator::Equal, "open");
+        assert!(!matches_predicate(item, &predicate, &schema, &store).unwrap());
+    }
+
+    #[test]
+    fn related_inverse_match() {
+        // children.status — inverse of parent.
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![
+                ("epic.md", "---\nstatus: open\n---\n"),
+                ("child-a.md", "---\nstatus: done\nparent: epic\n---\n"),
+                ("child-b.md", "---\nstatus: open\nparent: epic\n---\n"),
+            ],
+        );
+        let item = store.get("epic").unwrap();
+        let predicate = related_comparison("children", "status", Operator::Equal, "open");
+        assert!(matches_predicate(item, &predicate, &schema, &store).unwrap());
+    }
+
+    #[test]
+    fn related_inverse_no_children() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![("leaf.md", "---\nstatus: open\n---\n")],
+        );
+        let item = store.get("leaf").unwrap();
+        let predicate = related_comparison("children", "status", Operator::Equal, "open");
+        assert!(!matches_predicate(item, &predicate, &schema, &store).unwrap());
+    }
+
+    #[test]
+    fn related_is_set_on_related_field() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![
+                ("epic.md", "---\nstatus: open\n---\n"),
+                ("task-a.md", "---\nstatus: done\nparent: epic\n---\n"),
+            ],
+        );
+        let item = store.get("task-a").unwrap();
+        let predicate = related_comparison("parent", "status", Operator::IsSet, "");
+        assert!(matches_predicate(item, &predicate, &schema, &store).unwrap());
+    }
+
+    #[test]
+    fn related_is_set_unset_relation() {
+        // No parent link → is_set should be false.
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![("task-a.md", "---\nstatus: open\n---\n")],
+        );
+        let item = store.get("task-a").unwrap();
+        let predicate = related_comparison("parent", "status", Operator::IsSet, "");
+        assert!(!matches_predicate(item, &predicate, &schema, &store).unwrap());
+    }
+
+    #[test]
+    fn related_contains_on_traversal() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![
+                ("epic.md", "---\ntitle: Fix login bug\nstatus: open\n---\n"),
+                ("task-a.md", "---\nstatus: done\nparent: epic\n---\n"),
+            ],
+        );
+        let item = store.get("task-a").unwrap();
+        let predicate = related_comparison("parent", "title", Operator::Contains, "login");
+        assert!(matches_predicate(item, &predicate, &schema, &store).unwrap());
+    }
+
+    #[test]
+    fn related_combined_with_and() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![
+                ("epic.md", "---\nstatus: open\n---\n"),
+                ("task-a.md", "---\nstatus: done\nparent: epic\n---\n"),
+            ],
+        );
+        let item = store.get("task-a").unwrap();
+        let predicate = Predicate::And(vec![
+            comparison("status", Operator::Equal, "done"),
+            related_comparison("parent", "status", Operator::Equal, "open"),
+        ]);
+        assert!(matches_predicate(item, &predicate, &schema, &store).unwrap());
+    }
+
+    #[test]
+    fn related_not_a_relation_errors() {
+        // `title` is a string field — cannot traverse.
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![("task-a.md", "---\ntitle: A\nstatus: open\n---\n")],
+        );
+        let item = store.get("task-a").unwrap();
+        let predicate = related_comparison("title", "whatever", Operator::Equal, "x");
+        let result = matches_predicate(item, &predicate, &schema, &store);
+        assert!(matches!(result, Err(QueryEvalError::NotARelation { .. })));
+    }
+
+    #[test]
+    fn related_unknown_relation_errors() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![("task-a.md", "---\nstatus: open\n---\n")],
+        );
+        let item = store.get("task-a").unwrap();
+        let predicate = related_comparison("nonexistent", "status", Operator::Equal, "x");
+        let result = matches_predicate(item, &predicate, &schema, &store);
+        assert!(matches!(result, Err(QueryEvalError::UnknownRelation { .. })));
     }
 }

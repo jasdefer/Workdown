@@ -8,5 +8,6 @@ pub mod commands;
 pub mod model;
 pub mod parser;
 pub mod query;
+pub mod resolve;
 pub mod rules;
 pub mod store;

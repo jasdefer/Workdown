@@ -2,18 +2,18 @@
 //!
 //! Resolves field references like `"status"` (plain) or `"parent.status"`
 //! (dot-notation forward) or `"children.type"` (dot-notation inverse)
-//! against a work item and the store.
+//! against a work item and the store. Used by both the rules engine and
+//! the query engine.
 
-use crate::model::schema::{FieldType, FieldTypeConfig};
+use crate::model::schema::{FieldType, FieldTypeConfig, Schema};
 use crate::model::{FieldValue, WorkItem};
-
-use super::EvalContext;
+use crate::store::Store;
 
 // ── Resolved values ─────────────────────────────────────────────────
 
 /// The result of resolving a field reference.
 #[derive(Debug)]
-pub(crate) enum ResolvedValues<'a> {
+pub enum ResolvedValues<'a> {
     /// A single value from the current item or a single related item.
     Single(Option<&'a FieldValue>),
     /// Multiple values from a one-to-many traversal (links field or inverse).
@@ -22,7 +22,7 @@ pub(crate) enum ResolvedValues<'a> {
 
 // ── Field reference resolution ──────────────────────────────────────
 
-/// Resolve a field reference against an item and the store.
+/// Resolve a field reference against an item, schema, and store.
 ///
 /// - Plain reference (`"status"`): returns `Single(item.fields.get("status"))`.
 /// - Dot-notation forward via link (`"parent.status"`): follows the link,
@@ -31,10 +31,11 @@ pub(crate) enum ResolvedValues<'a> {
 ///   target, reads the field. Returns `Many`.
 /// - Dot-notation via inverse (`"children.type"`): finds items linking to
 ///   this one, reads the field on each. Returns `Many`.
-pub(crate) fn resolve_field_ref<'a>(
+pub fn resolve_field_ref<'a>(
     item: &'a WorkItem,
     reference: &str,
-    ctx: &'a EvalContext<'a>,
+    schema: &'a Schema,
+    store: &'a Store,
 ) -> ResolvedValues<'a> {
     let parts: Vec<&str> = reference.split('.').collect();
 
@@ -47,7 +48,7 @@ pub(crate) fn resolve_field_ref<'a>(
     let field_name = parts[1];
 
     // Check if relationship is a forward link/links field
-    if let Some(field_def) = ctx.schema.fields.get(relationship) {
+    if let Some(field_def) = schema.fields.get(relationship) {
         match &field_def.type_config {
             FieldTypeConfig::Link { .. } => {
                 // Follow the single link
@@ -55,7 +56,7 @@ pub(crate) fn resolve_field_ref<'a>(
                     .fields
                     .get(relationship)
                     .and_then(|field_value| match field_value {
-                        FieldValue::Link(target_id) => ctx.store.get(target_id.as_str()),
+                        FieldValue::Link(target_id) => store.get(target_id.as_str()),
                         _ => None,
                     })
                     .and_then(|target| target.fields.get(field_name));
@@ -66,7 +67,7 @@ pub(crate) fn resolve_field_ref<'a>(
                 let values = match item.fields.get(relationship) {
                     Some(FieldValue::Links(target_ids)) => target_ids
                         .iter()
-                        .filter_map(|id| ctx.store.get(id.as_str()))
+                        .filter_map(|id| store.get(id.as_str()))
                         .map(|target| target.fields.get(field_name))
                         .collect(),
                     _ => vec![],
@@ -82,8 +83,8 @@ pub(crate) fn resolve_field_ref<'a>(
     }
 
     // Check if relationship is an inverse name
-    if let Some(original_field) = ctx.schema.inverse_table.get(relationship) {
-        let related = ctx.store.referring_items(item.id.as_str(), original_field);
+    if let Some(original_field) = schema.inverse_table.get(relationship) {
+        let related = store.referring_items(item.id.as_str(), original_field);
         let values = related
             .iter()
             .map(|related_item| related_item.fields.get(field_name))
@@ -100,17 +101,18 @@ pub(crate) fn resolve_field_ref<'a>(
 /// Used for count-based assertions like `children: { min_count: 1 }` where
 /// the reference is an inverse or links field name without a dot-notation
 /// field access.
-pub(crate) fn resolve_related_items<'a>(
+pub fn resolve_related_items<'a>(
     item: &'a WorkItem,
     reference: &str,
-    ctx: &'a EvalContext<'a>,
+    schema: &'a Schema,
+    store: &'a Store,
 ) -> Vec<&'a WorkItem> {
     // Bare reference — no dot. Check if it's a links field or inverse.
-    if let Some(field_def) = ctx.schema.fields.get(reference) {
+    if let Some(field_def) = schema.fields.get(reference) {
         if field_def.field_type() == FieldType::Links {
             return match item.fields.get(reference) {
                 Some(FieldValue::Links(ids)) => {
-                    ids.iter().filter_map(|id| ctx.store.get(id.as_str())).collect()
+                    ids.iter().filter_map(|id| store.get(id.as_str())).collect()
                 }
                 _ => vec![],
             };
@@ -118,8 +120,8 @@ pub(crate) fn resolve_related_items<'a>(
     }
 
     // Check inverse table
-    if let Some(original_field) = ctx.schema.inverse_table.get(reference) {
-        return ctx.store.referring_items(item.id.as_str(), original_field);
+    if let Some(original_field) = schema.inverse_table.get(reference) {
+        return store.referring_items(item.id.as_str(), original_field);
     }
 
     vec![]
@@ -131,7 +133,6 @@ pub(crate) fn resolve_related_items<'a>(
 mod tests {
     use super::*;
     use crate::model::schema::{FieldDefinition, FieldTypeConfig, Schema};
-    use crate::store::Store;
     use indexmap::IndexMap;
     use std::fs;
     use std::path::PathBuf;
@@ -192,10 +193,9 @@ mod tests {
             "---\ntitle: A\nstatus: open\n---\n",
         )]);
         let store = Store::load(&path, &schema).unwrap();
-        let ctx = EvalContext::new(&store, &schema);
         let item = store.get("task-a").unwrap();
 
-        match resolve_field_ref(item, "status", &ctx) {
+        match resolve_field_ref(item, "status", &schema, &store) {
             ResolvedValues::Single(Some(FieldValue::Choice(v))) => assert_eq!(v, "open"),
             other => panic!("expected Single(Choice), got: {other:?}"),
         }
@@ -209,10 +209,9 @@ mod tests {
             "---\nstatus: open\n---\n",
         )]);
         let store = Store::load(&path, &schema).unwrap();
-        let ctx = EvalContext::new(&store, &schema);
         let item = store.get("task-a").unwrap();
 
-        match resolve_field_ref(item, "title", &ctx) {
+        match resolve_field_ref(item, "title", &schema, &store) {
             ResolvedValues::Single(None) => {}
             other => panic!("expected Single(None), got: {other:?}"),
         }
@@ -226,10 +225,9 @@ mod tests {
             ("task-a.md", "---\ntitle: A\nstatus: done\nparent: epic\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let ctx = EvalContext::new(&store, &schema);
         let item = store.get("task-a").unwrap();
 
-        match resolve_field_ref(item, "parent.status", &ctx) {
+        match resolve_field_ref(item, "parent.status", &schema, &store) {
             ResolvedValues::Single(Some(FieldValue::Choice(v))) => assert_eq!(v, "open"),
             other => panic!("expected Single(Choice(open)), got: {other:?}"),
         }
@@ -243,10 +241,9 @@ mod tests {
             "---\ntitle: A\nstatus: open\n---\n",
         )]);
         let store = Store::load(&path, &schema).unwrap();
-        let ctx = EvalContext::new(&store, &schema);
         let item = store.get("task-a").unwrap();
 
-        match resolve_field_ref(item, "parent.status", &ctx) {
+        match resolve_field_ref(item, "parent.status", &schema, &store) {
             ResolvedValues::Single(None) => {}
             other => panic!("expected Single(None), got: {other:?}"),
         }
@@ -261,10 +258,9 @@ mod tests {
             ("task.md", "---\nstatus: open\ndepends_on: [dep-a, dep-b]\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let ctx = EvalContext::new(&store, &schema);
         let item = store.get("task").unwrap();
 
-        match resolve_field_ref(item, "depends_on.status", &ctx) {
+        match resolve_field_ref(item, "depends_on.status", &schema, &store) {
             ResolvedValues::Many(values) => {
                 assert_eq!(values.len(), 2);
                 let strs: Vec<&str> = values
@@ -290,10 +286,9 @@ mod tests {
             ("child-b.md", "---\nstatus: done\nparent: epic\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let ctx = EvalContext::new(&store, &schema);
         let item = store.get("epic").unwrap();
 
-        match resolve_field_ref(item, "children.status", &ctx) {
+        match resolve_field_ref(item, "children.status", &schema, &store) {
             ResolvedValues::Many(values) => {
                 assert_eq!(values.len(), 2);
             }
@@ -310,10 +305,9 @@ mod tests {
             ("child-b.md", "---\nstatus: done\nparent: epic\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let ctx = EvalContext::new(&store, &schema);
         let item = store.get("epic").unwrap();
 
-        let related = resolve_related_items(item, "children", &ctx);
+        let related = resolve_related_items(item, "children", &schema, &store);
         assert_eq!(related.len(), 2);
     }
 
@@ -326,10 +320,9 @@ mod tests {
             ("task.md", "---\nstatus: open\ndepends_on: [dep-a, dep-b]\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();
-        let ctx = EvalContext::new(&store, &schema);
         let item = store.get("task").unwrap();
 
-        let related = resolve_related_items(item, "depends_on", &ctx);
+        let related = resolve_related_items(item, "depends_on", &schema, &store);
         assert_eq!(related.len(), 2);
     }
 }

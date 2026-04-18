@@ -29,7 +29,7 @@ pub fn execute(
     let mut matched_items: Vec<&WorkItem> = Vec::new();
     for item in store.all_items() {
         let matches = match &request.predicate {
-            Some(predicate) => matches_predicate(item, predicate, schema)?,
+            Some(predicate) => matches_predicate(item, predicate, schema, store)?,
             None => true,
         };
         if matches {

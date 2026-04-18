@@ -278,6 +278,53 @@ fn query_empty_result() {
     assert!(result.items.is_empty());
 }
 
+// ── Cross-item (related-field) queries ─────────────────────────────
+
+#[test]
+fn query_related_forward_link() {
+    // task-e has parent: epic-d, and epic-d has status=open.
+    let (_directory, root) = setup_project();
+    let result = run_query(&root, &["parent.status=open"], &[], &[]);
+    let ids = sorted_ids(&result);
+    assert_eq!(ids, vec!["task-e"]);
+}
+
+#[test]
+fn query_related_forward_link_no_match() {
+    // No item has a parent with status=done.
+    let (_directory, root) = setup_project();
+    let result = run_query(&root, &["parent.status=done"], &[], &[]);
+    assert!(result.items.is_empty());
+}
+
+#[test]
+fn query_related_inverse_relation() {
+    // epic-d has one child (task-e) with status=done.
+    // Using "any" semantics: epic-d matches children.status=done.
+    let (_directory, root) = setup_project();
+    let result = run_query(&root, &["children.status=done"], &[], &[]);
+    let ids = sorted_ids(&result);
+    assert_eq!(ids, vec!["epic-d"]);
+}
+
+#[test]
+fn query_related_is_set() {
+    // Only task-e has a parent with any status set.
+    let (_directory, root) = setup_project();
+    let result = run_query(&root, &["parent.status?"], &[], &[]);
+    let ids = sorted_ids(&result);
+    assert_eq!(ids, vec!["task-e"]);
+}
+
+#[test]
+fn query_related_combined_with_local_filter() {
+    // task-e has status=done AND parent.status=open.
+    let (_directory, root) = setup_project();
+    let result = run_query(&root, &["status=done", "parent.status=open"], &[], &[]);
+    let ids = sorted_ids(&result);
+    assert_eq!(ids, vec!["task-e"]);
+}
+
 #[test]
 fn query_default_columns_include_id_and_required() {
     let (_directory, root) = setup_project();

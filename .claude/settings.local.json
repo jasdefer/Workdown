@@ -46,7 +46,8 @@
       "Bash(gh label:*)",
       "Bash(cargo check:*)",
       "Bash(find src:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(MSYS_NO_PATHCONV=1 docker run *)"
     ]
   }
 }

@@ -5,16 +5,15 @@
 
 pub(crate) mod assertion;
 pub mod condition;
-pub(crate) mod resolve;
 
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::model::schema::{Condition, ConditionOperator, Schema};
 use crate::model::{FieldValue, WorkItem};
+use crate::resolve::{resolve_field_ref, ResolvedValues};
 use crate::store::Store;
 
 use self::assertion::check_assertion;
 use self::condition::eval_condition;
-use self::resolve::{resolve_field_ref, ResolvedValues};
 
 // ── Public API ──────────────────────────────────────────────────────
 
@@ -110,7 +109,7 @@ fn eval_condition_on_item(
     condition: &Condition,
     ctx: &EvalContext,
 ) -> bool {
-    let resolved = resolve_field_ref(item, field_ref, ctx);
+    let resolved = resolve_field_ref(item, field_ref, ctx.schema, ctx.store);
     eval_condition_on_resolved(&resolved, condition)
 }
 

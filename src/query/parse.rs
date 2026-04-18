@@ -17,9 +17,6 @@ pub enum QueryParseError {
     #[error("cannot parse filter expression: '{raw}'")]
     UnknownOperator { raw: String },
 
-    #[error("related field queries ('{raw}') are not yet supported")]
-    RelatedFieldNotSupported { raw: String },
-
     #[error("invalid regex '/{pattern}/': {reason}")]
     InvalidRegex { pattern: String, reason: String },
 }
@@ -55,7 +52,7 @@ pub fn parse_where(input: &str) -> Result<Predicate, QueryParseError> {
             let field_name = field_name.trim();
             validate_field_name(field_name, trimmed)?;
             return Ok(Predicate::Not(Box::new(Predicate::Comparison(Comparison {
-                field: FieldReference::Local(field_name.to_owned()),
+                field: build_field_ref(field_name),
                 operator: Operator::IsSet,
                 value: String::new(),
             }))));
@@ -67,7 +64,7 @@ pub fn parse_where(input: &str) -> Result<Predicate, QueryParseError> {
         let field_name = field_name.trim();
         validate_field_name(field_name, trimmed)?;
         return Ok(Predicate::Comparison(Comparison {
-            field: FieldReference::Local(field_name.to_owned()),
+            field: build_field_ref(field_name),
             operator: Operator::IsSet,
             value: String::new(),
         }));
@@ -89,7 +86,7 @@ pub fn parse_where(input: &str) -> Result<Predicate, QueryParseError> {
             let value = trimmed[position + 2..].trim();
             validate_field_name(field_name, trimmed)?;
             return Ok(Predicate::Comparison(Comparison {
-                field: FieldReference::Local(field_name.to_owned()),
+                field: build_field_ref(field_name),
                 operator,
                 value: value.to_owned(),
             }));
@@ -115,7 +112,7 @@ pub fn parse_where(input: &str) -> Result<Predicate, QueryParseError> {
                     .into_iter()
                     .map(|individual_value| {
                         Predicate::Comparison(Comparison {
-                            field: FieldReference::Local(field_name.to_owned()),
+                            field: build_field_ref(field_name),
                             operator: Operator::Equal,
                             value: individual_value.trim().to_owned(),
                         })
@@ -125,7 +122,7 @@ pub fn parse_where(input: &str) -> Result<Predicate, QueryParseError> {
             }
 
             return Ok(Predicate::Comparison(Comparison {
-                field: FieldReference::Local(field_name.to_owned()),
+                field: build_field_ref(field_name),
                 operator,
                 value: value.to_owned(),
             }));
@@ -139,20 +136,27 @@ pub fn parse_where(input: &str) -> Result<Predicate, QueryParseError> {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-/// Check that a field name is non-empty and doesn't contain dots
-/// (which would indicate a related-field reference).
+/// Check that a field name is non-empty.
 fn validate_field_name(field_name: &str, raw: &str) -> Result<(), QueryParseError> {
     if field_name.is_empty() {
         return Err(QueryParseError::UnknownOperator {
             raw: raw.to_owned(),
         });
     }
-    if field_name.contains('.') {
-        return Err(QueryParseError::RelatedFieldNotSupported {
-            raw: raw.to_owned(),
-        });
-    }
     Ok(())
+}
+
+/// Build a [`FieldReference`] from a validated field name. A single dot
+/// splits the name into `relation.field` (forward link, forward links, or
+/// inverse — resolved at evaluation time); anything else is a local field.
+fn build_field_ref(field_name: &str) -> FieldReference {
+    match field_name.split_once('.') {
+        Some((relation, field)) => FieldReference::Related {
+            relation: relation.to_owned(),
+            field: field.to_owned(),
+        },
+        None => FieldReference::Local(field_name.to_owned()),
+    }
 }
 
 /// Try to parse a regex expression: `field/pattern/` or `field/pattern/i`.
@@ -205,7 +209,7 @@ fn try_parse_regex(input: &str) -> Result<Option<Predicate>, QueryParseError> {
     let stored_value = format!("/{pattern}/{flags}");
 
     Ok(Some(Predicate::Comparison(Comparison {
-        field: FieldReference::Local(field_name.to_owned()),
+        field: build_field_ref(field_name),
         operator: Operator::Matches,
         value: stored_value,
     })))
@@ -225,10 +229,10 @@ mod tests {
         }
     }
 
-    fn field_name(comparison: &Comparison) -> &str {
+    fn field_name(comparison: &Comparison) -> String {
         match &comparison.field {
-            FieldReference::Local(name) => name,
-            other => panic!("expected Local field, got {other:?}"),
+            FieldReference::Local(name) => name.clone(),
+            FieldReference::Related { relation, field } => format!("{relation}.{field}"),
         }
     }
 
@@ -403,11 +407,41 @@ mod tests {
     }
 
     #[test]
-    fn parse_related_field_rejected() {
-        assert!(matches!(
-            parse_where("parent.status=open"),
-            Err(QueryParseError::RelatedFieldNotSupported { .. })
-        ));
+    fn parse_related_field_equality() {
+        let predicate = parse_where("parent.status=open").unwrap();
+        let comparison = as_comparison(&predicate);
+        match &comparison.field {
+            FieldReference::Related { relation, field } => {
+                assert_eq!(relation, "parent");
+                assert_eq!(field, "status");
+            }
+            other => panic!("expected Related, got {other:?}"),
+        }
+        assert_eq!(comparison.operator, Operator::Equal);
+        assert_eq!(comparison.value, "open");
+    }
+
+    #[test]
+    fn parse_related_field_is_set() {
+        let predicate = parse_where("parent.status?").unwrap();
+        let comparison = as_comparison(&predicate);
+        assert!(matches!(&comparison.field, FieldReference::Related { .. }));
+        assert_eq!(comparison.operator, Operator::IsSet);
+    }
+
+    #[test]
+    fn parse_related_field_in_syntax() {
+        let predicate = parse_where("parent.status=open,done").unwrap();
+        match &predicate {
+            Predicate::Or(predicates) => {
+                assert_eq!(predicates.len(), 2);
+                for sub in predicates {
+                    let comparison = as_comparison(sub);
+                    assert!(matches!(&comparison.field, FieldReference::Related { .. }));
+                }
+            }
+            other => panic!("expected Or, got {other:?}"),
+        }
     }
 
     #[test]

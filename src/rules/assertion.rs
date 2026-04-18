@@ -8,8 +8,9 @@ use std::cmp::Ordering;
 use crate::model::schema::{Assertion, AssertionOperator, ConditionValue, NegationValue};
 use crate::model::{FieldValue, WorkItem};
 
+use crate::resolve::{resolve_field_ref, resolve_related_items, ResolvedValues};
+
 use super::condition::field_value_matches;
-use super::resolve::{resolve_field_ref, resolve_related_items, ResolvedValues};
 use super::EvalContext;
 
 // ── Public API ──────────────────────────────────────────────────────
@@ -34,7 +35,7 @@ pub(crate) fn check_assertion(
 // ── Simple assertions ───────────────────────────────────────────────
 
 fn check_required(item: &WorkItem, field_ref: &str, ctx: &EvalContext) -> Option<String> {
-    let resolved = resolve_field_ref(item, field_ref, ctx);
+    let resolved = resolve_field_ref(item, field_ref, ctx.schema, ctx.store);
     match resolved {
         ResolvedValues::Single(None) => Some(format!("'{field_ref}' is required")),
         ResolvedValues::Single(Some(_)) => None,
@@ -49,7 +50,7 @@ fn check_required(item: &WorkItem, field_ref: &str, ctx: &EvalContext) -> Option
 }
 
 fn check_forbidden(item: &WorkItem, field_ref: &str, ctx: &EvalContext) -> Option<String> {
-    let resolved = resolve_field_ref(item, field_ref, ctx);
+    let resolved = resolve_field_ref(item, field_ref, ctx.schema, ctx.store);
     match resolved {
         ResolvedValues::Single(None) => None,
         ResolvedValues::Single(Some(_)) => Some(format!("'{field_ref}' is forbidden")),
@@ -85,7 +86,7 @@ fn check_operator(
 
     // min_count / max_count — bare relationship count
     if operator.min_count.is_some() || operator.max_count.is_some() {
-        let related = resolve_related_items(item, field_ref, ctx);
+        let related = resolve_related_items(item, field_ref, ctx.schema, ctx.store);
         let count = related.len();
 
         if let Some(min) = operator.min_count {
@@ -104,7 +105,7 @@ fn check_operator(
         }
     }
 
-    let resolved = resolve_field_ref(item, field_ref, ctx);
+    let resolved = resolve_field_ref(item, field_ref, ctx.schema, ctx.store);
 
     // Collect values to check (both Single and Many)
     let values_to_check: Vec<Option<&FieldValue>> = match &resolved {
@@ -229,7 +230,7 @@ fn resolve_single_value<'a>(
     field_ref: &str,
     ctx: &'a EvalContext<'a>,
 ) -> Option<&'a FieldValue> {
-    match resolve_field_ref(item, field_ref, ctx) {
+    match resolve_field_ref(item, field_ref, ctx.schema, ctx.store) {
         ResolvedValues::Single(value) => value,
         ResolvedValues::Many(values) => values.into_iter().next().flatten(),
     }
