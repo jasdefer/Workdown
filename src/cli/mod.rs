@@ -1,4 +1,5 @@
 pub mod output;
+pub mod schema_args;
 
 use std::path::PathBuf;
 
@@ -13,15 +14,15 @@ pub struct Cli {
     pub command: Command,
 
     /// Increase logging verbosity (-v info, -vv debug, -vvv trace)
-    #[arg(short, long, action = clap::ArgAction::Count, global = true)]
+    #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 
     /// Suppress all output except errors
-    #[arg(short, long, global = true, conflicts_with = "verbose")]
+    #[arg(short, long, conflicts_with = "verbose")]
     pub quiet: bool,
 
     /// Path to project config file
-    #[arg(long, global = true, default_value = ".workdown/config.yaml")]
+    #[arg(long, default_value = ".workdown/config.yaml", env = "WORKDOWN_CONFIG")]
     pub config: PathBuf,
 }
 
@@ -40,13 +41,16 @@ pub enum Command {
         format: ValidateFormat,
     },
     /// Create a new work item
+    ///
+    /// Field flags are built dynamically from the project's schema. Run
+    /// `workdown add --help` inside a workdown project to see the fields
+    /// available in this project.
+    #[command(disable_help_flag = true)]
     Add {
-        /// Title of the work item
-        title: String,
-
-        /// Set a field value (repeatable). Format: key=value. Values are parsed as YAML.
-        #[arg(long = "set", value_name = "KEY=VALUE")]
-        set: Vec<String>,
+        /// Field args (e.g. `--title "Foo" --type epic --tags a --tags b`).
+        /// Parsed against the project schema at runtime.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
     },
     /// Query and filter work items
     Query {

@@ -1,5 +1,6 @@
 //! Integration tests for `workdown add`.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -87,6 +88,19 @@ fn load_test_config(root: &PathBuf) -> workdown::model::config::Config {
     load_config(&root.join(".workdown/config.yaml")).unwrap()
 }
 
+/// Build a field map from `(name, string_value)` pairs.
+fn fields(pairs: &[(&str, &str)]) -> HashMap<String, serde_yaml::Value> {
+    pairs
+        .iter()
+        .map(|(name, value)| {
+            (
+                (*name).to_owned(),
+                serde_yaml::Value::String((*value).to_owned()),
+            )
+        })
+        .collect()
+}
+
 // ── Happy path ──────────────────────────────────────────────────────
 
 #[test]
@@ -94,13 +108,10 @@ fn add_creates_work_item_file() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let outcome = run_add(&config, &root, "My First Task", &[]).unwrap();
+    let outcome = run_add(&config, &root, fields(&[("title", "My First Task")])).unwrap();
 
     assert!(outcome.path.exists());
-    assert_eq!(
-        outcome.path,
-        root.join("workdown-items/my-first-task.md")
-    );
+    assert_eq!(outcome.path, root.join("workdown-items/my-first-task.md"));
 
     let content = fs::read_to_string(&outcome.path).unwrap();
     assert!(content.starts_with("---\n"));
@@ -115,7 +126,7 @@ fn add_applies_default_generators() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let outcome = run_add(&config, &root, "Test Defaults", &[]).unwrap();
+    let outcome = run_add(&config, &root, fields(&[("title", "Test Defaults")])).unwrap();
     let content = fs::read_to_string(&outcome.path).unwrap();
 
     // $today should produce a YYYY-MM-DD date.
@@ -134,7 +145,7 @@ fn add_slugifies_title_correctly() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let outcome = run_add(&config, &root, "Fix Bug #123", &[]).unwrap();
+    let outcome = run_add(&config, &root, fields(&[("title", "Fix Bug #123")])).unwrap();
     assert_eq!(
         outcome.path.file_name().unwrap().to_str().unwrap(),
         "fix-bug-123.md"
@@ -146,57 +157,79 @@ fn add_slugifies_spaces_and_symbols() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let outcome = run_add(&config, &root, "Hello, World!", &[]).unwrap();
+    let outcome = run_add(&config, &root, fields(&[("title", "Hello, World!")])).unwrap();
     assert_eq!(
         outcome.path.file_name().unwrap().to_str().unwrap(),
         "hello-world.md"
     );
 }
 
-// ── --set overrides ─────────────────────────────────────────────────
+// ── Field overrides ─────────────────────────────────────────────────
 
 #[test]
-fn add_with_set_overrides() {
+fn add_with_overrides() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let set_flags = vec![
-        "type=bug".to_owned(),
-        "priority=high".to_owned(),
-    ];
-    let outcome = run_add(&config, &root, "Login Bug", &set_flags).unwrap();
+    let outcome = run_add(
+        &config,
+        &root,
+        fields(&[
+            ("title", "Login Bug"),
+            ("type", "bug"),
+            ("priority", "high"),
+        ]),
+    )
+    .unwrap();
     let content = fs::read_to_string(&outcome.path).unwrap();
 
     assert!(content.contains("type: bug"));
     assert!(content.contains("priority: high"));
 }
 
+// ── Explicit id drives filename ─────────────────────────────────────
+
 #[test]
-fn add_set_title_overrides_positional() {
+fn add_with_explicit_id_uses_custom_filename() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let set_flags = vec!["title=Overridden Title".to_owned()];
-    let outcome = run_add(&config, &root, "Original Title", &set_flags).unwrap();
-    let content = fs::read_to_string(&outcome.path).unwrap();
-
-    assert!(content.contains("title: Overridden Title"));
-}
-
-// ── --set id overrides slug ─────────────────────────────────────────
-
-#[test]
-fn add_set_id_uses_custom_filename() {
-    let (_directory, root) = setup_project();
-    let config = load_test_config(&root);
-
-    let set_flags = vec!["id=custom-id".to_owned()];
-    let outcome = run_add(&config, &root, "Some Title", &set_flags).unwrap();
+    let outcome = run_add(
+        &config,
+        &root,
+        fields(&[("id", "custom-id"), ("title", "Some Title")]),
+    )
+    .unwrap();
 
     assert_eq!(
         outcome.path.file_name().unwrap().to_str().unwrap(),
         "custom-id.md"
     );
+}
+
+#[test]
+fn add_with_only_id_no_title() {
+    let (_directory, root) = setup_project();
+    let config = load_test_config(&root);
+
+    let outcome = run_add(&config, &root, fields(&[("id", "orphan-task")])).unwrap();
+
+    assert_eq!(
+        outcome.path.file_name().unwrap().to_str().unwrap(),
+        "orphan-task.md"
+    );
+    let content = fs::read_to_string(&outcome.path).unwrap();
+    // Title defaulted to $filename_pretty.
+    assert!(content.contains("title: Orphan Task"));
+}
+
+#[test]
+fn add_without_id_or_title_errors() {
+    let (_directory, root) = setup_project();
+    let config = load_test_config(&root);
+
+    let result = run_add(&config, &root, HashMap::new());
+    assert!(matches!(result, Err(AddError::MissingFilenameSource)));
 }
 
 // ── Duplicate detection ─────────────────────────────────────────────
@@ -206,8 +239,8 @@ fn add_refuses_duplicate_filename() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    run_add(&config, &root, "Unique Task", &[]).unwrap();
-    let result = run_add(&config, &root, "Unique Task", &[]);
+    run_add(&config, &root, fields(&[("title", "Unique Task")])).unwrap();
+    let result = run_add(&config, &root, fields(&[("title", "Unique Task")]));
 
     assert!(matches!(result, Err(AddError::AlreadyExists { .. })));
 }
@@ -219,8 +252,11 @@ fn add_blocks_on_invalid_choice_value() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let set_flags = vec!["status=nonexistent".to_owned()];
-    let result = run_add(&config, &root, "Bad Status", &set_flags);
+    let result = run_add(
+        &config,
+        &root,
+        fields(&[("title", "Bad Status"), ("status", "nonexistent")]),
+    );
 
     assert!(matches!(result, Err(AddError::ValidationFailed { .. })));
 
@@ -235,8 +271,12 @@ fn add_frontmatter_follows_schema_order() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let set_flags = vec!["priority=high".to_owned()];
-    let outcome = run_add(&config, &root, "Ordered Fields", &set_flags).unwrap();
+    let outcome = run_add(
+        &config,
+        &root,
+        fields(&[("title", "Ordered Fields"), ("priority", "high")]),
+    )
+    .unwrap();
     let content = fs::read_to_string(&outcome.path).unwrap();
 
     // Fields should appear in schema order: title, type, status, priority, created
@@ -260,8 +300,12 @@ fn add_returns_rule_warnings_without_blocking() {
     let config = load_test_config(&root);
 
     // Create a bug without priority — violates "bugs-need-priority" rule.
-    let set_flags = vec!["type=bug".to_owned()];
-    let outcome = run_add(&config, &root, "Missing Priority Bug", &set_flags).unwrap();
+    let outcome = run_add(
+        &config,
+        &root,
+        fields(&[("title", "Missing Priority Bug"), ("type", "bug")]),
+    )
+    .unwrap();
 
     // File should still be created.
     assert!(outcome.path.exists());
@@ -283,8 +327,12 @@ fn add_in_progress_without_assignee_warns() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let set_flags = vec!["status=in_progress".to_owned()];
-    let outcome = run_add(&config, &root, "No Assignee Task", &set_flags).unwrap();
+    let outcome = run_add(
+        &config,
+        &root,
+        fields(&[("title", "No Assignee Task"), ("status", "in_progress")]),
+    )
+    .unwrap();
 
     assert!(outcome.path.exists());
     assert!(
@@ -305,11 +353,16 @@ fn add_no_warnings_when_rules_satisfied() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let set_flags = vec![
-        "type=bug".to_owned(),
-        "priority=high".to_owned(),
-    ];
-    let outcome = run_add(&config, &root, "Good Bug", &set_flags).unwrap();
+    let outcome = run_add(
+        &config,
+        &root,
+        fields(&[
+            ("title", "Good Bug"),
+            ("type", "bug"),
+            ("priority", "high"),
+        ]),
+    )
+    .unwrap();
 
     assert!(outcome.path.exists());
     assert!(

@@ -58,31 +58,11 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         Ok(ExitCode::SUCCESS)
                     }
                 }
-                cli::Command::Add { title, set } => {
-                    tracing::info!(title, "creating work item");
+                cli::Command::Add { args } => {
+                    tracing::info!("creating work item");
                     let project_root = std::env::current_dir()
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
-                    match workdown::commands::add::run_add(&config, &project_root, title, set) {
-                        Ok(outcome) => {
-                            cli::output::success(&format!(
-                                "Created {}",
-                                outcome.path.display()
-                            ));
-                            for warning in &outcome.warnings {
-                                cli::output::warning(&warning.to_string());
-                            }
-                            Ok(ExitCode::SUCCESS)
-                        }
-                        Err(workdown::commands::add::AddError::ValidationFailed {
-                            diagnostics,
-                        }) => {
-                            for diagnostic in &diagnostics {
-                                cli::output::error(&diagnostic.to_string());
-                            }
-                            Ok(ExitCode::FAILURE)
-                        }
-                        Err(error) => Err(error.into()),
-                    }
+                    run_add_command(&config, &project_root, args)
                 }
                 cli::Command::Query {
                     where_clauses,
@@ -117,6 +97,60 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                 }
             }
         }
+    }
+}
+
+/// Run `workdown add` with the raw args captured by the top-level clap parse.
+///
+/// Two-phase parsing: load the schema, build a dynamic `clap::Command`
+/// with one flag per schema field, parse the raw args against it, then
+/// invoke the add command with the resulting field map.
+fn run_add_command(
+    config: &workdown::model::config::Config,
+    project_root: &std::path::Path,
+    raw_args: &[String],
+) -> anyhow::Result<ExitCode> {
+    let schema_path = project_root.join(&config.schema);
+    let schema = workdown::parser::schema::load_schema(&schema_path)
+        .map_err(|e| anyhow::anyhow!("failed to load schema: {e}"))?;
+
+    let command = workdown::cli::schema_args::build_add_command(&schema);
+
+    let matches = match command.try_get_matches_from(raw_args.iter().cloned()) {
+        Ok(matches) => matches,
+        Err(error) => {
+            // `--help` / `--version` paths: print and exit successfully.
+            match error.kind() {
+                clap::error::ErrorKind::DisplayHelp
+                | clap::error::ErrorKind::DisplayVersion => {
+                    error.print()?;
+                    return Ok(ExitCode::SUCCESS);
+                }
+                _ => {
+                    error.print()?;
+                    return Ok(ExitCode::FAILURE);
+                }
+            }
+        }
+    };
+
+    let field_values = workdown::cli::schema_args::matches_to_field_map(&matches, &schema);
+
+    match workdown::commands::add::run_add(config, project_root, field_values) {
+        Ok(outcome) => {
+            cli::output::success(&format!("Created {}", outcome.path.display()));
+            for warning in &outcome.warnings {
+                cli::output::warning(&warning.to_string());
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Err(workdown::commands::add::AddError::ValidationFailed { diagnostics }) => {
+            for diagnostic in &diagnostics {
+                cli::output::error(&diagnostic.to_string());
+            }
+            Ok(ExitCode::FAILURE)
+        }
+        Err(error) => Err(error.into()),
     }
 }
 

@@ -47,7 +47,8 @@
       "Bash(cargo check:*)",
       "Bash(find src:*)",
       "WebSearch",
-      "Bash(MSYS_NO_PATHCONV=1 docker run *)"
+      "Bash(MSYS_NO_PATHCONV=1 docker run *)",
+      "Bash(docker info *)"
     ]
   }
 }

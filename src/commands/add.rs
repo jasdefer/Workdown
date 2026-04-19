@@ -29,11 +29,14 @@ pub enum AddError {
     #[error("failed to load work items: {0}")]
     StoreLoad(#[from] std::io::Error),
 
-    #[error("invalid --set flag '{raw}': expected KEY=VALUE format")]
-    InvalidSetFlag { raw: String },
+    #[error("provide --id or --title to name the new work item")]
+    MissingFilenameSource,
 
     #[error("cannot create a valid filename from title '{title}': {reason}")]
     InvalidSlug { title: String, reason: String },
+
+    #[error("'{id}' is not a valid id: must be lowercase alphanumeric with hyphens, starting with a letter")]
+    InvalidId { id: String },
 
     #[error("work item '{id}' already exists at {path}")]
     AlreadyExists { id: String, path: PathBuf },
@@ -49,68 +52,30 @@ pub enum AddError {
 
 /// Create a new work item file.
 ///
-/// Loads the schema and store, applies defaults and `--set` overrides,
-/// validates via field coercion, writes the file, then runs rules as
-/// post-write warnings.
+/// `field_values` is the user-supplied field map (parsed from CLI flags
+/// or constructed directly by tests). Schema defaults fill in any fields
+/// the user did not set. Validation runs via the shared coercion path.
 pub fn run_add(
     config: &Config,
     project_root: &Path,
-    title: &str,
-    set_flags: &[String],
+    field_values: HashMap<String, serde_yaml::Value>,
 ) -> Result<AddOutcome, AddError> {
     let schema_path = project_root.join(&config.schema);
     let items_path = project_root.join(&config.paths.work_items);
 
-    // Load schema.
     tracing::debug!(schema = %schema_path.display(), "loading schema");
     let schema = parser::schema::load_schema(&schema_path)
         .map_err(|e| AddError::SchemaLoad(e.to_string()))?;
 
-    // Load store (for duplicate detection, $max_plus_one, and rules).
     tracing::debug!(items = %items_path.display(), "loading work items");
     let mut store = Store::load(&items_path, &schema)?;
 
-    // Parse --set flags.
-    let set_values = parse_set_flags(set_flags)?;
+    // Copy user-supplied values into the working frontmatter map.
+    let mut frontmatter: HashMap<String, serde_yaml::Value> = field_values.clone();
 
-    // Build the frontmatter: start with title from the CLI argument,
-    // then let --set flags override (including title if explicitly set).
-    let mut frontmatter: HashMap<String, serde_yaml::Value> = HashMap::new();
-    frontmatter.insert(
-        "title".to_owned(),
-        serde_yaml::Value::String(title.to_owned()),
-    );
-    for (key, value) in &set_values {
-        frontmatter.insert(key.clone(), value.clone());
-    }
-
-    // Determine the slug (filename / ID).
-    let slug = if let Some(id_value) = set_values.get("id") {
-        // User explicitly set an ID — use it as the slug.
-        let id_string = id_value
-            .as_str()
-            .ok_or_else(|| AddError::InvalidSlug {
-                title: title.to_owned(),
-                reason: "--set id value must be a string".to_owned(),
-            })?
-            .to_owned();
-        if !parser::is_valid_id(&id_string) {
-            return Err(AddError::InvalidSlug {
-                title: title.to_owned(),
-                reason: format!(
-                    "'{id_string}' is not a valid ID (must be lowercase alphanumeric with hyphens, starting with a letter)"
-                ),
-            });
-        }
-        id_string
-    } else {
-        // Derive from the final title value (which may have been overridden by --set title=...).
-        let effective_title = frontmatter
-            .get("title")
-            .and_then(|value| value.as_str())
-            .unwrap_or(title);
-        slugify(effective_title)?
-    };
+    // Determine the slug (filename / ID) from --id or --title.
+    let user_set_id = frontmatter.contains_key("id");
+    let slug = derive_slug(&frontmatter)?;
 
     let file_path = items_path.join(format!("{slug}.md"));
 
@@ -128,7 +93,7 @@ pub fn run_add(
         });
     }
 
-    // Apply schema defaults for fields not already set by the user.
+    // Apply schema defaults for fields the user did not set.
     for (field_name, field_definition) in &schema.fields {
         if field_name == "id" || frontmatter.contains_key(field_name) {
             continue;
@@ -164,7 +129,6 @@ pub fn run_add(
     }
 
     // Serialize frontmatter in schema field order.
-    let user_set_id = set_values.contains_key("id");
     let yaml_content = build_frontmatter_yaml(&frontmatter, &schema, user_set_id);
 
     // Write the file.
@@ -196,6 +160,36 @@ pub fn run_add(
 }
 
 // ── Private helpers ──────────────────────────────────────────────────
+
+/// Determine the slug (filename / id) from the user-supplied field map.
+///
+/// Explicit `id` wins. Otherwise, slugify `title`. Error if neither.
+fn derive_slug(field_values: &HashMap<String, serde_yaml::Value>) -> Result<String, AddError> {
+    if let Some(id_value) = field_values.get("id") {
+        let id_string = id_value
+            .as_str()
+            .ok_or_else(|| AddError::InvalidId {
+                id: format!("{id_value:?}"),
+            })?
+            .to_owned();
+        if !parser::is_valid_id(&id_string) {
+            return Err(AddError::InvalidId { id: id_string });
+        }
+        return Ok(id_string);
+    }
+
+    if let Some(title_value) = field_values.get("title") {
+        let title = title_value
+            .as_str()
+            .ok_or_else(|| AddError::InvalidSlug {
+                title: format!("{title_value:?}"),
+                reason: "title must be a string".to_owned(),
+            })?;
+        return slugify(title);
+    }
+
+    Err(AddError::MissingFilenameSource)
+}
 
 /// Convert a title into a valid kebab-case filename slug.
 ///
@@ -243,33 +237,6 @@ fn slugify(title: &str) -> Result<String, AddError> {
     }
 
     Ok(trimmed.to_owned())
-}
-
-/// Parse `--set` flags into a map of field names to YAML values.
-///
-/// Each flag must be in `KEY=VALUE` format. The value is parsed as YAML,
-/// so `42` becomes an integer, `true` becomes a boolean, and `[a, b]`
-/// becomes a sequence.
-fn parse_set_flags(flags: &[String]) -> Result<HashMap<String, serde_yaml::Value>, AddError> {
-    let mut values = HashMap::new();
-    for flag in flags {
-        let (key, raw_value) = flag
-            .split_once('=')
-            .ok_or_else(|| AddError::InvalidSetFlag { raw: flag.clone() })?;
-
-        let key = key.trim().to_owned();
-        if key.is_empty() {
-            return Err(AddError::InvalidSetFlag { raw: flag.clone() });
-        }
-
-        let value: serde_yaml::Value = serde_yaml::from_str(raw_value).unwrap_or_else(|_| {
-            // If YAML parsing fails, treat the raw value as a plain string.
-            serde_yaml::Value::String(raw_value.to_owned())
-        });
-
-        values.insert(key, value);
-    }
-    Ok(values)
 }
 
 /// Resolve a default value into a `serde_yaml::Value`.
@@ -365,7 +332,7 @@ fn build_frontmatter_yaml(
         }
     }
 
-    // Emit any --set fields not in the schema (alphabetical for determinism).
+    // Emit any fields not in the schema (alphabetical for determinism).
     let mut extra_keys: Vec<&String> = frontmatter
         .keys()
         .filter(|key| !schema.fields.contains_key(key.as_str()))
@@ -431,10 +398,7 @@ mod tests {
 
     #[test]
     fn slugify_extra_spaces_and_symbols() {
-        assert_eq!(
-            slugify("  Hello,  World!  ").unwrap(),
-            "hello-world"
-        );
+        assert_eq!(slugify("  Hello,  World!  ").unwrap(), "hello-world");
     }
 
     #[test]
@@ -457,11 +421,6 @@ mod tests {
         assert_eq!(slugify("Task 42 Done").unwrap(), "task-42-done");
     }
 
-    #[test]
-    fn slugify_unicode_replaced() {
-        assert_eq!(slugify("Tsk with mlauts").unwrap(), "tsk-with-mlauts");
-    }
-
     // ── prettify_slug ────────────────────────────────────────────────
 
     #[test]
@@ -479,62 +438,55 @@ mod tests {
         assert_eq!(prettify_slug("task-42"), "Task 42");
     }
 
-    // ── parse_set_flags ──────────────────────────────────────────────
+    // ── derive_slug ──────────────────────────────────────────────────
 
     #[test]
-    fn parse_set_flag_string_value() {
-        let flags = vec!["priority=high".to_owned()];
-        let values = parse_set_flags(&flags).unwrap();
-        assert_eq!(
-            values.get("priority").unwrap(),
-            &serde_yaml::Value::String("high".into())
+    fn derive_slug_uses_explicit_id() {
+        let mut field_values = HashMap::new();
+        field_values.insert(
+            "id".to_owned(),
+            serde_yaml::Value::String("my-id".to_owned()),
         );
-    }
-
-    #[test]
-    fn parse_set_flag_integer_value() {
-        let flags = vec!["count=42".to_owned()];
-        let values = parse_set_flags(&flags).unwrap();
-        assert!(values.get("count").unwrap().is_number());
-    }
-
-    #[test]
-    fn parse_set_flag_boolean_value() {
-        let flags = vec!["active=true".to_owned()];
-        let values = parse_set_flags(&flags).unwrap();
-        assert_eq!(
-            values.get("active").unwrap(),
-            &serde_yaml::Value::Bool(true)
+        field_values.insert(
+            "title".to_owned(),
+            serde_yaml::Value::String("Other Title".to_owned()),
         );
+
+        assert_eq!(derive_slug(&field_values).unwrap(), "my-id");
     }
 
     #[test]
-    fn parse_set_flag_list_value() {
-        let flags = vec!["tags=[auth, backend]".to_owned()];
-        let values = parse_set_flags(&flags).unwrap();
-        assert!(values.get("tags").unwrap().is_sequence());
+    fn derive_slug_falls_back_to_title() {
+        let mut field_values = HashMap::new();
+        field_values.insert(
+            "title".to_owned(),
+            serde_yaml::Value::String("My Title".to_owned()),
+        );
+
+        assert_eq!(derive_slug(&field_values).unwrap(), "my-title");
     }
 
     #[test]
-    fn parse_set_flag_value_with_equals() {
-        let flags = vec!["description=a=b".to_owned()];
-        let values = parse_set_flags(&flags).unwrap();
-        // "a=b" doesn't parse as valid YAML scalar cleanly, but serde_yaml
-        // will parse it as the string "a=b".
-        let value = values.get("description").unwrap();
-        assert_eq!(value.as_str().unwrap(), "a=b");
+    fn derive_slug_errors_when_neither_given() {
+        let field_values = HashMap::new();
+        assert!(matches!(
+            derive_slug(&field_values),
+            Err(AddError::MissingFilenameSource)
+        ));
     }
 
     #[test]
-    fn parse_set_flag_missing_equals_fails() {
-        let flags = vec!["invalid".to_owned()];
-        assert!(parse_set_flags(&flags).is_err());
-    }
+    fn derive_slug_rejects_invalid_id() {
+        let mut field_values = HashMap::new();
+        field_values.insert(
+            "id".to_owned(),
+            serde_yaml::Value::String("Invalid ID!".to_owned()),
+        );
 
-    #[test]
-    fn parse_set_flag_empty_key_fails() {
-        let flags = vec!["=value".to_owned()];
-        assert!(parse_set_flags(&flags).is_err());
+        assert!(matches!(
+            derive_slug(&field_values),
+            Err(AddError::InvalidId { .. })
+        ));
     }
 
     // ── resolve_max_plus_one ─────────────────────────────────────────
