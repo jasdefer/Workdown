@@ -16,17 +16,33 @@ use crate::store::Store;
 
 /// Execute a query against the store and return formatted results.
 ///
-/// 1. Filter items by the predicate (if any).
-/// 2. Sort by the requested fields.
-/// 3. Determine which columns to show.
-/// 4. Format each item's field values into display strings.
+/// Runs [`filter_and_sort`] then formats each matched item's field values
+/// into display strings for table/JSON output.
 pub fn execute(
     request: &QueryRequest,
     store: &Store,
     schema: &Schema,
 ) -> Result<QueryResult, QueryEvalError> {
-    // 1. Filter.
-    let mut matched_items: Vec<&WorkItem> = Vec::new();
+    let (columns, matched_items) = filter_and_sort(request, store, schema)?;
+    let items = matched_items
+        .iter()
+        .map(|item| build_row(item, &columns))
+        .collect();
+    Ok(QueryResult { columns, items })
+}
+
+/// Run the filter, sort, and column-selection stages of a query.
+///
+/// Returns the chosen column names and the matched items in sorted order,
+/// without formatting any field values. Callers that need raw typed values
+/// (e.g. CSV/TSV export with a custom list separator) use this directly
+/// so they can format differently than the default table/JSON path.
+pub fn filter_and_sort<'a>(
+    request: &QueryRequest,
+    store: &'a Store,
+    schema: &Schema,
+) -> Result<(Vec<String>, Vec<&'a WorkItem>), QueryEvalError> {
+    let mut matched_items: Vec<&'a WorkItem> = Vec::new();
     for item in store.all_items() {
         let matches = match &request.predicate {
             Some(predicate) => matches_predicate(item, predicate, schema, store)?,
@@ -37,23 +53,15 @@ pub fn execute(
         }
     }
 
-    // 2. Sort.
     sort_items(&mut matched_items, &request.sort, schema);
 
-    // 3. Determine columns.
     let columns = if request.fields.is_empty() {
         default_columns(schema)
     } else {
         request.fields.clone()
     };
 
-    // 4. Build result rows.
-    let items = matched_items
-        .iter()
-        .map(|item| build_row(item, &columns))
-        .collect();
-
-    Ok(QueryResult { columns, items })
+    Ok((columns, matched_items))
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────

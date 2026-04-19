@@ -8,6 +8,7 @@ use workdown::model::config::Config;
 use workdown::parser::config::load_config;
 use workdown::parser::schema::load_schema;
 use workdown::query::engine;
+use workdown::query::format::{render_delimited, DelimitedError, DelimitedOptions};
 use workdown::query::parse::parse_where;
 use workdown::query::types::{Predicate, QueryRequest, SortDirection, SortSpec};
 use workdown::store::Store;
@@ -336,4 +337,178 @@ fn query_default_columns_include_id_and_required() {
     // Non-required fields should not be in defaults.
     assert!(!result.columns.contains(&"title".to_owned()));
     assert!(!result.columns.contains(&"points".to_owned()));
+}
+
+// ── Delimited output (CSV/TSV) ──────────────────────────────────────
+
+fn filtered(
+    root: &PathBuf,
+    where_clauses: &[&str],
+    sort: &[SortSpec],
+    fields: &[&str],
+) -> (Vec<String>, Vec<workdown::model::WorkItem>) {
+    // The engine hands back borrows into the Store. For test ergonomics
+    // we clone the items into owned values so the caller can drop the
+    // store without lifetime juggling.
+    let config = load_test_config(root);
+    let schema = load_schema(&root.join(&config.schema)).unwrap();
+    let store = Store::load(&root.join(&config.paths.work_items), &schema).unwrap();
+
+    let mut predicates = Vec::new();
+    for clause in where_clauses {
+        predicates.push(parse_where(clause).unwrap());
+    }
+    let predicate = match predicates.len() {
+        0 => None,
+        1 => Some(predicates.remove(0)),
+        _ => Some(Predicate::And(predicates)),
+    };
+
+    let request = QueryRequest {
+        predicate,
+        sort: sort.to_vec(),
+        fields: fields.iter().map(|field| field.to_string()).collect(),
+    };
+
+    let (columns, items) = engine::filter_and_sort(&request, &store, &schema).unwrap();
+    // Clone items into owned values — WorkItem has no Clone so we rebuild by hand.
+    let owned: Vec<workdown::model::WorkItem> = items
+        .into_iter()
+        .map(|item| workdown::model::WorkItem {
+            id: item.id.clone(),
+            fields: item.fields.clone(),
+            body: item.body.clone(),
+            source_path: item.source_path.clone(),
+        })
+        .collect();
+    (columns, owned)
+}
+
+fn tsv_options() -> DelimitedOptions {
+    DelimitedOptions {
+        delimiter: b'\t',
+        header: true,
+        list_separator: ';',
+    }
+}
+
+#[test]
+fn query_tsv_output_has_header_and_tabs() {
+    let (_directory, root) = setup_project();
+    let (columns, items) = filtered(
+        &root,
+        &["title~Fix Login"],
+        &[],
+        &["id", "title", "status", "tags"],
+    );
+    let refs: Vec<&workdown::model::WorkItem> = items.iter().collect();
+    let output = render_delimited(&refs, &columns, &tsv_options()).unwrap();
+    assert_eq!(output, "id\ttitle\tstatus\ttags\ntask-a\tFix Login\topen\tauth;backend\n");
+}
+
+#[test]
+fn query_csv_output_quotes_embedded_commas() {
+    let (_directory, root) = setup_project();
+    let (columns, items) = filtered(&root, &["title~Fix Login"], &[], &["id", "tags"]);
+    let refs: Vec<&workdown::model::WorkItem> = items.iter().collect();
+    let options = DelimitedOptions {
+        delimiter: b',',
+        header: true,
+        list_separator: ';',
+    };
+    let output = render_delimited(&refs, &columns, &options).unwrap();
+    // Tags joined with ';' — no comma inside the cell, so no quoting needed.
+    assert_eq!(output, "id,tags\ntask-a,auth;backend\n");
+}
+
+#[test]
+fn query_csv_quotes_title_containing_comma() {
+    // Add an item with a comma in the title to exercise quoting.
+    let (_directory, root) = setup_project();
+    fs::write(
+        root.join("workdown-items/task-f.md"),
+        "---\ntitle: \"Hello, world\"\ntype: task\nstatus: open\n---\nBody.\n",
+    )
+    .unwrap();
+
+    let (columns, items) = filtered(&root, &["title~Hello"], &[], &["id", "title"]);
+    let refs: Vec<&workdown::model::WorkItem> = items.iter().collect();
+    let options = DelimitedOptions {
+        delimiter: b',',
+        header: true,
+        list_separator: ';',
+    };
+    let output = render_delimited(&refs, &columns, &options).unwrap();
+    assert_eq!(output, "id,title\ntask-f,\"Hello, world\"\n");
+}
+
+#[test]
+fn query_delimited_without_header() {
+    let (_directory, root) = setup_project();
+    let (columns, items) = filtered(&root, &["title~Fix Login"], &[], &["id", "status"]);
+    let refs: Vec<&workdown::model::WorkItem> = items.iter().collect();
+    let options = DelimitedOptions {
+        header: false,
+        ..tsv_options()
+    };
+    let output = render_delimited(&refs, &columns, &options).unwrap();
+    assert_eq!(output, "task-a\topen\n");
+}
+
+#[test]
+fn query_delimited_custom_delimiter() {
+    let (_directory, root) = setup_project();
+    let (columns, items) = filtered(&root, &["title~Fix Login"], &[], &["id", "status"]);
+    let refs: Vec<&workdown::model::WorkItem> = items.iter().collect();
+    let options = DelimitedOptions {
+        delimiter: b'|',
+        header: true,
+        list_separator: ';',
+    };
+    let output = render_delimited(&refs, &columns, &options).unwrap();
+    assert_eq!(output, "id|status\ntask-a|open\n");
+}
+
+#[test]
+fn query_delimited_errors_on_separator_in_list_element() {
+    // tag "a;b" contains the default list separator ';' → must error.
+    let (_directory, root) = setup_project();
+    fs::write(
+        root.join("workdown-items/task-g.md"),
+        "---\ntitle: NastyTags\ntype: task\nstatus: open\ntags:\n  - \"a;b\"\n---\n",
+    )
+    .unwrap();
+
+    let (columns, items) = filtered(&root, &["title~NastyTags"], &[], &["id", "tags"]);
+    let refs: Vec<&workdown::model::WorkItem> = items.iter().collect();
+    let result = render_delimited(&refs, &columns, &tsv_options());
+    match result {
+        Err(DelimitedError::EmbeddedSeparator {
+            item_id,
+            field,
+            separator,
+        }) => {
+            assert_eq!(item_id, "task-g");
+            assert_eq!(field, "tags");
+            assert_eq!(separator, ';');
+        }
+        other => panic!("expected EmbeddedSeparator, got {other:?}"),
+    }
+}
+
+#[test]
+fn query_delimited_errors_on_delimiter_collision() {
+    let (_directory, root) = setup_project();
+    let (columns, items) = filtered(&root, &["title~Fix Login"], &[], &["id", "tags"]);
+    let refs: Vec<&workdown::model::WorkItem> = items.iter().collect();
+    let options = DelimitedOptions {
+        delimiter: b';',
+        header: true,
+        list_separator: ';',
+    };
+    let result = render_delimited(&refs, &columns, &options);
+    assert!(matches!(
+        result,
+        Err(DelimitedError::DelimiterConflict { .. })
+    ));
 }

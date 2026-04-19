@@ -69,6 +69,8 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     sort,
                     fields,
                     format,
+                    delimiter,
+                    no_header,
                 } => {
                     tracing::info!("querying work items");
                     let project_root = std::env::current_dir()
@@ -80,6 +82,8 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         sort,
                         fields.as_deref(),
                         *format,
+                        *delimiter,
+                        *no_header,
                     )?;
                     Ok(ExitCode::SUCCESS)
                 }

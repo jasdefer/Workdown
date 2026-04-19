@@ -106,6 +106,24 @@ pub fn run_templates_list(
                 .collect();
             println!("{}", serde_json::to_string(&entries)?);
         }
+        QueryFormat::Tsv | QueryFormat::Csv => {
+            let delimiter = match format {
+                QueryFormat::Tsv => b'\t',
+                QueryFormat::Csv => b',',
+                _ => unreachable!(),
+            };
+            let mut writer = csv::WriterBuilder::new()
+                .delimiter(delimiter)
+                .terminator(csv::Terminator::Any(b'\n'))
+                .from_writer(Vec::<u8>::new());
+            writer.write_record(["name", "path"])?;
+            for name in &names {
+                let path = templates_dir.join(format!("{name}.md")).display().to_string();
+                writer.write_record([name.as_str(), path.as_str()])?;
+            }
+            let buffer = writer.into_inner()?;
+            print!("{}", String::from_utf8(buffer)?);
+        }
     }
 
     Ok(())

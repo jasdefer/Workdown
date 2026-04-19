@@ -6,8 +6,12 @@ use crate::cli::{self, QueryFormat};
 use crate::model::config::Config;
 use crate::parser;
 use crate::query;
+use crate::query::format::DelimitedOptions;
 use crate::query::types::{Predicate, QueryRequest, SortDirection, SortSpec};
 use crate::store::Store;
+
+/// In-cell separator for list/multichoice/links values in delimited output.
+const LIST_SEPARATOR: char = ';';
 
 /// Run the query command: filter, sort, and display work items.
 pub fn run_query(
@@ -17,6 +21,8 @@ pub fn run_query(
     sort_arguments: &[String],
     fields_argument: Option<&str>,
     format: QueryFormat,
+    delimiter: Option<char>,
+    no_header: bool,
 ) -> anyhow::Result<()> {
     let schema_path = project_root.join(&config.schema);
     let items_path = project_root.join(&config.paths.work_items);
@@ -39,10 +45,9 @@ pub fn run_query(
         fields,
     };
 
-    let result = query::engine::execute(&request, &store, &schema)?;
-
     match format {
         QueryFormat::Table => {
+            let result = query::engine::execute(&request, &store, &schema)?;
             if result.items.is_empty() {
                 cli::output::info("No matching items");
             } else {
@@ -57,11 +62,51 @@ pub fn run_query(
             }
         }
         QueryFormat::Json => {
+            let result = query::engine::execute(&request, &store, &schema)?;
             println!("{}", query::format::render_json(&result));
+        }
+        QueryFormat::Tsv | QueryFormat::Csv => {
+            let options = build_delimited_options(format, delimiter, no_header)?;
+            let (columns, items) =
+                query::engine::filter_and_sort(&request, &store, &schema)?;
+            let output = query::format::render_delimited(&items, &columns, &options)?;
+            print!("{output}");
         }
     }
 
     Ok(())
+}
+
+/// Build [`DelimitedOptions`] for CSV/TSV rendering, honouring `--delimiter`
+/// and `--no-header` overrides.
+fn build_delimited_options(
+    format: QueryFormat,
+    delimiter: Option<char>,
+    no_header: bool,
+) -> anyhow::Result<DelimitedOptions> {
+    let default_delimiter: u8 = match format {
+        QueryFormat::Tsv => b'\t',
+        QueryFormat::Csv => b',',
+        _ => unreachable!("build_delimited_options called for non-delimited format"),
+    };
+
+    let resolved_delimiter = match delimiter {
+        Some(character) => {
+            if !character.is_ascii() {
+                anyhow::bail!(
+                    "--delimiter must be a single ASCII character (got '{character}')"
+                );
+            }
+            character as u8
+        }
+        None => default_delimiter,
+    };
+
+    Ok(DelimitedOptions {
+        delimiter: resolved_delimiter,
+        header: !no_header,
+        list_separator: LIST_SEPARATOR,
+    })
 }
 
 /// Parse --where clauses into a single predicate.

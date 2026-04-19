@@ -70,6 +70,15 @@ pub enum Command {
         /// Output format
         #[arg(long = "format", value_enum, default_value_t = QueryFormat::Table)]
         format: QueryFormat,
+
+        /// Column delimiter for tsv/csv output. Defaults: tab for tsv, comma for csv.
+        /// Must be a single ASCII character. Ignored for table/json.
+        #[arg(long = "delimiter", value_name = "CHAR")]
+        delimiter: Option<char>,
+
+        /// Omit the header row in tsv/csv output. Ignored for table/json.
+        #[arg(long = "no-header")]
+        no_header: bool,
     },
     /// Show Kanban board view
     Board,
@@ -109,12 +118,16 @@ pub enum ValidateFormat {
 }
 
 /// Output format for the `query` command.
-#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum QueryFormat {
     /// Styled table output (default).
     Table,
     /// Machine-readable JSON output.
     Json,
+    /// Tab-separated values (Excel clipboard-friendly).
+    Tsv,
+    /// Comma-separated values (RFC 4180).
+    Csv,
 }
 
 /// Initialize the tracing subscriber for CLI logging.
