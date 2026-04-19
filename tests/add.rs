@@ -31,6 +31,9 @@ fields:
   assignee:
     type: string
     required: false
+  tags:
+    type: list
+    required: false
   created:
     type: date
     required: true
@@ -75,13 +78,22 @@ fn setup_project() -> (TempDir, PathBuf) {
     let directory = TempDir::new().unwrap();
     let root = directory.path().to_path_buf();
 
-    fs::create_dir_all(root.join(".workdown")).unwrap();
+    fs::create_dir_all(root.join(".workdown/templates")).unwrap();
     fs::create_dir_all(root.join("workdown-items")).unwrap();
 
     fs::write(root.join(".workdown/config.yaml"), TEST_CONFIG).unwrap();
     fs::write(root.join(".workdown/schema.yaml"), TEST_SCHEMA).unwrap();
 
     (directory, root)
+}
+
+/// Write a template file under `.workdown/templates/<name>.md`.
+fn write_template(root: &PathBuf, name: &str, content: &str) {
+    fs::write(
+        root.join(format!(".workdown/templates/{name}.md")),
+        content,
+    )
+    .unwrap();
 }
 
 fn load_test_config(root: &PathBuf) -> workdown::model::config::Config {
@@ -108,7 +120,8 @@ fn add_creates_work_item_file() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let outcome = run_add(&config, &root, fields(&[("title", "My First Task")])).unwrap();
+    let outcome =
+        run_add(&config, &root, fields(&[("title", "My First Task")]), None).unwrap();
 
     assert!(outcome.path.exists());
     assert_eq!(outcome.path, root.join("workdown-items/my-first-task.md"));
@@ -126,7 +139,8 @@ fn add_applies_default_generators() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let outcome = run_add(&config, &root, fields(&[("title", "Test Defaults")])).unwrap();
+    let outcome =
+        run_add(&config, &root, fields(&[("title", "Test Defaults")]), None).unwrap();
     let content = fs::read_to_string(&outcome.path).unwrap();
 
     // $today should produce a YYYY-MM-DD date.
@@ -145,7 +159,8 @@ fn add_slugifies_title_correctly() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let outcome = run_add(&config, &root, fields(&[("title", "Fix Bug #123")])).unwrap();
+    let outcome =
+        run_add(&config, &root, fields(&[("title", "Fix Bug #123")]), None).unwrap();
     assert_eq!(
         outcome.path.file_name().unwrap().to_str().unwrap(),
         "fix-bug-123.md"
@@ -157,7 +172,8 @@ fn add_slugifies_spaces_and_symbols() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let outcome = run_add(&config, &root, fields(&[("title", "Hello, World!")])).unwrap();
+    let outcome =
+        run_add(&config, &root, fields(&[("title", "Hello, World!")]), None).unwrap();
     assert_eq!(
         outcome.path.file_name().unwrap().to_str().unwrap(),
         "hello-world.md"
@@ -179,6 +195,7 @@ fn add_with_overrides() {
             ("type", "bug"),
             ("priority", "high"),
         ]),
+        None,
     )
     .unwrap();
     let content = fs::read_to_string(&outcome.path).unwrap();
@@ -198,6 +215,7 @@ fn add_with_explicit_id_uses_custom_filename() {
         &config,
         &root,
         fields(&[("id", "custom-id"), ("title", "Some Title")]),
+        None,
     )
     .unwrap();
 
@@ -212,7 +230,7 @@ fn add_with_only_id_no_title() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let outcome = run_add(&config, &root, fields(&[("id", "orphan-task")])).unwrap();
+    let outcome = run_add(&config, &root, fields(&[("id", "orphan-task")]), None).unwrap();
 
     assert_eq!(
         outcome.path.file_name().unwrap().to_str().unwrap(),
@@ -228,7 +246,7 @@ fn add_without_id_or_title_errors() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let result = run_add(&config, &root, HashMap::new());
+    let result = run_add(&config, &root, HashMap::new(), None);
     assert!(matches!(result, Err(AddError::MissingFilenameSource)));
 }
 
@@ -239,8 +257,8 @@ fn add_refuses_duplicate_filename() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    run_add(&config, &root, fields(&[("title", "Unique Task")])).unwrap();
-    let result = run_add(&config, &root, fields(&[("title", "Unique Task")]));
+    run_add(&config, &root, fields(&[("title", "Unique Task")]), None).unwrap();
+    let result = run_add(&config, &root, fields(&[("title", "Unique Task")]), None);
 
     assert!(matches!(result, Err(AddError::AlreadyExists { .. })));
 }
@@ -256,6 +274,7 @@ fn add_blocks_on_invalid_choice_value() {
         &config,
         &root,
         fields(&[("title", "Bad Status"), ("status", "nonexistent")]),
+        None,
     );
 
     assert!(matches!(result, Err(AddError::ValidationFailed { .. })));
@@ -275,6 +294,7 @@ fn add_frontmatter_follows_schema_order() {
         &config,
         &root,
         fields(&[("title", "Ordered Fields"), ("priority", "high")]),
+        None,
     )
     .unwrap();
     let content = fs::read_to_string(&outcome.path).unwrap();
@@ -304,6 +324,7 @@ fn add_returns_rule_warnings_without_blocking() {
         &config,
         &root,
         fields(&[("title", "Missing Priority Bug"), ("type", "bug")]),
+        None,
     )
     .unwrap();
 
@@ -331,6 +352,7 @@ fn add_in_progress_without_assignee_warns() {
         &config,
         &root,
         fields(&[("title", "No Assignee Task"), ("status", "in_progress")]),
+        None,
     )
     .unwrap();
 
@@ -361,6 +383,7 @@ fn add_no_warnings_when_rules_satisfied() {
             ("type", "bug"),
             ("priority", "high"),
         ]),
+        None,
     )
     .unwrap();
 
@@ -370,4 +393,220 @@ fn add_no_warnings_when_rules_satisfied() {
         "expected no warnings, got: {:?}",
         outcome.warnings
     );
+}
+
+// ── Templates ───────────────────────────────────────────────────────
+
+#[test]
+fn add_with_template_uses_frontmatter_and_body() {
+    let (_directory, root) = setup_project();
+    let config = load_test_config(&root);
+
+    write_template(
+        &root,
+        "bug",
+        "---\ntype: bug\npriority: medium\n---\n\n## Steps\n1. repro\n",
+    );
+
+    let outcome = run_add(
+        &config,
+        &root,
+        fields(&[("title", "Login Crash")]),
+        Some("bug"),
+    )
+    .unwrap();
+
+    let content = fs::read_to_string(&outcome.path).unwrap();
+    assert!(content.contains("type: bug"));
+    assert!(content.contains("priority: medium"));
+    assert!(content.contains("title: Login Crash"));
+    assert!(content.contains("## Steps"));
+    assert!(content.contains("1. repro"));
+}
+
+#[test]
+fn add_cli_overrides_template_field() {
+    let (_directory, root) = setup_project();
+    let config = load_test_config(&root);
+
+    write_template(&root, "bug", "---\ntype: bug\npriority: medium\n---\n");
+
+    let outcome = run_add(
+        &config,
+        &root,
+        fields(&[("title", "Login Crash"), ("priority", "critical")]),
+        Some("bug"),
+    )
+    .unwrap();
+
+    let content = fs::read_to_string(&outcome.path).unwrap();
+    assert!(content.contains("priority: critical"));
+    assert!(!content.contains("priority: medium"));
+}
+
+#[test]
+fn add_template_resolves_tokens() {
+    let (_directory, root) = setup_project();
+    let config = load_test_config(&root);
+
+    write_template(
+        &root,
+        "dated",
+        "---\ncreated: $today\nassignee: $uuid\n---\n",
+    );
+
+    let outcome = run_add(
+        &config,
+        &root,
+        fields(&[("title", "Token Test")]),
+        Some("dated"),
+    )
+    .unwrap();
+
+    let content = fs::read_to_string(&outcome.path).unwrap();
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    assert!(content.contains(&today), "file should contain today's date");
+    // UUIDs are 36 chars; the `$uuid` literal should not survive.
+    assert!(!content.contains("$uuid"));
+    assert!(!content.contains("$today"));
+}
+
+#[test]
+fn add_template_token_inside_list() {
+    let (_directory, root) = setup_project();
+    let config = load_test_config(&root);
+
+    // Template sets tags: [urgent, $today]. We need a quoted YAML string
+    // because `$today` is not valid YAML without quoting (it would be
+    // parsed as a literal string anyway — quote to be explicit).
+    write_template(
+        &root,
+        "tagged",
+        "---\ntags:\n  - urgent\n  - $today\n---\n",
+    );
+
+    let outcome = run_add(
+        &config,
+        &root,
+        fields(&[("title", "Tag Test")]),
+        Some("tagged"),
+    )
+    .unwrap();
+
+    let content = fs::read_to_string(&outcome.path).unwrap();
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    assert!(content.contains("urgent"));
+    assert!(content.contains(&today));
+    assert!(!content.contains("$today"));
+}
+
+#[test]
+fn add_template_near_miss_token_stays_literal() {
+    let (_directory, root) = setup_project();
+    let config = load_test_config(&root);
+
+    // `before $today` is NOT an exact token match; must stay literal.
+    write_template(
+        &root,
+        "literal",
+        "---\ntitle: before $today\n---\n",
+    );
+
+    let outcome =
+        run_add(&config, &root, fields(&[("id", "keeps-literal")]), Some("literal")).unwrap();
+
+    let content = fs::read_to_string(&outcome.path).unwrap();
+    assert!(content.contains("before $today"));
+}
+
+#[test]
+fn add_template_sets_id() {
+    let (_directory, root) = setup_project();
+    let config = load_test_config(&root);
+
+    write_template(&root, "uuid-id", "---\nid: $uuid\ntype: task\n---\n");
+
+    let outcome = run_add(&config, &root, fields(&[]), Some("uuid-id")).unwrap();
+
+    // Filename is a UUID (36 chars) + `.md`.
+    let filename = outcome.path.file_name().unwrap().to_str().unwrap();
+    assert_eq!(filename.len(), 36 + 3);
+    assert!(filename.ends_with(".md"));
+    assert!(outcome.path.exists());
+}
+
+#[test]
+fn add_cli_id_overrides_template_id() {
+    let (_directory, root) = setup_project();
+    let config = load_test_config(&root);
+
+    write_template(&root, "preset", "---\nid: from-template\ntype: task\n---\n");
+
+    let outcome = run_add(
+        &config,
+        &root,
+        fields(&[("id", "from-cli")]),
+        Some("preset"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        outcome.path.file_name().unwrap().to_str().unwrap(),
+        "from-cli.md"
+    );
+}
+
+#[test]
+fn add_template_missing_returns_error() {
+    let (_directory, root) = setup_project();
+    let config = load_test_config(&root);
+
+    let result = run_add(
+        &config,
+        &root,
+        fields(&[("title", "Ghost")]),
+        Some("nonexistent"),
+    );
+
+    assert!(matches!(
+        result,
+        Err(AddError::Template(
+            workdown::model::template::TemplateError::NotFound { .. }
+        ))
+    ));
+}
+
+#[test]
+fn add_template_unknown_field_passes_through() {
+    let (_directory, root) = setup_project();
+    let config = load_test_config(&root);
+
+    write_template(
+        &root,
+        "extras",
+        "---\ntype: task\ncustom_field: hello\n---\n",
+    );
+
+    let outcome = run_add(
+        &config,
+        &root,
+        fields(&[("title", "Extras")]),
+        Some("extras"),
+    )
+    .unwrap();
+
+    let content = fs::read_to_string(&outcome.path).unwrap();
+    assert!(content.contains("custom_field: hello"));
+}
+
+#[test]
+fn add_without_template_still_has_empty_body() {
+    let (_directory, root) = setup_project();
+    let config = load_test_config(&root);
+
+    let outcome = run_add(&config, &root, fields(&[("title", "No Template")]), None).unwrap();
+
+    let content = fs::read_to_string(&outcome.path).unwrap();
+    // The body is empty — content ends with the closing delimiter and a newline.
+    assert!(content.ends_with("---\n"));
 }

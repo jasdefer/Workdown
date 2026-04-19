@@ -5,6 +5,7 @@
 
 pub mod cli;
 pub mod commands;
+pub mod generators;
 pub mod model;
 pub mod parser;
 pub mod query;

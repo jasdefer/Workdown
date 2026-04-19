@@ -95,6 +95,36 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     tracing::info!("rendering dependency graph");
                     anyhow::bail!("not yet implemented — coming in Phase 4");
                 }
+                cli::Command::Templates { action } => {
+                    let project_root = std::env::current_dir().map_err(|e| {
+                        anyhow::anyhow!("cannot determine current directory: {e}")
+                    })?;
+                    match action {
+                        cli::TemplatesAction::List { format } => {
+                            tracing::info!("listing templates");
+                            workdown::commands::templates::run_templates_list(
+                                &config,
+                                &project_root,
+                                *format,
+                            )?;
+                            Ok(ExitCode::SUCCESS)
+                        }
+                        cli::TemplatesAction::Show { name } => {
+                            tracing::info!("showing template");
+                            match workdown::commands::templates::run_templates_show(
+                                &config,
+                                &project_root,
+                                name,
+                            ) {
+                                Ok(()) => Ok(ExitCode::SUCCESS),
+                                Err(err) => {
+                                    cli::output::error(&err.to_string());
+                                    Ok(ExitCode::FAILURE)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -136,7 +166,16 @@ fn run_add_command(
 
     let field_values = workdown::cli::schema_args::matches_to_field_map(&matches, &schema);
 
-    match workdown::commands::add::run_add(config, project_root, field_values) {
+    // Only treat --template as a template name when the schema does not
+    // define a `template` field. When the schema wins the collision,
+    // template support is unavailable for that project.
+    let template_name = if schema.fields.contains_key("template") {
+        None
+    } else {
+        matches.get_one::<String>("template").map(String::as_str)
+    };
+
+    match workdown::commands::add::run_add(config, project_root, field_values, template_name) {
         Ok(outcome) => {
             cli::output::success(&format!("Created {}", outcome.path.display()));
             for warning in &outcome.warnings {
@@ -148,6 +187,10 @@ fn run_add_command(
             for diagnostic in &diagnostics {
                 cli::output::error(&diagnostic.to_string());
             }
+            Ok(ExitCode::FAILURE)
+        }
+        Err(error @ workdown::commands::add::AddError::Template(_)) => {
+            cli::output::error(&error.to_string());
             Ok(ExitCode::FAILURE)
         }
         Err(error) => Err(error.into()),

@@ -6,6 +6,7 @@ pub mod config;
 pub mod diagnostic;
 pub mod rule;
 pub mod schema;
+pub mod template;
 
 use std::borrow::Borrow;
 use std::collections::HashMap;

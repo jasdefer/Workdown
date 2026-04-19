@@ -34,6 +34,21 @@ pub fn build_add_command(schema: &Schema) -> Command {
         command = command.disable_help_flag(true);
     }
 
+    // `--template <name>` is a fixed CLI flag, not a schema field. If the
+    // schema defines a field named `template`, the schema wins and the
+    // built-in flag is omitted (template support is unavailable for that
+    // project — same pattern as `help`).
+    if !schema.fields.contains_key("template") {
+        command = command.arg(
+            Arg::new("template")
+                .long("template")
+                .value_name("NAME")
+                .help("Create from a template in .workdown/templates/")
+                .action(ArgAction::Set)
+                .value_parser(StringValueParser::new()),
+        );
+    }
+
     for (field_name, field_definition) in &schema.fields {
         let arg = build_field_arg(
             field_name,
@@ -474,6 +489,45 @@ mod tests {
 
         assert_eq!(
             field_map.get("depends_on").unwrap(),
+            &serde_yaml::Value::String("foo".into())
+        );
+    }
+
+    // ── --template flag ──────────────────────────────────────────────
+
+    #[test]
+    fn template_flag_extracted_separately() {
+        let schema = schema_with(vec![(
+            "title",
+            FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
+        )]);
+        let matches = parse(&schema, &["--template", "bug-report", "--title", "Foo"]);
+        let field_map = matches_to_field_map(&matches, &schema);
+
+        assert_eq!(
+            matches.get_one::<String>("template").map(String::as_str),
+            Some("bug-report")
+        );
+        assert_eq!(
+            field_map.get("title").unwrap(),
+            &serde_yaml::Value::String("Foo".into())
+        );
+        assert!(field_map.get("template").is_none());
+    }
+
+    #[test]
+    fn template_flag_schema_collision_yields_to_schema() {
+        // When the schema defines a `template` field, the fixed --template
+        // flag is not registered; the schema-driven flag is used instead.
+        let schema = schema_with(vec![(
+            "template",
+            FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
+        )]);
+        let matches = parse(&schema, &["--template", "foo"]);
+        let field_map = matches_to_field_map(&matches, &schema);
+
+        assert_eq!(
+            field_map.get("template").unwrap(),
             &serde_yaml::Value::String("foo".into())
         );
     }

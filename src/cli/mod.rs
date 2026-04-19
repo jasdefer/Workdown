@@ -77,6 +77,26 @@ pub enum Command {
     Tree,
     /// Show dependency graph
     Graph,
+    /// List or show work item templates
+    Templates {
+        #[command(subcommand)]
+        action: TemplatesAction,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum TemplatesAction {
+    /// List available templates
+    List {
+        /// Output format
+        #[arg(long, value_enum, default_value_t = QueryFormat::Table)]
+        format: QueryFormat,
+    },
+    /// Print a template's raw contents
+    Show {
+        /// Template name (without .md)
+        name: String,
+    },
 }
 
 /// Output format for the `validate` command.

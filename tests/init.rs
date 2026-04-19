@@ -23,6 +23,12 @@ fn init_creates_project_structure() {
 
     let resources = fs::read_to_string(tmp.path().join(".workdown/resources.yaml")).unwrap();
     assert!(resources.contains("people:"));
+
+    // Sample bug-report template was dropped into .workdown/templates/.
+    let bug_report =
+        fs::read_to_string(tmp.path().join(".workdown/templates/bug-report.md")).unwrap();
+    assert!(bug_report.contains("type: bug"));
+    assert!(bug_report.contains("Steps to reproduce"));
 }
 
 #[test]

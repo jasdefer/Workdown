@@ -3,12 +3,14 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::commands::templates::load_template_by_name;
+use crate::generators::{resolve_default, resolve_template_tokens};
 use crate::model::config::Config;
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
-use crate::model::schema::{DefaultValue, Generator, Schema, Severity};
-use crate::model::{FieldValue, WorkItem, WorkItemId};
+use crate::model::schema::{Schema, Severity};
+use crate::model::template::TemplateError;
+use crate::model::{WorkItem, WorkItemId};
 use crate::parser;
-use crate::store::Store;
 
 // ── Public types ─────────────────────────────────────────────────────
 
@@ -35,7 +37,7 @@ pub enum AddError {
     #[error("cannot create a valid filename from title '{title}': {reason}")]
     InvalidSlug { title: String, reason: String },
 
-    #[error("'{id}' is not a valid id: must be lowercase alphanumeric with hyphens, starting with a letter")]
+    #[error("'{id}' is not a valid id: must be lowercase alphanumeric with hyphens, starting with a letter or digit")]
     InvalidId { id: String },
 
     #[error("work item '{id}' already exists at {path}")]
@@ -46,6 +48,9 @@ pub enum AddError {
 
     #[error("failed to write '{path}': {source}")]
     WriteFile { path: PathBuf, source: std::io::Error },
+
+    #[error(transparent)]
+    Template(#[from] TemplateError),
 }
 
 // ── Public API ───────────────────────────────────────────────────────
@@ -55,10 +60,16 @@ pub enum AddError {
 /// `field_values` is the user-supplied field map (parsed from CLI flags
 /// or constructed directly by tests). Schema defaults fill in any fields
 /// the user did not set. Validation runs via the shared coercion path.
+///
+/// When `template` is `Some(name)`, the named template is loaded from
+/// `config.paths.templates`, its frontmatter and body seed the new item,
+/// and `field_values` override on a per-field basis. Precedence: CLI >
+/// template > schema defaults.
 pub fn run_add(
     config: &Config,
     project_root: &Path,
     field_values: HashMap<String, serde_yaml::Value>,
+    template: Option<&str>,
 ) -> Result<AddOutcome, AddError> {
     let schema_path = project_root.join(&config.schema);
     let items_path = project_root.join(&config.paths.work_items);
@@ -68,10 +79,27 @@ pub fn run_add(
         .map_err(|e| AddError::SchemaLoad(e.to_string()))?;
 
     tracing::debug!(items = %items_path.display(), "loading work items");
-    let mut store = Store::load(&items_path, &schema)?;
+    let mut store = crate::store::Store::load(&items_path, &schema)?;
 
-    // Copy user-supplied values into the working frontmatter map.
-    let mut frontmatter: HashMap<String, serde_yaml::Value> = field_values.clone();
+    // Load template if requested; start the merged map from template
+    // frontmatter, then overlay CLI values (shallow replace).
+    let (mut frontmatter, body) = if let Some(name) = template {
+        let templates_dir = project_root.join(&config.paths.templates);
+        let template = load_template_by_name(&templates_dir, name)?;
+        let mut merged = template.frontmatter;
+        for (field_name, value) in field_values.iter() {
+            merged.insert(field_name.clone(), value.clone());
+        }
+        (merged, template.body)
+    } else {
+        (field_values.clone(), String::new())
+    };
+
+    // First pass: resolve slug-independent tokens ($today, $uuid,
+    // $max_plus_one). This makes `id: $uuid` in a template produce a
+    // concrete id before slug derivation. $filename / $filename_pretty
+    // are skipped here — they need the slug.
+    resolve_template_tokens(&mut frontmatter, None, &store);
 
     // Determine the slug (filename / ID) from --id or --title.
     let user_set_id = frontmatter.contains_key("id");
@@ -93,6 +121,10 @@ pub fn run_add(
         });
     }
 
+    // Second pass: resolve slug-dependent tokens ($filename,
+    // $filename_pretty) now that the slug is known.
+    resolve_template_tokens(&mut frontmatter, Some(&slug), &store);
+
     // Apply schema defaults for fields the user did not set.
     for (field_name, field_definition) in &schema.fields {
         if field_name == "id" || frontmatter.contains_key(field_name) {
@@ -109,7 +141,7 @@ pub fn run_add(
     let raw_work_item = parser::RawWorkItem {
         id: work_item_id.clone(),
         frontmatter: frontmatter.clone(),
-        body: String::new(),
+        body: body.clone(),
         source_path: file_path.clone(),
     };
 
@@ -131,8 +163,8 @@ pub fn run_add(
     // Serialize frontmatter in schema field order.
     let yaml_content = build_frontmatter_yaml(&frontmatter, &schema, user_set_id);
 
-    // Write the file.
-    let file_content = format!("---\n{yaml_content}---\n");
+    // Write the file. Body (template or empty) follows the closing delimiter.
+    let file_content = format!("---\n{yaml_content}---\n{body}");
     std::fs::write(&file_path, &file_content).map_err(|source| AddError::WriteFile {
         path: file_path.clone(),
         source,
@@ -142,7 +174,7 @@ pub fn run_add(
     let work_item = WorkItem {
         id: work_item_id.clone(),
         fields: coerced_fields,
-        body: String::new(),
+        body,
         source_path: file_path.clone(),
     };
     store.insert(work_item);
@@ -223,92 +255,18 @@ fn slugify(title: &str) -> Result<String, AddError> {
         }
     }
 
-    // Strip leading non-letters (digits and hyphens).
-    let trimmed = collapsed.trim_start_matches(|character: char| !character.is_ascii_lowercase());
-
-    // Strip trailing hyphens.
-    let trimmed = trimmed.trim_end_matches('-');
+    // Strip leading and trailing hyphens. Leading digits are preserved —
+    // `is_valid_id` now accepts digit-first ids.
+    let trimmed = collapsed.trim_start_matches('-').trim_end_matches('-');
 
     if trimmed.is_empty() || !parser::is_valid_id(trimmed) {
         return Err(AddError::InvalidSlug {
             title: title.to_owned(),
-            reason: "title must contain at least one letter".to_owned(),
+            reason: "title must contain at least one alphanumeric character".to_owned(),
         });
     }
 
     Ok(trimmed.to_owned())
-}
-
-/// Resolve a default value into a `serde_yaml::Value`.
-fn resolve_default(
-    default: &DefaultValue,
-    slug: &str,
-    store: &Store,
-    field_name: &str,
-) -> serde_yaml::Value {
-    match default {
-        DefaultValue::String(string) => serde_yaml::Value::String(string.clone()),
-        DefaultValue::Integer(number) => {
-            serde_yaml::Value::Number(serde_yaml::Number::from(*number))
-        }
-        DefaultValue::Float(number) => {
-            serde_yaml::to_value(number).unwrap_or(serde_yaml::Value::Null)
-        }
-        DefaultValue::Bool(flag) => serde_yaml::Value::Bool(*flag),
-        DefaultValue::Generator(generator) => resolve_generator(generator, slug, store, field_name),
-    }
-}
-
-/// Resolve a generator token into a concrete YAML value.
-fn resolve_generator(
-    generator: &Generator,
-    slug: &str,
-    store: &Store,
-    field_name: &str,
-) -> serde_yaml::Value {
-    match generator {
-        Generator::Filename => serde_yaml::Value::String(slug.to_owned()),
-        Generator::FilenamePretty => serde_yaml::Value::String(prettify_slug(slug)),
-        Generator::Uuid => serde_yaml::Value::String(uuid::Uuid::new_v4().to_string()),
-        Generator::Today => {
-            let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-            serde_yaml::Value::String(today)
-        }
-        Generator::MaxPlusOne => {
-            let max_value = resolve_max_plus_one(store, field_name);
-            serde_yaml::Value::Number(serde_yaml::Number::from(max_value))
-        }
-    }
-}
-
-/// Find the maximum integer value of a field across all items, then add 1.
-/// Returns 1 if no items have an integer value for this field.
-fn resolve_max_plus_one(store: &Store, field_name: &str) -> i64 {
-    let mut max: Option<i64> = None;
-    for item in store.all_items() {
-        if let Some(FieldValue::Integer(value)) = item.fields.get(field_name) {
-            max = Some(max.map_or(*value, |current_max: i64| current_max.max(*value)));
-        }
-    }
-    max.unwrap_or(0) + 1
-}
-
-/// Convert a slug like `"my-cool-task"` into `"My Cool Task"`.
-fn prettify_slug(slug: &str) -> String {
-    slug.split('-')
-        .map(|word| {
-            let mut characters = word.chars();
-            match characters.next() {
-                None => String::new(),
-                Some(first) => {
-                    let mut capitalized = first.to_uppercase().to_string();
-                    capitalized.extend(characters);
-                    capitalized
-                }
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 /// Build YAML frontmatter string with fields in schema-defined order.
@@ -402,8 +360,8 @@ mod tests {
     }
 
     #[test]
-    fn slugify_leading_digits_stripped() {
-        assert_eq!(slugify("123 Task").unwrap(), "task");
+    fn slugify_preserves_leading_digits() {
+        assert_eq!(slugify("123 Task").unwrap(), "123-task");
     }
 
     #[test]
@@ -412,30 +370,13 @@ mod tests {
     }
 
     #[test]
-    fn slugify_only_digits_fails() {
-        assert!(slugify("12345").is_err());
+    fn slugify_only_digits_succeeds() {
+        assert_eq!(slugify("12345").unwrap(), "12345");
     }
 
     #[test]
     fn slugify_preserves_internal_digits() {
         assert_eq!(slugify("Task 42 Done").unwrap(), "task-42-done");
-    }
-
-    // ── prettify_slug ────────────────────────────────────────────────
-
-    #[test]
-    fn prettify_simple_slug() {
-        assert_eq!(prettify_slug("my-cool-task"), "My Cool Task");
-    }
-
-    #[test]
-    fn prettify_single_word() {
-        assert_eq!(prettify_slug("task"), "Task");
-    }
-
-    #[test]
-    fn prettify_with_digits() {
-        assert_eq!(prettify_slug("task-42"), "Task 42");
     }
 
     // ── derive_slug ──────────────────────────────────────────────────
@@ -489,36 +430,4 @@ mod tests {
         ));
     }
 
-    // ── resolve_max_plus_one ─────────────────────────────────────────
-
-    #[test]
-    fn max_plus_one_empty_store() {
-        let schema = minimal_schema();
-        let store = empty_store(&schema);
-        assert_eq!(resolve_max_plus_one(&store, "order"), 1);
-    }
-
-    // ── test helpers ─────────────────────────────────────────────────
-
-    fn minimal_schema() -> Schema {
-        use crate::model::schema::{FieldDefinition, FieldTypeConfig};
-        use indexmap::IndexMap;
-
-        let mut fields = IndexMap::new();
-        fields.insert(
-            "title".to_owned(),
-            FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
-        );
-        let inverse_table = Schema::build_inverse_table(&fields);
-        Schema {
-            fields,
-            rules: vec![],
-            inverse_table,
-        }
-    }
-
-    fn empty_store(schema: &Schema) -> Store {
-        let directory = tempfile::tempdir().unwrap();
-        Store::load(directory.path(), schema).unwrap()
-    }
 }
