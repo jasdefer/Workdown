@@ -5,7 +5,9 @@
 
 use serde::Deserialize;
 
-use super::condition::{condition_value_from_yaml, negation_from_value, ConditionValue, NegationValue};
+use super::condition::{
+    condition_value_from_yaml, negation_from_value, ConditionValue, NegationValue,
+};
 
 // ── Assertions ────────────────────────────────────────────────────────
 

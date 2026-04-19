@@ -50,8 +50,11 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     tracing::info!("validating work items");
                     let project_root = std::env::current_dir()
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
-                    let has_errors =
-                        workdown::commands::validate::run_validate(&config, &project_root, *format)?;
+                    let has_errors = workdown::commands::validate::run_validate(
+                        &config,
+                        &project_root,
+                        *format,
+                    )?;
                     if has_errors {
                         Ok(ExitCode::FAILURE)
                     } else {
@@ -100,9 +103,8 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     anyhow::bail!("not yet implemented — coming in Phase 4");
                 }
                 cli::Command::Templates { action } => {
-                    let project_root = std::env::current_dir().map_err(|e| {
-                        anyhow::anyhow!("cannot determine current directory: {e}")
-                    })?;
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
                     match action {
                         cli::TemplatesAction::List { format } => {
                             tracing::info!("listing templates");
@@ -155,8 +157,7 @@ fn run_add_command(
         Err(error) => {
             // `--help` / `--version` paths: print and exit successfully.
             match error.kind() {
-                clap::error::ErrorKind::DisplayHelp
-                | clap::error::ErrorKind::DisplayVersion => {
+                clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion => {
                     error.print()?;
                     return Ok(ExitCode::SUCCESS);
                 }

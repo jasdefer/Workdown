@@ -267,14 +267,20 @@ mod tests {
     fn split_missing_closing_errors() {
         let content = "---\ntitle: x\n";
         let result = split_frontmatter(content, test_path());
-        assert!(matches!(result, Err(ParseError::UnclosedFrontmatter { .. })));
+        assert!(matches!(
+            result,
+            Err(ParseError::UnclosedFrontmatter { .. })
+        ));
     }
 
     #[test]
     fn split_list_frontmatter_errors() {
         let content = "---\n- one\n- two\n---\nbody\n";
         let result = split_frontmatter(content, test_path());
-        assert!(matches!(result, Err(ParseError::FrontmatterNotMapping { .. })));
+        assert!(matches!(
+            result,
+            Err(ParseError::FrontmatterNotMapping { .. })
+        ));
     }
 
     #[test]

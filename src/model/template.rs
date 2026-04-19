@@ -27,7 +27,10 @@ pub enum TemplateError {
     DirectoryMissing { path: PathBuf },
 
     /// The named template file could not be found.
-    #[error("template '{name}' not found (available: {})", format_available(available))]
+    #[error(
+        "template '{name}' not found (available: {})",
+        format_available(available)
+    )]
     NotFound {
         name: String,
         available: Vec<String>,

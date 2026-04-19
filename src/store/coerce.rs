@@ -160,12 +160,10 @@ fn coerce_multichoice(
 
     let mut result = Vec::with_capacity(seq.len());
     for item in seq {
-        let s = item
-            .as_str()
-            .ok_or_else(|| FieldValueError::TypeMismatch {
-                expected: FieldType::Multichoice,
-                got: format!("sequence containing {}", yaml_type_name(item)),
-            })?;
+        let s = item.as_str().ok_or_else(|| FieldValueError::TypeMismatch {
+            expected: FieldType::Multichoice,
+            got: format!("sequence containing {}", yaml_type_name(item)),
+        })?;
         result.push(s.to_owned());
     }
 
@@ -290,12 +288,10 @@ fn coerce_list(value: &serde_yaml::Value) -> Result<FieldValue, FieldValueError>
 
     let mut result = Vec::with_capacity(seq.len());
     for item in seq {
-        let s = item
-            .as_str()
-            .ok_or_else(|| FieldValueError::TypeMismatch {
-                expected: FieldType::List,
-                got: format!("sequence containing {}", yaml_type_name(item)),
-            })?;
+        let s = item.as_str().ok_or_else(|| FieldValueError::TypeMismatch {
+            expected: FieldType::List,
+            got: format!("sequence containing {}", yaml_type_name(item)),
+        })?;
         result.push(s.to_owned());
     }
 
@@ -323,12 +319,10 @@ fn coerce_links(value: &serde_yaml::Value) -> Result<FieldValue, FieldValueError
 
     let mut result = Vec::with_capacity(seq.len());
     for item in seq {
-        let s = item
-            .as_str()
-            .ok_or_else(|| FieldValueError::TypeMismatch {
-                expected: FieldType::Links,
-                got: format!("sequence containing {}", yaml_type_name(item)),
-            })?;
+        let s = item.as_str().ok_or_else(|| FieldValueError::TypeMismatch {
+            expected: FieldType::Links,
+            got: format!("sequence containing {}", yaml_type_name(item)),
+        })?;
         result.push(WorkItemId::from(s.to_owned()));
     }
 
@@ -465,7 +459,10 @@ mod tests {
 
     #[test]
     fn coerce_string_valid() {
-        let s = schema(vec![("title", FieldDefinition::new(FieldTypeConfig::String { pattern: None }))]);
+        let s = schema(vec![(
+            "title",
+            FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
+        )]);
         let raw = raw_item("t", vec![("title", yaml_str("Hello"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
@@ -475,7 +472,10 @@ mod tests {
 
     #[test]
     fn coerce_string_rejects_number() {
-        let s = schema(vec![("title", FieldDefinition::new(FieldTypeConfig::String { pattern: None }))]);
+        let s = schema(vec![(
+            "title",
+            FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
+        )]);
         let raw = raw_item("t", vec![("title", yaml_int(42))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
@@ -605,7 +605,13 @@ mod tests {
 
     #[test]
     fn coerce_integer_valid() {
-        let s = schema(vec![("priority", FieldDefinition::new(FieldTypeConfig::Integer { min: None, max: None }))]);
+        let s = schema(vec![(
+            "priority",
+            FieldDefinition::new(FieldTypeConfig::Integer {
+                min: None,
+                max: None,
+            }),
+        )]);
         let raw = raw_item("t", vec![("priority", yaml_int(42))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
@@ -636,7 +642,13 @@ mod tests {
 
     #[test]
     fn coerce_integer_rejects_string() {
-        let s = schema(vec![("priority", FieldDefinition::new(FieldTypeConfig::Integer { min: None, max: None }))]);
+        let s = schema(vec![(
+            "priority",
+            FieldDefinition::new(FieldTypeConfig::Integer {
+                min: None,
+                max: None,
+            }),
+        )]);
         let raw = raw_item("t", vec![("priority", yaml_str("high"))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
 
@@ -649,7 +661,13 @@ mod tests {
 
     #[test]
     fn coerce_float_valid() {
-        let s = schema(vec![("weight", FieldDefinition::new(FieldTypeConfig::Float { min: None, max: None }))]);
+        let s = schema(vec![(
+            "weight",
+            FieldDefinition::new(FieldTypeConfig::Float {
+                min: None,
+                max: None,
+            }),
+        )]);
         let raw = raw_item("t", vec![("weight", yaml_float(3.14))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
@@ -659,7 +677,13 @@ mod tests {
 
     #[test]
     fn coerce_float_from_integer() {
-        let s = schema(vec![("weight", FieldDefinition::new(FieldTypeConfig::Float { min: None, max: None }))]);
+        let s = schema(vec![(
+            "weight",
+            FieldDefinition::new(FieldTypeConfig::Float {
+                min: None,
+                max: None,
+            }),
+        )]);
         let raw = raw_item("t", vec![("weight", yaml_int(5))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
@@ -686,7 +710,10 @@ mod tests {
 
     #[test]
     fn coerce_date_valid() {
-        let s = schema(vec![("created", FieldDefinition::new(FieldTypeConfig::Date))]);
+        let s = schema(vec![(
+            "created",
+            FieldDefinition::new(FieldTypeConfig::Date),
+        )]);
         let raw = raw_item("t", vec![("created", yaml_str("2026-01-15"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
@@ -696,7 +723,10 @@ mod tests {
 
     #[test]
     fn coerce_date_invalid_format() {
-        let s = schema(vec![("created", FieldDefinition::new(FieldTypeConfig::Date))]);
+        let s = schema(vec![(
+            "created",
+            FieldDefinition::new(FieldTypeConfig::Date),
+        )]);
         let raw = raw_item("t", vec![("created", yaml_str("01/15/2026"))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
 
@@ -707,7 +737,10 @@ mod tests {
 
     #[test]
     fn coerce_date_invalid_day() {
-        let s = schema(vec![("created", FieldDefinition::new(FieldTypeConfig::Date))]);
+        let s = schema(vec![(
+            "created",
+            FieldDefinition::new(FieldTypeConfig::Date),
+        )]);
         let raw = raw_item("t", vec![("created", yaml_str("2026-02-30"))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
 
@@ -718,7 +751,10 @@ mod tests {
 
     #[test]
     fn coerce_date_leap_year() {
-        let s = schema(vec![("created", FieldDefinition::new(FieldTypeConfig::Date))]);
+        let s = schema(vec![(
+            "created",
+            FieldDefinition::new(FieldTypeConfig::Date),
+        )]);
 
         let raw = raw_item("t", vec![("created", yaml_str("2024-02-29"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
@@ -734,7 +770,10 @@ mod tests {
 
     #[test]
     fn coerce_boolean_valid() {
-        let s = schema(vec![("active", FieldDefinition::new(FieldTypeConfig::Boolean))]);
+        let s = schema(vec![(
+            "active",
+            FieldDefinition::new(FieldTypeConfig::Boolean),
+        )]);
         let raw = raw_item("t", vec![("active", yaml_bool(true))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
@@ -744,7 +783,10 @@ mod tests {
 
     #[test]
     fn coerce_boolean_rejects_string() {
-        let s = schema(vec![("active", FieldDefinition::new(FieldTypeConfig::Boolean))]);
+        let s = schema(vec![(
+            "active",
+            FieldDefinition::new(FieldTypeConfig::Boolean),
+        )]);
         let raw = raw_item("t", vec![("active", yaml_str("true"))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
 
@@ -789,17 +831,32 @@ mod tests {
 
     #[test]
     fn coerce_link_valid() {
-        let s = schema(vec![("parent", FieldDefinition::new(FieldTypeConfig::Link { allow_cycles: None, inverse: None }))]);
+        let s = schema(vec![(
+            "parent",
+            FieldDefinition::new(FieldTypeConfig::Link {
+                allow_cycles: None,
+                inverse: None,
+            }),
+        )]);
         let raw = raw_item("t", vec![("parent", yaml_str("auth-epic"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
-        assert_eq!(fields["parent"], FieldValue::Link(WorkItemId::from("auth-epic".to_owned())));
+        assert_eq!(
+            fields["parent"],
+            FieldValue::Link(WorkItemId::from("auth-epic".to_owned()))
+        );
     }
 
     #[test]
     fn coerce_link_rejects_number() {
-        let s = schema(vec![("parent", FieldDefinition::new(FieldTypeConfig::Link { allow_cycles: None, inverse: None }))]);
+        let s = schema(vec![(
+            "parent",
+            FieldDefinition::new(FieldTypeConfig::Link {
+                allow_cycles: None,
+                inverse: None,
+            }),
+        )]);
         let raw = raw_item("t", vec![("parent", yaml_int(1))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
 
@@ -812,7 +869,13 @@ mod tests {
 
     #[test]
     fn coerce_links_valid() {
-        let s = schema(vec![("depends_on", FieldDefinition::new(FieldTypeConfig::Links { allow_cycles: None, inverse: None }))]);
+        let s = schema(vec![(
+            "depends_on",
+            FieldDefinition::new(FieldTypeConfig::Links {
+                allow_cycles: None,
+                inverse: None,
+            }),
+        )]);
         let raw = raw_item(
             "t",
             vec![("depends_on", yaml_seq(vec![yaml_str("a"), yaml_str("b")]))],
@@ -822,13 +885,22 @@ mod tests {
         assert!(diagnostics.is_empty());
         assert_eq!(
             fields["depends_on"],
-            FieldValue::Links(vec![WorkItemId::from("a".to_owned()), WorkItemId::from("b".to_owned())])
+            FieldValue::Links(vec![
+                WorkItemId::from("a".to_owned()),
+                WorkItemId::from("b".to_owned())
+            ])
         );
     }
 
     #[test]
     fn coerce_links_rejects_string() {
-        let s = schema(vec![("depends_on", FieldDefinition::new(FieldTypeConfig::Links { allow_cycles: None, inverse: None }))]);
+        let s = schema(vec![(
+            "depends_on",
+            FieldDefinition::new(FieldTypeConfig::Links {
+                allow_cycles: None,
+                inverse: None,
+            }),
+        )]);
         let raw = raw_item("t", vec![("depends_on", yaml_str("a"))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
 
@@ -841,7 +913,10 @@ mod tests {
 
     #[test]
     fn unknown_field_produces_warning() {
-        let s = schema(vec![("title", FieldDefinition::new(FieldTypeConfig::String { pattern: None }))]);
+        let s = schema(vec![(
+            "title",
+            FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
+        )]);
         let raw = raw_item(
             "t",
             vec![("title", yaml_str("Hi")), ("bogus", yaml_str("x"))],
@@ -891,8 +966,14 @@ mod tests {
     #[test]
     fn id_field_skipped() {
         let s = schema(vec![
-            ("id", FieldDefinition::new(FieldTypeConfig::String { pattern: None })),
-            ("title", FieldDefinition::new(FieldTypeConfig::String { pattern: None })),
+            (
+                "id",
+                FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
+            ),
+            (
+                "title",
+                FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
+            ),
         ]);
         let raw = raw_item("t", vec![("title", yaml_str("Hi"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);

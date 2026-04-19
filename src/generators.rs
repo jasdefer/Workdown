@@ -76,7 +76,9 @@ pub(crate) fn resolve_template_tokens(
     for (field_name, value) in frontmatter.iter_mut() {
         match value {
             serde_yaml::Value::String(string_value) => {
-                if let Some(replacement) = try_resolve_token(string_value, slug_opt, store, field_name) {
+                if let Some(replacement) =
+                    try_resolve_token(string_value, slug_opt, store, field_name)
+                {
                     *value = replacement;
                 }
             }

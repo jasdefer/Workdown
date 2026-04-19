@@ -39,10 +39,7 @@ pub enum FieldReference {
     Local(String),
     /// A field on a related item, e.g. `"parent.status"`.
     /// Defined for future use — not yet supported by the parser or evaluator.
-    Related {
-        relation: String,
-        field: String,
-    },
+    Related { relation: String, field: String },
 }
 
 /// Comparison operators supported by the query engine.

@@ -160,7 +160,10 @@ fn is_valid_field_reference(reference: &str) -> bool {
     }
 }
 
-fn validate_fields(fields: &IndexMap<String, RawFieldDefinition>, errors: &mut Vec<SchemaValidationError>) {
+fn validate_fields(
+    fields: &IndexMap<String, RawFieldDefinition>,
+    errors: &mut Vec<SchemaValidationError>,
+) {
     let mut seen_inverses = std::collections::HashMap::new();
 
     for (name, field) in fields {
@@ -204,9 +207,7 @@ fn validate_inverse_property(
     if !is_valid_field_name(inverse) {
         errors.push(field_error(
             name,
-            format!(
-                "inverse name '{inverse}' must be lowercase letters, digits, and underscores"
-            ),
+            format!("inverse name '{inverse}' must be lowercase letters, digits, and underscores"),
         ));
     }
 
@@ -222,9 +223,7 @@ fn validate_inverse_property(
     if let Some(other_field) = seen_inverses.get(inverse.as_str()) {
         errors.push(field_error(
             name,
-            format!(
-                "inverse name '{inverse}' is already used by field '{other_field}'"
-            ),
+            format!("inverse name '{inverse}' is already used by field '{other_field}'"),
         ));
     } else {
         seen_inverses.insert(inverse.clone(), name.to_owned());
@@ -691,9 +690,9 @@ fn validate_field_reference(
         let first = parts[0];
         let second = parts[1];
 
-        let is_link_field = fields
-            .get(first)
-            .is_some_and(|f| f.field_type() == FieldType::Link || f.field_type() == FieldType::Links);
+        let is_link_field = fields.get(first).is_some_and(|f| {
+            f.field_type() == FieldType::Link || f.field_type() == FieldType::Links
+        });
         let is_inverse = is_defined_inverse(first, fields);
 
         if !is_link_field && !is_inverse {

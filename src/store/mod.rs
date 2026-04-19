@@ -186,7 +186,6 @@ impl Store {
             .unwrap_or_default()
     }
 
-
     /// All diagnostics collected during loading.
     pub fn diagnostics(&self) -> &[Diagnostic] {
         &self.diagnostics

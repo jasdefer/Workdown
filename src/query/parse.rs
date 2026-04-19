@@ -51,11 +51,13 @@ pub fn parse_where(input: &str) -> Result<Predicate, QueryParseError> {
         if let Some(field_name) = inner.strip_suffix('?') {
             let field_name = field_name.trim();
             validate_field_name(field_name, trimmed)?;
-            return Ok(Predicate::Not(Box::new(Predicate::Comparison(Comparison {
-                field: build_field_ref(field_name),
-                operator: Operator::IsSet,
-                value: String::new(),
-            }))));
+            return Ok(Predicate::Not(Box::new(Predicate::Comparison(
+                Comparison {
+                    field: build_field_ref(field_name),
+                    operator: Operator::IsSet,
+                    value: String::new(),
+                },
+            ))));
         }
     }
 

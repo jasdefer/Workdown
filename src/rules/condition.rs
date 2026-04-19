@@ -85,9 +85,7 @@ fn eval_operator(value: Option<&FieldValue>, operator: &ConditionOperator) -> bo
 /// Check if a field value matches a negation (i.e., is one of the disallowed values).
 fn matches_negation(field_value: &FieldValue, negation: &NegationValue) -> bool {
     match negation {
-        NegationValue::Single(condition_value) => {
-            field_value_matches(field_value, condition_value)
-        }
+        NegationValue::Single(condition_value) => field_value_matches(field_value, condition_value),
         NegationValue::Multiple(condition_values) => condition_values
             .iter()
             .any(|condition_value| field_value_matches(field_value, condition_value)),
@@ -110,9 +108,7 @@ pub(crate) fn field_value_matches(
         (FieldValue::String(value), ConditionValue::String(expected)) => value == expected,
         (FieldValue::Choice(value), ConditionValue::String(expected)) => value == expected,
         (FieldValue::Date(value), ConditionValue::String(expected)) => value == expected,
-        (FieldValue::Link(value), ConditionValue::String(expected)) => {
-            value.as_str() == expected
-        }
+        (FieldValue::Link(value), ConditionValue::String(expected)) => value.as_str() == expected,
 
         // Multichoice/List: membership check
         (FieldValue::Multichoice(values), ConditionValue::String(expected)) => {
@@ -121,9 +117,9 @@ pub(crate) fn field_value_matches(
         (FieldValue::List(values), ConditionValue::String(expected)) => {
             values.iter().any(|value| value == expected)
         }
-        (FieldValue::Links(values), ConditionValue::String(expected)) => {
-            values.iter().any(|value| value.as_str() == expected.as_str())
-        }
+        (FieldValue::Links(values), ConditionValue::String(expected)) => values
+            .iter()
+            .any(|value| value.as_str() == expected.as_str()),
 
         // Numeric field types match numeric condition values
         (FieldValue::Integer(value), ConditionValue::Number(expected)) => {
@@ -149,7 +145,7 @@ mod tests {
 
     #[test]
     fn equals_string_matches() {
-        let condition =Condition::Equals(ConditionValue::String("open".into()));
+        let condition = Condition::Equals(ConditionValue::String("open".into()));
         assert!(eval_condition(
             Some(&FieldValue::String("open".into())),
             &condition
@@ -158,7 +154,7 @@ mod tests {
 
     #[test]
     fn equals_string_no_match() {
-        let condition =Condition::Equals(ConditionValue::String("open".into()));
+        let condition = Condition::Equals(ConditionValue::String("open".into()));
         assert!(!eval_condition(
             Some(&FieldValue::String("closed".into())),
             &condition
@@ -167,7 +163,7 @@ mod tests {
 
     #[test]
     fn equals_choice_matches() {
-        let condition =Condition::Equals(ConditionValue::String("in_progress".into()));
+        let condition = Condition::Equals(ConditionValue::String("in_progress".into()));
         assert!(eval_condition(
             Some(&FieldValue::Choice("in_progress".into())),
             &condition
@@ -176,7 +172,7 @@ mod tests {
 
     #[test]
     fn equals_date_matches() {
-        let condition =Condition::Equals(ConditionValue::String("2026-01-01".into()));
+        let condition = Condition::Equals(ConditionValue::String("2026-01-01".into()));
         assert!(eval_condition(
             Some(&FieldValue::Date("2026-01-01".into())),
             &condition
@@ -185,31 +181,31 @@ mod tests {
 
     #[test]
     fn equals_integer_matches() {
-        let condition =Condition::Equals(ConditionValue::Number(42.0));
+        let condition = Condition::Equals(ConditionValue::Number(42.0));
         assert!(eval_condition(Some(&FieldValue::Integer(42)), &condition));
     }
 
     #[test]
     fn equals_float_matches() {
-        let condition =Condition::Equals(ConditionValue::Number(3.14));
+        let condition = Condition::Equals(ConditionValue::Number(3.14));
         assert!(eval_condition(Some(&FieldValue::Float(3.14)), &condition));
     }
 
     #[test]
     fn equals_boolean_matches() {
-        let condition =Condition::Equals(ConditionValue::Bool(true));
+        let condition = Condition::Equals(ConditionValue::Bool(true));
         assert!(eval_condition(Some(&FieldValue::Boolean(true)), &condition));
     }
 
     #[test]
     fn equals_null_is_false() {
-        let condition =Condition::Equals(ConditionValue::String("open".into()));
+        let condition = Condition::Equals(ConditionValue::String("open".into()));
         assert!(!eval_condition(None, &condition));
     }
 
     #[test]
     fn equals_type_mismatch_is_false() {
-        let condition =Condition::Equals(ConditionValue::String("42".into()));
+        let condition = Condition::Equals(ConditionValue::String("42".into()));
         assert!(!eval_condition(Some(&FieldValue::Integer(42)), &condition));
     }
 
@@ -217,22 +213,22 @@ mod tests {
 
     #[test]
     fn equals_multichoice_membership() {
-        let condition =Condition::Equals(ConditionValue::String("backend".into()));
-        let value =FieldValue::Multichoice(vec!["backend".into(), "frontend".into()]);
+        let condition = Condition::Equals(ConditionValue::String("backend".into()));
+        let value = FieldValue::Multichoice(vec!["backend".into(), "frontend".into()]);
         assert!(eval_condition(Some(&value), &condition));
     }
 
     #[test]
     fn equals_multichoice_no_membership() {
-        let condition =Condition::Equals(ConditionValue::String("devops".into()));
-        let value =FieldValue::Multichoice(vec!["backend".into(), "frontend".into()]);
+        let condition = Condition::Equals(ConditionValue::String("devops".into()));
+        let value = FieldValue::Multichoice(vec!["backend".into(), "frontend".into()]);
         assert!(!eval_condition(Some(&value), &condition));
     }
 
     #[test]
     fn equals_list_membership() {
-        let condition =Condition::Equals(ConditionValue::String("rust".into()));
-        let value =FieldValue::List(vec!["rust".into(), "go".into()]);
+        let condition = Condition::Equals(ConditionValue::String("rust".into()));
+        let value = FieldValue::List(vec!["rust".into(), "go".into()]);
         assert!(eval_condition(Some(&value), &condition));
     }
 
@@ -240,7 +236,7 @@ mod tests {
 
     #[test]
     fn one_of_matches() {
-        let condition =Condition::OneOf(vec![
+        let condition = Condition::OneOf(vec![
             ConditionValue::String("open".into()),
             ConditionValue::String("in_progress".into()),
         ]);
@@ -252,7 +248,7 @@ mod tests {
 
     #[test]
     fn one_of_no_match() {
-        let condition =Condition::OneOf(vec![
+        let condition = Condition::OneOf(vec![
             ConditionValue::String("open".into()),
             ConditionValue::String("in_progress".into()),
         ]);
@@ -264,17 +260,17 @@ mod tests {
 
     #[test]
     fn one_of_null_is_false() {
-        let condition =Condition::OneOf(vec![ConditionValue::String("open".into())]);
+        let condition = Condition::OneOf(vec![ConditionValue::String("open".into())]);
         assert!(!eval_condition(None, &condition));
     }
 
     #[test]
     fn one_of_list_any_member() {
-        let condition =Condition::OneOf(vec![
+        let condition = Condition::OneOf(vec![
             ConditionValue::String("rust".into()),
             ConditionValue::String("python".into()),
         ]);
-        let value =FieldValue::List(vec!["go".into(), "python".into()]);
+        let value = FieldValue::List(vec!["go".into(), "python".into()]);
         assert!(eval_condition(Some(&value), &condition));
     }
 
@@ -282,7 +278,7 @@ mod tests {
 
     #[test]
     fn is_set_true_with_value() {
-        let condition =Condition::Operator(ConditionOperator {
+        let condition = Condition::Operator(ConditionOperator {
             is_set: Some(true),
             not: None,
             all: None,
@@ -297,7 +293,7 @@ mod tests {
 
     #[test]
     fn is_set_true_with_null() {
-        let condition =Condition::Operator(ConditionOperator {
+        let condition = Condition::Operator(ConditionOperator {
             is_set: Some(true),
             not: None,
             all: None,
@@ -309,7 +305,7 @@ mod tests {
 
     #[test]
     fn is_set_false_with_null() {
-        let condition =Condition::Operator(ConditionOperator {
+        let condition = Condition::Operator(ConditionOperator {
             is_set: Some(false),
             not: None,
             all: None,
@@ -321,7 +317,7 @@ mod tests {
 
     #[test]
     fn is_set_false_with_value() {
-        let condition =Condition::Operator(ConditionOperator {
+        let condition = Condition::Operator(ConditionOperator {
             is_set: Some(false),
             not: None,
             all: None,
@@ -338,7 +334,7 @@ mod tests {
 
     #[test]
     fn not_single_no_match() {
-        let condition =Condition::Operator(ConditionOperator {
+        let condition = Condition::Operator(ConditionOperator {
             not: Some(NegationValue::Single(ConditionValue::String(
                 "backlog".into(),
             ))),
@@ -355,7 +351,7 @@ mod tests {
 
     #[test]
     fn not_single_matches_disallowed() {
-        let condition =Condition::Operator(ConditionOperator {
+        let condition = Condition::Operator(ConditionOperator {
             not: Some(NegationValue::Single(ConditionValue::String(
                 "backlog".into(),
             ))),
@@ -372,7 +368,7 @@ mod tests {
 
     #[test]
     fn not_null_is_false() {
-        let condition =Condition::Operator(ConditionOperator {
+        let condition = Condition::Operator(ConditionOperator {
             not: Some(NegationValue::Single(ConditionValue::String(
                 "backlog".into(),
             ))),
@@ -386,7 +382,7 @@ mod tests {
 
     #[test]
     fn not_multiple() {
-        let condition =Condition::Operator(ConditionOperator {
+        let condition = Condition::Operator(ConditionOperator {
             not: Some(NegationValue::Multiple(vec![
                 ConditionValue::String("backlog".into()),
                 ConditionValue::String("closed".into()),
@@ -410,7 +406,7 @@ mod tests {
 
     #[test]
     fn combined_is_set_and_not() {
-        let condition =Condition::Operator(ConditionOperator {
+        let condition = Condition::Operator(ConditionOperator {
             is_set: Some(true),
             not: Some(NegationValue::Single(ConditionValue::String(
                 "backlog".into(),

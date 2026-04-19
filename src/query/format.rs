@@ -42,11 +42,7 @@ pub fn render_json(result: &QueryResult) -> String {
         .map(|row| {
             let mut object = serde_json::Map::new();
             for (index, column) in result.columns.iter().enumerate() {
-                let value = row
-                    .values
-                    .get(index)
-                    .cloned()
-                    .unwrap_or_default();
+                let value = row.values.get(index).cloned().unwrap_or_default();
                 object.insert(column.clone(), serde_json::Value::String(value));
             }
             serde_json::Value::Object(object)
@@ -140,8 +136,7 @@ pub fn render_delimited(
     // Guard against a column delimiter colliding with the list-cell
     // separator: the `csv` crate would quote such cells, but the output
     // would still be misleading to a human. Fail loudly instead.
-    if options.list_separator.is_ascii()
-        && options.list_separator as u32 as u8 == options.delimiter
+    if options.list_separator.is_ascii() && options.list_separator as u32 as u8 == options.delimiter
     {
         return Err(DelimitedError::DelimiterConflict {
             delimiter: options.delimiter as char,
@@ -201,9 +196,12 @@ fn format_value_delimited(
         FieldValue::Integer(number) => Ok(number.to_string()),
         FieldValue::Float(number) => Ok(number.to_string()),
         FieldValue::Boolean(flag) => Ok(flag.to_string()),
-        FieldValue::Multichoice(values) | FieldValue::List(values) => {
-            join_with_separator(values.iter().map(String::as_str), list_separator, item_id, field)
-        }
+        FieldValue::Multichoice(values) | FieldValue::List(values) => join_with_separator(
+            values.iter().map(String::as_str),
+            list_separator,
+            item_id,
+            field,
+        ),
         FieldValue::Links(ids) => join_with_separator(
             ids.iter().map(|id| id.as_str()),
             list_separator,

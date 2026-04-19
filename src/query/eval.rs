@@ -152,9 +152,7 @@ fn eval_single(
         Some(FieldType::Integer) => eval_integer(field_value, comparison),
         Some(FieldType::Float) => eval_float(field_value, comparison),
         Some(FieldType::Boolean) => eval_boolean(field_value, comparison),
-        Some(FieldType::Multichoice) | Some(FieldType::List) => {
-            eval_list(field_value, comparison)
-        }
+        Some(FieldType::Multichoice) | Some(FieldType::List) => eval_list(field_value, comparison),
         Some(FieldType::Links) => eval_links(field_value, comparison),
         // String, Choice, Date, Link, and unknown fields all use string comparison.
         _ => eval_string(field_value, comparison),
@@ -164,10 +162,7 @@ fn eval_single(
 // ── Type-specific evaluation ────────────────────────────────────────
 
 /// String-like comparison: String, Choice, Date, Link, and unknown fields.
-fn eval_string(
-    field_value: &FieldValue,
-    comparison: &Comparison,
-) -> Result<bool, QueryEvalError> {
+fn eval_string(field_value: &FieldValue, comparison: &Comparison) -> Result<bool, QueryEvalError> {
     let actual = extract_string(field_value);
     let expected = &comparison.value;
 
@@ -185,10 +180,7 @@ fn eval_string(
 }
 
 /// Integer comparison.
-fn eval_integer(
-    field_value: &FieldValue,
-    comparison: &Comparison,
-) -> Result<bool, QueryEvalError> {
+fn eval_integer(field_value: &FieldValue, comparison: &Comparison) -> Result<bool, QueryEvalError> {
     let actual = match field_value {
         FieldValue::Integer(number) => *number,
         _ => return Ok(false),
@@ -211,10 +203,7 @@ fn eval_integer(
 }
 
 /// Float comparison.
-fn eval_float(
-    field_value: &FieldValue,
-    comparison: &Comparison,
-) -> Result<bool, QueryEvalError> {
+fn eval_float(field_value: &FieldValue, comparison: &Comparison) -> Result<bool, QueryEvalError> {
     let actual = match field_value {
         FieldValue::Float(number) => *number,
         _ => return Ok(false),
@@ -237,10 +226,7 @@ fn eval_float(
 }
 
 /// Boolean comparison.
-fn eval_boolean(
-    field_value: &FieldValue,
-    comparison: &Comparison,
-) -> Result<bool, QueryEvalError> {
+fn eval_boolean(field_value: &FieldValue, comparison: &Comparison) -> Result<bool, QueryEvalError> {
     let actual = match field_value {
         FieldValue::Boolean(flag) => *flag,
         _ => return Ok(false),
@@ -261,10 +247,7 @@ fn eval_boolean(
 
 /// List-like comparison: Multichoice and List fields.
 /// Equal checks membership (any element equals the value).
-fn eval_list(
-    field_value: &FieldValue,
-    comparison: &Comparison,
-) -> Result<bool, QueryEvalError> {
+fn eval_list(field_value: &FieldValue, comparison: &Comparison) -> Result<bool, QueryEvalError> {
     let elements: Vec<&str> = match field_value {
         FieldValue::Multichoice(values) => values.iter().map(|string| string.as_str()).collect(),
         FieldValue::List(values) => values.iter().map(|string| string.as_str()).collect(),
@@ -290,10 +273,7 @@ fn eval_list(
 }
 
 /// Links comparison: same as list but extracts strings from WorkItemIds.
-fn eval_links(
-    field_value: &FieldValue,
-    comparison: &Comparison,
-) -> Result<bool, QueryEvalError> {
+fn eval_links(field_value: &FieldValue, comparison: &Comparison) -> Result<bool, QueryEvalError> {
     let elements: Vec<&str> = match field_value {
         FieldValue::Links(ids) => ids.iter().map(|id| id.as_str()).collect(),
         _ => return Ok(false),
@@ -331,7 +311,11 @@ fn extract_string(value: &FieldValue) -> String {
         FieldValue::Boolean(flag) => flag.to_string(),
         FieldValue::Multichoice(values) => values.join(", "),
         FieldValue::List(values) => values.join(", "),
-        FieldValue::Links(ids) => ids.iter().map(|id| id.as_str()).collect::<Vec<_>>().join(", "),
+        FieldValue::Links(ids) => ids
+            .iter()
+            .map(|id| id.as_str())
+            .collect::<Vec<_>>()
+            .join(", "),
     }
 }
 
@@ -749,7 +733,10 @@ mod tests {
         let schema = test_schema();
         let item = make_item(
             "t1",
-            vec![("parent", FieldValue::Link(WorkItemId::from("epic-1".to_owned())))],
+            vec![(
+                "parent",
+                FieldValue::Link(WorkItemId::from("epic-1".to_owned())),
+            )],
         );
         let predicate = comparison("parent", Operator::Equal, "epic-1");
         assert!(check(&item, &predicate, &schema).unwrap());
@@ -777,10 +764,7 @@ mod tests {
     // ── Cross-item (related-field) predicates ───────────────────
 
     /// Load a store from a set of in-memory markdown files.
-    fn store_from_files(
-        schema: &Schema,
-        files: Vec<(&str, &str)>,
-    ) -> (tempfile::TempDir, Store) {
+    fn store_from_files(schema: &Schema, files: Vec<(&str, &str)>) -> (tempfile::TempDir, Store) {
         let dir = tempfile::tempdir().unwrap();
         for (name, content) in files {
             std::fs::write(dir.path().join(name), content).unwrap();
@@ -841,9 +825,7 @@ mod tests {
         let schema = test_schema();
         let (_dir, store) = store_from_files(
             &schema,
-            vec![
-                ("task-a.md", "---\nstatus: done\nparent: missing\n---\n"),
-            ],
+            vec![("task-a.md", "---\nstatus: done\nparent: missing\n---\n")],
         );
         let item = store.get("task-a").unwrap();
         let predicate = related_comparison("parent", "status", Operator::Equal, "open");
@@ -854,10 +836,8 @@ mod tests {
     fn related_forward_link_unset_relation() {
         // Task with no parent at all.
         let schema = test_schema();
-        let (_dir, store) = store_from_files(
-            &schema,
-            vec![("task-a.md", "---\nstatus: open\n---\n")],
-        );
+        let (_dir, store) =
+            store_from_files(&schema, vec![("task-a.md", "---\nstatus: open\n---\n")]);
         let item = store.get("task-a").unwrap();
         let predicate = related_comparison("parent", "status", Operator::Equal, "open");
         assert!(!matches_predicate(item, &predicate, &schema, &store).unwrap());
@@ -872,7 +852,10 @@ mod tests {
             vec![
                 ("dep-a.md", "---\nstatus: done\n---\n"),
                 ("dep-b.md", "---\nstatus: open\n---\n"),
-                ("task.md", "---\nstatus: open\ndepends_on: [dep-a, dep-b]\n---\n"),
+                (
+                    "task.md",
+                    "---\nstatus: open\ndepends_on: [dep-a, dep-b]\n---\n",
+                ),
             ],
         );
         let item = store.get("task").unwrap();
@@ -888,7 +871,10 @@ mod tests {
             vec![
                 ("dep-a.md", "---\nstatus: done\n---\n"),
                 ("dep-b.md", "---\nstatus: done\n---\n"),
-                ("task.md", "---\nstatus: open\ndepends_on: [dep-a, dep-b]\n---\n"),
+                (
+                    "task.md",
+                    "---\nstatus: open\ndepends_on: [dep-a, dep-b]\n---\n",
+                ),
             ],
         );
         let item = store.get("task").unwrap();
@@ -916,10 +902,8 @@ mod tests {
     #[test]
     fn related_inverse_no_children() {
         let schema = test_schema();
-        let (_dir, store) = store_from_files(
-            &schema,
-            vec![("leaf.md", "---\nstatus: open\n---\n")],
-        );
+        let (_dir, store) =
+            store_from_files(&schema, vec![("leaf.md", "---\nstatus: open\n---\n")]);
         let item = store.get("leaf").unwrap();
         let predicate = related_comparison("children", "status", Operator::Equal, "open");
         assert!(!matches_predicate(item, &predicate, &schema, &store).unwrap());
@@ -944,10 +928,8 @@ mod tests {
     fn related_is_set_unset_relation() {
         // No parent link → is_set should be false.
         let schema = test_schema();
-        let (_dir, store) = store_from_files(
-            &schema,
-            vec![("task-a.md", "---\nstatus: open\n---\n")],
-        );
+        let (_dir, store) =
+            store_from_files(&schema, vec![("task-a.md", "---\nstatus: open\n---\n")]);
         let item = store.get("task-a").unwrap();
         let predicate = related_comparison("parent", "status", Operator::IsSet, "");
         assert!(!matches_predicate(item, &predicate, &schema, &store).unwrap());
@@ -1003,13 +985,14 @@ mod tests {
     #[test]
     fn related_unknown_relation_errors() {
         let schema = test_schema();
-        let (_dir, store) = store_from_files(
-            &schema,
-            vec![("task-a.md", "---\nstatus: open\n---\n")],
-        );
+        let (_dir, store) =
+            store_from_files(&schema, vec![("task-a.md", "---\nstatus: open\n---\n")]);
         let item = store.get("task-a").unwrap();
         let predicate = related_comparison("nonexistent", "status", Operator::Equal, "x");
         let result = matches_predicate(item, &predicate, &schema, &store);
-        assert!(matches!(result, Err(QueryEvalError::UnknownRelation { .. })));
+        assert!(matches!(
+            result,
+            Err(QueryEvalError::UnknownRelation { .. })
+        ));
     }
 }

@@ -97,9 +97,7 @@ fn build_field_arg(name: &str, type_config: &FieldTypeConfig, description: Optio
     let mut arg = Arg::new(leaked_name).long(leaked_name).help(help);
 
     match type_config {
-        FieldTypeConfig::String { .. }
-        | FieldTypeConfig::Date
-        | FieldTypeConfig::Link { .. } => {
+        FieldTypeConfig::String { .. } | FieldTypeConfig::Date | FieldTypeConfig::Link { .. } => {
             arg = arg
                 .action(ArgAction::Set)
                 .value_parser(StringValueParser::new());
@@ -326,25 +324,40 @@ mod tests {
 
     #[test]
     fn boolean_bare_flag_sets_true() {
-        let schema = schema_with(vec![("done", FieldDefinition::new(FieldTypeConfig::Boolean))]);
+        let schema = schema_with(vec![(
+            "done",
+            FieldDefinition::new(FieldTypeConfig::Boolean),
+        )]);
         let matches = parse(&schema, &["--done"]);
         let field_map = matches_to_field_map(&matches, &schema);
 
-        assert_eq!(field_map.get("done").unwrap(), &serde_yaml::Value::Bool(true));
+        assert_eq!(
+            field_map.get("done").unwrap(),
+            &serde_yaml::Value::Bool(true)
+        );
     }
 
     #[test]
     fn boolean_explicit_true() {
-        let schema = schema_with(vec![("done", FieldDefinition::new(FieldTypeConfig::Boolean))]);
+        let schema = schema_with(vec![(
+            "done",
+            FieldDefinition::new(FieldTypeConfig::Boolean),
+        )]);
         let matches = parse(&schema, &["--done", "true"]);
         let field_map = matches_to_field_map(&matches, &schema);
 
-        assert_eq!(field_map.get("done").unwrap(), &serde_yaml::Value::Bool(true));
+        assert_eq!(
+            field_map.get("done").unwrap(),
+            &serde_yaml::Value::Bool(true)
+        );
     }
 
     #[test]
     fn boolean_explicit_false() {
-        let schema = schema_with(vec![("done", FieldDefinition::new(FieldTypeConfig::Boolean))]);
+        let schema = schema_with(vec![(
+            "done",
+            FieldDefinition::new(FieldTypeConfig::Boolean),
+        )]);
         let matches = parse(&schema, &["--done", "false"]);
         let field_map = matches_to_field_map(&matches, &schema);
 

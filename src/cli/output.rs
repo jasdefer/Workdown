@@ -73,11 +73,7 @@ pub fn validation_summary(error_count: usize, warning_count: usize) {
     let warnings = if warning_count == 1 {
         format!("{} {}", style("1").yellow().bold(), "warning")
     } else {
-        format!(
-            "{} {}",
-            style(warning_count).yellow().bold(),
-            "warnings"
-        )
+        format!("{} {}", style(warning_count).yellow().bold(), "warnings")
     };
 
     let term = Term::stderr();

@@ -168,14 +168,8 @@ mod tests {
     fn execute_no_predicate_returns_all() {
         let schema = test_schema();
         let store = make_store(vec![
-            make_item(
-                "a",
-                vec![("status", FieldValue::Choice("open".into()))],
-            ),
-            make_item(
-                "b",
-                vec![("status", FieldValue::Choice("done".into()))],
-            ),
+            make_item("a", vec![("status", FieldValue::Choice("open".into()))]),
+            make_item("b", vec![("status", FieldValue::Choice("done".into()))]),
         ]);
 
         let request = QueryRequest {
@@ -191,14 +185,8 @@ mod tests {
     fn execute_with_predicate_filters() {
         let schema = test_schema();
         let store = make_store(vec![
-            make_item(
-                "a",
-                vec![("status", FieldValue::Choice("open".into()))],
-            ),
-            make_item(
-                "b",
-                vec![("status", FieldValue::Choice("done".into()))],
-            ),
+            make_item("a", vec![("status", FieldValue::Choice("open".into()))]),
+            make_item("b", vec![("status", FieldValue::Choice("done".into()))]),
         ]);
 
         let request = QueryRequest {

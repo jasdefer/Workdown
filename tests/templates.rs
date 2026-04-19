@@ -94,5 +94,8 @@ fn load_from_missing_dir_returns_directory_missing() {
     let missing = directory.path().join("no-templates");
 
     let result = load_template_by_name(&missing, "anything");
-    assert!(matches!(result, Err(TemplateError::DirectoryMissing { .. })));
+    assert!(matches!(
+        result,
+        Err(TemplateError::DirectoryMissing { .. })
+    ));
 }

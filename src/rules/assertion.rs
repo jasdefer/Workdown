@@ -98,9 +98,7 @@ fn check_operator(
         }
         if let Some(max) = operator.max_count {
             if count > max as usize {
-                return Some(format!(
-                    "'{field_ref}' count {count} exceeds maximum {max}"
-                ));
+                return Some(format!("'{field_ref}' count {count} exceeds maximum {max}"));
             }
         }
     }
@@ -151,27 +149,57 @@ fn check_operator(
 
     // Field-to-field comparisons — skip when either operand is null.
     if let Some(ref other_ref) = operator.eq_field {
-        if let Some(detail) = check_field_comparison(item, field_ref, other_ref, Ordering::Equal, "==", ctx) {
+        if let Some(detail) =
+            check_field_comparison(item, field_ref, other_ref, Ordering::Equal, "==", ctx)
+        {
             return Some(detail);
         }
     }
     if let Some(ref other_ref) = operator.lt_field {
-        if let Some(detail) = check_field_ordering(item, field_ref, other_ref, |ord| ord == Ordering::Less, "<", ctx) {
+        if let Some(detail) = check_field_ordering(
+            item,
+            field_ref,
+            other_ref,
+            |ord| ord == Ordering::Less,
+            "<",
+            ctx,
+        ) {
             return Some(detail);
         }
     }
     if let Some(ref other_ref) = operator.lte_field {
-        if let Some(detail) = check_field_ordering(item, field_ref, other_ref, |ord| ord != Ordering::Greater, "<=", ctx) {
+        if let Some(detail) = check_field_ordering(
+            item,
+            field_ref,
+            other_ref,
+            |ord| ord != Ordering::Greater,
+            "<=",
+            ctx,
+        ) {
             return Some(detail);
         }
     }
     if let Some(ref other_ref) = operator.gt_field {
-        if let Some(detail) = check_field_ordering(item, field_ref, other_ref, |ord| ord == Ordering::Greater, ">", ctx) {
+        if let Some(detail) = check_field_ordering(
+            item,
+            field_ref,
+            other_ref,
+            |ord| ord == Ordering::Greater,
+            ">",
+            ctx,
+        ) {
             return Some(detail);
         }
     }
     if let Some(ref other_ref) = operator.gte_field {
-        if let Some(detail) = check_field_ordering(item, field_ref, other_ref, |ord| ord != Ordering::Less, ">=", ctx) {
+        if let Some(detail) = check_field_ordering(
+            item,
+            field_ref,
+            other_ref,
+            |ord| ord != Ordering::Less,
+            ">=",
+            ctx,
+        ) {
             return Some(detail);
         }
     }
@@ -241,19 +269,12 @@ fn resolve_single_value<'a>(
 /// Supports Integer, Float, Date, String, Boolean.
 /// Does NOT support Choice, Multichoice, List, Link, Links (returns None).
 /// Cross-type Integer vs Float is promoted to f64.
-pub(crate) fn compare_field_values(
-    left: &FieldValue,
-    right: &FieldValue,
-) -> Option<Ordering> {
+pub(crate) fn compare_field_values(left: &FieldValue, right: &FieldValue) -> Option<Ordering> {
     match (left, right) {
         (FieldValue::Integer(left), FieldValue::Integer(right)) => Some(left.cmp(right)),
         (FieldValue::Float(left), FieldValue::Float(right)) => left.partial_cmp(right),
-        (FieldValue::Integer(left), FieldValue::Float(right)) => {
-            (*left as f64).partial_cmp(right)
-        }
-        (FieldValue::Float(left), FieldValue::Integer(right)) => {
-            left.partial_cmp(&(*right as f64))
-        }
+        (FieldValue::Integer(left), FieldValue::Float(right)) => (*left as f64).partial_cmp(right),
+        (FieldValue::Float(left), FieldValue::Integer(right)) => left.partial_cmp(&(*right as f64)),
         (FieldValue::Date(left), FieldValue::Date(right)) => Some(left.cmp(right)),
         (FieldValue::String(left), FieldValue::String(right)) => Some(left.cmp(right)),
         (FieldValue::Boolean(left), FieldValue::Boolean(right)) => Some(left.cmp(right)),

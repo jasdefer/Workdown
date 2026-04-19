@@ -47,10 +47,8 @@ enum Color {
 fn detect_cycles_in_field(store: &Store, field_name: &str, diagnostics: &mut Vec<Diagnostic>) {
     let items = store.items_map();
 
-    let mut color: HashMap<&str, Color> = items
-        .keys()
-        .map(|id| (id.as_str(), Color::White))
-        .collect();
+    let mut color: HashMap<&str, Color> =
+        items.keys().map(|id| (id.as_str(), Color::White)).collect();
 
     // Sort for deterministic traversal order.
     let mut ids: Vec<&str> = color.keys().copied().collect();
@@ -201,7 +199,9 @@ mod tests {
 
     /// Convert a list of string slices into a `Vec<WorkItemId>` for test assertions.
     fn ids(strs: &[&str]) -> Vec<WorkItemId> {
-        strs.iter().map(|s| WorkItemId::from(s.to_string())).collect()
+        strs.iter()
+            .map(|s| WorkItemId::from(s.to_string()))
+            .collect()
     }
 
     // ── Tests ───────────────────────────────────────────────────────
@@ -209,9 +209,7 @@ mod tests {
     #[test]
     fn no_link_fields_returns_empty() {
         let schema = schema_with(vec![]);
-        let (_dir, path) = setup_items_dir(vec![
-            ("a.md", "---\nstatus: open\n---\n"),
-        ]);
+        let (_dir, path) = setup_items_dir(vec![("a.md", "---\nstatus: open\n---\n")]);
         let store = Store::load(&path, &schema).unwrap();
         assert!(detect_cycles(&store, &schema).is_empty());
     }
@@ -251,9 +249,7 @@ mod tests {
     #[test]
     fn self_loop() {
         let schema = schema_with(vec![("parent", link_field(false))]);
-        let (_dir, path) = setup_items_dir(vec![
-            ("a.md", "---\nstatus: open\nparent: a\n---\n"),
-        ]);
+        let (_dir, path) = setup_items_dir(vec![("a.md", "---\nstatus: open\nparent: a\n---\n")]);
         let store = Store::load(&path, &schema).unwrap();
         let diagnostics = detect_cycles(&store, &schema);
 
@@ -361,7 +357,13 @@ mod tests {
 
     #[test]
     fn allow_cycles_none_skipped() {
-        let schema = schema_with(vec![("custom_link", FieldDefinition::new(FieldTypeConfig::Link { allow_cycles: None, inverse: None }))]);
+        let schema = schema_with(vec![(
+            "custom_link",
+            FieldDefinition::new(FieldTypeConfig::Link {
+                allow_cycles: None,
+                inverse: None,
+            }),
+        )]);
         let (_dir, path) = setup_items_dir(vec![
             ("a.md", "---\nstatus: open\ncustom_link: b\n---\n"),
             ("b.md", "---\nstatus: open\ncustom_link: a\n---\n"),
@@ -385,7 +387,10 @@ mod tests {
             ("depends_on", links_field(false)),
         ]);
         let (_dir, path) = setup_items_dir(vec![
-            ("a.md", "---\nstatus: open\nparent: b\ndepends_on: [b]\n---\n"),
+            (
+                "a.md",
+                "---\nstatus: open\nparent: b\ndepends_on: [b]\n---\n",
+            ),
             ("b.md", "---\nstatus: open\nparent: a\n---\n"),
         ]);
         let store = Store::load(&path, &schema).unwrap();

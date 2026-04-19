@@ -105,9 +105,7 @@ fn compare_integers(value_a: &FieldValue, value_b: &FieldValue) -> Ordering {
 
 fn compare_floats(value_a: &FieldValue, value_b: &FieldValue) -> Ordering {
     match (value_a, value_b) {
-        (FieldValue::Float(a), FieldValue::Float(b)) => {
-            a.partial_cmp(b).unwrap_or(Ordering::Equal)
-        }
+        (FieldValue::Float(a), FieldValue::Float(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
         _ => Ordering::Equal,
     }
 }
@@ -164,7 +162,11 @@ fn extract_sort_string(value: &FieldValue) -> String {
         FieldValue::Boolean(flag) => flag.to_string(),
         FieldValue::Multichoice(values) => values.join(", "),
         FieldValue::List(values) => values.join(", "),
-        FieldValue::Links(ids) => ids.iter().map(|id| id.as_str()).collect::<Vec<_>>().join(", "),
+        FieldValue::Links(ids) => ids
+            .iter()
+            .map(|id| id.as_str())
+            .collect::<Vec<_>>()
+            .join(", "),
     }
 }
 

@@ -30,15 +30,10 @@ pub struct Diagnostic {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DiagnosticKind {
     // ── File-level ────────────────────────────────────────────────
-
     /// A work item file could not be read or parsed at all.
-    FileError {
-        path: PathBuf,
-        detail: String,
-    },
+    FileError { path: PathBuf, detail: String },
 
     // ── Field-level ───────────────────────────────────────────────
-
     /// A field value doesn't match the schema's type or constraints.
     InvalidFieldValue {
         item_id: WorkItemId,
@@ -47,19 +42,12 @@ pub enum DiagnosticKind {
     },
 
     /// A required field is missing from the frontmatter.
-    MissingRequired {
-        item_id: WorkItemId,
-        field: String,
-    },
+    MissingRequired { item_id: WorkItemId, field: String },
 
     /// A field in the frontmatter is not defined in the schema.
-    UnknownField {
-        item_id: WorkItemId,
-        field: String,
-    },
+    UnknownField { item_id: WorkItemId, field: String },
 
     // ── Reference-level ───────────────────────────────────────────
-
     /// A link/links field references an ID that doesn't exist.
     BrokenLink {
         item_id: WorkItemId,
@@ -68,10 +56,7 @@ pub enum DiagnosticKind {
     },
 
     /// Two or more files resolved to the same ID.
-    DuplicateId {
-        id: WorkItemId,
-        paths: Vec<PathBuf>,
-    },
+    DuplicateId { id: WorkItemId, paths: Vec<PathBuf> },
 
     /// A circular reference chain was detected in a non-cyclic link field.
     Cycle {
@@ -80,7 +65,6 @@ pub enum DiagnosticKind {
     },
 
     // ── Rule-level ────────────────────────────────────────────────
-
     /// A schema rule was violated by a specific item.
     RuleViolation {
         item_id: WorkItemId,
@@ -107,16 +91,10 @@ pub enum DiagnosticKind {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FieldValueError {
     /// Expected one type, got another.
-    TypeMismatch {
-        expected: FieldType,
-        got: String,
-    },
+    TypeMismatch { expected: FieldType, got: String },
 
     /// Value is not in the allowed list (choice field).
-    InvalidChoice {
-        value: String,
-        allowed: Vec<String>,
-    },
+    InvalidChoice { value: String, allowed: Vec<String> },
 
     /// One or more values are not in the allowed list (multichoice field).
     InvalidMultichoice {
@@ -132,21 +110,13 @@ pub enum FieldValueError {
     },
 
     /// Date string is not valid YYYY-MM-DD.
-    InvalidDate {
-        value: String,
-    },
+    InvalidDate { value: String },
 
     /// String doesn't match the required regex pattern.
-    PatternMismatch {
-        value: String,
-        pattern: String,
-    },
+    PatternMismatch { value: String, pattern: String },
 
     /// The regex pattern itself is invalid.
-    InvalidPattern {
-        pattern: String,
-        error: String,
-    },
+    InvalidPattern { pattern: String, error: String },
 }
 
 // ── Display ──────────────────────────────────────────────────────────
@@ -181,7 +151,10 @@ impl std::fmt::Display for Diagnostic {
                 )
             }
             DiagnosticKind::DuplicateId { id, paths } => {
-                let files: Vec<_> = paths.iter().map(|path| path.display().to_string()).collect();
+                let files: Vec<_> = paths
+                    .iter()
+                    .map(|path| path.display().to_string())
+                    .collect();
                 write!(f, "duplicate ID '{id}': {}", files.join(", "))
             }
             DiagnosticKind::Cycle { field, chain } => {

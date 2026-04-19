@@ -94,7 +94,8 @@ fn setup_project() -> (TempDir, PathBuf) {
     fs::write(
         root.join("workdown-items/epic-d.md"),
         "---\ntitle: Auth Epic\ntype: epic\nstatus: open\n---\nAuthentication initiative.\n",
-    ).unwrap();
+    )
+    .unwrap();
 
     fs::write(
         root.join("workdown-items/task-e.md"),
@@ -403,7 +404,10 @@ fn query_tsv_output_has_header_and_tabs() {
     );
     let refs: Vec<&workdown::model::WorkItem> = items.iter().collect();
     let output = render_delimited(&refs, &columns, &tsv_options()).unwrap();
-    assert_eq!(output, "id\ttitle\tstatus\ttags\ntask-a\tFix Login\topen\tauth;backend\n");
+    assert_eq!(
+        output,
+        "id\ttitle\tstatus\ttags\ntask-a\tFix Login\topen\tauth;backend\n"
+    );
 }
 
 #[test]

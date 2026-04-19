@@ -16,8 +16,8 @@ use serde::{Deserialize, Serialize};
 // Re-export rule-engine types so existing `use crate::model::schema::X` paths keep working.
 pub use super::assertion::{Assertion, AssertionOperator};
 pub use super::condition::{Condition, ConditionOperator, ConditionValue, NegationValue};
-pub use super::rule::{CountConstraint, Rule, Severity};
 pub(crate) use super::rule::RawRule;
+pub use super::rule::{CountConstraint, Rule, Severity};
 
 // ── Top-level schema ──────────────────────────────────────────────────
 
@@ -39,7 +39,9 @@ pub struct Schema {
 
 impl Schema {
     /// Build the inverse name table from the schema's link/links field definitions.
-    pub fn build_inverse_table(fields: &IndexMap<String, FieldDefinition>) -> HashMap<String, String> {
+    pub fn build_inverse_table(
+        fields: &IndexMap<String, FieldDefinition>,
+    ) -> HashMap<String, String> {
         let mut table = HashMap::new();
         for (field_name, field_def) in fields {
             if let Some(inverse) = field_def.inverse() {

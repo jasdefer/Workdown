@@ -188,10 +188,7 @@ mod tests {
     #[test]
     fn resolve_plain_field() {
         let schema = test_schema();
-        let (_dir, path) = setup_items(vec![(
-            "task-a.md",
-            "---\ntitle: A\nstatus: open\n---\n",
-        )]);
+        let (_dir, path) = setup_items(vec![("task-a.md", "---\ntitle: A\nstatus: open\n---\n")]);
         let store = Store::load(&path, &schema).unwrap();
         let item = store.get("task-a").unwrap();
 
@@ -204,10 +201,7 @@ mod tests {
     #[test]
     fn resolve_plain_field_absent() {
         let schema = test_schema();
-        let (_dir, path) = setup_items(vec![(
-            "task-a.md",
-            "---\nstatus: open\n---\n",
-        )]);
+        let (_dir, path) = setup_items(vec![("task-a.md", "---\nstatus: open\n---\n")]);
         let store = Store::load(&path, &schema).unwrap();
         let item = store.get("task-a").unwrap();
 
@@ -222,7 +216,10 @@ mod tests {
         let schema = test_schema();
         let (_dir, path) = setup_items(vec![
             ("epic.md", "---\ntitle: Epic\nstatus: open\n---\n"),
-            ("task-a.md", "---\ntitle: A\nstatus: done\nparent: epic\n---\n"),
+            (
+                "task-a.md",
+                "---\ntitle: A\nstatus: done\nparent: epic\n---\n",
+            ),
         ]);
         let store = Store::load(&path, &schema).unwrap();
         let item = store.get("task-a").unwrap();
@@ -236,10 +233,7 @@ mod tests {
     #[test]
     fn resolve_forward_link_null() {
         let schema = test_schema();
-        let (_dir, path) = setup_items(vec![(
-            "task-a.md",
-            "---\ntitle: A\nstatus: open\n---\n",
-        )]);
+        let (_dir, path) = setup_items(vec![("task-a.md", "---\ntitle: A\nstatus: open\n---\n")]);
         let store = Store::load(&path, &schema).unwrap();
         let item = store.get("task-a").unwrap();
 
@@ -255,7 +249,10 @@ mod tests {
         let (_dir, path) = setup_items(vec![
             ("dep-a.md", "---\nstatus: open\n---\n"),
             ("dep-b.md", "---\nstatus: done\n---\n"),
-            ("task.md", "---\nstatus: open\ndepends_on: [dep-a, dep-b]\n---\n"),
+            (
+                "task.md",
+                "---\nstatus: open\ndepends_on: [dep-a, dep-b]\n---\n",
+            ),
         ]);
         let store = Store::load(&path, &schema).unwrap();
         let item = store.get("task").unwrap();
@@ -317,7 +314,10 @@ mod tests {
         let (_dir, path) = setup_items(vec![
             ("dep-a.md", "---\nstatus: open\n---\n"),
             ("dep-b.md", "---\nstatus: done\n---\n"),
-            ("task.md", "---\nstatus: open\ndepends_on: [dep-a, dep-b]\n---\n"),
+            (
+                "task.md",
+                "---\nstatus: open\ndepends_on: [dep-a, dep-b]\n---\n",
+            ),
         ]);
         let store = Store::load(&path, &schema).unwrap();
         let item = store.get("task").unwrap();

@@ -89,11 +89,7 @@ fn setup_project() -> (TempDir, PathBuf) {
 
 /// Write a template file under `.workdown/templates/<name>.md`.
 fn write_template(root: &PathBuf, name: &str, content: &str) {
-    fs::write(
-        root.join(format!(".workdown/templates/{name}.md")),
-        content,
-    )
-    .unwrap();
+    fs::write(root.join(format!(".workdown/templates/{name}.md")), content).unwrap();
 }
 
 fn load_test_config(root: &PathBuf) -> workdown::model::config::Config {
@@ -120,8 +116,7 @@ fn add_creates_work_item_file() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let outcome =
-        run_add(&config, &root, fields(&[("title", "My First Task")]), None).unwrap();
+    let outcome = run_add(&config, &root, fields(&[("title", "My First Task")]), None).unwrap();
 
     assert!(outcome.path.exists());
     assert_eq!(outcome.path, root.join("workdown-items/my-first-task.md"));
@@ -139,8 +134,7 @@ fn add_applies_default_generators() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let outcome =
-        run_add(&config, &root, fields(&[("title", "Test Defaults")]), None).unwrap();
+    let outcome = run_add(&config, &root, fields(&[("title", "Test Defaults")]), None).unwrap();
     let content = fs::read_to_string(&outcome.path).unwrap();
 
     // $today should produce a YYYY-MM-DD date.
@@ -159,8 +153,7 @@ fn add_slugifies_title_correctly() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let outcome =
-        run_add(&config, &root, fields(&[("title", "Fix Bug #123")]), None).unwrap();
+    let outcome = run_add(&config, &root, fields(&[("title", "Fix Bug #123")]), None).unwrap();
     assert_eq!(
         outcome.path.file_name().unwrap().to_str().unwrap(),
         "fix-bug-123.md"
@@ -172,8 +165,7 @@ fn add_slugifies_spaces_and_symbols() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let outcome =
-        run_add(&config, &root, fields(&[("title", "Hello, World!")]), None).unwrap();
+    let outcome = run_add(&config, &root, fields(&[("title", "Hello, World!")]), None).unwrap();
     assert_eq!(
         outcome.path.file_name().unwrap().to_str().unwrap(),
         "hello-world.md"
@@ -378,11 +370,7 @@ fn add_no_warnings_when_rules_satisfied() {
     let outcome = run_add(
         &config,
         &root,
-        fields(&[
-            ("title", "Good Bug"),
-            ("type", "bug"),
-            ("priority", "high"),
-        ]),
+        fields(&[("title", "Good Bug"), ("type", "bug"), ("priority", "high")]),
         None,
     )
     .unwrap();
@@ -479,11 +467,7 @@ fn add_template_token_inside_list() {
     // Template sets tags: [urgent, $today]. We need a quoted YAML string
     // because `$today` is not valid YAML without quoting (it would be
     // parsed as a literal string anyway — quote to be explicit).
-    write_template(
-        &root,
-        "tagged",
-        "---\ntags:\n  - urgent\n  - $today\n---\n",
-    );
+    write_template(&root, "tagged", "---\ntags:\n  - urgent\n  - $today\n---\n");
 
     let outcome = run_add(
         &config,
@@ -506,14 +490,15 @@ fn add_template_near_miss_token_stays_literal() {
     let config = load_test_config(&root);
 
     // `before $today` is NOT an exact token match; must stay literal.
-    write_template(
-        &root,
-        "literal",
-        "---\ntitle: before $today\n---\n",
-    );
+    write_template(&root, "literal", "---\ntitle: before $today\n---\n");
 
-    let outcome =
-        run_add(&config, &root, fields(&[("id", "keeps-literal")]), Some("literal")).unwrap();
+    let outcome = run_add(
+        &config,
+        &root,
+        fields(&[("id", "keeps-literal")]),
+        Some("literal"),
+    )
+    .unwrap();
 
     let content = fs::read_to_string(&outcome.path).unwrap();
     assert!(content.contains("before $today"));

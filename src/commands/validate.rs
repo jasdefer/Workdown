@@ -15,7 +15,11 @@ use crate::{cli, parser};
 /// Run the validate command. Returns `true` if there are errors.
 ///
 /// Paths in `config` are relative to `project_root` (the working directory).
-pub fn run_validate(config: &Config, project_root: &Path, format: ValidateFormat) -> anyhow::Result<bool> {
+pub fn run_validate(
+    config: &Config,
+    project_root: &Path,
+    format: ValidateFormat,
+) -> anyhow::Result<bool> {
     let schema_path = project_root.join(&config.schema);
     let items_path = project_root.join(&config.paths.work_items);
 
@@ -31,7 +35,9 @@ pub fn run_validate(config: &Config, project_root: &Path, format: ValidateFormat
     diagnostics.extend(store.detect_cycles(&schema));
     diagnostics.extend(crate::rules::evaluate(&store, &schema));
 
-    let has_errors = diagnostics.iter().any(|diagnostic| diagnostic.severity == Severity::Error);
+    let has_errors = diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity == Severity::Error);
 
     match format {
         ValidateFormat::Human => render_human(&diagnostics, &store),
@@ -89,16 +95,22 @@ fn render_human(diagnostics: &[Diagnostic], store: &Store) {
         }
     }
 
-    let error_count = diagnostics.iter().filter(|diagnostic| diagnostic.severity == Severity::Error).count();
-    let warning_count = diagnostics.iter().filter(|diagnostic| diagnostic.severity == Severity::Warning).count();
+    let error_count = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity == Severity::Error)
+        .count();
+    let warning_count = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity == Severity::Warning)
+        .count();
     cli::output::validation_summary(error_count, warning_count);
 }
 
 // ── JSON output ─────────────────────────────────────────────────────
 
 fn render_json(diagnostics: &[Diagnostic]) {
-    let json = serde_json::to_string_pretty(diagnostics)
-        .expect("diagnostics are always serializable");
+    let json =
+        serde_json::to_string_pretty(diagnostics).expect("diagnostics are always serializable");
     println!("{json}");
 }
 
@@ -135,9 +147,9 @@ fn file_for_diagnostic(diagnostic: &Diagnostic, store: &Store) -> Option<PathBuf
         | DiagnosticKind::MissingRequired { item_id, .. }
         | DiagnosticKind::UnknownField { item_id, .. }
         | DiagnosticKind::BrokenLink { item_id, .. }
-        | DiagnosticKind::RuleViolation { item_id, .. } => {
-            store.get(item_id.as_str()).map(|item| item.source_path.clone())
-        }
+        | DiagnosticKind::RuleViolation { item_id, .. } => store
+            .get(item_id.as_str())
+            .map(|item| item.source_path.clone()),
 
         // These span multiple files or the whole collection.
         DiagnosticKind::DuplicateId { .. }

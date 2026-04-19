@@ -51,7 +51,11 @@ pub fn run_query(
             if result.items.is_empty() {
                 cli::output::info("No matching items");
             } else {
-                let headers: Vec<&str> = result.columns.iter().map(|column| column.as_str()).collect();
+                let headers: Vec<&str> = result
+                    .columns
+                    .iter()
+                    .map(|column| column.as_str())
+                    .collect();
                 let mut table = cli::output::table(&headers);
                 for row in &result.items {
                     let cells: Vec<&str> = row.values.iter().map(|value| value.as_str()).collect();
@@ -67,8 +71,7 @@ pub fn run_query(
         }
         QueryFormat::Tsv | QueryFormat::Csv => {
             let options = build_delimited_options(format, delimiter, no_header)?;
-            let (columns, items) =
-                query::engine::filter_and_sort(&request, &store, &schema)?;
+            let (columns, items) = query::engine::filter_and_sort(&request, &store, &schema)?;
             let output = query::format::render_delimited(&items, &columns, &options)?;
             print!("{output}");
         }
@@ -93,9 +96,7 @@ fn build_delimited_options(
     let resolved_delimiter = match delimiter {
         Some(character) => {
             if !character.is_ascii() {
-                anyhow::bail!(
-                    "--delimiter must be a single ASCII character (got '{character}')"
-                );
+                anyhow::bail!("--delimiter must be a single ASCII character (got '{character}')");
             }
             character as u8
         }

@@ -141,10 +141,7 @@ fn eval_condition_on_resolved(resolved: &ResolvedValues, condition: &Condition) 
 ///
 /// If no quantifiers are present, falls back to `all` semantics applied to
 /// the non-quantifier parts of the operator.
-fn eval_quantifiers_on_many(
-    values: &[Option<&FieldValue>],
-    operator: &ConditionOperator,
-) -> bool {
+fn eval_quantifiers_on_many(values: &[Option<&FieldValue>], operator: &ConditionOperator) -> bool {
     let has_quantifier =
         operator.all.is_some() || operator.any.is_some() || operator.none.is_some();
 
@@ -201,8 +198,8 @@ fn eval_quantifiers_on_many(
 mod tests {
     use super::*;
     use crate::model::schema::{
-        Assertion, ConditionValue, CountConstraint, FieldDefinition, FieldTypeConfig, NegationValue,
-        Rule, Severity,
+        Assertion, ConditionValue, CountConstraint, FieldDefinition, FieldTypeConfig,
+        NegationValue, Rule, Severity,
     };
     use indexmap::IndexMap;
     use std::fs;
@@ -253,7 +250,11 @@ mod tests {
             }),
         );
         let inverse_table = Schema::build_inverse_table(&fields);
-        Schema { fields, rules, inverse_table }
+        Schema {
+            fields,
+            rules,
+            inverse_table,
+        }
     }
 
     fn setup_items(items: Vec<(&str, &str)>) -> (tempfile::TempDir, PathBuf) {
@@ -270,8 +271,14 @@ mod tests {
     #[test]
     fn inverse_table_built_from_schema() {
         let schema = test_schema_with_rules(vec![]);
-        assert_eq!(schema.inverse_table.get("children"), Some(&"parent".to_owned()));
-        assert_eq!(schema.inverse_table.get("dependents"), Some(&"depends_on".to_owned()));
+        assert_eq!(
+            schema.inverse_table.get("children"),
+            Some(&"parent".to_owned())
+        );
+        assert_eq!(
+            schema.inverse_table.get("dependents"),
+            Some(&"depends_on".to_owned())
+        );
         assert_eq!(schema.inverse_table.get("nonexistent"), None);
     }
 
@@ -300,10 +307,7 @@ mod tests {
         };
 
         let schema = test_schema_with_rules(vec![rule]);
-        let (_dir, path) = setup_items(vec![(
-            "task-a.md",
-            "---\nstatus: in_progress\n---\n",
-        )]);
+        let (_dir, path) = setup_items(vec![("task-a.md", "---\nstatus: in_progress\n---\n")]);
         let store = Store::load(&path, &schema).unwrap();
         let diagnostics = evaluate(&store, &schema);
 
@@ -338,10 +342,7 @@ mod tests {
         };
 
         let schema = test_schema_with_rules(vec![rule]);
-        let (_dir, path) = setup_items(vec![(
-            "task-a.md",
-            "---\nstatus: open\n---\n",
-        )]);
+        let (_dir, path) = setup_items(vec![("task-a.md", "---\nstatus: open\n---\n")]);
         let store = Store::load(&path, &schema).unwrap();
         let diagnostics = evaluate(&store, &schema);
 
@@ -476,10 +477,7 @@ mod tests {
         };
 
         let schema = test_schema_with_rules(vec![rule]);
-        let (_dir, path) = setup_items(vec![(
-            "task-a.md",
-            "---\nstatus: in_progress\n---\n",
-        )]);
+        let (_dir, path) = setup_items(vec![("task-a.md", "---\nstatus: in_progress\n---\n")]);
         let store = Store::load(&path, &schema).unwrap();
         let diagnostics = evaluate(&store, &schema);
 
@@ -686,10 +684,7 @@ mod tests {
         };
 
         let schema = test_schema_with_rules(vec![rule]);
-        let (_dir, path) = setup_items(vec![(
-            "task-a.md",
-            "---\nstatus: open\n---\n",
-        )]);
+        let (_dir, path) = setup_items(vec![("task-a.md", "---\nstatus: open\n---\n")]);
         let store = Store::load(&path, &schema).unwrap();
         let diagnostics = evaluate(&store, &schema);
 

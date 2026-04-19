@@ -20,10 +20,7 @@ use crate::parser::template::parse_template_content;
 /// - [`TemplateError::NotFound`] if `<name>.md` is not in the directory.
 ///   The variant includes the alphabetical list of available template names.
 /// - [`TemplateError::Read`] / [`TemplateError::Parse`] on IO or YAML errors.
-pub fn load_template_by_name(
-    templates_dir: &Path,
-    name: &str,
-) -> Result<Template, TemplateError> {
+pub fn load_template_by_name(templates_dir: &Path, name: &str) -> Result<Template, TemplateError> {
     if !templates_dir.exists() {
         return Err(TemplateError::DirectoryMissing {
             path: templates_dir.to_path_buf(),
@@ -118,7 +115,10 @@ pub fn run_templates_list(
                 .from_writer(Vec::<u8>::new());
             writer.write_record(["name", "path"])?;
             for name in &names {
-                let path = templates_dir.join(format!("{name}.md")).display().to_string();
+                let path = templates_dir
+                    .join(format!("{name}.md"))
+                    .display()
+                    .to_string();
                 writer.write_record([name.as_str(), path.as_str()])?;
             }
             let buffer = writer.into_inner()?;
@@ -172,7 +172,10 @@ mod tests {
         fs::write(templates_dir.join("middle.md"), "---\ntype: c\n---\n").unwrap();
 
         let names = list_template_names(&templates_dir);
-        assert_eq!(names, vec!["alpha".to_owned(), "middle".to_owned(), "zebra".to_owned()]);
+        assert_eq!(
+            names,
+            vec!["alpha".to_owned(), "middle".to_owned(), "zebra".to_owned()]
+        );
     }
 
     #[test]
@@ -230,7 +233,10 @@ mod tests {
         let directory = TempDir::new().unwrap();
         let missing = directory.path().join("nope");
         let result = load_template_by_name(&missing, "anything");
-        assert!(matches!(result, Err(TemplateError::DirectoryMissing { .. })));
+        assert!(matches!(
+            result,
+            Err(TemplateError::DirectoryMissing { .. })
+        ));
     }
 
     #[test]

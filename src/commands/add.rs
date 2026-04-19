@@ -47,7 +47,10 @@ pub enum AddError {
     ValidationFailed { diagnostics: Vec<Diagnostic> },
 
     #[error("failed to write '{path}': {source}")]
-    WriteFile { path: PathBuf, source: std::io::Error },
+    WriteFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
 
     #[error(transparent)]
     Template(#[from] TemplateError),
@@ -211,12 +214,10 @@ fn derive_slug(field_values: &HashMap<String, serde_yaml::Value>) -> Result<Stri
     }
 
     if let Some(title_value) = field_values.get("title") {
-        let title = title_value
-            .as_str()
-            .ok_or_else(|| AddError::InvalidSlug {
-                title: format!("{title_value:?}"),
-                reason: "title must be a string".to_owned(),
-            })?;
+        let title = title_value.as_str().ok_or_else(|| AddError::InvalidSlug {
+            title: format!("{title_value:?}"),
+            reason: "title must be a string".to_owned(),
+        })?;
         return slugify(title);
     }
 
@@ -283,10 +284,7 @@ fn build_frontmatter_yaml(
             continue;
         }
         if let Some(value) = frontmatter.get(field_name) {
-            mapping.insert(
-                serde_yaml::Value::String(field_name.clone()),
-                value.clone(),
-            );
+            mapping.insert(serde_yaml::Value::String(field_name.clone()), value.clone());
         }
     }
 
@@ -429,5 +427,4 @@ mod tests {
             Err(AddError::InvalidId { .. })
         ));
     }
-
 }

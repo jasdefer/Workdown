@@ -131,7 +131,9 @@ pub(crate) fn negation_from_value(value: &serde_yaml::Value) -> Result<NegationV
     }
 }
 
-pub(crate) fn condition_value_from_yaml(value: &serde_yaml::Value) -> Result<ConditionValue, String> {
+pub(crate) fn condition_value_from_yaml(
+    value: &serde_yaml::Value,
+) -> Result<ConditionValue, String> {
     match value {
         serde_yaml::Value::String(s) => Ok(ConditionValue::String(s.clone())),
         serde_yaml::Value::Number(n) => {

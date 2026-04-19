@@ -48,10 +48,7 @@ rules:
     .unwrap();
 
     let (_dir, path) = setup(vec![
-        (
-            "task-a.md",
-            "---\nstatus: in_progress\n---\nNo assignee!\n",
-        ),
+        ("task-a.md", "---\nstatus: in_progress\n---\nNo assignee!\n"),
         (
             "task-b.md",
             "---\nstatus: in_progress\nassignee: alice\n---\n",
@@ -71,7 +68,10 @@ rules:
 
     match &violations[0].kind {
         DiagnosticKind::RuleViolation {
-            item_id, rule, detail, ..
+            item_id,
+            rule,
+            detail,
+            ..
         } => {
             assert_eq!(item_id, "task-a");
             assert_eq!(rule, "in-progress-needs-assignee");
@@ -197,10 +197,7 @@ rules:
 
     let (_dir, path) = setup(vec![
         ("epic.md", "---\nstatus: backlog\n---\n"),
-        (
-            "task-a.md",
-            "---\nstatus: in_progress\nparent: epic\n---\n",
-        ),
+        ("task-a.md", "---\nstatus: in_progress\nparent: epic\n---\n"),
     ]);
 
     let store = Store::load(&path, &schema).unwrap();
@@ -247,10 +244,7 @@ rules:
     )
     .unwrap();
 
-    let (_dir, path) = setup(vec![(
-        "task-a.md",
-        "---\nstatus: in_progress\n---\n",
-    )]);
+    let (_dir, path) = setup(vec![("task-a.md", "---\nstatus: in_progress\n---\n")]);
 
     let store = Store::load(&path, &schema).unwrap();
     let diags = evaluate(&store, &schema);
@@ -339,7 +333,10 @@ rules:
     .unwrap();
 
     let (_dir, path) = setup(vec![
-        ("lonely-epic.md", "---\nstatus: open\ntype_field: epic\n---\n"),
+        (
+            "lonely-epic.md",
+            "---\nstatus: open\ntype_field: epic\n---\n",
+        ),
         ("good-epic.md", "---\nstatus: open\ntype_field: epic\n---\n"),
         (
             "child.md",
@@ -461,14 +458,8 @@ rules:
 
     let (_dir, path) = setup(vec![
         ("a.md", "---\nstatus: in_progress\n---\n"),
-        (
-            "b.md",
-            "---\nstatus: in_progress\nassignee: bob\n---\n",
-        ),
-        (
-            "c.md",
-            "---\nstatus: in_progress\nassignee: charlie\n---\n",
-        ),
+        ("b.md", "---\nstatus: in_progress\nassignee: bob\n---\n"),
+        ("c.md", "---\nstatus: in_progress\nassignee: charlie\n---\n"),
     ]);
 
     let store = Store::load(&path, &schema).unwrap();
@@ -510,10 +501,7 @@ rules:
     )
     .unwrap();
 
-    let (_dir, path) = setup(vec![(
-        "task.md",
-        "---\nstatus: in_progress\n---\n",
-    )]);
+    let (_dir, path) = setup(vec![("task.md", "---\nstatus: in_progress\n---\n")]);
 
     let store = Store::load(&path, &schema).unwrap();
     let diags = evaluate(&store, &schema);
@@ -593,10 +581,7 @@ rules:
     .unwrap();
 
     let (_dir, path) = setup(vec![
-        (
-            "a.md",
-            "---\nstatus: in_progress\nassignee: alice\n---\n",
-        ),
+        ("a.md", "---\nstatus: in_progress\nassignee: alice\n---\n"),
         ("b.md", "---\nstatus: open\n---\n"),
         ("c.md", "---\nstatus: done\n---\n"),
     ]);
