@@ -1,0 +1,91 @@
+# Default Workdown Schema — copied into your project by `workdown init`.
+# Customize to fit your project. Each field picks a type from the type system
+# and configures it with concrete values (allowed choices, defaults, etc.).
+
+fields:
+  id:
+    type: string
+    required: true
+    default: $filename
+    description: Unique identifier. Defaults to filename without .md extension.
+
+  title:
+    type: string
+    required: true
+    default: $filename_pretty
+    description: Display name. Falls back to prettified filename if not set.
+
+  type:
+    type: choice
+    values: [issue, bug, milestone, epic]
+    required: true
+    default: issue
+
+  status:
+    type: choice
+    values: [to_do, in_progress, done, removed]
+    required: true
+    default: to_do
+
+  tags:
+    type: list
+    required: false
+
+  # Relations
+  parent:
+    type: link
+    required: false
+    allow_cycles: false
+    inverse: children
+
+  depends_on:
+    type: links
+    required: false
+    allow_cycles: false
+    inverse: dependents
+
+  # Computed fields — uncomment and adjust as needed:
+  
+  start_date:
+    type: date
+    required: false
+    aggregate:
+      function: min
+      error_on_missing: false
+  
+  end_date:
+    type: date
+    required: false
+    aggregate:
+      function: max
+      error_on_missing: false
+
+# ── Rules ──────────────────────────────────────────────────
+# Cross-field, cross-item, and collection-wide validation.
+# See schema.schema.json for the formal rule syntax definition.
+rules:
+  - name: milestone-in-progress-when-child-in-progress
+    match:
+      type: milestone
+      children.status:
+        any: in_progress
+    require:
+      status:
+        values: [in_progress]
+  - name: milestone-to-do-when-all-children-to-do
+    match:
+      type: milestone
+      children.status:
+        all: to_do
+    require:
+      status:
+        values: [to_do]
+  - name: milestone-done-when-all-children-done-or-removed
+    match:
+      type: milestone
+      children.status:
+        all: [done, removed]
+        any: [done, removed]   # forces ≥1 child — prevents vacuous-truth on empty milestones
+    require:
+      status:
+        values: [done]

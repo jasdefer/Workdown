@@ -1,0 +1,12 @@
+# Normalize line endings to LF for all text files.
+#
+# Without this file, each environment's git config (core.autocrlf) decides
+# how line endings are handled independently — Windows checks out CRLF,
+# Linux/macOS expect LF, and the same working copy shows a sea of false
+# "changes" when opened in a Linux devcontainer mounted from a Windows host.
+#
+# With `text=auto eol=lf`: git stores LF in the repo, checks out LF on
+# every platform, and normalizes on commit. Result: identical working
+# copies regardless of where the repo is cloned or opened.
+
+* text=auto eol=lf

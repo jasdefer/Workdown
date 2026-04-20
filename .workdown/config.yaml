@@ -1,0 +1,18 @@
+# Default Workdown Configuration — copied into your project by `workdown init`.
+# Project metadata, file paths, and CLI defaults.
+
+project:
+  name: Workdown
+  description: ""
+
+paths:
+  work_items: workdown-items
+  templates: .workdown/templates
+  resources: .workdown/resources.yaml
+
+schema: .workdown/schema.yaml
+
+defaults:
+  board_field: status
+  tree_field: parent
+  graph_field: depends_on
