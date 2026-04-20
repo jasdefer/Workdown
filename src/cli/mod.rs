@@ -130,6 +130,18 @@ pub enum QueryFormat {
     Csv,
 }
 
+/// Bundle of output-rendering options for `workdown query`.
+///
+/// Grouping `format`, `delimiter`, and `no_header` keeps the `run_query`
+/// call signature short and makes it easy to add future output knobs
+/// without another positional argument.
+#[derive(Debug, Clone, Copy)]
+pub struct QueryOutput {
+    pub format: QueryFormat,
+    pub delimiter: Option<char>,
+    pub no_header: bool,
+}
+
 /// Initialize the tracing subscriber for CLI logging.
 ///
 /// Verbosity mapping:

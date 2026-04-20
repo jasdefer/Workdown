@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::cli::{self, QueryFormat};
+use crate::cli::{self, QueryFormat, QueryOutput};
 use crate::model::config::Config;
 use crate::parser;
 use crate::query;
@@ -20,9 +20,7 @@ pub fn run_query(
     where_clauses: &[String],
     sort_arguments: &[String],
     fields_argument: Option<&str>,
-    format: QueryFormat,
-    delimiter: Option<char>,
-    no_header: bool,
+    output: QueryOutput,
 ) -> anyhow::Result<()> {
     let schema_path = project_root.join(&config.schema);
     let items_path = project_root.join(&config.paths.work_items);
@@ -45,7 +43,7 @@ pub fn run_query(
         fields,
     };
 
-    match format {
+    match output.format {
         QueryFormat::Table => {
             let result = query::engine::execute(&request, &store, &schema)?;
             if result.items.is_empty() {
@@ -70,10 +68,10 @@ pub fn run_query(
             println!("{}", query::format::render_json(&result));
         }
         QueryFormat::Tsv | QueryFormat::Csv => {
-            let options = build_delimited_options(format, delimiter, no_header)?;
+            let options = build_delimited_options(output)?;
             let (columns, items) = query::engine::filter_and_sort(&request, &store, &schema)?;
-            let output = query::format::render_delimited(&items, &columns, &options)?;
-            print!("{output}");
+            let rendered = query::format::render_delimited(&items, &columns, &options)?;
+            print!("{rendered}");
         }
     }
 
@@ -82,18 +80,14 @@ pub fn run_query(
 
 /// Build [`DelimitedOptions`] for CSV/TSV rendering, honouring `--delimiter`
 /// and `--no-header` overrides.
-fn build_delimited_options(
-    format: QueryFormat,
-    delimiter: Option<char>,
-    no_header: bool,
-) -> anyhow::Result<DelimitedOptions> {
-    let default_delimiter: u8 = match format {
+fn build_delimited_options(output: QueryOutput) -> anyhow::Result<DelimitedOptions> {
+    let default_delimiter: u8 = match output.format {
         QueryFormat::Tsv => b'\t',
         QueryFormat::Csv => b',',
         _ => unreachable!("build_delimited_options called for non-delimited format"),
     };
 
-    let resolved_delimiter = match delimiter {
+    let resolved_delimiter = match output.delimiter {
         Some(character) => {
             if !character.is_ascii() {
                 anyhow::bail!("--delimiter must be a single ASCII character (got '{character}')");
@@ -105,7 +99,7 @@ fn build_delimited_options(
 
     Ok(DelimitedOptions {
         delimiter: resolved_delimiter,
-        header: !no_header,
+        header: !output.no_header,
         list_separator: LIST_SEPARATOR,
     })
 }

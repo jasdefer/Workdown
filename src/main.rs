@@ -78,15 +78,18 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     tracing::info!("querying work items");
                     let project_root = std::env::current_dir()
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    let output = cli::QueryOutput {
+                        format: *format,
+                        delimiter: *delimiter,
+                        no_header: *no_header,
+                    };
                     workdown::commands::query::run_query(
                         &config,
                         &project_root,
                         where_clauses,
                         sort,
                         fields.as_deref(),
-                        *format,
-                        *delimiter,
-                        *no_header,
+                        output,
                     )?;
                     Ok(ExitCode::SUCCESS)
                 }

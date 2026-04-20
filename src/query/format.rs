@@ -239,10 +239,7 @@ fn join_with_separator<'a, I: Iterator<Item = &'a str>>(
 fn csv_error_to_io(error: csv::Error) -> DelimitedError {
     match error.into_kind() {
         csv::ErrorKind::Io(io) => DelimitedError::Io(io),
-        other => DelimitedError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("{other:?}"),
-        )),
+        other => DelimitedError::Io(std::io::Error::other(format!("{other:?}"))),
     }
 }
 

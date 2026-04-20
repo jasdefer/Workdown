@@ -187,8 +187,8 @@ mod tests {
 
     #[test]
     fn equals_float_matches() {
-        let condition = Condition::Equals(ConditionValue::Number(3.14));
-        assert!(eval_condition(Some(&FieldValue::Float(3.14)), &condition));
+        let condition = Condition::Equals(ConditionValue::Number(2.5));
+        assert!(eval_condition(Some(&FieldValue::Float(2.5)), &condition));
     }
 
     #[test]

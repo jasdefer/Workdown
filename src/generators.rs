@@ -314,7 +314,7 @@ mod tests {
         resolve_template_tokens(&mut frontmatter, Some("slug"), &store);
 
         assert_eq!(frontmatter.get("count").unwrap().as_i64().unwrap(), 7);
-        assert_eq!(frontmatter.get("done").unwrap().as_bool().unwrap(), true);
+        assert!(frontmatter.get("done").unwrap().as_bool().unwrap());
     }
 
     #[test]

@@ -313,11 +313,11 @@ mod tests {
                 max: None,
             }),
         )]);
-        let matches = parse(&schema, &["--ratio", "3.14"]);
+        let matches = parse(&schema, &["--ratio", "2.5"]);
         let field_map = matches_to_field_map(&matches, &schema);
 
         let value = field_map.get("ratio").unwrap();
-        assert!((value.as_f64().unwrap() - 3.14).abs() < 1e-9);
+        assert!((value.as_f64().unwrap() - 2.5).abs() < 1e-9);
     }
 
     // ── Boolean ──────────────────────────────────────────────────────

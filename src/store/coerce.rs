@@ -668,11 +668,11 @@ mod tests {
                 max: None,
             }),
         )]);
-        let raw = raw_item("t", vec![("weight", yaml_float(3.14))]);
+        let raw = raw_item("t", vec![("weight", yaml_float(2.5))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
-        assert_eq!(fields["weight"], FieldValue::Float(3.14));
+        assert_eq!(fields["weight"], FieldValue::Float(2.5));
     }
 
     #[test]
