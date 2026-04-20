@@ -78,6 +78,11 @@
           "default": false,
           "description": "Whether circular references are allowed. Only valid for link and links types."
         },
+        "inverse": {
+          "type": "string",
+          "description": "Inverse relationship name for rules dot-notation traversal. Only valid for link and links types. Example: a 'parent' field with inverse 'children' enables 'children.type' references in rules.",
+          "pattern": "^[a-z_][a-z0-9_]*$"
+        },
         "resource": {
           "type": "string",
           "description": "Name of a resource section in resources.yaml. The field value must match an id from that resource. Only valid for string and list types.",
@@ -107,7 +112,20 @@
         },
         {
           "if": {
-            "properties": { "type": { "enum": ["string", "date", "boolean", "list", "link", "links"] } }
+            "properties": { "type": { "enum": ["string", "date", "boolean", "list"] } }
+          },
+          "then": {
+            "properties": {
+              "values": false,
+              "min": false,
+              "max": false,
+              "inverse": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["link", "links"] } }
           },
           "then": {
             "properties": {
@@ -127,7 +145,8 @@
               "min": false,
               "max": false,
               "allow_cycles": false,
-              "resource": false
+              "resource": false,
+              "inverse": false
             }
           }
         },
@@ -140,7 +159,8 @@
               "values": false,
               "pattern": false,
               "allow_cycles": false,
-              "resource": false
+              "resource": false,
+              "inverse": false
             }
           }
         },
@@ -153,7 +173,8 @@
               "values": false,
               "min": false,
               "max": false,
-              "allow_cycles": false
+              "allow_cycles": false,
+              "inverse": false
             }
           }
         },
@@ -163,7 +184,8 @@
           },
           "then": {
             "properties": {
-              "resource": false
+              "resource": false,
+              "inverse": false
             }
           }
         },

@@ -1,11 +1,29 @@
-//! Parsers for work item files (frontmatter + Markdown) and schema definitions.
+//! Parsers for work item files (frontmatter + Markdown), schema, and config.
 
+pub mod config;
 pub mod schema;
+pub mod template;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::model::RawWorkItem;
+use crate::model::WorkItemId;
+
+/// A work item as parsed from a Markdown file, before type coercion.
+/// Has a resolved ID but raw YAML field values. Internal intermediate — the
+/// store converts this into a [`WorkItem`] with typed fields.
+#[derive(Debug)]
+pub(crate) struct RawWorkItem {
+    /// Resolved ID: from frontmatter `id` field if present, otherwise filename without `.md`.
+    pub id: WorkItemId,
+    /// Field names to their raw YAML values, as written in the frontmatter.
+    /// The `id` field (if present in frontmatter) is excluded — use `id` above.
+    pub frontmatter: HashMap<String, serde_yaml::Value>,
+    /// Everything below the closing `---` delimiter — freeform Markdown.
+    pub body: String,
+    /// The file this was parsed from, kept for error messages downstream.
+    pub source_path: PathBuf,
+}
 
 /// Errors that can occur when parsing a work item file.
 #[derive(Debug, thiserror::Error)]
@@ -34,7 +52,7 @@ pub enum ParseError {
     #[error("{path}: frontmatter `id` field must be a string")]
     IdNotString { path: PathBuf },
 
-    #[error("{path}: invalid ID '{id}': must be non-empty, lowercase alphanumeric with hyphens, starting with a letter")]
+    #[error("{path}: invalid ID '{id}': must be non-empty, lowercase alphanumeric with hyphens, starting with a letter or digit")]
     InvalidId { path: PathBuf, id: String },
 }
 
@@ -49,17 +67,18 @@ pub(crate) fn parse_work_item_file(path: &Path) -> Result<RawWorkItem, ParseErro
     parse_work_item(&content, path)
 }
 
-/// Parse work item content into a [`RawWorkItem`] with a resolved ID.
+/// Split a file's content into a frontmatter map and body.
 ///
-/// Parses the YAML frontmatter, extracts the body, and resolves the work item ID:
-/// - If the frontmatter contains an `id` field, that value is used (must be a string).
-/// - Otherwise, the filename without `.md` is used.
+/// Handles the `---` delimiters, YAML parsing, and body extraction — but
+/// does not touch the `id` field. The caller decides whether `id` is
+/// special (for work items) or just another field (for templates).
 ///
-/// The resolved ID is validated for format (kebab-case).
-///
-/// `content` is the full text of the Markdown file. `path` is used for
-/// ID derivation (filename) and error messages — no I/O happens here.
-pub(crate) fn parse_work_item(content: &str, path: &Path) -> Result<RawWorkItem, ParseError> {
+/// `content` is the full text. `path` is used for error messages only;
+/// no I/O happens here.
+pub(crate) fn split_frontmatter(
+    content: &str,
+    path: &Path,
+) -> Result<(HashMap<String, serde_yaml::Value>, String), ParseError> {
     let mut lines = content.lines();
 
     // First line must be `---`
@@ -104,7 +123,7 @@ pub(crate) fn parse_work_item(content: &str, path: &Path) -> Result<RawWorkItem,
         })?;
 
     // Must be a mapping (key-value pairs), not a scalar or list
-    let mut frontmatter: HashMap<String, serde_yaml::Value> = match value {
+    let frontmatter: HashMap<String, serde_yaml::Value> = match value {
         serde_yaml::Value::Mapping(mapping) => mapping
             .into_iter()
             .filter_map(|(key, value)| key.as_str().map(|key| (key.to_owned(), value)))
@@ -120,8 +139,26 @@ pub(crate) fn parse_work_item(content: &str, path: &Path) -> Result<RawWorkItem,
         }
     };
 
+    // The opening `---\n` plus everything we consumed gives us the body offset.
+    let opening_delimiter_len = content.lines().next().unwrap().len() + 1;
+    let body_offset = opening_delimiter_len + bytes_consumed;
+    let body = content.get(body_offset..).unwrap_or("").to_owned();
+
+    Ok((frontmatter, body))
+}
+
+/// Parse work item content into a [`RawWorkItem`] with a resolved ID.
+///
+/// Thin wrapper over [`split_frontmatter`] that resolves the work item ID:
+/// - If the frontmatter contains an `id` field, that value is used (must be a string).
+/// - Otherwise, the filename without `.md` is used.
+///
+/// The resolved ID is validated for format (kebab-case).
+pub(crate) fn parse_work_item(content: &str, path: &Path) -> Result<RawWorkItem, ParseError> {
+    let (mut frontmatter, body) = split_frontmatter(content, path)?;
+
     // Resolve ID: frontmatter `id` field takes precedence over filename.
-    let id = if let Some(id_value) = frontmatter.remove("id") {
+    let id_str = if let Some(id_value) = frontmatter.remove("id") {
         id_value
             .as_str()
             .ok_or_else(|| ParseError::IdNotString {
@@ -136,18 +173,15 @@ pub(crate) fn parse_work_item(content: &str, path: &Path) -> Result<RawWorkItem,
             .to_owned()
     };
 
-    // Validate ID format: non-empty, lowercase alphanumeric + hyphens, starts with a letter.
-    if !is_valid_id(&id) {
+    // Validate ID format: non-empty, lowercase alphanumeric + hyphens, starts with a letter or digit.
+    if !is_valid_id(&id_str) {
         return Err(ParseError::InvalidId {
             path: path.to_path_buf(),
-            id,
+            id: id_str,
         });
     }
 
-    // The opening `---\n` plus everything we consumed gives us the body offset.
-    let opening_delimiter_len = content.lines().next().unwrap().len() + 1;
-    let body_offset = opening_delimiter_len + bytes_consumed;
-    let body = content.get(body_offset..).unwrap_or("").to_owned();
+    let id = WorkItemId::from(id_str);
 
     Ok(RawWorkItem {
         id,
@@ -157,18 +191,19 @@ pub(crate) fn parse_work_item(content: &str, path: &Path) -> Result<RawWorkItem,
     })
 }
 
-/// Check whether an ID is valid: non-empty, starts with a lowercase letter,
-/// contains only lowercase letters, digits, and hyphens, and doesn't end with a hyphen.
-fn is_valid_id(id: &str) -> bool {
+/// Check whether an ID is valid: non-empty, starts with a lowercase letter or
+/// digit, contains only lowercase letters, digits, and hyphens, and doesn't
+/// end with a hyphen.
+pub(crate) fn is_valid_id(id: &str) -> bool {
     if id.is_empty() {
         return false;
     }
 
     let mut chars = id.chars();
 
-    // Must start with a lowercase letter.
+    // Must start with a lowercase letter or digit.
     match chars.next() {
-        Some(c) if c.is_ascii_lowercase() => {}
+        Some(c) if c.is_ascii_lowercase() || c.is_ascii_digit() => {}
         _ => return false,
     }
 
@@ -194,6 +229,73 @@ mod tests {
 
     fn test_path() -> &'static Path {
         Path::new("test-item.md")
+    }
+
+    // ── split_frontmatter ────────────────────────────────────────────
+
+    #[test]
+    fn split_retains_id_in_map() {
+        let content = "---\nid: custom-id\ntitle: Test\n---\nbody\n";
+        let (frontmatter, body) = split_frontmatter(content, test_path()).unwrap();
+        assert_eq!(
+            frontmatter.get("id").unwrap(),
+            &serde_yaml::Value::String("custom-id".into())
+        );
+        assert_eq!(
+            frontmatter.get("title").unwrap(),
+            &serde_yaml::Value::String("Test".into())
+        );
+        assert!(body.contains("body"));
+    }
+
+    #[test]
+    fn split_empty_frontmatter_returns_empty_map() {
+        let content = "---\n---\nSome body.\n";
+        let (frontmatter, body) = split_frontmatter(content, test_path()).unwrap();
+        assert!(frontmatter.is_empty());
+        assert!(body.contains("Some body."));
+    }
+
+    #[test]
+    fn split_missing_opening_errors() {
+        let content = "title: x\n---\nbody\n";
+        let result = split_frontmatter(content, test_path());
+        assert!(matches!(result, Err(ParseError::MissingFrontmatter { .. })));
+    }
+
+    #[test]
+    fn split_missing_closing_errors() {
+        let content = "---\ntitle: x\n";
+        let result = split_frontmatter(content, test_path());
+        assert!(matches!(
+            result,
+            Err(ParseError::UnclosedFrontmatter { .. })
+        ));
+    }
+
+    #[test]
+    fn split_list_frontmatter_errors() {
+        let content = "---\n- one\n- two\n---\nbody\n";
+        let result = split_frontmatter(content, test_path());
+        assert!(matches!(
+            result,
+            Err(ParseError::FrontmatterNotMapping { .. })
+        ));
+    }
+
+    #[test]
+    fn split_invalid_yaml_errors() {
+        let content = "---\n: :\n  bad:\n    - [\n---\nbody\n";
+        let result = split_frontmatter(content, test_path());
+        assert!(matches!(result, Err(ParseError::InvalidYaml { .. })));
+    }
+
+    #[test]
+    fn split_preserves_body_with_markdown() {
+        let content = "---\ntitle: X\n---\n\n# Heading\n\n- a\n- b\n";
+        let (_, body) = split_frontmatter(content, test_path()).unwrap();
+        assert!(body.contains("# Heading"));
+        assert!(body.contains("- a"));
     }
 
     // ── Frontmatter parsing ──────────────────────────────────────────
@@ -385,10 +487,10 @@ tags: [a, b, c]
     }
 
     #[test]
-    fn id_invalid_format_starts_with_digit() {
+    fn id_starts_with_digit_accepted() {
         let content = "---\ntitle: Test\n---\n";
-        let result = parse_work_item(content, Path::new("123-task.md"));
-        assert!(matches!(result, Err(ParseError::InvalidId { .. })));
+        let item = parse_work_item(content, Path::new("123-task.md")).unwrap();
+        assert_eq!(item.id, "123-task");
     }
 
     #[test]
@@ -428,6 +530,9 @@ tags: [a, b, c]
         assert!(is_valid_id("task-42"));
         assert!(is_valid_id("implement-auth-epic"));
         assert!(is_valid_id("a1b2c3"));
+        assert!(is_valid_id("1-task"));
+        assert!(is_valid_id("42"));
+        assert!(is_valid_id("9-lives"));
     }
 
     #[test]
@@ -437,7 +542,7 @@ tags: [a, b, c]
         assert!(!is_valid_id("fix-"));
         assert!(!is_valid_id("Fix"));
         assert!(!is_valid_id("fix_login"));
-        assert!(!is_valid_id("123"));
+        assert!(!is_valid_id("1-"));
         assert!(!is_valid_id("fix login"));
     }
 }

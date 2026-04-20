@@ -8,8 +8,8 @@ use std::path::Path;
 use indexmap::IndexMap;
 
 use crate::model::schema::{
-    AggregateFunction, Assertion, Condition, CountConstraint, DefaultValue, FieldDef, FieldType,
-    Generator, RawRule, RawSchema, Rule, Schema,
+    AggregateFunction, Assertion, Condition, CountConstraint, DefaultValue, FieldDefinition,
+    FieldType, FieldTypeConfig, Generator, RawFieldDefinition, RawRule, RawSchema, Rule, Schema,
 };
 
 // ── Public API ────────────────────────────────────────────────────────
@@ -23,8 +23,18 @@ pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
 
     let mut errors = Vec::new();
 
+    // Validate raw field definitions (type-specific properties, defaults, aggregates, inverses).
     validate_fields(&raw.fields, &mut errors);
-    validate_raw_rules(&raw.rules, &raw.fields, &mut errors);
+
+    // Convert raw fields → typed FieldDefinition with FieldTypeConfig.
+    let fields: IndexMap<String, FieldDefinition> = raw
+        .fields
+        .into_iter()
+        .map(|(name, raw_field)| (name, convert_field(raw_field)))
+        .collect();
+
+    // Validate rules against the converted fields.
+    validate_raw_rules(&raw.rules, &fields, &mut errors);
 
     if !errors.is_empty() {
         return Err(SchemaLoadError::Validation(errors));
@@ -43,9 +53,12 @@ pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
         })
         .collect();
 
+    let inverse_table = Schema::build_inverse_table(&fields);
+
     Ok(Schema {
-        fields: raw.fields,
+        fields,
         rules,
+        inverse_table,
     })
 }
 
@@ -147,7 +160,12 @@ fn is_valid_field_reference(reference: &str) -> bool {
     }
 }
 
-fn validate_fields(fields: &IndexMap<String, FieldDef>, errors: &mut Vec<SchemaValidationError>) {
+fn validate_fields(
+    fields: &IndexMap<String, RawFieldDefinition>,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    let mut seen_inverses = std::collections::HashMap::new();
+
     for (name, field) in fields {
         if !is_valid_field_name(name) {
             errors.push(field_error(
@@ -159,13 +177,63 @@ fn validate_fields(fields: &IndexMap<String, FieldDef>, errors: &mut Vec<SchemaV
         validate_type_specific_properties(name, field, errors);
         validate_aggregate_compatibility(name, field, errors);
         validate_default_compatibility(name, field, errors);
+        validate_inverse_property(name, field, fields, &mut seen_inverses, errors);
+    }
+}
+
+/// Validate the `inverse` property on a raw field definition.
+fn validate_inverse_property(
+    name: &str,
+    field: &RawFieldDefinition,
+    fields: &IndexMap<String, RawFieldDefinition>,
+    seen_inverses: &mut std::collections::HashMap<String, String>,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    let inverse = match &field.inverse {
+        Some(inv) => inv,
+        None => return,
+    };
+
+    // inverse only valid on link/links
+    if field.field_type != FieldType::Link && field.field_type != FieldType::Links {
+        errors.push(field_error(
+            name,
+            "'inverse' is only valid for link and links types",
+        ));
+        return;
+    }
+
+    // inverse name must be a valid identifier
+    if !is_valid_field_name(inverse) {
+        errors.push(field_error(
+            name,
+            format!("inverse name '{inverse}' must be lowercase letters, digits, and underscores"),
+        ));
+    }
+
+    // inverse must not collide with a field name
+    if fields.contains_key(inverse.as_str()) {
+        errors.push(field_error(
+            name,
+            format!("inverse name '{inverse}' conflicts with a defined field name"),
+        ));
+    }
+
+    // inverse names must be unique across all fields
+    if let Some(other_field) = seen_inverses.get(inverse.as_str()) {
+        errors.push(field_error(
+            name,
+            format!("inverse name '{inverse}' is already used by field '{other_field}'"),
+        ));
+    } else {
+        seen_inverses.insert(inverse.clone(), name.to_owned());
     }
 }
 
 /// Check that only properties valid for the field's type are set.
 fn validate_type_specific_properties(
     name: &str,
-    field: &FieldDef,
+    field: &RawFieldDefinition,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     match field.field_type {
@@ -200,6 +268,7 @@ fn validate_type_specific_properties(
                 field.field_type,
                 errors,
             );
+            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
         }
         FieldType::String => {
             reject_prop(name, "values", &field.values, field.field_type, errors);
@@ -219,6 +288,7 @@ fn validate_type_specific_properties(
                 field.field_type,
                 errors,
             );
+            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
         }
         FieldType::Integer | FieldType::Float => {
             reject_prop(name, "values", &field.values, field.field_type, errors);
@@ -231,6 +301,7 @@ fn validate_type_specific_properties(
                 errors,
             );
             reject_prop(name, "resource", &field.resource, field.field_type, errors);
+            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
         }
         FieldType::Date => {
             reject_prop(name, "values", &field.values, field.field_type, errors);
@@ -245,6 +316,7 @@ fn validate_type_specific_properties(
                 errors,
             );
             reject_prop(name, "resource", &field.resource, field.field_type, errors);
+            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
         }
         FieldType::Boolean => {
             reject_prop(name, "values", &field.values, field.field_type, errors);
@@ -259,6 +331,7 @@ fn validate_type_specific_properties(
                 errors,
             );
             reject_prop(name, "resource", &field.resource, field.field_type, errors);
+            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
         }
         FieldType::List => {
             reject_prop(name, "values", &field.values, field.field_type, errors);
@@ -279,6 +352,7 @@ fn validate_type_specific_properties(
                 field.field_type,
                 errors,
             );
+            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
         }
         FieldType::Link | FieldType::Links => {
             reject_prop(name, "values", &field.values, field.field_type, errors);
@@ -293,6 +367,7 @@ fn validate_type_specific_properties(
                 field.field_type,
                 errors,
             );
+            // Note: inverse IS valid for link/links — no rejection here.
         }
     }
 }
@@ -313,10 +388,54 @@ fn reject_prop<T: std::fmt::Debug>(
     }
 }
 
+/// Convert a raw (flat) field definition into a typed [`FieldDefinition`]
+/// with a [`FieldTypeConfig`] variant. Called after validation passes,
+/// so type-specific fields are guaranteed to be present where required.
+fn convert_field(raw: RawFieldDefinition) -> FieldDefinition {
+    let type_config = match raw.field_type {
+        FieldType::String => FieldTypeConfig::String {
+            pattern: raw.pattern,
+        },
+        FieldType::Choice => FieldTypeConfig::Choice {
+            values: raw.values.unwrap_or_default(),
+        },
+        FieldType::Multichoice => FieldTypeConfig::Multichoice {
+            values: raw.values.unwrap_or_default(),
+        },
+        FieldType::Integer => FieldTypeConfig::Integer {
+            min: raw.min,
+            max: raw.max,
+        },
+        FieldType::Float => FieldTypeConfig::Float {
+            min: raw.min,
+            max: raw.max,
+        },
+        FieldType::Date => FieldTypeConfig::Date,
+        FieldType::Boolean => FieldTypeConfig::Boolean,
+        FieldType::List => FieldTypeConfig::List,
+        FieldType::Link => FieldTypeConfig::Link {
+            allow_cycles: raw.allow_cycles,
+            inverse: raw.inverse,
+        },
+        FieldType::Links => FieldTypeConfig::Links {
+            allow_cycles: raw.allow_cycles,
+            inverse: raw.inverse,
+        },
+    };
+    FieldDefinition {
+        type_config,
+        description: raw.description,
+        required: raw.required,
+        default: raw.default,
+        resource: raw.resource,
+        aggregate: raw.aggregate,
+    }
+}
+
 /// Check that the aggregate function is compatible with the field type.
 fn validate_aggregate_compatibility(
     name: &str,
-    field: &FieldDef,
+    field: &RawFieldDefinition,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     let agg = match &field.aggregate {
@@ -364,7 +483,7 @@ fn validate_aggregate_compatibility(
 /// Check that the default value is compatible with the field type.
 fn validate_default_compatibility(
     name: &str,
-    field: &FieldDef,
+    field: &RawFieldDefinition,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     let default = match &field.default {
@@ -463,7 +582,7 @@ fn validate_default_compatibility(
 
 fn validate_raw_rules(
     rules: &[RawRule],
-    fields: &IndexMap<String, FieldDef>,
+    fields: &IndexMap<String, FieldDefinition>,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     let mut seen_names = std::collections::HashSet::new();
@@ -543,7 +662,7 @@ fn validate_field_reference(
     rule_name: &str,
     reference: &str,
     section: &str,
-    fields: &IndexMap<String, FieldDef>,
+    fields: &IndexMap<String, FieldDefinition>,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     if !is_valid_field_reference(reference) {
@@ -557,11 +676,12 @@ fn validate_field_reference(
     let parts: Vec<&str> = reference.split('.').collect();
 
     if parts.len() == 1 {
-        // Simple field reference
-        if !fields.contains_key(parts[0]) {
+        // Simple field reference — must be a defined field or a defined inverse
+        // (bare inverse references are used for min_count/max_count assertions).
+        if !fields.contains_key(parts[0]) && !is_defined_inverse(parts[0], fields) {
             errors.push(rule_error(
                 rule_name,
-                format!("'{reference}' in '{section}' does not match any defined field"),
+                format!("'{reference}' in '{section}' does not match any defined field or inverse"),
             ));
         }
     } else {
@@ -570,16 +690,16 @@ fn validate_field_reference(
         let first = parts[0];
         let second = parts[1];
 
-        let is_link_field = fields
-            .get(first)
-            .is_some_and(|f| f.field_type == FieldType::Link || f.field_type == FieldType::Links);
-        let is_inverse = is_known_inverse(first, fields);
+        let is_link_field = fields.get(first).is_some_and(|f| {
+            f.field_type() == FieldType::Link || f.field_type() == FieldType::Links
+        });
+        let is_inverse = is_defined_inverse(first, fields);
 
         if !is_link_field && !is_inverse {
             errors.push(rule_error(
                 rule_name,
                 format!(
-                    "'{first}' in '{reference}' ({section}) must be a link/links field or a known inverse (e.g. 'children')"
+                    "'{first}' in '{reference}' ({section}) must be a link/links field or a defined inverse"
                 ),
             ));
         }
@@ -594,27 +714,11 @@ fn validate_field_reference(
     }
 }
 
-/// Check if a name is a known inverse relation.
+/// Check if a name is a defined inverse relation in the schema.
 ///
-/// For link fields, the CLI derives an inverse name. The convention is
-/// the plural form — e.g. a field named "parent" has inverse "children",
-/// "depends_on" has inverse "dependents". For now, we accept any name
-/// that isn't itself a defined field as a potential inverse, and let the
-/// work item store validate it concretely. The schema loader checks
-/// the second segment only.
-///
-/// Known hardcoded inverses for common relations:
-fn is_known_inverse(name: &str, fields: &IndexMap<String, FieldDef>) -> bool {
-    // If it's already a field name, it's not an inverse
-    if fields.contains_key(name) {
-        return false;
-    }
-
-    // Well-known inverse names derived from default link fields
-    matches!(
-        name,
-        "children" | "dependents" | "related_items" | "duplicated_by"
-    )
+/// Returns `true` when any link/links field has `inverse: <name>`.
+fn is_defined_inverse(name: &str, fields: &IndexMap<String, FieldDefinition>) -> bool {
+    fields.values().any(|f| f.inverse() == Some(name))
 }
 
 /// Check that quantifiers (all/any/none) in conditions are only used
@@ -623,7 +727,7 @@ fn validate_condition_quantifiers(
     rule_name: &str,
     reference: &str,
     condition: &Condition,
-    fields: &IndexMap<String, FieldDef>,
+    fields: &IndexMap<String, FieldDefinition>,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     let has_quantifier = match condition {
@@ -647,7 +751,7 @@ fn validate_assertion_quantifiers(
     rule_name: &str,
     reference: &str,
     assertion: &Assertion,
-    fields: &IndexMap<String, FieldDef>,
+    fields: &IndexMap<String, FieldDefinition>,
     errors: &mut Vec<SchemaValidationError>,
 ) {
     let has_count = match assertion {
@@ -664,16 +768,21 @@ fn validate_assertion_quantifiers(
 }
 
 /// Does a field reference point to a one-to-many relationship?
-fn is_one_to_many_reference(reference: &str, fields: &IndexMap<String, FieldDef>) -> bool {
-    let first = reference.split('.').next().unwrap_or(reference);
+fn is_one_to_many_reference(reference: &str, fields: &IndexMap<String, FieldDefinition>) -> bool {
+    let parts: Vec<&str> = reference.split('.').collect();
+    let first = parts[0];
 
-    // links field is one-to-many
-    if let Some(field) = fields.get(first) {
-        return field.field_type == FieldType::Links;
+    // Bare inverse name (e.g., "children") or dot-notation with inverse prefix
+    if is_defined_inverse(first, fields) {
+        return true;
     }
 
-    // Inverse names are always one-to-many (children, dependents, etc.)
-    is_known_inverse(first, fields)
+    // links field is one-to-many (forward traversal)
+    if let Some(field) = fields.get(first) {
+        return field.field_type() == FieldType::Links;
+    }
+
+    false
 }
 
 #[cfg(test)]
@@ -693,16 +802,22 @@ mod tests {
         assert!(schema.fields.contains_key("parent"));
 
         let status = &schema.fields["status"];
-        assert_eq!(status.field_type, FieldType::Choice);
+        assert_eq!(status.field_type(), FieldType::Choice);
         assert!(status.required);
-        assert_eq!(
-            status.values.as_ref().unwrap(),
-            &["backlog", "open", "in_progress", "review", "done", "closed"]
-        );
+        match &status.type_config {
+            FieldTypeConfig::Choice { values } => assert_eq!(
+                values,
+                &["backlog", "open", "in_progress", "review", "done", "closed"]
+            ),
+            other => panic!("expected Choice, got: {other:?}"),
+        }
 
         let parent = &schema.fields["parent"];
-        assert_eq!(parent.field_type, FieldType::Link);
-        assert_eq!(parent.allow_cycles, Some(false));
+        assert_eq!(parent.field_type(), FieldType::Link);
+        match &parent.type_config {
+            FieldTypeConfig::Link { allow_cycles, .. } => assert_eq!(*allow_cycles, Some(false)),
+            other => panic!("expected Link, got: {other:?}"),
+        }
     }
 
     #[test]
@@ -1013,9 +1128,10 @@ rules:
             SchemaLoadError::Validation(e) => e,
             other => panic!("expected Validation error, got: {other}"),
         };
-        assert!(errors
-            .iter()
-            .any(|e| e.message.contains("nonexistent") && e.message.contains("does not match")));
+        assert!(errors.iter().any(|e| {
+            e.message.contains("nonexistent")
+                && e.message.contains("does not match any defined field")
+        }));
     }
 
     #[test]
@@ -1084,7 +1200,7 @@ rules:
         };
         assert!(errors
             .iter()
-            .any(|e| e.message.contains("link/links field")));
+            .any(|e| e.message.contains("link/links field or a defined inverse")));
     }
 
     #[test]

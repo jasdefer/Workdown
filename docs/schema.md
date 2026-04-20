@@ -28,8 +28,8 @@ fields:
 | `date` | Calendar date (YYYY-MM-DD) | |
 | `boolean` | True or false | |
 | `list` | List of free-text strings | |
-| `link` | Single reference to another work item | `allow_cycles` |
-| `links` | Multiple references to other work items | `allow_cycles` |
+| `link` | Single reference to another work item | `allow_cycles`, `inverse` |
+| `links` | Multiple references to other work items | `allow_cycles`, `inverse` |
 
 ### Common options (all types)
 
@@ -41,6 +41,7 @@ fields:
 | `description` | string | Human-readable explanation. |
 | `resource` | string | Name of a resource section in `resources.yaml`. Valid for `string` and `list` types. See [Resources](#resources). |
 | `aggregate` | object | Aggregation config for computed fields (see below). |
+| `inverse` | string | Inverse relationship name for rules dot-notation. Only valid for `link` and `links` types. See [Rules](#rules). |
 
 ### Generators
 

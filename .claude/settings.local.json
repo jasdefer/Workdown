@@ -36,7 +36,19 @@
       "Bash(cargo build:*)",
       "Bash(git:*)",
       "Bash(gh pr:*)",
-      "Bash(gh run:*)"
+      "Bash(gh run:*)",
+      "Bash(gh milestone:*)",
+      "Bash(grep -n \"#\\\\[cfg\\(test\\)\\\\]\" /c/Users/justu/source/repos/workdown/src/**/*.rs)",
+      "Bash(cargo --version)",
+      "Bash(rustc --version)",
+      "Bash(docker exec pensive_goldberg:*)",
+      "Bash(docker exec:*)",
+      "Bash(gh label:*)",
+      "Bash(cargo check:*)",
+      "Bash(find src:*)",
+      "WebSearch",
+      "Bash(MSYS_NO_PATHCONV=1 docker run *)",
+      "Bash(docker info *)"
     ]
   }
 }

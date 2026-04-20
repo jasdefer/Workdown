@@ -13,5 +13,9 @@
       ]
     }
   },
-  "postCreateCommand": "cargo --version && rustc --version"
+  "mounts": [
+    "source=workdown-target,target=${containerWorkspaceFolder}/target,type=volume"
+  ],
+  "postCreateCommand": "cargo --version && rustc --version",
+  "postStartCommand": "sudo chown -R $(whoami) ${containerWorkspaceFolder}/target"
 }
