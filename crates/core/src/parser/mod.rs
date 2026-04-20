@@ -3,6 +3,7 @@
 pub mod config;
 pub mod schema;
 pub mod template;
+pub mod views;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
