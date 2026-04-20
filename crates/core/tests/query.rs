@@ -4,14 +4,14 @@ use std::fs;
 use std::path::PathBuf;
 
 use tempfile::TempDir;
-use workdown::model::config::Config;
-use workdown::parser::config::load_config;
-use workdown::parser::schema::load_schema;
-use workdown::query::engine;
-use workdown::query::format::{render_delimited, DelimitedError, DelimitedOptions};
-use workdown::query::parse::parse_where;
-use workdown::query::types::{Predicate, QueryRequest, SortDirection, SortSpec};
-use workdown::store::Store;
+use workdown_core::model::config::Config;
+use workdown_core::parser::config::load_config;
+use workdown_core::parser::schema::load_schema;
+use workdown_core::query::engine;
+use workdown_core::query::format::{render_delimited, DelimitedError, DelimitedOptions};
+use workdown_core::query::parse::parse_where;
+use workdown_core::query::types::{Predicate, QueryRequest, SortDirection, SortSpec};
+use workdown_core::store::Store;
 
 // ── Test fixtures ───────────────────────────────────────────────────
 
@@ -115,7 +115,7 @@ fn run_query(
     where_clauses: &[&str],
     sort: &[SortSpec],
     fields: &[&str],
-) -> workdown::query::types::QueryResult {
+) -> workdown_core::query::types::QueryResult {
     let config = load_test_config(root);
     let schema = load_schema(&root.join(&config.schema)).unwrap();
     let store = Store::load(&root.join(&config.paths.work_items), &schema).unwrap();
@@ -140,14 +140,14 @@ fn run_query(
 }
 
 /// Extract IDs from a query result, sorted for comparison when order doesn't matter.
-fn sorted_ids(result: &workdown::query::types::QueryResult) -> Vec<String> {
+fn sorted_ids(result: &workdown_core::query::types::QueryResult) -> Vec<String> {
     let mut ids: Vec<String> = result.items.iter().map(|row| row.id.clone()).collect();
     ids.sort();
     ids
 }
 
 /// Extract IDs from a query result in result order.
-fn ordered_ids(result: &workdown::query::types::QueryResult) -> Vec<String> {
+fn ordered_ids(result: &workdown_core::query::types::QueryResult) -> Vec<String> {
     result.items.iter().map(|row| row.id.clone()).collect()
 }
 
@@ -267,7 +267,7 @@ fn query_custom_fields() {
 fn query_json_format() {
     let (_directory, root) = setup_project();
     let result = run_query(&root, &[], &[], &["id", "status"]);
-    let json = workdown::query::format::render_json(&result);
+    let json = workdown_core::query::format::render_json(&result);
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert!(parsed.is_array());
     assert_eq!(parsed.as_array().unwrap().len(), 5);
@@ -347,7 +347,7 @@ fn filtered(
     where_clauses: &[&str],
     sort: &[SortSpec],
     fields: &[&str],
-) -> (Vec<String>, Vec<workdown::model::WorkItem>) {
+) -> (Vec<String>, Vec<workdown_core::model::WorkItem>) {
     // The engine hands back borrows into the Store. For test ergonomics
     // we clone the items into owned values so the caller can drop the
     // store without lifetime juggling.
@@ -373,9 +373,9 @@ fn filtered(
 
     let (columns, items) = engine::filter_and_sort(&request, &store, &schema).unwrap();
     // Clone items into owned values — WorkItem has no Clone so we rebuild by hand.
-    let owned: Vec<workdown::model::WorkItem> = items
+    let owned: Vec<workdown_core::model::WorkItem> = items
         .into_iter()
-        .map(|item| workdown::model::WorkItem {
+        .map(|item| workdown_core::model::WorkItem {
             id: item.id.clone(),
             fields: item.fields.clone(),
             body: item.body.clone(),
@@ -402,7 +402,7 @@ fn query_tsv_output_has_header_and_tabs() {
         &[],
         &["id", "title", "status", "tags"],
     );
-    let refs: Vec<&workdown::model::WorkItem> = items.iter().collect();
+    let refs: Vec<&workdown_core::model::WorkItem> = items.iter().collect();
     let output = render_delimited(&refs, &columns, &tsv_options()).unwrap();
     assert_eq!(
         output,
@@ -414,7 +414,7 @@ fn query_tsv_output_has_header_and_tabs() {
 fn query_csv_output_quotes_embedded_commas() {
     let (_directory, root) = setup_project();
     let (columns, items) = filtered(&root, &["title~Fix Login"], &[], &["id", "tags"]);
-    let refs: Vec<&workdown::model::WorkItem> = items.iter().collect();
+    let refs: Vec<&workdown_core::model::WorkItem> = items.iter().collect();
     let options = DelimitedOptions {
         delimiter: b',',
         header: true,
@@ -436,7 +436,7 @@ fn query_csv_quotes_title_containing_comma() {
     .unwrap();
 
     let (columns, items) = filtered(&root, &["title~Hello"], &[], &["id", "title"]);
-    let refs: Vec<&workdown::model::WorkItem> = items.iter().collect();
+    let refs: Vec<&workdown_core::model::WorkItem> = items.iter().collect();
     let options = DelimitedOptions {
         delimiter: b',',
         header: true,
@@ -450,7 +450,7 @@ fn query_csv_quotes_title_containing_comma() {
 fn query_delimited_without_header() {
     let (_directory, root) = setup_project();
     let (columns, items) = filtered(&root, &["title~Fix Login"], &[], &["id", "status"]);
-    let refs: Vec<&workdown::model::WorkItem> = items.iter().collect();
+    let refs: Vec<&workdown_core::model::WorkItem> = items.iter().collect();
     let options = DelimitedOptions {
         header: false,
         ..tsv_options()
@@ -463,7 +463,7 @@ fn query_delimited_without_header() {
 fn query_delimited_custom_delimiter() {
     let (_directory, root) = setup_project();
     let (columns, items) = filtered(&root, &["title~Fix Login"], &[], &["id", "status"]);
-    let refs: Vec<&workdown::model::WorkItem> = items.iter().collect();
+    let refs: Vec<&workdown_core::model::WorkItem> = items.iter().collect();
     let options = DelimitedOptions {
         delimiter: b'|',
         header: true,
@@ -484,7 +484,7 @@ fn query_delimited_errors_on_separator_in_list_element() {
     .unwrap();
 
     let (columns, items) = filtered(&root, &["title~NastyTags"], &[], &["id", "tags"]);
-    let refs: Vec<&workdown::model::WorkItem> = items.iter().collect();
+    let refs: Vec<&workdown_core::model::WorkItem> = items.iter().collect();
     let result = render_delimited(&refs, &columns, &tsv_options());
     match result {
         Err(DelimitedError::EmbeddedSeparator {
@@ -504,7 +504,7 @@ fn query_delimited_errors_on_separator_in_list_element() {
 fn query_delimited_errors_on_delimiter_collision() {
     let (_directory, root) = setup_project();
     let (columns, items) = filtered(&root, &["title~Fix Login"], &[], &["id", "tags"]);
-    let refs: Vec<&workdown::model::WorkItem> = items.iter().collect();
+    let refs: Vec<&workdown_core::model::WorkItem> = items.iter().collect();
     let options = DelimitedOptions {
         delimiter: b';',
         header: true,

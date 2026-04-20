@@ -1,7 +1,7 @@
 ---
 id: workspace-refactor
 type: issue
-status: to_do
+status: done
 title: Split into core / cli / server workspace
 parent: foundation
 ---

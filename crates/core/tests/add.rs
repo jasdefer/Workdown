@@ -5,8 +5,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use tempfile::TempDir;
-use workdown::commands::add::{run_add, AddError};
-use workdown::parser::config::load_config;
+use workdown_core::operations::add::{run_add, AddError};
+use workdown_core::parser::config::load_config;
 
 const TEST_SCHEMA: &str = "\
 fields:
@@ -92,7 +92,7 @@ fn write_template(root: &PathBuf, name: &str, content: &str) {
     fs::write(root.join(format!(".workdown/templates/{name}.md")), content).unwrap();
 }
 
-fn load_test_config(root: &PathBuf) -> workdown::model::config::Config {
+fn load_test_config(root: &PathBuf) -> workdown_core::model::config::Config {
     load_config(&root.join(".workdown/config.yaml")).unwrap()
 }
 
@@ -556,7 +556,7 @@ fn add_template_missing_returns_error() {
     assert!(matches!(
         result,
         Err(AddError::Template(
-            workdown::model::template::TemplateError::NotFound { .. }
+            workdown_core::model::template::TemplateError::NotFound { .. }
         ))
     ));
 }

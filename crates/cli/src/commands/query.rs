@@ -3,12 +3,12 @@
 use std::path::Path;
 
 use crate::cli::{self, QueryFormat, QueryOutput};
-use crate::model::config::Config;
-use crate::parser;
-use crate::query;
-use crate::query::format::DelimitedOptions;
-use crate::query::types::{Predicate, QueryRequest, SortDirection, SortSpec};
-use crate::store::Store;
+use workdown_core::model::config::Config;
+use workdown_core::parser;
+use workdown_core::query;
+use workdown_core::query::format::DelimitedOptions;
+use workdown_core::query::types::{Predicate, QueryRequest, SortDirection, SortSpec};
+use workdown_core::store::Store;
 
 /// In-cell separator for list/multichoice/links values in delimited output.
 const LIST_SEPARATOR: char = ';';

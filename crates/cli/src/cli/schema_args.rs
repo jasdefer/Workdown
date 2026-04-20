@@ -5,14 +5,14 @@
 //! into a [`clap::Command`] with one `--<field>` flag per schema field,
 //! and converts the resulting [`clap::ArgMatches`] back into a field
 //! map (`HashMap<String, serde_yaml::Value>`) that
-//! [`crate::commands::add`] consumes.
+//! [`workdown_core::operations::add`] consumes.
 
 use std::collections::HashMap;
 
 use clap::builder::{BoolValueParser, PossibleValuesParser, StringValueParser};
 use clap::{Arg, ArgAction, Command};
 
-use crate::model::schema::{FieldTypeConfig, Schema};
+use workdown_core::model::schema::{FieldTypeConfig, Schema};
 
 // ── Public API ───────────────────────────────────────────────────────
 
@@ -62,7 +62,7 @@ pub fn build_add_command(schema: &Schema) -> Command {
 }
 
 /// Convert parsed clap matches into a field map consumable by
-/// [`crate::commands::add::run_add`].
+/// [`workdown_core::operations::add::run_add`].
 ///
 /// Only fields the user actually supplied are inserted. Defaults are
 /// applied downstream by the add command itself.
@@ -219,8 +219,8 @@ fn extract_field_value(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::schema::{FieldDefinition, FieldTypeConfig};
     use indexmap::IndexMap;
+    use workdown_core::model::schema::{FieldDefinition, FieldTypeConfig, Schema};
 
     fn schema_with(fields: Vec<(&str, FieldDefinition)>) -> Schema {
         let fields: IndexMap<String, FieldDefinition> = fields

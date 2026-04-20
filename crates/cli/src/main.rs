@@ -1,8 +1,9 @@
+mod cli;
+mod commands;
+
 use std::process::ExitCode;
 
 use clap::Parser;
-
-use workdown::cli;
 
 fn main() -> ExitCode {
     let cli = cli::Cli::parse();
@@ -27,11 +28,11 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
             tracing::info!("initializing workdown project");
             let root = std::env::current_dir()
                 .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
-            match workdown::commands::init::run_init(&root, name.as_deref())? {
-                workdown::commands::init::InitOutcome::Created => {
+            match workdown_core::operations::init::run_init(&root, name.as_deref())? {
+                workdown_core::operations::init::InitOutcome::Created => {
                     cli::output::success("Initialized workdown project");
                 }
-                workdown::commands::init::InitOutcome::AlreadyExists => {
+                workdown_core::operations::init::InitOutcome::AlreadyExists => {
                     cli::output::warning("Already initialized (.workdown/ exists, skipping)");
                 }
             }
@@ -40,7 +41,7 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
 
         // All other commands need the project config.
         cmd => {
-            let config = workdown::parser::config::load_config(&cli.config)
+            let config = workdown_core::parser::config::load_config(&cli.config)
                 .map_err(|e| anyhow::anyhow!("failed to load config: {e}"))?;
             tracing::debug!(project = %config.project.name, "loaded config");
 
@@ -50,12 +51,11 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     tracing::info!("validating work items");
                     let project_root = std::env::current_dir()
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
-                    let has_errors = workdown::commands::validate::run_validate(
-                        &config,
-                        &project_root,
-                        *format,
-                    )?;
-                    if has_errors {
+                    let result =
+                        workdown_core::operations::validate::validate(&config, &project_root)
+                            .map_err(|e| anyhow::anyhow!("{e}"))?;
+                    commands::validate::render(&result.diagnostics, &result.store, *format);
+                    if result.has_errors {
                         Ok(ExitCode::FAILURE)
                     } else {
                         Ok(ExitCode::SUCCESS)
@@ -83,7 +83,7 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         delimiter: *delimiter,
                         no_header: *no_header,
                     };
-                    workdown::commands::query::run_query(
+                    commands::query::run_query(
                         &config,
                         &project_root,
                         where_clauses,
@@ -111,7 +111,7 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     match action {
                         cli::TemplatesAction::List { format } => {
                             tracing::info!("listing templates");
-                            workdown::commands::templates::run_templates_list(
+                            commands::templates::run_templates_list(
                                 &config,
                                 &project_root,
                                 *format,
@@ -120,7 +120,7 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         }
                         cli::TemplatesAction::Show { name } => {
                             tracing::info!("showing template");
-                            match workdown::commands::templates::run_templates_show(
+                            match commands::templates::run_templates_show(
                                 &config,
                                 &project_root,
                                 name,
@@ -145,15 +145,15 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
 /// with one flag per schema field, parse the raw args against it, then
 /// invoke the add command with the resulting field map.
 fn run_add_command(
-    config: &workdown::model::config::Config,
+    config: &workdown_core::model::config::Config,
     project_root: &std::path::Path,
     raw_args: &[String],
 ) -> anyhow::Result<ExitCode> {
     let schema_path = project_root.join(&config.schema);
-    let schema = workdown::parser::schema::load_schema(&schema_path)
+    let schema = workdown_core::parser::schema::load_schema(&schema_path)
         .map_err(|e| anyhow::anyhow!("failed to load schema: {e}"))?;
 
-    let command = workdown::cli::schema_args::build_add_command(&schema);
+    let command = cli::schema_args::build_add_command(&schema);
 
     let matches = match command.try_get_matches_from(raw_args.iter().cloned()) {
         Ok(matches) => matches,
@@ -172,7 +172,7 @@ fn run_add_command(
         }
     };
 
-    let field_values = workdown::cli::schema_args::matches_to_field_map(&matches, &schema);
+    let field_values = cli::schema_args::matches_to_field_map(&matches, &schema);
 
     // Only treat --template as a template name when the schema does not
     // define a `template` field. When the schema wins the collision,
@@ -183,7 +183,8 @@ fn run_add_command(
         matches.get_one::<String>("template").map(String::as_str)
     };
 
-    match workdown::commands::add::run_add(config, project_root, field_values, template_name) {
+    match workdown_core::operations::add::run_add(config, project_root, field_values, template_name)
+    {
         Ok(outcome) => {
             cli::output::success(&format!("Created {}", outcome.path.display()));
             for warning in &outcome.warnings {
@@ -191,13 +192,13 @@ fn run_add_command(
             }
             Ok(ExitCode::SUCCESS)
         }
-        Err(workdown::commands::add::AddError::ValidationFailed { diagnostics }) => {
+        Err(workdown_core::operations::add::AddError::ValidationFailed { diagnostics }) => {
             for diagnostic in &diagnostics {
                 cli::output::error(&diagnostic.to_string());
             }
             Ok(ExitCode::FAILURE)
         }
-        Err(error @ workdown::commands::add::AddError::Template(_)) => {
+        Err(error @ workdown_core::operations::add::AddError::Template(_)) => {
             cli::output::error(&error.to_string());
             Ok(ExitCode::FAILURE)
         }
@@ -209,7 +210,7 @@ fn run_add_command(
 mod tests {
     use clap::CommandFactory;
 
-    use workdown::cli::Cli;
+    use crate::cli::Cli;
 
     #[test]
     fn verify_cli() {

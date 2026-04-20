@@ -1,7 +1,7 @@
 use std::fs;
 
 use tempfile::TempDir;
-use workdown::commands::init::{run_init, InitOutcome};
+use workdown_core::operations::init::{run_init, InitOutcome};
 
 #[test]
 fn init_creates_project_structure() {
@@ -77,6 +77,6 @@ fn init_generated_config_is_loadable() {
     run_init(tmp.path(), Some("Roundtrip Test")).unwrap();
 
     let config_path = tmp.path().join(".workdown/config.yaml");
-    let config = workdown::parser::config::load_config(&config_path).unwrap();
+    let config = workdown_core::parser::config::load_config(&config_path).unwrap();
     assert_eq!(config.project.name, "Roundtrip Test");
 }

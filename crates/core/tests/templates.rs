@@ -4,8 +4,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use tempfile::TempDir;
-use workdown::commands::templates::{list_template_names, load_template_by_name};
-use workdown::model::template::TemplateError;
+use workdown_core::model::template::TemplateError;
+use workdown_core::operations::templates::{list_template_names, load_template_by_name};
 
 fn make_templates_dir() -> (TempDir, PathBuf) {
     let directory = TempDir::new().unwrap();

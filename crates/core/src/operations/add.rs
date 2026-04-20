@@ -3,13 +3,13 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::commands::templates::load_template_by_name;
 use crate::generators::{resolve_default, resolve_template_tokens};
 use crate::model::config::Config;
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::model::schema::{Schema, Severity};
 use crate::model::template::TemplateError;
 use crate::model::{WorkItem, WorkItemId};
+use crate::operations::templates::load_template_by_name;
 use crate::parser;
 
 // ── Public types ─────────────────────────────────────────────────────

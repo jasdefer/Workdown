@@ -1258,10 +1258,23 @@ name = "workdown"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "chrono",
  "clap",
  "comfy-table",
  "console",
+ "csv",
+ "indexmap",
+ "serde_json",
+ "serde_yaml",
+ "tracing",
+ "tracing-subscriber",
+ "workdown-core",
+]
+
+[[package]]
+name = "workdown-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
  "csv",
  "indexmap",
  "regex",
@@ -1271,9 +1284,15 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tracing",
- "tracing-subscriber",
  "uuid",
  "walkdir",
+]
+
+[[package]]
+name = "workdown-server"
+version = "0.1.0"
+dependencies = [
+ "workdown-core",
 ]
 
 [[package]]

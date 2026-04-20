@@ -7,11 +7,11 @@
 use std::fs;
 
 use tempfile::TempDir;
-use workdown::model::diagnostic::DiagnosticKind;
-use workdown::model::schema::Severity;
-use workdown::parser::schema::parse_schema;
-use workdown::rules::evaluate;
-use workdown::store::Store;
+use workdown_core::model::diagnostic::DiagnosticKind;
+use workdown_core::model::schema::Severity;
+use workdown_core::parser::schema::parse_schema;
+use workdown_core::rules::evaluate;
+use workdown_core::store::Store;
 
 /// Create a temp directory and write work item files into it.
 fn setup(items: Vec<(&str, &str)>) -> (TempDir, std::path::PathBuf) {

@@ -1,50 +1,23 @@
-//! `workdown validate` — validate all work items against the schema.
+//! `workdown validate` — rendering and output formatting.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
+use workdown_core::model::diagnostic::{Diagnostic, DiagnosticKind};
+use workdown_core::model::schema::Severity;
+use workdown_core::store::Store;
+
+use crate::cli;
 use crate::cli::ValidateFormat;
-use crate::model::config::Config;
-use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
-use crate::model::schema::Severity;
-use crate::store::Store;
-use crate::{cli, parser};
 
 // ── Public API ──────────────────────────────────────────────────────
 
-/// Run the validate command. Returns `true` if there are errors.
-///
-/// Paths in `config` are relative to `project_root` (the working directory).
-pub fn run_validate(
-    config: &Config,
-    project_root: &Path,
-    format: ValidateFormat,
-) -> anyhow::Result<bool> {
-    let schema_path = project_root.join(&config.schema);
-    let items_path = project_root.join(&config.paths.work_items);
-
-    tracing::debug!(schema = %schema_path.display(), "loading schema");
-    let schema = parser::schema::load_schema(&schema_path)
-        .map_err(|e| anyhow::anyhow!("failed to load schema: {e}"))?;
-
-    tracing::debug!(items = %items_path.display(), "loading work items");
-    let store = Store::load(&items_path, &schema)
-        .map_err(|e| anyhow::anyhow!("failed to read items directory: {e}"))?;
-
-    let mut diagnostics = store.diagnostics().to_vec();
-    diagnostics.extend(store.detect_cycles(&schema));
-    diagnostics.extend(crate::rules::evaluate(&store, &schema));
-
-    let has_errors = diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.severity == Severity::Error);
-
+/// Render validation results in the requested format.
+pub fn render(diagnostics: &[Diagnostic], store: &Store, format: ValidateFormat) {
     match format {
-        ValidateFormat::Human => render_human(&diagnostics, &store),
-        ValidateFormat::Json => render_json(&diagnostics),
+        ValidateFormat::Human => render_human(diagnostics, store),
+        ValidateFormat::Json => render_json(diagnostics),
     }
-
-    Ok(has_errors)
 }
 
 // ── Human-readable output ───────────────────────────────────────────
