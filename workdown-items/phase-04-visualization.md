@@ -1,7 +1,7 @@
 ---
 id: phase-04-visualization
 type: epic
-status: to_do
+status: in_progress
 title: "Phase 04: Visualization"
 ---
 

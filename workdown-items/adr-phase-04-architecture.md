@@ -1,7 +1,7 @@
 ---
 id: adr-phase-04-architecture
 type: issue
-status: to_do
+status: done
 title: ADR — visualization architecture
 parent: foundation
 ---
