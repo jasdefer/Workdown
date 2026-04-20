@@ -4,7 +4,20 @@ type: issue
 status: to_do
 title: workdown render command
 parent: renderers
-depends_on: [html-renderer, markdown-renderer, mermaid-renderer, views-yaml-design]
+depends_on:
+  - view-data-intermediate
+  - render-board
+  - render-tree
+  - render-graph
+  - render-table
+  - render-gantt
+  - render-bar-chart
+  - render-line-chart
+  - render-workload
+  - render-metric
+  - render-treemap
+  - render-heatmap
+  - views-yaml-design
 ---
 
 `workdown render` — reads `views.yaml`, produces static outputs per configured view.
@@ -13,12 +26,12 @@ depends_on: [html-renderer, markdown-renderer, mermaid-renderer, views-yaml-desi
 
 - No args: render every view in `views.yaml`
 - `workdown render <view-id>`: render just one
-- For each view, iterate `output` formats (markdown, html, mermaid), call the appropriate renderer, write to the configured path
-- Create output directories if missing
+- For each view, determine the applicable output formats for its type, call the view-type renderer, write each format to `views/<id>.<ext>`
+- Create the output directory if missing
 - Idempotent: re-running with no item changes produces identical files (so CI diffs are clean)
 
 ## Acceptance
 
 - Runs end-to-end against this repo's own work items
-- Produces the configured outputs (e.g. `views/board.md`, `views/graph.md`)
-- Paths come from `views.yaml`, not hard-coded
+- Produces the expected outputs for each view type in `views.yaml`
+- Paths are fixed per view id; no customization in v1
