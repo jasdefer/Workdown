@@ -1,7 +1,7 @@
 ---
 id: views-yaml-design
 type: issue
-status: in_progress
+status: done
 title: Design views.yaml shape
 parent: foundation
 ---
