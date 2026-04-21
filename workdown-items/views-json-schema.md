@@ -41,18 +41,18 @@ Design of `views.yaml` is frozen in `docs/views.md` and the typed model in `crat
 
 The schema should validate the 11-view example in `docs/views.md` and in the `parses_full_example` test in `crates/core/src/parser/views.rs`. Run a JSON Schema validator locally against the example to confirm — can be done with any draft-2020-12 validator; no CI hook needed.
 
-### 3. CLAUDE.md fixes
+### 3. CLAUDE.md additions
 
-- **Line 30 contradiction (ADR-005):** `schema.schema.json` is described as "Used by the CLI for validation and by editors for autocomplete." Change to: "Used by editors for autocomplete. Not loaded by the CLI at runtime — see ADR-005."
-- Add a matching bullet for `views.schema.json`.
-- Add `views.schema.json` to the **Project Structure** block under `defaults/`. (Also update the stale `src/` → `crates/core/src/` and `defaults/` → `crates/core/defaults/` paths if the sibling issue `views-config-path` hasn't landed yet; if it has, these will already be fixed.)
+- Add a bullet for `views.schema.json` alongside the existing `schema.schema.json` / `resources.schema.json` bullets in the **Configuration Files** section, using the same editor-only phrasing (see ADR-005).
+- Add `views.schema.json` to the **Project Structure** block under `crates/core/defaults/`.
+
+(The stale `src/`→`crates/core/src/` restructure and the ADR-005 wording fix for `schema.schema.json` already landed in `views-config-path`.)
 
 ## Acceptance
 
 - `views.schema.json` validates the 11-view example in `docs/views.md`
 - Schema rejects an obvious bad config (e.g. board without `field`, metric without `aggregate`, unknown slot on any type)
-- CLAUDE.md no longer contradicts ADR-005
-- `views.schema.json` listed in CLAUDE.md project structure
+- `views.schema.json` listed in CLAUDE.md Project Structure and described in Configuration Files
 
 ## Out of scope
 

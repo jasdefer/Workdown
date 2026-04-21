@@ -7,8 +7,9 @@
 //! - `id` values are unique across the file
 //!
 //! Cross-file checks (referenced fields exist in `schema.yaml`, field types
-//! compatible with the view type) live in `workdown validate` and are the
-//! subject of the `views-yaml-validation` issue.
+//! compatible with the view type) live in a separate `views_check` module and
+//! are wired into `workdown validate` — see the `views-cross-file-validation`
+//! and `views-validate-integration` issues.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -257,9 +258,8 @@ mod tests {
 
     #[test]
     fn parse_board() {
-        let view = parse_single(
-            "views:\n  - id: status-board\n    type: board\n    field: status\n",
-        );
+        let view =
+            parse_single("views:\n  - id: status-board\n    type: board\n    field: status\n");
         assert_eq!(view.id, "status-board");
         assert!(view.where_clauses.is_empty());
         match view.kind {
@@ -320,7 +320,11 @@ mod tests {
             "views:\n  - id: by-status\n    type: bar_chart\n    group_by: status\n    value: effort\n    aggregate: sum\n",
         );
         match view.kind {
-            ViewKind::BarChart { group_by, value, aggregate } => {
+            ViewKind::BarChart {
+                group_by,
+                value,
+                aggregate,
+            } => {
                 assert_eq!(group_by, "status");
                 assert_eq!(value.as_deref(), Some("effort"));
                 assert_eq!(aggregate, Aggregate::Sum);
@@ -351,7 +355,11 @@ mod tests {
             "views:\n  - id: open\n    type: metric\n    aggregate: count\n    label: Open items\n",
         );
         match view.kind {
-            ViewKind::Metric { aggregate, label, value } => {
+            ViewKind::Metric {
+                aggregate,
+                label,
+                value,
+            } => {
                 assert_eq!(aggregate, Aggregate::Count);
                 assert_eq!(label.as_deref(), Some("Open items"));
                 assert!(value.is_none());

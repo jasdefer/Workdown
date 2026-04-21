@@ -45,7 +45,7 @@ Slot semantics:
 - **`bucket`** — date bucketing for a heatmap axis bound to a date field: `day`, `week`, or `month`.
 - **`label`** — display label for a metric.
 
-Type compatibility between a slot and a schema field (e.g. `board.field` must resolve to a `choice` field) is checked in `workdown validate` — the subject of the `views-yaml-validation` issue, not the view-yaml parser itself.
+Type compatibility between a slot and a schema field (e.g. `board.field` must resolve to a `choice` field) is checked in `workdown validate` — the subject of the `views-cross-file-validation` and `views-validate-integration` issues, not the view-yaml parser itself.
 
 ## Filters — `where:`
 
@@ -141,7 +141,7 @@ Adding a new view type:
 2. Add the type-specific slot handling in `crates/core/src/parser/views.rs::convert_view`.
 3. Add a variant to `ViewData` and an extractor (`view-data-intermediate` issue).
 4. Add a per-view-type render issue producing the applicable output formats.
-5. Update `crates/core/defaults/views.schema.json` (added in `views-yaml-validation`) with the new discriminator branch.
+5. Update `crates/core/defaults/views.schema.json` (added in `views-json-schema`) with the new discriminator branch.
 
 Existing configurations are unaffected — the change is purely additive.
 

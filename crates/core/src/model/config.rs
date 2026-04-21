@@ -39,6 +39,8 @@ pub struct Paths {
     pub templates: PathBuf,
     /// Path to the resources file.
     pub resources: PathBuf,
+    /// Path to the views file.
+    pub views: PathBuf,
 }
 
 /// Default field selections for CLI views.

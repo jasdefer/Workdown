@@ -16,7 +16,7 @@ Render `TreemapView` — hierarchical boxes sized by a numeric field, grouped by
 ## Notes
 
 - Hierarchy derived from the link field in `group:` (e.g. `group: parent`)
-- Size field must be numeric; validated in `views-yaml-validation`
+- Size field must be numeric; validated in `views-cross-file-validation`
 - Squarified treemap algorithm is well-documented; implement directly or pull a small crate — decide during impl
 - No Markdown or Mermaid output — neither format has useful support
 

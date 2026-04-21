@@ -1,7 +1,7 @@
 ---
 id: views-config-path
 type: issue
-status: to_do
+status: done
 title: Add views path to config; ship default views.yaml
 parent: foundation
 ---

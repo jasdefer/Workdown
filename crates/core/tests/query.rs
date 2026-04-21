@@ -58,6 +58,7 @@ paths:
   work_items: workdown-items
   templates: .workdown/templates
   resources: .workdown/resources.yaml
+  views: .workdown/views.yaml
 schema: .workdown/schema.yaml
 defaults:
   board_field: status

@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 const DEFAULT_CONFIG: &str = include_str!("../../defaults/config.yaml");
 const DEFAULT_SCHEMA: &str = include_str!("../../defaults/schema.yaml");
 const DEFAULT_RESOURCES: &str = include_str!("../../defaults/resources.yaml");
+const DEFAULT_VIEWS: &str = include_str!("../../defaults/views.yaml");
 const DEFAULT_BUG_REPORT_TEMPLATE: &str = include_str!("../../defaults/templates/bug-report.md");
 
 const WORKDOWN_DIR: &str = ".workdown";
@@ -76,6 +77,7 @@ pub fn run_init(root: &Path, project_name: Option<&str>) -> Result<InitOutcome, 
     write_file(&workdown_dir.join("config.yaml"), &config_content)?;
     write_file(&workdown_dir.join("schema.yaml"), DEFAULT_SCHEMA)?;
     write_file(&workdown_dir.join("resources.yaml"), DEFAULT_RESOURCES)?;
+    write_file(&workdown_dir.join("views.yaml"), DEFAULT_VIEWS)?;
     write_file(
         &workdown_dir.join("templates/bug-report.md"),
         DEFAULT_BUG_REPORT_TEMPLATE,

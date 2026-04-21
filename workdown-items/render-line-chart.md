@@ -15,7 +15,7 @@ Render `LineChartView` as HTML. Per-item scatter, connected by line when x is or
 
 ## Notes
 
-- x and y must be numeric or date fields (enforced in `views-yaml-validation`)
+- x and y must be numeric or date fields (enforced in `views-cross-file-validation`)
 - Items missing either field are dropped with a single aggregated warning
 - No Mermaid output in v1. Mermaid's `xychart-beta` has a line variant but it's experimental and wastes scope on a second implementation.
 

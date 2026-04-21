@@ -1,0 +1,16 @@
+# Default Workdown Views — copied into your project by `workdown init`.
+# Each entry is a persisted view rendered by `workdown render`.
+# Customize `field` values to fit your schema.
+
+views:
+  - id: status-board
+    type: board
+    field: status
+
+  - id: hierarchy
+    type: tree
+    field: parent
+
+  - id: dependencies
+    type: graph
+    field: depends_on
