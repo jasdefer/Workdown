@@ -327,10 +327,19 @@ fn is_diagnostic_for_item(diagnostic: &Diagnostic, item_id: &WorkItemId) -> bool
             ..
         } => diagnostic_item_id == item_id,
         DiagnosticKind::DuplicateId { id, .. } => id == item_id,
-        // File errors and count violations are not item-specific in the relevant sense.
+        // File errors, count violations, and view-level diagnostics don't
+        // attach to an individual item.
         DiagnosticKind::FileError { .. }
         | DiagnosticKind::Cycle { .. }
-        | DiagnosticKind::CountViolation { .. } => false,
+        | DiagnosticKind::CountViolation { .. }
+        | DiagnosticKind::ViewParseError { .. }
+        | DiagnosticKind::ViewDuplicateId { .. }
+        | DiagnosticKind::ViewMissingSlot { .. }
+        | DiagnosticKind::ViewUnknownField { .. }
+        | DiagnosticKind::ViewFieldTypeMismatch { .. }
+        | DiagnosticKind::ViewWhereParseError { .. }
+        | DiagnosticKind::ViewBucketWithoutDateAxis { .. }
+        | DiagnosticKind::ViewCountAggregateWithValue { .. } => false,
     }
 }
 

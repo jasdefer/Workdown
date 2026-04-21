@@ -54,7 +54,13 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     let result =
                         workdown_core::operations::validate::validate(&config, &project_root)
                             .map_err(|e| anyhow::anyhow!("{e}"))?;
-                    commands::validate::render(&result.diagnostics, &result.store, *format);
+                    commands::validate::render(
+                        &result.diagnostics,
+                        &result.store,
+                        *format,
+                        &config,
+                        &project_root,
+                    );
                     if result.has_errors {
                         Ok(ExitCode::FAILURE)
                     } else {

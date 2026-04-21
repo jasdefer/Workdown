@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use serde::Serialize;
 
 use super::schema::{FieldType, Severity};
+use super::views::ViewType;
 use super::WorkItemId;
 
 // ── Core types ───────────────────────────────────────────────────────
@@ -79,6 +80,57 @@ pub enum DiagnosticKind {
         max: Option<u32>,
         min: Option<u32>,
     },
+
+    // ── View-level ────────────────────────────────────────────────
+    // Parse-time failures (produced by `views_check::parse_errors_to_diagnostics`
+    // from a `ViewsLoadError`) and cross-file check failures (produced by
+    // `views_check::validate` against `views.yaml` + `schema.yaml`).
+    /// `views.yaml` could not be read or YAML-parsed.
+    ViewParseError { path: PathBuf, detail: String },
+
+    /// Two or more view entries share the same `id`.
+    ViewDuplicateId { view_id: String },
+
+    /// A view is missing a required slot for its type (e.g. `board` without `field`).
+    ViewMissingSlot {
+        view_id: String,
+        view_type: ViewType,
+        slot: &'static str,
+    },
+
+    /// A view references a field name that isn't defined in `schema.yaml`.
+    /// Slot `"where"` covers field references inside filter expressions.
+    ViewUnknownField {
+        view_id: String,
+        slot: &'static str,
+        field_name: String,
+    },
+
+    /// A view references a field whose schema type is incompatible with
+    /// the slot (e.g. `tree.field` points at a `choice` field).
+    ViewFieldTypeMismatch {
+        view_id: String,
+        slot: &'static str,
+        field_name: String,
+        actual_type: FieldType,
+        /// Human-readable list of allowed types, e.g. `"choice, multichoice, or string"`.
+        expected: String,
+    },
+
+    /// A `where:` expression string failed to parse.
+    ViewWhereParseError {
+        view_id: String,
+        raw: String,
+        detail: String,
+    },
+
+    /// A heatmap view has a `bucket` set but neither `x` nor `y` resolves
+    /// to a `date` field.
+    ViewBucketWithoutDateAxis { view_id: String },
+
+    /// A metric view with `aggregate: count` also sets `value`, which is
+    /// meaningless (count takes no value field).
+    ViewCountAggregateWithValue { view_id: String },
 }
 
 // ── Field value errors ───────────────────────────────────────────────
@@ -182,6 +234,66 @@ impl std::fmt::Display for Diagnostic {
                     write!(f, " (min {min})")?;
                 }
                 Ok(())
+            }
+
+            // View-level: terse under a grouped file header; `ViewParseError`
+            // path-qualifies itself so it reads cleanly when ungrouped too.
+            DiagnosticKind::ViewParseError { path, detail } => {
+                write!(f, "{}: {detail}", path.display())
+            }
+            DiagnosticKind::ViewDuplicateId { view_id } => {
+                write!(f, "view '{view_id}' is declared more than once")
+            }
+            DiagnosticKind::ViewMissingSlot {
+                view_id,
+                view_type,
+                slot,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}' (type {view_type}): missing required slot '{slot}'"
+                )
+            }
+            DiagnosticKind::ViewUnknownField {
+                view_id,
+                slot,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot '{slot}': unknown field '{field_name}'"
+                )
+            }
+            DiagnosticKind::ViewFieldTypeMismatch {
+                view_id,
+                slot,
+                field_name,
+                actual_type,
+                expected,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot '{slot}': field '{field_name}' has type {actual_type}, expected {expected}"
+                )
+            }
+            DiagnosticKind::ViewWhereParseError {
+                view_id,
+                raw,
+                detail,
+            } => {
+                write!(f, "view '{view_id}', where clause '{raw}': {detail}")
+            }
+            DiagnosticKind::ViewBucketWithoutDateAxis { view_id } => {
+                write!(
+                    f,
+                    "view '{view_id}': bucket set but neither x nor y is a date field"
+                )
+            }
+            DiagnosticKind::ViewCountAggregateWithValue { view_id } => {
+                write!(
+                    f,
+                    "view '{view_id}': aggregate 'count' takes no 'value' slot"
+                )
             }
         }
     }

@@ -45,7 +45,7 @@ Slot semantics:
 - **`bucket`** — date bucketing for a heatmap axis bound to a date field: `day`, `week`, or `month`.
 - **`label`** — display label for a metric.
 
-Type compatibility between a slot and a schema field (e.g. `board.field` must resolve to a `choice` field) is checked in `workdown validate` — the subject of the `views-cross-file-validation` and `views-validate-integration` issues, not the view-yaml parser itself.
+Type compatibility between a slot and a schema field (e.g. `board.field` must resolve to a `choice` field) is checked in `workdown validate`. See the "Cross-file validation" section below for the full list of checks.
 
 ## Filters — `where:`
 
@@ -59,6 +59,8 @@ where:
 ```
 
 The same grammar covers equality, inequality, numeric comparison, substring match, regex, presence, and single-hop relation traversal (`parent.status`). See the documentation of `parse_where` for the full expression reference.
+
+Field references inside `where:` expressions are validated against `schema.yaml`: local field names must be defined in the schema (or be `id`), and relation names must resolve to a `link`/`links` field or a known inverse name (e.g. `children` resolving to the inverse of `parent`).
 
 When the view renders, items are filtered by the combined predicate before any aggregation or extraction runs.
 
@@ -132,6 +134,19 @@ views:
     aggregate: count
     bucket: week
 ```
+
+## Cross-file validation
+
+`workdown validate` runs a set of checks that compare `views.yaml` against `schema.yaml`. All findings are errors in v1 (no warnings):
+
+- **Reference resolution** — every field name referenced by a view slot must exist in `schema.fields` (the virtual `id` field is always accepted).
+- **Type compatibility** — the slot dictates the allowed field type(s). For example: `board.field` must be `choice`, `multichoice`, or `string`; `tree.field` must be `link`; `graph.field` must be `links`; `gantt.start`/`gantt.end` must be `date`; numeric aggregation slots (`workload.effort`, `treemap.size`, `bar_chart.value`, `heatmap.value`, `metric.value`) must be `integer` or `float`. `table.columns[*]` is existence-only — any type is accepted as a column.
+- **Heatmap bucket coupling** — if `bucket:` is set, at least one of `x` or `y` must resolve to a `date` field.
+- **Metric count + value** — `aggregate: count` combined with `value:` is an error (count takes no value field).
+- **Where-clause parsing** — each string in a view's `where:` list must parse as a valid `--where` expression.
+- **Where-clause field references** — local field names must exist in `schema.fields` (or be `id`); relation names (left side of a dot) must resolve to a `link`/`links` field or a known inverse name.
+
+Load-time failures — a malformed `views.yaml`, a duplicate `id`, or a missing required slot — surface through the same diagnostic stream with dedicated variants (`ViewParseError`, `ViewDuplicateId`, `ViewMissingSlot`), so callers like the live server can highlight specific problems in the UI.
 
 ## Extensibility
 

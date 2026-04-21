@@ -1,8 +1,9 @@
 //! `workdown validate` — rendering and output formatting.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use workdown_core::model::config::Config;
 use workdown_core::model::diagnostic::{Diagnostic, DiagnosticKind};
 use workdown_core::model::schema::Severity;
 use workdown_core::store::Store;
@@ -13,9 +14,18 @@ use crate::cli::ValidateFormat;
 // ── Public API ──────────────────────────────────────────────────────
 
 /// Render validation results in the requested format.
-pub fn render(diagnostics: &[Diagnostic], store: &Store, format: ValidateFormat) {
+///
+/// `config` and `project_root` are threaded through to route view-level
+/// diagnostics (which don't carry a path) to `config.paths.views`.
+pub fn render(
+    diagnostics: &[Diagnostic],
+    store: &Store,
+    format: ValidateFormat,
+    config: &Config,
+    project_root: &Path,
+) {
     match format {
-        ValidateFormat::Human => render_human(diagnostics, store),
+        ValidateFormat::Human => render_human(diagnostics, store, config, project_root),
         ValidateFormat::Json => render_json(diagnostics),
     }
 }
@@ -24,13 +34,13 @@ pub fn render(diagnostics: &[Diagnostic], store: &Store, format: ValidateFormat)
 
 /// Group diagnostics by source file path, sort warnings-before-errors
 /// within each group, and render with styled output.
-fn render_human(diagnostics: &[Diagnostic], store: &Store) {
+fn render_human(diagnostics: &[Diagnostic], store: &Store, config: &Config, project_root: &Path) {
     if diagnostics.is_empty() {
         cli::output::validation_summary(0, 0);
         return;
     }
 
-    let (grouped, ungrouped) = group_by_file(diagnostics, store);
+    let (grouped, ungrouped) = group_by_file(diagnostics, store, config, project_root);
 
     let mut first = true;
     for (path, mut file_diagnostics) in grouped {
@@ -97,12 +107,14 @@ fn render_json(diagnostics: &[Diagnostic]) {
 fn group_by_file<'a>(
     diagnostics: &'a [Diagnostic],
     store: &Store,
+    config: &Config,
+    project_root: &Path,
 ) -> (BTreeMap<PathBuf, Vec<&'a Diagnostic>>, Vec<&'a Diagnostic>) {
     let mut grouped: BTreeMap<PathBuf, Vec<&Diagnostic>> = BTreeMap::new();
     let mut ungrouped: Vec<&Diagnostic> = Vec::new();
 
     for diagnostic in diagnostics {
-        match file_for_diagnostic(diagnostic, store) {
+        match file_for_diagnostic(diagnostic, store, config, project_root) {
             Some(path) => grouped.entry(path).or_default().push(diagnostic),
             None => ungrouped.push(diagnostic),
         }
@@ -112,7 +124,12 @@ fn group_by_file<'a>(
 }
 
 /// Try to resolve a diagnostic to the source file it belongs to.
-fn file_for_diagnostic(diagnostic: &Diagnostic, store: &Store) -> Option<PathBuf> {
+fn file_for_diagnostic(
+    diagnostic: &Diagnostic,
+    store: &Store,
+    config: &Config,
+    project_root: &Path,
+) -> Option<PathBuf> {
     match &diagnostic.kind {
         DiagnosticKind::FileError { path, .. } => Some(path.clone()),
 
@@ -128,6 +145,20 @@ fn file_for_diagnostic(diagnostic: &Diagnostic, store: &Store) -> Option<PathBuf
         DiagnosticKind::DuplicateId { .. }
         | DiagnosticKind::Cycle { .. }
         | DiagnosticKind::CountViolation { .. } => None,
+
+        // View parse errors carry their own path.
+        DiagnosticKind::ViewParseError { path, .. } => Some(path.clone()),
+
+        // Other view diagnostics live in `config.paths.views`.
+        DiagnosticKind::ViewDuplicateId { .. }
+        | DiagnosticKind::ViewMissingSlot { .. }
+        | DiagnosticKind::ViewUnknownField { .. }
+        | DiagnosticKind::ViewFieldTypeMismatch { .. }
+        | DiagnosticKind::ViewWhereParseError { .. }
+        | DiagnosticKind::ViewBucketWithoutDateAxis { .. }
+        | DiagnosticKind::ViewCountAggregateWithValue { .. } => {
+            Some(project_root.join(&config.paths.views))
+        }
     }
 }
 
