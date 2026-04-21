@@ -4,7 +4,7 @@ type: issue
 status: to_do
 title: Wire views validation into workdown validate
 parent: foundation
-depends_on: [views-config-path, views-cross-file-validation]
+depends_on: [views-config-path, views-cross-file-validation, foundation-cleanup]
 ---
 
 Glue issue: load `views.yaml` during `workdown validate`, convert parse errors into diagnostics, run cross-file checks, and report everything through the existing diagnostic pipeline. Adds integration tests and a docs section.
