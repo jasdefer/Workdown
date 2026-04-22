@@ -31,7 +31,7 @@ pub struct Diagnostic {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DiagnosticKind {
     // ── File-level ────────────────────────────────────────────────
-    /// A work item file could not be read or parsed at all.
+    /// A work item or config file could not be read or parsed at all.
     FileError { path: PathBuf, detail: String },
 
     // ── Field-level ───────────────────────────────────────────────
@@ -82,12 +82,10 @@ pub enum DiagnosticKind {
     },
 
     // ── View-level ────────────────────────────────────────────────
-    // Parse-time failures (produced by `views_check::parse_errors_to_diagnostics`
+    // Structured parse-time failures (produced by `views_check::parse_errors_to_diagnostics`
     // from a `ViewsLoadError`) and cross-file check failures (produced by
-    // `views_check::validate` against `views.yaml` + `schema.yaml`).
-    /// `views.yaml` could not be read or YAML-parsed.
-    ViewParseError { path: PathBuf, detail: String },
-
+    // `views_check::evaluate` against `views.yaml` + `schema.yaml`). Read/YAML
+    // parse failures surface as the generic `FileError` with `views.yaml`'s path.
     /// Two or more view entries share the same `id`.
     ViewDuplicateId { view_id: String },
 
@@ -236,11 +234,7 @@ impl std::fmt::Display for Diagnostic {
                 Ok(())
             }
 
-            // View-level: terse under a grouped file header; `ViewParseError`
-            // path-qualifies itself so it reads cleanly when ungrouped too.
-            DiagnosticKind::ViewParseError { path, detail } => {
-                write!(f, "{}: {detail}", path.display())
-            }
+            // View-level: terse under a grouped file header.
             DiagnosticKind::ViewDuplicateId { view_id } => {
                 write!(f, "view '{view_id}' is declared more than once")
             }

@@ -690,12 +690,7 @@ fn validate_field_reference(
         let first = parts[0];
         let second = parts[1];
 
-        let is_link_field = fields.get(first).is_some_and(|f| {
-            f.field_type() == FieldType::Link || f.field_type() == FieldType::Links
-        });
-        let is_inverse = is_defined_inverse(first, fields);
-
-        if !is_link_field && !is_inverse {
+        if !is_relation_anchor(first, fields) {
             errors.push(rule_error(
                 rule_name,
                 format!(
@@ -719,6 +714,20 @@ fn validate_field_reference(
 /// Returns `true` when any link/links field has `inverse: <name>`.
 fn is_defined_inverse(name: &str, fields: &IndexMap<String, FieldDefinition>) -> bool {
     fields.values().any(|f| f.inverse() == Some(name))
+}
+
+/// True iff `name` is a valid anchor for a relation traversal — either a
+/// forward link/links field, or an inverse name declared by one.
+///
+/// Shared by schema rule-reference validation (dot-notation left-hand side)
+/// and cross-file view validation (`views_check`). Operates on the field map
+/// directly because the schema parser runs before `Schema::inverse_table` is
+/// built.
+pub(crate) fn is_relation_anchor(name: &str, fields: &IndexMap<String, FieldDefinition>) -> bool {
+    let is_link_field = fields
+        .get(name)
+        .is_some_and(|f| matches!(f.field_type(), FieldType::Link | FieldType::Links));
+    is_link_field || is_defined_inverse(name, fields)
 }
 
 /// Check that quantifiers (all/any/none) in conditions are only used

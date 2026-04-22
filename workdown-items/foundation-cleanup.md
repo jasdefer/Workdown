@@ -1,7 +1,7 @@
 ---
 id: foundation-cleanup
 type: issue
-status: to_do
+status: done
 title: Consolidate duplication and tighten types before more foundation work
 parent: foundation
 ---

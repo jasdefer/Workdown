@@ -146,7 +146,7 @@ views:
 - **Where-clause parsing** — each string in a view's `where:` list must parse as a valid `--where` expression.
 - **Where-clause field references** — local field names must exist in `schema.fields` (or be `id`); relation names (left side of a dot) must resolve to a `link`/`links` field or a known inverse name.
 
-Load-time failures — a malformed `views.yaml`, a duplicate `id`, or a missing required slot — surface through the same diagnostic stream with dedicated variants (`ViewParseError`, `ViewDuplicateId`, `ViewMissingSlot`), so callers like the live server can highlight specific problems in the UI.
+Load-time failures surface through the same diagnostic stream: read/YAML errors reuse the generic `FileError` (pointing at `views.yaml`), while duplicate ids and missing required slots get dedicated variants (`ViewDuplicateId`, `ViewMissingSlot`) so callers like the live server can highlight specific problems in the UI.
 
 ## Extensibility
 

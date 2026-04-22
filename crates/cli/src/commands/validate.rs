@@ -146,10 +146,8 @@ fn file_for_diagnostic(
         | DiagnosticKind::Cycle { .. }
         | DiagnosticKind::CountViolation { .. } => None,
 
-        // View parse errors carry their own path.
-        DiagnosticKind::ViewParseError { path, .. } => Some(path.clone()),
-
-        // Other view diagnostics live in `config.paths.views`.
+        // View diagnostics live in `config.paths.views`. (Parse-time read/YAML
+        // failures surface as `FileError` above, already carrying the path.)
         DiagnosticKind::ViewDuplicateId { .. }
         | DiagnosticKind::ViewMissingSlot { .. }
         | DiagnosticKind::ViewUnknownField { .. }

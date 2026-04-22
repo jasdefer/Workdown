@@ -11,6 +11,7 @@ use crate::model::template::TemplateError;
 use crate::model::{WorkItem, WorkItemId};
 use crate::operations::templates::load_template_by_name;
 use crate::parser;
+use crate::parser::schema::SchemaLoadError;
 
 // ── Public types ─────────────────────────────────────────────────────
 
@@ -26,7 +27,7 @@ pub struct AddOutcome {
 #[derive(Debug, thiserror::Error)]
 pub enum AddError {
     #[error("failed to load schema: {0}")]
-    SchemaLoad(String),
+    SchemaLoad(#[from] SchemaLoadError),
 
     #[error("failed to load work items: {0}")]
     StoreLoad(#[from] std::io::Error),
@@ -78,8 +79,7 @@ pub fn run_add(
     let items_path = project_root.join(&config.paths.work_items);
 
     tracing::debug!(schema = %schema_path.display(), "loading schema");
-    let schema = parser::schema::load_schema(&schema_path)
-        .map_err(|e| AddError::SchemaLoad(e.to_string()))?;
+    let schema = parser::schema::load_schema(&schema_path)?;
 
     tracing::debug!(items = %items_path.display(), "loading work items");
     let mut store = crate::store::Store::load(&items_path, &schema)?;
@@ -332,7 +332,6 @@ fn is_diagnostic_for_item(diagnostic: &Diagnostic, item_id: &WorkItemId) -> bool
         DiagnosticKind::FileError { .. }
         | DiagnosticKind::Cycle { .. }
         | DiagnosticKind::CountViolation { .. }
-        | DiagnosticKind::ViewParseError { .. }
         | DiagnosticKind::ViewDuplicateId { .. }
         | DiagnosticKind::ViewMissingSlot { .. }
         | DiagnosticKind::ViewUnknownField { .. }

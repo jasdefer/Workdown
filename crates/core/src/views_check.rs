@@ -5,7 +5,7 @@
 //! slot/type mismatches (e.g. `tree.field` pointing at a `choice`),
 //! malformed `where:` expressions, and a handful of cross-slot constraints.
 //!
-//! After [`validate`] returns no errors, every field name referenced by
+//! After [`evaluate`] returns no errors, every field name referenced by
 //! `views.yaml` is either present in `schema.fields`, is a recognized
 //! relation name (forward link/links field name, or an inverse name from
 //! `schema.inverse_table`), or is the virtual `"id"` field. Renderers and
@@ -20,6 +20,7 @@ use std::path::Path;
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::model::schema::{FieldDefinition, FieldType, Schema, Severity};
 use crate::model::views::{Aggregate, View, ViewKind, Views};
+use crate::parser::schema::is_relation_anchor;
 use crate::parser::views::{ViewsLoadError, ViewsValidationError};
 use crate::query::parse::parse_where;
 use crate::query::types::{FieldReference, Predicate};
@@ -31,7 +32,7 @@ use crate::query::types::{FieldReference, Predicate};
 /// Returns one [`Diagnostic`] per problem found; does not stop at the first.
 /// All diagnostics produced here have [`Severity::Error`] — there are no
 /// warnings in v1.
-pub fn validate(views: &Views, schema: &Schema) -> Vec<Diagnostic> {
+pub fn evaluate(views: &Views, schema: &Schema) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     for view in &views.views {
         check_view(view, schema, &mut out);
@@ -43,17 +44,17 @@ pub fn validate(views: &Views, schema: &Schema) -> Vec<Diagnostic> {
 /// Convert a [`ViewsLoadError`] from the views parser into a list of
 /// diagnostics pointed at `views_path`.
 ///
-/// `ReadFailed` and `InvalidYaml` become a single [`DiagnosticKind::ViewParseError`]
+/// `ReadFailed` and `InvalidYaml` become a single [`DiagnosticKind::FileError`]
 /// (the detail carries the serde line/column or I/O message). `Validation`
 /// expands into one structured diagnostic per semantic error:
 /// [`DiagnosticKind::ViewDuplicateId`] or [`DiagnosticKind::ViewMissingSlot`].
 pub fn parse_errors_to_diagnostics(err: ViewsLoadError, views_path: &Path) -> Vec<Diagnostic> {
     match err {
-        ViewsLoadError::ReadFailed(io) => vec![error(DiagnosticKind::ViewParseError {
+        ViewsLoadError::ReadFailed(io) => vec![error(DiagnosticKind::FileError {
             path: views_path.to_path_buf(),
             detail: io.to_string(),
         })],
-        ViewsLoadError::InvalidYaml(yaml) => vec![error(DiagnosticKind::ViewParseError {
+        ViewsLoadError::InvalidYaml(yaml) => vec![error(DiagnosticKind::FileError {
             path: views_path.to_path_buf(),
             detail: yaml.to_string(),
         })],
@@ -423,7 +424,7 @@ fn check_where_field_ref(
             }
         }
         FieldReference::Related { relation, .. } => {
-            if is_valid_relation(schema, relation) {
+            if is_relation_anchor(relation, &schema.fields) {
                 return;
             }
             out.push(error(DiagnosticKind::ViewUnknownField {
@@ -433,16 +434,6 @@ fn check_where_field_ref(
             }));
         }
     }
-}
-
-/// Accepts forward link/links field names and inverse names from
-/// `schema.inverse_table`. Other field types (e.g. a `string` field) are
-/// not valid relation anchors — only link-shaped fields traverse.
-fn is_valid_relation(schema: &Schema, name: &str) -> bool {
-    if let Some(def) = schema.fields.get(name) {
-        return matches!(def.field_type(), FieldType::Link | FieldType::Links);
-    }
-    schema.inverse_table.contains_key(name)
 }
 
 // ── Tiny helper: every diagnostic this module emits is an error in v1. ──
@@ -542,7 +533,7 @@ mod tests {
 
     #[test]
     fn unknown_field_in_board() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &one_view(ViewKind::Board {
                 field: "nonexistent".into(),
             }),
@@ -560,7 +551,7 @@ mod tests {
 
     #[test]
     fn unknown_column_in_table_errors() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &one_view(ViewKind::Table {
                 columns: vec!["status".into(), "nonexistent".into()],
             }),
@@ -584,7 +575,7 @@ mod tests {
                 values: vec!["open".into()],
             },
         )]);
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &one_view(ViewKind::Table {
                 columns: vec!["id".into(), "status".into()],
             }),
@@ -597,7 +588,7 @@ mod tests {
 
     #[test]
     fn tree_field_must_be_link() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &one_view(ViewKind::Tree {
                 field: "status".into(), // choice, not link
             }),
@@ -612,7 +603,7 @@ mod tests {
 
     #[test]
     fn graph_field_must_be_links() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &one_view(ViewKind::Graph {
                 field: "parent".into(), // link, not links
             }),
@@ -627,7 +618,7 @@ mod tests {
 
     #[test]
     fn gantt_start_must_be_date() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &one_view(ViewKind::Gantt {
                 start: "effort".into(), // integer
                 end: "end_date".into(),
@@ -645,7 +636,7 @@ mod tests {
 
     #[test]
     fn workload_effort_must_be_numeric() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &one_view(ViewKind::Workload {
                 start: "start_date".into(),
                 end: "end_date".into(),
@@ -661,7 +652,7 @@ mod tests {
 
     #[test]
     fn bar_chart_value_must_be_numeric_when_present() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &one_view(ViewKind::BarChart {
                 group_by: "status".into(),
                 value: Some("title".into()), // string
@@ -678,7 +669,7 @@ mod tests {
 
     #[test]
     fn line_chart_accepts_numeric_and_date() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &one_view(ViewKind::LineChart {
                 x: "effort".into(),
                 y: "start_date".into(),
@@ -692,7 +683,7 @@ mod tests {
 
     #[test]
     fn heatmap_bucket_without_date_axis_errors() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &one_view(ViewKind::Heatmap {
                 x: "status".into(),   // choice
                 y: "assignee".into(), // string
@@ -709,7 +700,7 @@ mod tests {
 
     #[test]
     fn heatmap_bucket_with_date_axis_passes() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &one_view(ViewKind::Heatmap {
                 x: "end_date".into(),
                 y: "assignee".into(),
@@ -731,7 +722,7 @@ mod tests {
 
     #[test]
     fn metric_count_with_value_errors() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &one_view(ViewKind::Metric {
                 label: None,
                 value: Some("effort".into()),
@@ -748,7 +739,7 @@ mod tests {
     fn metric_count_with_unknown_value_emits_both_diagnostics() {
         // Existence check runs regardless of the count-with-value error —
         // they're orthogonal problems.
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &one_view(ViewKind::Metric {
                 label: None,
                 value: Some("nonexistent".into()),
@@ -766,7 +757,7 @@ mod tests {
 
     #[test]
     fn metric_sum_with_value_passes() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &one_view(ViewKind::Metric {
                 label: None,
                 value: Some("effort".into()),
@@ -781,7 +772,7 @@ mod tests {
 
     #[test]
     fn where_parse_error() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &view_with_where(
                 ViewKind::Board {
                     field: "status".into(),
@@ -798,7 +789,7 @@ mod tests {
 
     #[test]
     fn where_unknown_local_field() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &view_with_where(
                 ViewKind::Board {
                     field: "status".into(),
@@ -816,7 +807,7 @@ mod tests {
 
     #[test]
     fn where_forward_relation_accepted() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &view_with_where(
                 ViewKind::Board {
                     field: "status".into(),
@@ -830,7 +821,7 @@ mod tests {
 
     #[test]
     fn where_inverse_relation_accepted() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &view_with_where(
                 ViewKind::Board {
                     field: "status".into(),
@@ -844,7 +835,7 @@ mod tests {
 
     #[test]
     fn where_unknown_relation_emits_diagnostic() {
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &view_with_where(
                 ViewKind::Board {
                     field: "status".into(),
@@ -863,7 +854,7 @@ mod tests {
     #[test]
     fn where_string_field_not_valid_as_relation() {
         // `assignee` is a string — can't be traversed.
-        let diagnostics = validate(
+        let diagnostics = evaluate(
             &view_with_where(
                 ViewKind::Board {
                     field: "status".into(),
@@ -886,7 +877,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_invalid_yaml_becomes_view_parse_error() {
+    fn parse_invalid_yaml_becomes_file_error() {
         // Unknown slot — serde's `deny_unknown_fields` triggers InvalidYaml.
         let yaml = "views:\n  - id: c\n    type: board\n    field: status\n    color: red\n";
         let err = parse_views(yaml).unwrap_err();
@@ -894,12 +885,12 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
         assert!(matches!(
             &diagnostics[0].kind,
-            DiagnosticKind::ViewParseError { path, .. } if path == &view_path()
+            DiagnosticKind::FileError { path, .. } if path == &view_path()
         ));
     }
 
     #[test]
-    fn parse_read_failed_becomes_view_parse_error() {
+    fn parse_read_failed_becomes_file_error() {
         let err = ViewsLoadError::ReadFailed(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "no such file",
@@ -908,7 +899,7 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
         assert!(matches!(
             &diagnostics[0].kind,
-            DiagnosticKind::ViewParseError { .. }
+            DiagnosticKind::FileError { .. }
         ));
     }
 

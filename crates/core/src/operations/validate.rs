@@ -6,6 +6,7 @@ use crate::model::config::Config;
 use crate::model::diagnostic::Diagnostic;
 use crate::model::schema::Severity;
 use crate::parser;
+use crate::parser::schema::SchemaLoadError;
 use crate::store::Store;
 
 // ── Public types ────────────────────────────────────────────────────
@@ -24,7 +25,7 @@ pub struct ValidationResult {
 #[derive(Debug, thiserror::Error)]
 pub enum ValidateError {
     #[error("failed to load schema: {0}")]
-    SchemaLoad(String),
+    SchemaLoad(#[from] SchemaLoadError),
 
     #[error("failed to read items directory: {0}")]
     StoreLoad(#[from] std::io::Error),
@@ -41,8 +42,7 @@ pub fn validate(config: &Config, project_root: &Path) -> Result<ValidationResult
     let items_path = project_root.join(&config.paths.work_items);
 
     tracing::debug!(schema = %schema_path.display(), "loading schema");
-    let schema = parser::schema::load_schema(&schema_path)
-        .map_err(|e| ValidateError::SchemaLoad(e.to_string()))?;
+    let schema = parser::schema::load_schema(&schema_path)?;
 
     tracing::debug!(items = %items_path.display(), "loading work items");
     let store = Store::load(&items_path, &schema)?;

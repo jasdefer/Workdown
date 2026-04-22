@@ -23,11 +23,9 @@ Diagnostic style decided: **eight top-level `DiagnosticKind` variants** (consist
 In `crates/core/src/model/diagnostic.rs`:
 
 ```rust
-// Parse-time (produced by parse_errors_to_diagnostics from ViewsLoadError)
-ViewParseError {
-    path: PathBuf,
-    detail: String,
-},
+// Parse-time (produced by parse_errors_to_diagnostics from ViewsLoadError).
+// Read/YAML failures reuse the generic FileError (see model/diagnostic.rs) —
+// merged in foundation-cleanup.
 ViewDuplicateId {
     view_id: String,
 },
@@ -37,7 +35,7 @@ ViewMissingSlot {
     slot: &'static str,
 },
 
-// Check-time (produced by views_check::validate)
+// Check-time (produced by views_check::evaluate)
 ViewUnknownField {
     view_id: String,
     slot: &'static str,
@@ -63,14 +61,14 @@ ViewCountAggregateWithValue {
 },
 ```
 
-Add `Display` impls following the existing style: terse form when the item-level file header provides context, path-qualified for `ViewParseError` so it reads cleanly in both grouped and ungrouped modes (matches `FileError`).
+Add `Display` impls following the existing style: terse form when the item-level file header provides context. (Read/YAML parse failures reuse `FileError`, which already path-qualifies itself.)
 
 ### 2. `core::views_check` module
 
 New file `crates/core/src/views_check.rs`, exported from `lib.rs`. Public API:
 
 ```rust
-pub fn validate(views: &Views, schema: &Schema) -> Vec<Diagnostic>
+pub fn evaluate(views: &Views, schema: &Schema) -> Vec<Diagnostic>
 ```
 
 Checks to implement (all errors, no warnings in v1):
@@ -110,7 +108,7 @@ Checks to implement (all errors, no warnings in v1):
 
 ### 3. Where-clause checking
 
-Also in `views_check::validate`, for each view's `where_clauses`:
+Also in `views_check::evaluate`, for each view's `where_clauses`:
 
 - Call `crate::query::parse::parse_where(raw)`.
 - On `Err(QueryParseError)`: emit `ViewWhereParseError { view_id, raw, detail: err.to_string() }` and skip AST walking for that string.
@@ -129,13 +127,13 @@ pub fn parse_errors_to_diagnostics(
 ) -> Vec<Diagnostic>
 ```
 
-- `ReadFailed(io)` → one `ViewParseError { path, detail }`
-- `InvalidYaml(serde)` → one `ViewParseError { path, detail }` (serde errors already carry line+column — preserve them in `detail`)
+- `ReadFailed(io)` → one `FileError { path, detail }`
+- `InvalidYaml(serde)` → one `FileError { path, detail }` (serde errors already carry line+column — preserve them in `detail`)
 - `Validation(errors)` → one diagnostic per `ViewsValidationError`, mapped to the structured variant:
   - `ViewsValidationError::DuplicateId { id }` → `ViewDuplicateId { view_id: id }`
   - `ViewsValidationError::MissingSlot { id, view_type, slot }` → `ViewMissingSlot { view_id: id, view_type, slot }`
 
-Separate structured variants (rather than collapsing both into `ViewParseError`) so the live server UI can highlight which view and which slot is wrong.
+Separate structured variants for `ViewDuplicateId`/`ViewMissingSlot` (rather than collapsing into the generic `FileError`) so the live server UI can highlight which view and which slot is wrong.
 
 This lets `operations::validate` (next issue) emit diagnostics for parse failures instead of aborting.
 
@@ -143,8 +141,8 @@ This lets `operations::validate` (next issue) emit diagnostics for parse failure
 
 `crates/cli/src/commands/validate.rs::file_for_diagnostic` needs to handle the new kinds so they group under the views.yaml header:
 
-- `ViewParseError { path, .. }` → `Some(path.clone())`
-- Other seven view variants (`ViewDuplicateId`, `ViewMissingSlot`, `ViewUnknownField`, `ViewFieldTypeMismatch`, `ViewWhereParseError`, `ViewBucketWithoutDateAxis`, `ViewCountAggregateWithValue`) → `Some(project_root.join(&config.paths.views))`
+- `FileError { path, .. }` → `Some(path.clone())` (already handled; covers views read/YAML failures)
+- The seven view-specific variants (`ViewDuplicateId`, `ViewMissingSlot`, `ViewUnknownField`, `ViewFieldTypeMismatch`, `ViewWhereParseError`, `ViewBucketWithoutDateAxis`, `ViewCountAggregateWithValue`) → `Some(project_root.join(&config.paths.views))`
 
 Thread `config: &Config` and `project_root: &Path` (not a bare `views_path: &Path`) through `render` → `group_by_file` → `file_for_diagnostic`. Rationale: this same plumbing will want to route `schema.yaml` / `resources.yaml` diagnostics later, and deriving paths from `config` means future additions don't require threading another parameter each time. Symmetric with `operations::validate::validate(&Config, &Path)`.
 
@@ -158,18 +156,18 @@ Unit tests in `views_check.rs`, small fixtures (build `Views` and `Schema` in-co
 - metric.aggregate=count + value set → `ViewCountAggregateWithValue`; combined with a nonexistent `value` field → two diagnostics (count-with-value AND unknown field)
 - where-clause: parse error; unknown local field; unknown relation; valid forward relation (`parent.status`); valid inverse relation (`children.status`)
 - Conversion:
-  - `ViewsLoadError::ReadFailed` → one `ViewParseError`
-  - `ViewsLoadError::InvalidYaml` → one `ViewParseError`
+  - `ViewsLoadError::ReadFailed` → one `FileError`
+  - `ViewsLoadError::InvalidYaml` → one `FileError`
   - `ViewsLoadError::Validation` with duplicates → `ViewDuplicateId` diagnostics
   - `ViewsLoadError::Validation` with missing slots → `ViewMissingSlot` diagnostics
 
 ### 7. No wire-in yet
 
-Do NOT call `views_check::validate` from `operations::validate::validate`. That's `views-validate-integration`. This issue should land a library module plus CLI diagnostic-mapping changes that unit-test green, without changing the behavior of `workdown validate`.
+Do NOT call `views_check::evaluate` from `operations::validate::validate`. That's `views-validate-integration`. This issue should land a library module plus CLI diagnostic-mapping changes that unit-test green, without changing the behavior of `workdown validate`.
 
 ### 8. Documentation
 
-- Rustdoc on the new `views_check` module (module-level doc stating the post-validate invariant: "after `views_check::validate` passes, every field name referenced by `views.yaml` is either in `schema.fields`, a recognized relation name, or `id`"), on `validate`, on `parse_errors_to_diagnostics`, and on each new `DiagnosticKind` variant.
+- Rustdoc on the new `views_check` module (module-level doc stating the post-validate invariant: "after `views_check::evaluate` passes, every field name referenced by `views.yaml` is either in `schema.fields`, a recognized relation name, or `id`"), on `validate`, on `parse_errors_to_diagnostics`, and on each new `DiagnosticKind` variant.
 - `docs/views.md` updates: one section listing the cross-file checks this issue adds, and a note in the "Filters — `where:`" section that field references are validated (forward + inverse relation names accepted).
 
 ## Acceptance
@@ -177,10 +175,10 @@ Do NOT call `views_check::validate` from `operations::validate::validate`. That'
 - `cargo build --workspace` passes
 - `cargo test --workspace` passes
 - All eight new diagnostic variants have Display impls
-- `views_check::validate` covered by unit tests for each check category
+- `views_check::evaluate` covered by unit tests for each check category
 - `parse_errors_to_diagnostics` covered for all three `ViewsLoadError` cases, including the split to `ViewDuplicateId` and `ViewMissingSlot`
 - `file_for_diagnostic` routes all eight new variants
-- Rustdoc stating the post-validate invariant on `views_check::validate`
+- Rustdoc stating the post-validate invariant on `views_check::evaluate`
 - `docs/views.md` has a section listing the new cross-file checks
 
 ## Out of scope

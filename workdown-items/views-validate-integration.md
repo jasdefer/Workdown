@@ -13,7 +13,7 @@ Glue issue: load `views.yaml` during `workdown validate`, convert parse errors i
 
 By the time this issue starts:
 - `views-config-path` has shipped `Paths.views` and a default `views.yaml` (so `config.paths.views` is a real field).
-- `views-cross-file-validation` has shipped the five new `DiagnosticKind` variants, `views_check::validate`, and `parse_errors_to_diagnostics`.
+- `views-cross-file-validation` has shipped the five new `DiagnosticKind` variants, `views_check::evaluate`, and `parse_errors_to_diagnostics`.
 
 The work here is plumbing plus tests plus docs. No new logic.
 
@@ -30,7 +30,7 @@ let views_path = project_root.join(&config.paths.views);
 if views_path.exists() {
     match parser::views::load_views(&views_path) {
         Ok(views) => {
-            diagnostics.extend(views_check::validate(&views, &schema));
+            diagnostics.extend(views_check::evaluate(&views, &schema));
         }
         Err(err) => {
             diagnostics.extend(
@@ -57,8 +57,8 @@ New tests in the existing integration test location (wherever `operations::valid
 
 Test cases:
 - **Valid views** — no view-related diagnostics
-- **Duplicate id** — one `ViewParseError` (via `parse_errors_to_diagnostics`)
-- **Missing required slot** — one `ViewParseError`
+- **Duplicate id** — one `ViewDuplicateId` (via `parse_errors_to_diagnostics`)
+- **Missing required slot** — one `ViewMissingSlot`
 - **Unknown field reference** (e.g. `field: nonexistent` on a board) — one `ViewUnknownField`
 - **Type mismatch** (e.g. `tree.field: status` where `status` is `choice`, not `link`) — one `ViewFieldTypeMismatch`
 - **Invalid where clause** (e.g. `where: ["justtext"]`) — one `ViewWhereParseError`
