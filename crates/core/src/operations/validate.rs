@@ -51,6 +51,9 @@ pub fn validate(config: &Config, project_root: &Path) -> Result<ValidationResult
     diagnostics.extend(store.detect_cycles(&schema));
     diagnostics.extend(crate::rules::evaluate(&store, &schema));
 
+    let views_path = project_root.join(&config.paths.views);
+    diagnostics.extend(crate::views_check::load_and_check(&views_path, &schema));
+
     let has_errors = diagnostics
         .iter()
         .any(|diagnostic| diagnostic.severity == Severity::Error);

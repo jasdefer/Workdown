@@ -41,6 +41,22 @@ pub fn evaluate(views: &Views, schema: &Schema) -> Vec<Diagnostic> {
     out
 }
 
+/// Load `views.yaml` from disk and run cross-file checks, routing any
+/// load-time error through [`parse_errors_to_diagnostics`].
+///
+/// Returns an empty `Vec` when the file is absent — `views.yaml` is
+/// optional. All other failures (I/O, YAML parse, semantic validation)
+/// are reported as diagnostics rather than propagating.
+pub fn load_and_check(views_path: &Path, schema: &Schema) -> Vec<Diagnostic> {
+    if !views_path.exists() {
+        return Vec::new();
+    }
+    match crate::parser::views::load_views(views_path) {
+        Ok(views) => evaluate(&views, schema),
+        Err(err) => parse_errors_to_diagnostics(err, views_path),
+    }
+}
+
 /// Convert a [`ViewsLoadError`] from the views parser into a list of
 /// diagnostics pointed at `views_path`.
 ///

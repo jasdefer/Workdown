@@ -1,7 +1,7 @@
 ---
 id: views-validate-integration
 type: issue
-status: to_do
+status: done
 title: Wire views validation into workdown validate
 parent: foundation
 depends_on: [views-config-path, views-cross-file-validation, foundation-cleanup]
