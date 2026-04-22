@@ -31,6 +31,7 @@ workdown-items/
 - **`views.yaml`** — User-editable. Declares persisted views rendered by `workdown render` (board, tree, graph, table, gantt, charts, etc.). Each view references schema fields.
 - **`schema.schema.json`** (shipped with CLI, not in consumer project) — JSON Schema that formally defines the structure of `schema.yaml`. Used by editors for autocomplete. Not loaded by the CLI at runtime — see ADR-005.
 - **`resources.schema.json`** (shipped with CLI, not in consumer project) — JSON Schema that formally defines the structure of `resources.yaml`. Not user-editable.
+- **`views.schema.json`** (shipped with CLI, not in consumer project) — JSON Schema that formally defines the structure of `views.yaml`. Used by editors for autocomplete. Not loaded by the CLI at runtime — see ADR-005.
 
 ## Work Item File Format
 
@@ -77,6 +78,7 @@ crates/
       views.yaml       # Default persisted view definitions
       schema.schema.json    # JSON Schema: formal definition of schema.yaml structure (not user-editable)
       resources.schema.json # JSON Schema: formal definition of resources.yaml structure (not user-editable)
+      views.schema.json     # JSON Schema: formal definition of views.yaml structure (not user-editable)
     tests/             # Integration tests for the core crate
   cli/                 # CLI binary (clap)
   server/              # Local web server (`workdown serve`)

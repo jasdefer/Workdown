@@ -1,7 +1,7 @@
 ---
 id: views-json-schema
 type: issue
-status: to_do
+status: done
 title: Editor-only JSON Schema for views.yaml
 parent: foundation
 ---

@@ -89,7 +89,10 @@ fn run_validate(project: &(TempDir, Config, PathBuf)) -> Vec<Diagnostic> {
 }
 
 fn view_diagnostics(diagnostics: &[Diagnostic]) -> Vec<&Diagnostic> {
-    diagnostics.iter().filter(|d| is_view_diagnostic(d)).collect()
+    diagnostics
+        .iter()
+        .filter(|d| is_view_diagnostic(d))
+        .collect()
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 # Default Workdown Views — copied into your project by `workdown init`.
 # Each entry is a persisted view rendered by `workdown render`.
 # Customize `field` values to fit your schema.
+# See views.schema.json for the formal structure.
 
 views:
   - id: status-board

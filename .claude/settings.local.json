@@ -48,7 +48,8 @@
       "Bash(find src:*)",
       "WebSearch",
       "Bash(MSYS_NO_PATHCONV=1 docker run *)",
-      "Bash(docker info *)"
+      "Bash(docker info *)",
+      "Bash(command -v devcontainer)"
     ]
   }
 }

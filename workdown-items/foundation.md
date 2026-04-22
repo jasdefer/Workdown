@@ -1,7 +1,7 @@
 ---
 id: foundation
 type: milestone
-status: in_progress
+status: done
 title: Foundation
 parent: phase-04-visualization
 ---

@@ -100,7 +100,6 @@ fn format_errors(errors: &[ViewsValidationError]) -> String {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawViewsFile {
-    #[serde(default)]
     views: Vec<RawView>,
 }
 
@@ -250,10 +249,24 @@ mod tests {
     }
 
     #[test]
-    fn empty_file_parses_to_empty_views() {
+    fn empty_views_list_parses_to_empty_views() {
         let yaml = "views: []\n";
         let parsed = parse_views(yaml).unwrap();
         assert!(parsed.views.is_empty());
+    }
+
+    #[test]
+    fn empty_object_rejected() {
+        // `{}` has no `views` key. The schema requires it; the parser does too.
+        let err = parse_views("{}").unwrap_err();
+        assert!(matches!(err, ViewsLoadError::InvalidYaml(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn empty_file_rejected() {
+        // An empty file has no document. The schema requires `views`.
+        let err = parse_views("").unwrap_err();
+        assert!(matches!(err, ViewsLoadError::InvalidYaml(_)), "got {err:?}");
     }
 
     #[test]
