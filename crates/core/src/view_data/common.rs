@@ -133,3 +133,13 @@ pub(super) fn as_number(value: Option<&FieldValue>) -> Option<f64> {
         _ => None,
     }
 }
+
+/// Extract an [`AxisValue`] — numeric or date — from a field value.
+pub(super) fn as_axis(value: Option<&FieldValue>) -> Option<AxisValue> {
+    match value {
+        Some(FieldValue::Integer(integer)) => Some(AxisValue::Number(*integer as f64)),
+        Some(FieldValue::Float(float)) => Some(AxisValue::Number(*float)),
+        Some(FieldValue::Date(date)) => Some(AxisValue::Date(*date)),
+        _ => None,
+    }
+}

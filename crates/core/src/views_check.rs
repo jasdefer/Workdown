@@ -168,13 +168,12 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             }
         }
         ViewKind::LineChart { x, y } => {
-            let allowed = &[FieldType::Integer, FieldType::Float, FieldType::Date];
             check_slot(
                 schema,
                 view_id,
                 "x",
                 x,
-                allowed,
+                &[FieldType::Integer, FieldType::Float, FieldType::Date],
                 "integer, float, or date",
                 out,
             );
@@ -183,8 +182,8 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 view_id,
                 "y",
                 y,
-                allowed,
-                "integer, float, or date",
+                &[FieldType::Integer, FieldType::Float],
+                "integer or float",
                 out,
             );
         }
@@ -850,7 +849,19 @@ mod tests {
     }
 
     #[test]
-    fn line_chart_accepts_numeric_and_date() {
+    fn line_chart_accepts_date_x_numeric_y() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::LineChart {
+                x: "start_date".into(),
+                y: "effort".into(),
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn line_chart_rejects_date_y() {
         let diagnostics = evaluate(
             &one_view(ViewKind::LineChart {
                 x: "effort".into(),
@@ -858,7 +869,11 @@ mod tests {
             }),
             &simple_schema(),
         );
-        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+                if *slot == "y" && *actual_type == FieldType::Date
+        ));
     }
 
     // ── Heatmap bucket coupling ────────────────────────────────
