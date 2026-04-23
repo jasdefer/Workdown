@@ -19,6 +19,7 @@
 pub mod board;
 pub mod common;
 pub mod filter;
+pub mod gantt;
 pub mod graph;
 pub mod table;
 pub mod tree;
@@ -38,6 +39,7 @@ pub use common::{
     build_card, resolve_title, AggregateValue, AxisValue, Card, CardField, UnplacedCard,
     UnplacedReason,
 };
+pub use gantt::{GanttBar, GanttData};
 pub use graph::{Edge, GraphData};
 pub use table::{TableData, TableRow};
 pub use tree::{TreeData, TreeNode};
@@ -49,6 +51,7 @@ pub use tree::{TreeData, TreeNode};
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ViewData {
     Board(BoardData),
+    Gantt(GanttData),
     Graph(GraphData),
     Table(TableData),
     Tree(TreeData),
@@ -63,6 +66,7 @@ pub enum ViewData {
 pub fn extract(view: &View, store: &Store, schema: &Schema) -> ViewData {
     match &view.kind {
         ViewKind::Board { .. } => ViewData::Board(board::extract_board(view, store, schema)),
+        ViewKind::Gantt { .. } => ViewData::Gantt(gantt::extract_gantt(view, store, schema)),
         ViewKind::Graph { .. } => ViewData::Graph(graph::extract_graph(view, store, schema)),
         ViewKind::Table { .. } => ViewData::Table(table::extract_table(view, store, schema)),
         ViewKind::Tree { .. } => ViewData::Tree(tree::extract_tree(view, store, schema)),
