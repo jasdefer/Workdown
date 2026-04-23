@@ -11,4 +11,5 @@ pub mod query;
 pub mod resolve;
 pub mod rules;
 pub mod store;
+pub mod view_data;
 pub mod views_check;

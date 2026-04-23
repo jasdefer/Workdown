@@ -85,7 +85,13 @@ pub struct WorkItem {
 }
 
 /// A typed field value, coerced from raw YAML according to the schema's field type.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// Serialized untagged: consumers see bare JSON scalars/arrays
+/// (`"open"`, `42`, `["a","b"]`, `"2026-04-23"`) and consult the schema
+/// separately to interpret the type. Deserialize is not derived — values
+/// are produced by the coercion layer, not parsed from JSON.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
 pub enum FieldValue {
     /// A free-form string.
     String(String),

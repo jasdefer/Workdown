@@ -1,0 +1,116 @@
+//! Types and helpers shared across view_data extractors.
+//!
+//! `Card` is the resolved form of a work item for a specific view: id,
+//! optional display title (from the view's `title:` slot), every field
+//! set on the item (in schema order), and the freeform body text.
+//! `UnplacedCard` carries items that couldn't be turned into the view's
+//! natural mark (a bar, a point, a cell) — filter-matched but structurally
+//! unrenderable — so the renderer can show them in a side panel or ignore
+//! them.
+
+use chrono::NaiveDate;
+use serde::Serialize;
+
+use crate::model::schema::{FieldType, Schema};
+use crate::model::views::View;
+use crate::model::{FieldValue, WorkItem, WorkItemId};
+use crate::query::format::format_field_value;
+
+// ── Card ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Card {
+    pub id: WorkItemId,
+    pub title: Option<String>,
+    pub fields: Vec<CardField>,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CardField {
+    pub name: String,
+    pub value: FieldValue,
+}
+
+/// Build a Card from a work item, resolving the view's title slot.
+///
+/// Fields emitted: each schema-declared field the item actually has a
+/// value for, in schema-declaration order. Fields not present on the
+/// item are omitted (not padded with `None`) — consumers that need a
+/// uniform shape can consult the schema themselves.
+pub fn build_card(item: &WorkItem, schema: &Schema, view: &View) -> Card {
+    let title = resolve_title(item, view);
+    let mut fields = Vec::new();
+    for field_name in schema.fields.keys() {
+        if let Some(value) = item.fields.get(field_name) {
+            fields.push(CardField {
+                name: field_name.clone(),
+                value: value.clone(),
+            });
+        }
+    }
+    Card {
+        id: item.id.clone(),
+        title,
+        fields,
+        body: item.body.clone(),
+    }
+}
+
+/// Resolve a card's display title via the view's `title:` slot.
+///
+/// Returns `None` when the view has no `title:` set or when the referenced
+/// field isn't set on this item — renderers fall back to the item id.
+/// The virtual `id` slot returns the item id as a string.
+pub fn resolve_title(item: &WorkItem, view: &View) -> Option<String> {
+    let slot = view.title.as_deref()?;
+    if slot == "id" {
+        return Some(item.id.as_str().to_owned());
+    }
+    item.fields.get(slot).map(format_field_value)
+}
+
+// ── Unplaced items ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+pub struct UnplacedCard {
+    pub card: Card,
+    pub reason: UnplacedReason,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum UnplacedReason {
+    MissingValue {
+        field: String,
+    },
+    InvalidRange {
+        start_field: String,
+        end_field: String,
+    },
+    NonNumericValue {
+        field: String,
+        got: FieldType,
+    },
+}
+
+// ── Aggregate / axis values ─────────────────────────────────────────
+
+/// Result of an aggregate (sum/avg/min/max) on a numeric or date field.
+///
+/// Count always produces `Number(n as f64)`. Sum applies to numeric
+/// fields only; avg/min/max apply to numeric or date fields.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum AggregateValue {
+    Number(f64),
+    Date(NaiveDate),
+}
+
+/// A point coordinate on a chart's x-axis (or similar).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum AxisValue {
+    Number(f64),
+    Date(NaiveDate),
+}
