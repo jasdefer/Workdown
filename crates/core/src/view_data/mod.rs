@@ -23,6 +23,7 @@ pub mod common;
 pub mod filter;
 pub mod gantt;
 pub mod graph;
+pub mod heatmap;
 pub mod line_chart;
 pub mod metric;
 pub mod table;
@@ -48,6 +49,7 @@ pub use common::{
 };
 pub use gantt::{GanttBar, GanttData};
 pub use graph::{Edge, GraphData};
+pub use heatmap::{HeatmapCell, HeatmapData};
 pub use line_chart::{LineChartData, LinePoint};
 pub use metric::MetricData;
 pub use table::{TableData, TableRow};
@@ -56,8 +58,6 @@ pub use treemap::{TreemapData, TreemapNode};
 pub use workload::{WorkloadBucket, WorkloadData};
 
 /// Extracted, fully-resolved data for a single view.
-///
-/// Additional variants land as each extractor is implemented.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ViewData {
@@ -65,6 +65,7 @@ pub enum ViewData {
     Board(BoardData),
     Gantt(GanttData),
     Graph(GraphData),
+    Heatmap(HeatmapData),
     LineChart(LineChartData),
     Metric(MetricData),
     Table(TableData),
@@ -87,6 +88,9 @@ pub fn extract(view: &View, store: &Store, schema: &Schema) -> ViewData {
         ViewKind::Board { .. } => ViewData::Board(board::extract_board(view, store, schema)),
         ViewKind::Gantt { .. } => ViewData::Gantt(gantt::extract_gantt(view, store, schema)),
         ViewKind::Graph { .. } => ViewData::Graph(graph::extract_graph(view, store, schema)),
+        ViewKind::Heatmap { .. } => {
+            ViewData::Heatmap(heatmap::extract_heatmap(view, store, schema))
+        }
         ViewKind::LineChart { .. } => {
             ViewData::LineChart(line_chart::extract_line_chart(view, store, schema))
         }
@@ -99,6 +103,5 @@ pub fn extract(view: &View, store: &Store, schema: &Schema) -> ViewData {
         ViewKind::Workload { .. } => {
             ViewData::Workload(workload::extract_workload(view, store, schema))
         }
-        other => todo!("view type {} not yet implemented", other.view_type()),
     }
 }
