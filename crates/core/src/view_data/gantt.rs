@@ -15,11 +15,10 @@ use serde::Serialize;
 
 use crate::model::schema::Schema;
 use crate::model::views::{View, ViewKind};
-use crate::model::FieldValue;
 use crate::query::format::format_field_value;
 use crate::store::Store;
 
-use super::common::{build_card, Card, UnplacedCard, UnplacedReason};
+use super::common::{as_date, build_card, Card, UnplacedCard, UnplacedReason};
 use super::filter::filtered_items;
 
 #[derive(Debug, Clone, Serialize)]
@@ -102,13 +101,6 @@ pub fn extract_gantt(view: &View, store: &Store, schema: &Schema) -> GanttData {
     }
 }
 
-fn as_date(value: Option<&FieldValue>) -> Option<NaiveDate> {
-    match value {
-        Some(FieldValue::Date(date)) => Some(*date),
-        _ => None,
-    }
-}
-
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -118,6 +110,7 @@ mod tests {
 
     use crate::model::schema::{FieldTypeConfig, Schema};
     use crate::model::views::{View, ViewKind};
+    use crate::model::FieldValue;
     use crate::view_data::test_support::{make_item, make_schema, make_store};
 
     fn gantt_view(start: &str, end: &str, group: Option<&str>) -> View {

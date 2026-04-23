@@ -114,3 +114,22 @@ pub enum AxisValue {
     Number(f64),
     Date(NaiveDate),
 }
+
+// ── FieldValue conversions ──────────────────────────────────────────
+
+/// Extract a [`NaiveDate`] from a field value, if it is one.
+pub(super) fn as_date(value: Option<&FieldValue>) -> Option<NaiveDate> {
+    match value {
+        Some(FieldValue::Date(date)) => Some(*date),
+        _ => None,
+    }
+}
+
+/// Extract a numeric value (`Integer` or `Float`) as `f64`.
+pub(super) fn as_number(value: Option<&FieldValue>) -> Option<f64> {
+    match value {
+        Some(FieldValue::Integer(integer)) => Some(*integer as f64),
+        Some(FieldValue::Float(float)) => Some(*float),
+        _ => None,
+    }
+}

@@ -23,6 +23,7 @@ pub mod gantt;
 pub mod graph;
 pub mod table;
 pub mod tree;
+pub mod workload;
 mod traverse;
 
 #[cfg(test)]
@@ -43,6 +44,7 @@ pub use gantt::{GanttBar, GanttData};
 pub use graph::{Edge, GraphData};
 pub use table::{TableData, TableRow};
 pub use tree::{TreeData, TreeNode};
+pub use workload::{WorkloadBucket, WorkloadData};
 
 /// Extracted, fully-resolved data for a single view.
 ///
@@ -55,6 +57,7 @@ pub enum ViewData {
     Graph(GraphData),
     Table(TableData),
     Tree(TreeData),
+    Workload(WorkloadData),
 }
 
 /// Extract view data for rendering or JSON serialization.
@@ -70,6 +73,9 @@ pub fn extract(view: &View, store: &Store, schema: &Schema) -> ViewData {
         ViewKind::Graph { .. } => ViewData::Graph(graph::extract_graph(view, store, schema)),
         ViewKind::Table { .. } => ViewData::Table(table::extract_table(view, store, schema)),
         ViewKind::Tree { .. } => ViewData::Tree(tree::extract_tree(view, store, schema)),
+        ViewKind::Workload { .. } => {
+            ViewData::Workload(workload::extract_workload(view, store, schema))
+        }
         other => todo!("view type {} not yet implemented", other.view_type()),
     }
 }
