@@ -24,6 +24,7 @@ pub mod filter;
 pub mod gantt;
 pub mod graph;
 pub mod line_chart;
+pub mod metric;
 pub mod table;
 pub mod tree;
 pub mod workload;
@@ -47,6 +48,7 @@ pub use common::{
 pub use gantt::{GanttBar, GanttData};
 pub use graph::{Edge, GraphData};
 pub use line_chart::{LineChartData, LinePoint};
+pub use metric::MetricData;
 pub use table::{TableData, TableRow};
 pub use tree::{TreeData, TreeNode};
 pub use workload::{WorkloadBucket, WorkloadData};
@@ -62,6 +64,7 @@ pub enum ViewData {
     Gantt(GanttData),
     Graph(GraphData),
     LineChart(LineChartData),
+    Metric(MetricData),
     Table(TableData),
     Tree(TreeData),
     Workload(WorkloadData),
@@ -84,6 +87,7 @@ pub fn extract(view: &View, store: &Store, schema: &Schema) -> ViewData {
         ViewKind::LineChart { .. } => {
             ViewData::LineChart(line_chart::extract_line_chart(view, store, schema))
         }
+        ViewKind::Metric { .. } => ViewData::Metric(metric::extract_metric(view, store, schema)),
         ViewKind::Table { .. } => ViewData::Table(table::extract_table(view, store, schema)),
         ViewKind::Tree { .. } => ViewData::Tree(tree::extract_tree(view, store, schema)),
         ViewKind::Workload { .. } => {
