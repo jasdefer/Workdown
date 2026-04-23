@@ -123,15 +123,7 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             "link",
             out,
         ),
-        ViewKind::Graph { field } => check_slot(
-            schema,
-            view_id,
-            "field",
-            field,
-            &[FieldType::Links],
-            "links",
-            out,
-        ),
+        ViewKind::Graph { field } => check_graph_field(schema, view_id, field, out),
         ViewKind::Table { columns } => {
             for column in columns {
                 check_slot(schema, view_id, "columns", column, &[], "", out);
@@ -392,6 +384,43 @@ fn check_slot(
     }
 }
 
+// ── Graph field helper ───────────────────────────────────────────────
+
+/// Graph-specific slot check: accepts a direct Link/Links field, or an
+/// inverse name (declared via `inverse:` on a link/links field and thus
+/// present in `schema.inverse_table`). Inverse names resolve to their
+/// original field at extraction time; the underlying data is the same.
+fn check_graph_field(
+    schema: &Schema,
+    view_id: &str,
+    field_name: &str,
+    out: &mut Vec<Diagnostic>,
+) {
+    if let Some(def) = schema.fields.get(field_name) {
+        match def.field_type() {
+            FieldType::Link | FieldType::Links => {}
+            actual => out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
+                view_id: view_id.to_owned(),
+                slot: "field",
+                field_name: field_name.to_owned(),
+                actual_type: actual,
+                expected: "link or links".to_owned(),
+            })),
+        }
+        return;
+    }
+
+    if schema.inverse_table.contains_key(field_name) {
+        return;
+    }
+
+    out.push(error(DiagnosticKind::ViewUnknownField {
+        view_id: view_id.to_owned(),
+        slot: "field",
+        field_name: field_name.to_owned(),
+    }));
+}
+
 // ── Heatmap bucket-coupling helper ───────────────────────────────────
 
 /// Does at least one of the two axis fields resolve to a `date` field in the schema?
@@ -649,17 +678,54 @@ mod tests {
     }
 
     #[test]
-    fn graph_field_must_be_links() {
+    fn graph_field_rejects_non_link_types() {
         let diagnostics = evaluate(
             &one_view(ViewKind::Graph {
-                field: "parent".into(), // link, not links
+                field: "status".into(), // choice, not link/links
             }),
             &simple_schema(),
         );
         assert!(matches!(
             &diagnostics[0].kind,
             DiagnosticKind::ViewFieldTypeMismatch { actual_type, .. }
-                if *actual_type == FieldType::Link
+                if *actual_type == FieldType::Choice
+        ));
+    }
+
+    #[test]
+    fn graph_field_accepts_single_link() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Graph {
+                field: "parent".into(),
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn graph_field_accepts_inverse_name() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Graph {
+                field: "children".into(), // inverse of parent
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn graph_field_rejects_unknown_name() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Graph {
+                field: "nonexistent".into(),
+            }),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewUnknownField { field_name, .. }
+                if field_name == "nonexistent"
         ));
     }
 
