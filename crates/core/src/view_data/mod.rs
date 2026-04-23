@@ -16,6 +16,7 @@
 //! `unplaced: Vec<UnplacedCard>` lists, carrying the reason. Renderers
 //! decide whether to surface them in a separate section or ignore them.
 
+pub mod board;
 pub mod common;
 pub mod filter;
 pub mod table;
@@ -29,6 +30,7 @@ use crate::model::schema::Schema;
 use crate::model::views::{View, ViewKind};
 use crate::store::Store;
 
+pub use board::{BoardColumn, BoardData};
 pub use common::{
     build_card, resolve_title, AggregateValue, AxisValue, Card, CardField, UnplacedCard,
     UnplacedReason,
@@ -41,6 +43,7 @@ pub use table::{TableData, TableRow};
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ViewData {
+    Board(BoardData),
     Table(TableData),
 }
 
@@ -52,6 +55,7 @@ pub enum ViewData {
 /// aggregate inputs) live in each variant's `unplaced` list.
 pub fn extract(view: &View, store: &Store, schema: &Schema) -> ViewData {
     match &view.kind {
+        ViewKind::Board { .. } => ViewData::Board(board::extract_board(view, store, schema)),
         ViewKind::Table { .. } => ViewData::Table(table::extract_table(view, store, schema)),
         other => todo!("view type {} not yet implemented", other.view_type()),
     }
