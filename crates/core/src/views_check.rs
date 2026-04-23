@@ -36,6 +36,7 @@ pub fn evaluate(views: &Views, schema: &Schema) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     for view in &views.views {
         check_view(view, schema, &mut out);
+        check_title(view, schema, &mut out);
         check_where_clauses(view, schema, &mut out);
     }
     out
@@ -326,6 +327,23 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
     }
 }
 
+// ── Title slot (cross-cutting) ───────────────────────────────────────
+
+fn check_title(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
+    let Some(field_name) = view.title.as_deref() else {
+        return;
+    };
+    check_slot(
+        schema,
+        view.id.as_str(),
+        "title",
+        field_name,
+        &[FieldType::String, FieldType::Choice],
+        "string or choice",
+        out,
+    );
+}
+
 // ── Slot helper ──────────────────────────────────────────────────────
 
 /// Check one slot's field reference. Emits:
@@ -530,6 +548,7 @@ mod tests {
             views: vec![View {
                 id: "v".into(),
                 where_clauses: vec![],
+                title: None,
                 kind,
             }],
         }
@@ -540,6 +559,18 @@ mod tests {
             views: vec![View {
                 id: "v".into(),
                 where_clauses,
+                title: None,
+                kind,
+            }],
+        }
+    }
+
+    fn view_with_title(kind: ViewKind, title: &str) -> Views {
+        Views {
+            views: vec![View {
+                id: "v".into(),
+                where_clauses: vec![],
+                title: Some(title.into()),
                 kind,
             }],
         }
@@ -883,6 +914,117 @@ mod tests {
             &diagnostics[0].kind,
             DiagnosticKind::ViewUnknownField { field_name, .. }
                 if field_name == "assignee"
+        ));
+    }
+
+    // ── Title slot (cross-cutting) ─────────────────────────────
+
+    #[test]
+    fn title_string_field_accepted() {
+        let diagnostics = evaluate(
+            &view_with_title(
+                ViewKind::Board {
+                    field: "status".into(),
+                },
+                "title",
+            ),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn title_choice_field_accepted() {
+        let diagnostics = evaluate(
+            &view_with_title(
+                ViewKind::Board {
+                    field: "status".into(),
+                },
+                "status",
+            ),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn title_id_accepted_though_redundant() {
+        // `id` is the fallback when title is unset — setting it explicitly
+        // is harmless and must not trip existence / type checks.
+        let diagnostics = evaluate(
+            &view_with_title(
+                ViewKind::Board {
+                    field: "status".into(),
+                },
+                "id",
+            ),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn title_unknown_field_rejected() {
+        let diagnostics = evaluate(
+            &view_with_title(
+                ViewKind::Board {
+                    field: "status".into(),
+                },
+                "nonexistent",
+            ),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            diagnostics.as_slice(),
+            [d] if matches!(
+                &d.kind,
+                DiagnosticKind::ViewUnknownField { slot, field_name, .. }
+                if *slot == "title" && field_name == "nonexistent"
+            )
+        ));
+    }
+
+    #[test]
+    fn title_wrong_type_rejected() {
+        // `effort` is integer — not allowed as a display title.
+        let diagnostics = evaluate(
+            &view_with_title(
+                ViewKind::Board {
+                    field: "status".into(),
+                },
+                "effort",
+            ),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            diagnostics.as_slice(),
+            [d] if matches!(
+                &d.kind,
+                DiagnosticKind::ViewFieldTypeMismatch { slot, field_name, actual_type, .. }
+                if *slot == "title" && field_name == "effort" && *actual_type == FieldType::Integer
+            )
+        ));
+    }
+
+    #[test]
+    fn title_link_field_rejected() {
+        // Relation fields can resolve to multiple values — not a title.
+        let diagnostics = evaluate(
+            &view_with_title(
+                ViewKind::Board {
+                    field: "status".into(),
+                },
+                "parent",
+            ),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            diagnostics.as_slice(),
+            [d] if matches!(
+                &d.kind,
+                DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+                if *slot == "title" && *actual_type == FieldType::Link
+            )
         ));
     }
 

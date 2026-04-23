@@ -316,3 +316,85 @@ extra: nope
 ",
     );
 }
+
+// ── Title slot (cross-cutting) ───────────────────────────────────────────
+
+#[test]
+fn title_slot_on_every_view_type_validates() {
+    // Same 11-entry fixture as `full_example_with_all_eleven_view_types_validates`,
+    // but every entry carries `title: title`. Ensures each per-type branch
+    // accepts the shared slot.
+    let schema = compile_schema();
+    let yaml = r#"
+views:
+  - id: status-board
+    type: board
+    field: status
+    title: title
+  - id: hierarchy
+    type: tree
+    field: parent
+    title: title
+  - id: deps
+    type: graph
+    field: depends_on
+    title: title
+  - id: all-items
+    type: table
+    columns: [id, title]
+    title: title
+  - id: roadmap
+    type: gantt
+    start: start_date
+    end: end_date
+    title: title
+  - id: effort-by-status
+    type: bar_chart
+    group_by: status
+    aggregate: count
+    title: title
+  - id: estimate-vs-actual
+    type: line_chart
+    x: estimate
+    y: actual_effort
+    title: title
+  - id: capacity
+    type: workload
+    start: start_date
+    end: end_date
+    effort: effort
+    title: title
+  - id: open-count
+    type: metric
+    aggregate: count
+    title: title
+  - id: effort-by-milestone
+    type: treemap
+    group: parent
+    size: effort
+    title: title
+  - id: activity
+    type: heatmap
+    x: end_date
+    y: assignee
+    aggregate: count
+    title: title
+"#;
+    assert_valid(&schema, yaml);
+}
+
+#[test]
+fn title_with_wrong_yaml_type_rejected() {
+    // `title` must be a field-name string. A number is not a valid identifier.
+    let schema = compile_schema();
+    assert_invalid(
+        &schema,
+        "\
+views:
+  - id: bad-title
+    type: board
+    field: status
+    title: 42
+",
+    );
+}

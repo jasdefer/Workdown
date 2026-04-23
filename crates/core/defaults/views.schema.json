@@ -70,6 +70,7 @@
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "board" },
         "where": { "$ref": "#/$defs/where_clauses" },
+        "title": { "$ref": "#/$defs/field_name" },
         "field": { "$ref": "#/$defs/field_name" }
       },
       "required": ["id", "type", "field"],
@@ -83,6 +84,7 @@
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "tree" },
         "where": { "$ref": "#/$defs/where_clauses" },
+        "title": { "$ref": "#/$defs/field_name" },
         "field": { "$ref": "#/$defs/field_name" }
       },
       "required": ["id", "type", "field"],
@@ -96,6 +98,7 @@
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "graph" },
         "where": { "$ref": "#/$defs/where_clauses" },
+        "title": { "$ref": "#/$defs/field_name" },
         "field": { "$ref": "#/$defs/field_name" }
       },
       "required": ["id", "type", "field"],
@@ -109,6 +112,7 @@
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "table" },
         "where": { "$ref": "#/$defs/where_clauses" },
+        "title": { "$ref": "#/$defs/field_name" },
         "columns": {
           "type": "array",
           "description": "Ordered field names to render as columns.",
@@ -127,6 +131,7 @@
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "gantt" },
         "where": { "$ref": "#/$defs/where_clauses" },
+        "title": { "$ref": "#/$defs/field_name" },
         "start": { "$ref": "#/$defs/field_name" },
         "end":   { "$ref": "#/$defs/field_name" },
         "group": { "$ref": "#/$defs/field_name" }
@@ -142,6 +147,7 @@
         "id":        { "$ref": "#/$defs/view_id" },
         "type":      { "const": "bar_chart" },
         "where":     { "$ref": "#/$defs/where_clauses" },
+        "title":     { "$ref": "#/$defs/field_name" },
         "group_by":  { "$ref": "#/$defs/field_name" },
         "value":     { "$ref": "#/$defs/field_name" },
         "aggregate": { "$ref": "#/$defs/aggregate" }
@@ -157,6 +163,7 @@
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "line_chart" },
         "where": { "$ref": "#/$defs/where_clauses" },
+        "title": { "$ref": "#/$defs/field_name" },
         "x":     { "$ref": "#/$defs/field_name" },
         "y":     { "$ref": "#/$defs/field_name" }
       },
@@ -171,6 +178,7 @@
         "id":     { "$ref": "#/$defs/view_id" },
         "type":   { "const": "workload" },
         "where":  { "$ref": "#/$defs/where_clauses" },
+        "title":  { "$ref": "#/$defs/field_name" },
         "start":  { "$ref": "#/$defs/field_name" },
         "end":    { "$ref": "#/$defs/field_name" },
         "effort": { "$ref": "#/$defs/field_name" }
@@ -186,6 +194,7 @@
         "id":        { "$ref": "#/$defs/view_id" },
         "type":      { "const": "metric" },
         "where":     { "$ref": "#/$defs/where_clauses" },
+        "title":     { "$ref": "#/$defs/field_name" },
         "aggregate": { "$ref": "#/$defs/aggregate" },
         "value":     { "$ref": "#/$defs/field_name" },
         "label":     { "type": "string", "description": "Display label." }
@@ -212,6 +221,7 @@
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "treemap" },
         "where": { "$ref": "#/$defs/where_clauses" },
+        "title": { "$ref": "#/$defs/field_name" },
         "group": { "$ref": "#/$defs/field_name" },
         "size":  { "$ref": "#/$defs/field_name" }
       },
@@ -226,6 +236,7 @@
         "id":        { "$ref": "#/$defs/view_id" },
         "type":      { "const": "heatmap" },
         "where":     { "$ref": "#/$defs/where_clauses" },
+        "title":     { "$ref": "#/$defs/field_name" },
         "x":         { "$ref": "#/$defs/field_name" },
         "y":         { "$ref": "#/$defs/field_name" },
         "value":     { "$ref": "#/$defs/field_name" },

@@ -1,7 +1,7 @@
 ---
 id: views-title-slot
 type: issue
-status: to_do
+status: done
 title: Add per-view `title:` slot to views.yaml
 parent: renderers
 depends_on: []

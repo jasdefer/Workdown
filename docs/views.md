@@ -14,11 +14,13 @@ views:
 - Each entry has a unique `id` (used as the output filename and the web-app bookmark URL).
 - Each entry has a `type` that discriminates the type-specific slots.
 
-Every view entry also accepts an optional `where:` list (see below).
+Every view entry also accepts two optional cross-cutting slots: `where:` (filters) and `title:` (display-title field). Both are described below.
 
 Unknown top-level fields are rejected. Unknown per-view slots are rejected.
 
 ## View types (v1)
+
+Every view type also accepts the cross-cutting optional slots `where:` and `title:` on top of what the table below lists.
 
 | Type | Required slots | Optional slots | Output formats |
 |---|---|---|---|
@@ -65,6 +67,23 @@ Field references inside `where:` expressions are validated against `schema.yaml`
 When the view renders, items are filtered by the combined predicate before any aggregation or extraction runs.
 
 OR nesting is not supported in v1 (the CLI's inline `status=open,in_progress` form covers the common case). A structured `or:` branch can be added later without breaking existing configs.
+
+## Display titles — `title:`
+
+A single schema field name that each rendered item (card, row, node, gantt bar) uses as its display title.
+
+```yaml
+views:
+  - id: status-board
+    type: board
+    field: status
+    title: title
+```
+
+- Optional on every view type. When omitted, renderers fall back to the item `id`.
+- The referenced field must resolve in `schema.yaml` and must be typed as `string` or `choice`. Pointing at `id` is accepted though redundant; other types (`multichoice`, `integer`, `float`, `date`, `boolean`, `list`, `link`, `links`) are rejected because they can't cleanly express a one-liner display title.
+- Declared per-view rather than project-wide because `title` in the default schema is only a convention — users can rename or remove the field. A per-view slot lets each view declare its own title source explicitly. A top-level `default_title:` shared across views is not supported in v1; it may be added if repeating `title: title` on every entry becomes boilerplate.
+- View types that don't render item-level labels (`metric`, `bar_chart`, `workload`, `heatmap`) accept the slot uniformly but ignore it at render time.
 
 ## Output paths
 
@@ -140,7 +159,7 @@ views:
 `workdown validate` runs a set of checks that compare `views.yaml` against `schema.yaml`. All findings are errors in v1 (no warnings):
 
 - **Reference resolution** — every field name referenced by a view slot must exist in `schema.fields` (the virtual `id` field is always accepted).
-- **Type compatibility** — the slot dictates the allowed field type(s). For example: `board.field` must be `choice`, `multichoice`, or `string`; `tree.field` must be `link`; `graph.field` must be `links`; `gantt.start`/`gantt.end` must be `date`; numeric aggregation slots (`workload.effort`, `treemap.size`, `bar_chart.value`, `heatmap.value`, `metric.value`) must be `integer` or `float`. `table.columns[*]` is existence-only — any type is accepted as a column.
+- **Type compatibility** — the slot dictates the allowed field type(s). For example: `board.field` must be `choice`, `multichoice`, or `string`; `tree.field` must be `link`; `graph.field` must be `links`; `gantt.start`/`gantt.end` must be `date`; numeric aggregation slots (`workload.effort`, `treemap.size`, `bar_chart.value`, `heatmap.value`, `metric.value`) must be `integer` or `float`; `title:` must be `string` or `choice`. `table.columns[*]` is existence-only — any type is accepted as a column.
 - **Heatmap bucket coupling** — if `bucket:` is set, at least one of `x` or `y` must resolve to a `date` field.
 - **Metric count + value** — `aggregate: count` combined with `value:` is an error (count takes no value field).
 - **Where-clause parsing** — each string in a view's `where:` list must parse as a valid `--where` expression.

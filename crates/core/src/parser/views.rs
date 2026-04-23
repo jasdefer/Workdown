@@ -117,6 +117,11 @@ struct RawView {
     #[serde(default, rename = "where")]
     where_clauses: Vec<String>,
 
+    // Cross-cutting: the schema field whose value each rendered item
+    // uses as its display title. Allowed on every view type.
+    #[serde(default)]
+    title: Option<String>,
+
     // Single-field views (board / tree / graph)
     #[serde(default)]
     field: Option<String>,
@@ -219,6 +224,7 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
     Ok(View {
         id: raw.id,
         where_clauses: raw.where_clauses,
+        title: raw.title,
         kind,
     })
 }
@@ -275,6 +281,7 @@ mod tests {
             parse_single("views:\n  - id: status-board\n    type: board\n    field: status\n");
         assert_eq!(view.id, "status-board");
         assert!(view.where_clauses.is_empty());
+        assert!(view.title.is_none());
         match view.kind {
             ViewKind::Board { field } => assert_eq!(field, "status"),
             other => panic!("expected Board, got {other:?}"),
@@ -398,6 +405,93 @@ mod tests {
             ViewKind::Heatmap { bucket, .. } => assert_eq!(bucket, Some(Bucket::Week)),
             other => panic!("expected Heatmap, got {other:?}"),
         }
+    }
+
+    // ── Title slot (cross-cutting) ─────────────────────────────────
+
+    #[test]
+    fn parse_title_on_board() {
+        let view = parse_single(
+            "views:\n  - id: b\n    type: board\n    field: status\n    title: title\n",
+        );
+        assert_eq!(view.title.as_deref(), Some("title"));
+    }
+
+    #[test]
+    fn parse_title_accepted_on_every_view_type() {
+        // One entry per view type, each with `title: title`. Confirms the
+        // slot is flat at the view level — every variant picks it up.
+        let yaml = r#"
+views:
+  - id: v-board
+    type: board
+    field: status
+    title: title
+  - id: v-tree
+    type: tree
+    field: parent
+    title: title
+  - id: v-graph
+    type: graph
+    field: depends_on
+    title: title
+  - id: v-table
+    type: table
+    columns: [id, title]
+    title: title
+  - id: v-gantt
+    type: gantt
+    start: start_date
+    end: end_date
+    title: title
+  - id: v-bar
+    type: bar_chart
+    group_by: status
+    aggregate: count
+    title: title
+  - id: v-line
+    type: line_chart
+    x: estimate
+    y: actual_effort
+    title: title
+  - id: v-workload
+    type: workload
+    start: start_date
+    end: end_date
+    effort: effort
+    title: title
+  - id: v-metric
+    type: metric
+    aggregate: count
+    title: title
+  - id: v-treemap
+    type: treemap
+    group: parent
+    size: effort
+    title: title
+  - id: v-heatmap
+    type: heatmap
+    x: end_date
+    y: assignee
+    aggregate: count
+    title: title
+"#;
+        let parsed = parse_views(yaml).unwrap();
+        assert_eq!(parsed.views.len(), 11);
+        for view in &parsed.views {
+            assert_eq!(
+                view.title.as_deref(),
+                Some("title"),
+                "view {} did not carry the title slot",
+                view.id
+            );
+        }
+    }
+
+    #[test]
+    fn title_omitted_leaves_none() {
+        let view = parse_single("views:\n  - id: v\n    type: board\n    field: status\n");
+        assert!(view.title.is_none());
     }
 
     // ── Validation errors ──────────────────────────────────────────

@@ -25,6 +25,11 @@ pub struct View {
     /// [`crate::query::parse::parse_where`].
     pub where_clauses: Vec<String>,
 
+    /// Schema field name whose value is used as each item's display title
+    /// on cards, rows, nodes, and bars. When `None`, renderers fall back to
+    /// the item id. Cross-cutting: applies uniformly to every view type.
+    pub title: Option<String>,
+
     pub kind: ViewKind,
 }
 
