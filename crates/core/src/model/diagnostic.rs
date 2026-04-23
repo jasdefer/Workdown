@@ -129,6 +129,16 @@ pub enum DiagnosticKind {
     /// A metric view with `aggregate: count` also sets `value`, which is
     /// meaningless (count takes no value field).
     ViewCountAggregateWithValue { view_id: String },
+
+    /// An aggregate view's `value` slot points at a field whose type is
+    /// incompatible with the chosen aggregate (e.g. `sum` on a date field
+    /// or `avg` on a string field).
+    ViewAggregateTypeMismatch {
+        view_id: String,
+        slot: &'static str,
+        aggregate: super::views::Aggregate,
+        actual_type: FieldType,
+    },
 }
 
 // ── Field value errors ───────────────────────────────────────────────
@@ -287,6 +297,17 @@ impl std::fmt::Display for Diagnostic {
                 write!(
                     f,
                     "view '{view_id}': aggregate 'count' takes no 'value' slot"
+                )
+            }
+            DiagnosticKind::ViewAggregateTypeMismatch {
+                view_id,
+                slot,
+                aggregate,
+                actual_type,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot '{slot}': aggregate '{aggregate}' not allowed on {actual_type} field"
                 )
             }
         }

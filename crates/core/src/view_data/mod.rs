@@ -16,6 +16,8 @@
 //! `unplaced: Vec<UnplacedCard>` lists, carrying the reason. Renderers
 //! decide whether to surface them in a separate section or ignore them.
 
+mod aggregate;
+pub mod bar_chart;
 pub mod board;
 pub mod common;
 pub mod filter;
@@ -35,6 +37,7 @@ use crate::model::schema::Schema;
 use crate::model::views::{View, ViewKind};
 use crate::store::Store;
 
+pub use bar_chart::{BarChartBar, BarChartData};
 pub use board::{BoardColumn, BoardData};
 pub use common::{
     build_card, resolve_title, AggregateValue, AxisValue, Card, CardField, UnplacedCard,
@@ -52,6 +55,7 @@ pub use workload::{WorkloadBucket, WorkloadData};
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ViewData {
+    BarChart(BarChartData),
     Board(BoardData),
     Gantt(GanttData),
     Graph(GraphData),
@@ -68,6 +72,9 @@ pub enum ViewData {
 /// aggregate inputs) live in each variant's `unplaced` list.
 pub fn extract(view: &View, store: &Store, schema: &Schema) -> ViewData {
     match &view.kind {
+        ViewKind::BarChart { .. } => {
+            ViewData::BarChart(bar_chart::extract_bar_chart(view, store, schema))
+        }
         ViewKind::Board { .. } => ViewData::Board(board::extract_board(view, store, schema)),
         ViewKind::Gantt { .. } => ViewData::Gantt(gantt::extract_gantt(view, store, schema)),
         ViewKind::Graph { .. } => ViewData::Graph(graph::extract_graph(view, store, schema)),

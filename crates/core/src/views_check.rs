@@ -158,27 +158,13 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             }
         }
         ViewKind::BarChart {
-            group_by, value, ..
+            group_by,
+            value,
+            aggregate,
         } => {
-            check_slot(
-                schema,
-                view_id,
-                "group_by",
-                group_by,
-                &[FieldType::Choice, FieldType::Multichoice, FieldType::String],
-                "choice, multichoice, or string",
-                out,
-            );
+            check_slot(schema, view_id, "group_by", group_by, &[], "", out);
             if let Some(value) = value {
-                check_slot(
-                    schema,
-                    view_id,
-                    "value",
-                    value,
-                    &[FieldType::Integer, FieldType::Float],
-                    "integer or float",
-                    out,
-                );
+                check_aggregate_value_slot(schema, view_id, value, *aggregate, out);
             }
         }
         ViewKind::LineChart { x, y } => {
@@ -227,15 +213,7 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             value, aggregate, ..
         } => {
             if let Some(value) = value {
-                check_slot(
-                    schema,
-                    view_id,
-                    "value",
-                    value,
-                    &[FieldType::Integer, FieldType::Float],
-                    "integer or float",
-                    out,
-                );
+                check_aggregate_value_slot(schema, view_id, value, *aggregate, out);
             }
             if *aggregate == Aggregate::Count && value.is_some() {
                 out.push(error(DiagnosticKind::ViewCountAggregateWithValue {
@@ -272,43 +250,13 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             x,
             y,
             value,
+            aggregate,
             bucket,
-            ..
         } => {
-            let axis_allowed = &[
-                FieldType::Choice,
-                FieldType::Multichoice,
-                FieldType::String,
-                FieldType::Date,
-            ];
-            check_slot(
-                schema,
-                view_id,
-                "x",
-                x,
-                axis_allowed,
-                "choice, multichoice, string, or date",
-                out,
-            );
-            check_slot(
-                schema,
-                view_id,
-                "y",
-                y,
-                axis_allowed,
-                "choice, multichoice, string, or date",
-                out,
-            );
+            check_slot(schema, view_id, "x", x, &[], "", out);
+            check_slot(schema, view_id, "y", y, &[], "", out);
             if let Some(value) = value {
-                check_slot(
-                    schema,
-                    view_id,
-                    "value",
-                    value,
-                    &[FieldType::Integer, FieldType::Float],
-                    "integer or float",
-                    out,
-                );
+                check_aggregate_value_slot(schema, view_id, value, *aggregate, out);
             }
             if bucket.is_some() && !has_date_axis(schema, x, y) {
                 out.push(error(DiagnosticKind::ViewBucketWithoutDateAxis {
@@ -419,6 +367,55 @@ fn check_graph_field(
         slot: "field",
         field_name: field_name.to_owned(),
     }));
+}
+
+// ── Aggregate value-slot helper ──────────────────────────────────────
+
+/// Verify the `value` slot's field type is compatible with the chosen
+/// aggregate:
+///
+/// | aggregate       | allowed field types          |
+/// |-----------------|------------------------------|
+/// | `count`         | any (value is informational) |
+/// | `sum`           | integer, float               |
+/// | `avg`/`min`/`max` | integer, float, date       |
+///
+/// Incompatibility produces [`DiagnosticKind::ViewAggregateTypeMismatch`].
+/// Missing-field is [`DiagnosticKind::ViewUnknownField`] as elsewhere.
+fn check_aggregate_value_slot(
+    schema: &Schema,
+    view_id: &str,
+    field_name: &str,
+    aggregate: Aggregate,
+    out: &mut Vec<Diagnostic>,
+) {
+    if field_name == "id" {
+        return;
+    }
+    let Some(def) = schema.fields.get(field_name) else {
+        out.push(error(DiagnosticKind::ViewUnknownField {
+            view_id: view_id.to_owned(),
+            slot: "value",
+            field_name: field_name.to_owned(),
+        }));
+        return;
+    };
+    let actual = def.field_type();
+    let allowed: &[FieldType] = match aggregate {
+        Aggregate::Count => return,
+        Aggregate::Sum => &[FieldType::Integer, FieldType::Float],
+        Aggregate::Avg | Aggregate::Min | Aggregate::Max => {
+            &[FieldType::Integer, FieldType::Float, FieldType::Date]
+        }
+    };
+    if !allowed.contains(&actual) {
+        out.push(error(DiagnosticKind::ViewAggregateTypeMismatch {
+            view_id: view_id.to_owned(),
+            slot: "value",
+            aggregate,
+            actual_type: actual,
+        }));
+    }
 }
 
 // ── Heatmap bucket-coupling helper ───────────────────────────────────
@@ -764,7 +761,7 @@ mod tests {
     }
 
     #[test]
-    fn bar_chart_value_must_be_numeric_when_present() {
+    fn bar_chart_sum_rejects_non_numeric_value() {
         let diagnostics = evaluate(
             &one_view(ViewKind::BarChart {
                 group_by: "status".into(),
@@ -776,8 +773,80 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
         assert!(matches!(
             &diagnostics[0].kind,
-            DiagnosticKind::ViewFieldTypeMismatch { slot, .. } if *slot == "value"
+            DiagnosticKind::ViewAggregateTypeMismatch { slot, aggregate, actual_type, .. }
+                if *slot == "value" && *aggregate == Aggregate::Sum && *actual_type == FieldType::String
         ));
+    }
+
+    #[test]
+    fn bar_chart_sum_rejects_date_value() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::BarChart {
+                group_by: "status".into(),
+                value: Some("end_date".into()),
+                aggregate: Aggregate::Sum,
+            }),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewAggregateTypeMismatch { aggregate, actual_type, .. }
+                if *aggregate == Aggregate::Sum && *actual_type == FieldType::Date
+        ));
+    }
+
+    #[test]
+    fn bar_chart_avg_accepts_date_value() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::BarChart {
+                group_by: "status".into(),
+                value: Some("end_date".into()),
+                aggregate: Aggregate::Avg,
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn bar_chart_group_by_accepts_any_field_type() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::BarChart {
+                group_by: "effort".into(), // integer — now allowed
+                value: None,
+                aggregate: Aggregate::Count,
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn metric_avg_accepts_date_value() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Metric {
+                label: None,
+                value: Some("end_date".into()),
+                aggregate: Aggregate::Avg,
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn heatmap_axis_accepts_any_field_type() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Heatmap {
+                x: "effort".into(), // integer — now allowed
+                y: "title".into(),  // string — still allowed
+                value: None,
+                aggregate: Aggregate::Count,
+                bucket: None,
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
 
     #[test]
