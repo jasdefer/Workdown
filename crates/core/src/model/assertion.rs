@@ -9,6 +9,23 @@ use super::condition::{
     condition_value_from_yaml, negation_from_value, ConditionValue, NegationValue,
 };
 
+/// Build an assertion with only `values` set — used for scalar shorthand.
+fn scalar_values_assertion(value: ConditionValue) -> Assertion {
+    Assertion::Operator(AssertionOperator {
+        required: None,
+        forbidden: None,
+        values: Some(vec![value]),
+        not: None,
+        eq_field: None,
+        lt_field: None,
+        lte_field: None,
+        gt_field: None,
+        gte_field: None,
+        min_count: None,
+        max_count: None,
+    })
+}
+
 // ── Assertions ────────────────────────────────────────────────────────
 
 /// An assertion that must hold in the `require:` section.
@@ -67,15 +84,20 @@ fn assertion_from_value(value: &serde_yaml::Value) -> Result<Assertion, String> 
         serde_yaml::Value::String(s) => match s.as_str() {
             "required" => Ok(Assertion::Required),
             "forbidden" => Ok(Assertion::Forbidden),
-            other => Err(format!(
-                "unknown assertion keyword: '{other}' (expected 'required' or 'forbidden')"
-            )),
+            other => Ok(scalar_values_assertion(ConditionValue::String(
+                other.to_owned(),
+            ))),
         },
+        serde_yaml::Value::Number(n) => {
+            let f = n.as_f64().ok_or("unsupported numeric type in assertion")?;
+            Ok(scalar_values_assertion(ConditionValue::Number(f)))
+        }
+        serde_yaml::Value::Bool(b) => Ok(scalar_values_assertion(ConditionValue::Bool(*b))),
         serde_yaml::Value::Mapping(map) => {
             let op = assertion_operator_from_map(map)?;
             Ok(Assertion::Operator(op))
         }
-        _ => Err("assertion must be a string keyword or an object".into()),
+        _ => Err("assertion must be a scalar, object, or a 'required'/'forbidden' keyword".into()),
     }
 }
 

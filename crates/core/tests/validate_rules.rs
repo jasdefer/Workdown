@@ -591,3 +591,98 @@ rules:
 
     assert!(diags.is_empty());
 }
+
+// ── Scalar shorthand on the require side ────────────────────────────
+
+#[test]
+fn require_accepts_scalar_shorthand_equivalent_to_values_list() {
+    let schema = parse_schema(
+        "\
+fields:
+  status:
+    type: choice
+    values: [open, in_progress, done]
+    required: true
+  parent:
+    type: link
+    allow_cycles: false
+    inverse: children
+rules:
+  - name: close-parent-when-children-done
+    match:
+      children.status:
+        all: done
+    require:
+      status: done
+",
+    )
+    .unwrap();
+
+    let (_dir, path) = setup(vec![
+        ("epic.md", "---\nstatus: open\n---\n"),
+        ("child-a.md", "---\nstatus: done\nparent: epic\n---\n"),
+        ("child-b.md", "---\nstatus: done\nparent: epic\n---\n"),
+    ]);
+
+    let store = Store::load(&path, &schema).unwrap();
+    let diags = evaluate(&store, &schema);
+
+    let violations: Vec<_> = diags
+        .iter()
+        .filter(|d| matches!(&d.kind, DiagnosticKind::RuleViolation { .. }))
+        .collect();
+    assert_eq!(violations.len(), 1);
+
+    match &violations[0].kind {
+        DiagnosticKind::RuleViolation { item_id, .. } => {
+            assert_eq!(item_id, "epic");
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn require_scalar_shorthand_passes_when_value_matches() {
+    let schema = parse_schema(
+        "\
+fields:
+  status:
+    type: choice
+    values: [open, in_progress, done]
+    required: true
+  priority:
+    type: integer
+  active:
+    type: boolean
+rules:
+  - name: in-progress-has-high-priority
+    match:
+      status: in_progress
+    require:
+      priority: 1
+  - name: in-progress-is-active
+    match:
+      status: in_progress
+    require:
+      active: true
+",
+    )
+    .unwrap();
+
+    let (_dir, path) = setup(vec![(
+        "task-a.md",
+        "---\nstatus: in_progress\npriority: 1\nactive: true\n---\n",
+    )]);
+
+    let store = Store::load(&path, &schema).unwrap();
+    let diags = evaluate(&store, &schema);
+
+    let violations: Vec<_> = diags
+        .iter()
+        .filter(|d| matches!(&d.kind, DiagnosticKind::RuleViolation { .. }))
+        .collect();
+    assert!(
+        violations.is_empty(),
+        "got unexpected violations: {violations:?}"
+    );
+}
