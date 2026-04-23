@@ -1,7 +1,7 @@
 ---
 id: view-data-intermediate
 type: issue
-status: to_do
+status: done
 title: Design ViewData and extractors
 parent: renderers
 depends_on: [field-value-native-date, views-title-slot]

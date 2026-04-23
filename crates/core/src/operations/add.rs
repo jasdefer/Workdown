@@ -338,7 +338,8 @@ fn is_diagnostic_for_item(diagnostic: &Diagnostic, item_id: &WorkItemId) -> bool
         | DiagnosticKind::ViewFieldTypeMismatch { .. }
         | DiagnosticKind::ViewWhereParseError { .. }
         | DiagnosticKind::ViewBucketWithoutDateAxis { .. }
-        | DiagnosticKind::ViewCountAggregateWithValue { .. } => false,
+        | DiagnosticKind::ViewCountAggregateWithValue { .. }
+        | DiagnosticKind::ViewAggregateTypeMismatch { .. } => false,
     }
 }
 

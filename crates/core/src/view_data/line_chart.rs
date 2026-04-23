@@ -267,11 +267,7 @@ mod tests {
         let schema = numeric_schema();
         let store = make_store(
             &schema,
-            vec![make_item(
-                "a",
-                vec![("score", FieldValue::Float(1.0))],
-                "",
-            )],
+            vec![make_item("a", vec![("score", FieldValue::Float(1.0))], "")],
         );
         let view = line_chart_view("progress", "score");
 

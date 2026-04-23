@@ -221,9 +221,7 @@ fn extract_exercises_every_variant() {
             ("points-by-status", ViewData::BarChart(bar)) => {
                 // Sum of points per status: open = 5 + 2 = 7; in_progress = 13; done = 3.
                 let open = bar.bars.iter().find(|b| b.group == "open").unwrap();
-                assert!(
-                    matches!(open.value, AggregateValue::Number(n) if (n - 7.0).abs() < 1e-9)
-                );
+                assert!(matches!(open.value, AggregateValue::Number(n) if (n - 7.0).abs() < 1e-9));
                 let in_progress = bar.bars.iter().find(|b| b.group == "in_progress").unwrap();
                 assert!(
                     matches!(in_progress.value, AggregateValue::Number(n) if (n - 13.0).abs() < 1e-9)

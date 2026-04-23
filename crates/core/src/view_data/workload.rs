@@ -69,9 +69,7 @@ pub fn extract_workload(view: &View, store: &Store, schema: &Schema) -> Workload
             (_, None, _) => {
                 unplaced.push(UnplacedCard {
                     card,
-                    reason: UnplacedReason::MissingValue {
-                        field: end.clone(),
-                    },
+                    reason: UnplacedReason::MissingValue { field: end.clone() },
                 });
                 continue;
             }
@@ -107,8 +105,7 @@ pub fn extract_workload(view: &View, store: &Store, schema: &Schema) -> Workload
     }
 
     let mut buckets: Vec<WorkloadBucket> = Vec::new();
-    if let (Some((&min, _)), Some((&max, _))) = (totals.iter().next(), totals.iter().next_back())
-    {
+    if let (Some((&min, _)), Some((&max, _))) = (totals.iter().next(), totals.iter().next_back()) {
         let mut day = min;
         while day <= max {
             let total = totals.get(&day).copied().unwrap_or(0.0);

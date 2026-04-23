@@ -85,7 +85,7 @@ pub fn extract_heatmap(view: &View, store: &Store, schema: &Schema) -> HeatmapDa
 
         if *aggregate != Aggregate::Count {
             if let Some(value_field) = value {
-                if item.fields.get(value_field).is_none() {
+                if !item.fields.contains_key(value_field) {
                     unplaced.push(UnplacedCard {
                         card: build_card(item, schema, view),
                         reason: UnplacedReason::MissingValue {
@@ -177,7 +177,7 @@ mod tests {
     use super::*;
     use chrono::NaiveDate;
 
-    use crate::model::schema::{FieldTypeConfig, Schema};
+    use crate::model::schema::FieldTypeConfig;
     use crate::model::views::{View, ViewKind};
     use crate::view_data::test_support::{make_item, make_schema, make_store};
 

@@ -67,7 +67,7 @@ pub fn extract_bar_chart(view: &View, store: &Store, schema: &Schema) -> BarChar
 
         if *aggregate != Aggregate::Count {
             if let Some(value_field) = value {
-                if item.fields.get(value_field).is_none() {
+                if !item.fields.contains_key(value_field) {
                     unplaced.push(UnplacedCard {
                         card: build_card(item, schema, view),
                         reason: UnplacedReason::MissingValue {
@@ -86,15 +86,20 @@ pub fn extract_bar_chart(view: &View, store: &Store, schema: &Schema) -> BarChar
 
     let mut bars: Vec<BarChartBar> = Vec::new();
     for (group, group_items) in groups {
-        let field_values: Vec<&FieldValue> = match (value.as_ref(), *aggregate) {
-            (_, Aggregate::Count) => Vec::new(),
-            (Some(value_field), _) => group_items
-                .iter()
-                .filter_map(|item| item.fields.get(value_field))
-                .collect(),
-            (None, _) => Vec::new(),
+        let result = match aggregate {
+            Aggregate::Count => Some(AggregateValue::Number(group_items.len() as f64)),
+            _ => {
+                let field_values: Vec<&FieldValue> = match value.as_ref() {
+                    Some(value_field) => group_items
+                        .iter()
+                        .filter_map(|item| item.fields.get(value_field))
+                        .collect(),
+                    None => Vec::new(),
+                };
+                compute_aggregate(&field_values, *aggregate)
+            }
         };
-        if let Some(result) = compute_aggregate(&field_values, *aggregate) {
+        if let Some(result) = result {
             bars.push(BarChartBar {
                 group,
                 value: result,
@@ -316,11 +321,7 @@ mod tests {
                     ],
                     "",
                 ),
-                make_item(
-                    "b",
-                    vec![("status", FieldValue::Choice("open".into()))],
-                    "",
-                ),
+                make_item("b", vec![("status", FieldValue::Choice("open".into()))], ""),
             ],
         );
         let view = bar_chart_view("status", Some("points"), Aggregate::Sum);

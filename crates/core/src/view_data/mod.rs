@@ -27,10 +27,10 @@ pub mod heatmap;
 pub mod line_chart;
 pub mod metric;
 pub mod table;
+mod traverse;
 pub mod tree;
 pub mod treemap;
 pub mod workload;
-mod traverse;
 
 #[cfg(test)]
 mod test_support;

@@ -82,9 +82,7 @@ pub fn extract_gantt(view: &View, store: &Store, schema: &Schema) -> GanttData {
             }),
             (_, None) => unplaced.push(UnplacedCard {
                 card,
-                reason: UnplacedReason::MissingValue {
-                    field: end.clone(),
-                },
+                reason: UnplacedReason::MissingValue { field: end.clone() },
             }),
         }
     }
@@ -346,11 +344,7 @@ mod tests {
 
         let bar_ids: Vec<&str> = data.bars.iter().map(|b| b.card.id.as_str()).collect();
         assert_eq!(bar_ids, vec!["a", "c"]);
-        let unplaced_ids: Vec<&str> = data
-            .unplaced
-            .iter()
-            .map(|u| u.card.id.as_str())
-            .collect();
+        let unplaced_ids: Vec<&str> = data.unplaced.iter().map(|u| u.card.id.as_str()).collect();
         assert_eq!(unplaced_ids, vec!["m", "z"]);
     }
 }

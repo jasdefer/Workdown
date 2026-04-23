@@ -11,11 +11,7 @@ use crate::model::schema::{FieldDefinition, FieldTypeConfig, Schema};
 use crate::model::{FieldValue, WorkItem, WorkItemId};
 use crate::store::Store;
 
-pub(super) fn make_item(
-    id: &str,
-    fields: Vec<(&str, FieldValue)>,
-    body: &str,
-) -> WorkItem {
+pub(super) fn make_item(id: &str, fields: Vec<(&str, FieldValue)>, body: &str) -> WorkItem {
     let mut map = HashMap::new();
     for (name, value) in fields {
         map.insert(name.to_owned(), value);

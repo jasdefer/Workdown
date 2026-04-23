@@ -135,10 +135,7 @@ mod tests {
         assert_eq!(data.roots.len(), 1);
         assert_eq!(data.roots[0].card.id.as_str(), "a");
         assert_eq!(data.roots[0].children[0].card.id.as_str(), "b");
-        assert_eq!(
-            data.roots[0].children[0].children[0].card.id.as_str(),
-            "c"
-        );
+        assert_eq!(data.roots[0].children[0].children[0].card.id.as_str(), "c");
     }
 
     #[test]

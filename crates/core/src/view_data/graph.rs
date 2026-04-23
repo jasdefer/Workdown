@@ -175,7 +175,10 @@ mod tests {
                 make_item("root", vec![], ""),
                 make_item(
                     "child",
-                    vec![("parent", FieldValue::Link(WorkItemId::from("root".to_owned())))],
+                    vec![(
+                        "parent",
+                        FieldValue::Link(WorkItemId::from("root".to_owned())),
+                    )],
                     "",
                 ),
             ],

@@ -181,10 +181,7 @@ mod tests {
         let schema = numeric_schema();
         let store = make_store(
             &schema,
-            vec![
-                make_item("a", vec![], ""),
-                make_item("b", vec![], ""),
-            ],
+            vec![make_item("a", vec![], ""), make_item("b", vec![], "")],
         );
         let view = metric_view(None, Some("points"), Aggregate::Avg);
 

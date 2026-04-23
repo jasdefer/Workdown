@@ -332,12 +332,7 @@ fn check_slot(
 /// inverse name (declared via `inverse:` on a link/links field and thus
 /// present in `schema.inverse_table`). Inverse names resolve to their
 /// original field at extraction time; the underlying data is the same.
-fn check_graph_field(
-    schema: &Schema,
-    view_id: &str,
-    field_name: &str,
-    out: &mut Vec<Diagnostic>,
-) {
+fn check_graph_field(schema: &Schema, view_id: &str, field_name: &str, out: &mut Vec<Diagnostic>) {
     if let Some(def) = schema.fields.get(field_name) {
         match def.field_type() {
             FieldType::Link | FieldType::Links => {}

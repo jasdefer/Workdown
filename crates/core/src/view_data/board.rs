@@ -154,8 +154,7 @@ mod tests {
 
         let data = extract_board(&view, &store, &schema);
 
-        let values: Vec<Option<&str>> =
-            data.columns.iter().map(|c| c.value.as_deref()).collect();
+        let values: Vec<Option<&str>> = data.columns.iter().map(|c| c.value.as_deref()).collect();
         assert_eq!(
             values,
             vec![Some("open"), Some("in_progress"), Some("done"), None]
@@ -281,8 +280,7 @@ mod tests {
 
         let data = extract_board(&view, &store, &schema);
 
-        let values: Vec<Option<&str>> =
-            data.columns.iter().map(|c| c.value.as_deref()).collect();
+        let values: Vec<Option<&str>> = data.columns.iter().map(|c| c.value.as_deref()).collect();
         assert_eq!(values, vec![Some("eng"), Some("ops"), None]);
         assert_eq!(data.columns[0].cards.len(), 2);
         assert_eq!(data.columns[1].cards.len(), 1);

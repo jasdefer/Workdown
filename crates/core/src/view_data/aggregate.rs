@@ -58,7 +58,10 @@ fn average(values: &[&FieldValue]) -> Option<AggregateValue> {
     if !dates.is_empty() {
         // Day-count mean — midpoint semantics. CE day numbering is
         // arbitrary but stable, and the result is a NaiveDate regardless.
-        let sum_days: i64 = dates.iter().map(|date| date.num_days_from_ce() as i64).sum();
+        let sum_days: i64 = dates
+            .iter()
+            .map(|date| date.num_days_from_ce() as i64)
+            .sum();
         let avg_days = sum_days / dates.len() as i64;
         return NaiveDate::from_num_days_from_ce_opt(avg_days as i32).map(AggregateValue::Date);
     }
@@ -102,7 +105,11 @@ mod tests {
 
     #[test]
     fn count_includes_all_values_regardless_of_type() {
-        let values = [FieldValue::String("x".into()), number(1.0), date(2026, 1, 1)];
+        let values = [
+            FieldValue::String("x".into()),
+            number(1.0),
+            date(2026, 1, 1),
+        ];
         let refs: Vec<&FieldValue> = values.iter().collect();
         let result = compute_aggregate(&refs, Aggregate::Count);
         assert!(matches!(result, Some(AggregateValue::Number(n)) if n == 3.0));
