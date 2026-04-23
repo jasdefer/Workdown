@@ -97,8 +97,8 @@ pub enum FieldValue {
     Integer(i64),
     /// A floating-point number.
     Float(f64),
-    /// A date in `YYYY-MM-DD` format (stored as string, validated at coercion time).
-    Date(String),
+    /// A calendar date. On disk `YYYY-MM-DD`; in memory a native `NaiveDate`.
+    Date(chrono::NaiveDate),
     /// A boolean flag.
     Boolean(bool),
     /// A list of free-form strings.

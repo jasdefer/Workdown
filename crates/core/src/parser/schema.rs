@@ -8,8 +8,9 @@ use std::path::Path;
 use indexmap::IndexMap;
 
 use crate::model::schema::{
-    AggregateFunction, Assertion, Condition, CountConstraint, DefaultValue, FieldDefinition,
-    FieldType, FieldTypeConfig, Generator, RawFieldDefinition, RawRule, RawSchema, Rule, Schema,
+    AggregateFunction, Assertion, Condition, ConditionValue, CountConstraint, DefaultValue,
+    FieldDefinition, FieldType, FieldTypeConfig, Generator, NegationValue, RawFieldDefinition,
+    RawRule, RawSchema, Rule, Schema,
 };
 
 // ── Public API ────────────────────────────────────────────────────────
@@ -19,7 +20,7 @@ use crate::model::schema::{
 /// Performs serde deserialization followed by semantic validation.
 /// Returns all validation errors at once (does not stop at the first).
 pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
-    let raw: RawSchema = serde_yaml::from_str(yaml).map_err(SchemaLoadError::InvalidYaml)?;
+    let mut raw: RawSchema = serde_yaml::from_str(yaml).map_err(SchemaLoadError::InvalidYaml)?;
 
     let mut errors = Vec::new();
 
@@ -35,6 +36,10 @@ pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
 
     // Validate rules against the converted fields.
     validate_raw_rules(&raw.rules, &fields, &mut errors);
+
+    // Upgrade string condition values to typed Date values for conditions
+    // targeting Date fields. Bad dates fail at load, not at eval time.
+    coerce_condition_dates_in_rules(&mut raw.rules, &fields, &mut errors);
 
     if !errors.is_empty() {
         return Err(SchemaLoadError::Validation(errors));
@@ -633,6 +638,98 @@ fn validate_raw_rules(
         for (ref_key, assertion) in &rule.require {
             validate_assertion_quantifiers(&rule.name, ref_key, assertion, fields, errors);
         }
+    }
+}
+
+// ── Date coercion for Date-typed conditions ──────────────────────────
+
+fn coerce_condition_dates_in_rules(
+    rules: &mut [RawRule],
+    fields: &IndexMap<String, FieldDefinition>,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    for rule in rules {
+        let rule_name = rule.name.clone();
+        for (ref_key, condition) in rule.match_conditions.iter_mut() {
+            if target_field_type(ref_key, fields) == Some(FieldType::Date) {
+                coerce_dates_in_condition(&rule_name, ref_key, condition, errors);
+            }
+        }
+    }
+}
+
+fn target_field_type(
+    reference: &str,
+    fields: &IndexMap<String, FieldDefinition>,
+) -> Option<FieldType> {
+    let parts: Vec<&str> = reference.split('.').collect();
+    let target = if parts.len() == 1 { parts[0] } else { parts[1] };
+    fields.get(target).map(|f| f.field_type())
+}
+
+fn coerce_dates_in_condition(
+    rule_name: &str,
+    ref_key: &str,
+    condition: &mut Condition,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    match condition {
+        Condition::Equals(value) => coerce_date_value(rule_name, ref_key, value, errors),
+        Condition::OneOf(values) => {
+            for value in values {
+                coerce_date_value(rule_name, ref_key, value, errors);
+            }
+        }
+        Condition::Operator(op) => {
+            if let Some(negation) = &mut op.not {
+                coerce_dates_in_negation(rule_name, ref_key, negation, errors);
+            }
+            if let Some(inner) = &mut op.all {
+                coerce_dates_in_condition(rule_name, ref_key, inner, errors);
+            }
+            if let Some(inner) = &mut op.any {
+                coerce_dates_in_condition(rule_name, ref_key, inner, errors);
+            }
+            if let Some(inner) = &mut op.none {
+                coerce_dates_in_condition(rule_name, ref_key, inner, errors);
+            }
+        }
+    }
+}
+
+fn coerce_dates_in_negation(
+    rule_name: &str,
+    ref_key: &str,
+    negation: &mut NegationValue,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    match negation {
+        NegationValue::Single(value) => coerce_date_value(rule_name, ref_key, value, errors),
+        NegationValue::Multiple(values) => {
+            for value in values {
+                coerce_date_value(rule_name, ref_key, value, errors);
+            }
+        }
+    }
+}
+
+fn coerce_date_value(
+    rule_name: &str,
+    ref_key: &str,
+    value: &mut ConditionValue,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    let ConditionValue::String(raw) = value else {
+        return;
+    };
+    match chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d") {
+        Ok(date) => *value = ConditionValue::Date(date),
+        Err(_) => errors.push(rule_error(
+            rule_name,
+            format!(
+                "condition on date field '{ref_key}' has invalid date '{raw}' (expected YYYY-MM-DD)"
+            ),
+        )),
     }
 }
 
@@ -1270,5 +1367,78 @@ fields:
         let schema = load_schema_or_default(std::path::Path::new("/nonexistent/schema.yaml"))
             .expect("should fall back to defaults");
         assert!(schema.fields.contains_key("status"));
+    }
+
+    // ── Date-condition coercion ──────────────────────────────────
+
+    #[test]
+    fn condition_date_string_coerced_to_date_value() {
+        let yaml = "\
+fields:
+  due:
+    type: date
+rules:
+  - name: due-cutoff
+    match:
+      due: '2026-03-01'
+    require:
+      due: required
+";
+        let schema = parse_schema(yaml).expect("valid schema");
+        let rule = &schema.rules[0];
+        let condition = rule.match_conditions.get("due").unwrap();
+        match condition {
+            Condition::Equals(ConditionValue::Date(date)) => {
+                assert_eq!(*date, chrono::NaiveDate::from_ymd_opt(2026, 3, 1).unwrap());
+            }
+            other => panic!("expected ConditionValue::Date, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn condition_invalid_date_on_date_field_rejected() {
+        let yaml = "\
+fields:
+  due:
+    type: date
+rules:
+  - name: bad-date
+    match:
+      due: '2026-13-01'
+    require:
+      due: required
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("invalid date") && e.message.contains("2026-13-01")));
+    }
+
+    #[test]
+    fn condition_string_on_non_date_field_stays_string() {
+        let yaml = "\
+fields:
+  status:
+    type: choice
+    values: ['2026-01-01', 'open']
+rules:
+  - name: pick
+    match:
+      status: '2026-01-01'
+    require:
+      status: required
+";
+        let schema = parse_schema(yaml).expect("valid schema");
+        let condition = schema.rules[0].match_conditions.get("status").unwrap();
+        match condition {
+            Condition::Equals(ConditionValue::String(value)) => {
+                assert_eq!(value, "2026-01-01");
+            }
+            other => panic!("expected ConditionValue::String, got: {other:?}"),
+        }
     }
 }

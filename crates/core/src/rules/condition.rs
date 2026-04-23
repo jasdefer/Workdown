@@ -107,7 +107,7 @@ pub(crate) fn field_value_matches(
         // String-like field types match string condition values
         (FieldValue::String(value), ConditionValue::String(expected)) => value == expected,
         (FieldValue::Choice(value), ConditionValue::String(expected)) => value == expected,
-        (FieldValue::Date(value), ConditionValue::String(expected)) => value == expected,
+        (FieldValue::Date(value), ConditionValue::Date(expected)) => value == expected,
         (FieldValue::Link(value), ConditionValue::String(expected)) => value.as_str() == expected,
 
         // Multichoice/List: membership check
@@ -172,11 +172,9 @@ mod tests {
 
     #[test]
     fn equals_date_matches() {
-        let condition = Condition::Equals(ConditionValue::String("2026-01-01".into()));
-        assert!(eval_condition(
-            Some(&FieldValue::Date("2026-01-01".into())),
-            &condition
-        ));
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        let condition = Condition::Equals(ConditionValue::Date(date));
+        assert!(eval_condition(Some(&FieldValue::Date(date)), &condition));
     }
 
     #[test]

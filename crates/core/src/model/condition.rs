@@ -29,6 +29,10 @@ pub enum ConditionValue {
     String(std::string::String),
     Number(f64),
     Bool(bool),
+    /// Set by the schema validator after parsing, when a condition targets a
+    /// Date field. Deserialization never produces this variant — it stays a
+    /// `String` until the rule/field cross-check can coerce it.
+    Date(chrono::NaiveDate),
 }
 
 /// Explicit condition operators.

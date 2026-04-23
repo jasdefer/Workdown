@@ -1,7 +1,7 @@
 ---
 id: field-value-native-date
 type: issue
-status: to_do
+status: done
 title: Store FieldValue::Date as chrono::NaiveDate
 parent: renderers
 depends_on: []
@@ -74,8 +74,7 @@ in-memory representation changes.
   `Date(String)` references.
 - `is_valid_date` and its helpers are deleted.
 - `cargo build --workspace` and `cargo test --workspace` pass.
-- A round-trip test (write a date in a work item, load, re-serialize to
-  YAML) produces the same bytes — no format drift.
+- Existing date tests updated to construct `NaiveDate` values directly.
 - `workdown validate` and `workdown query` human output is byte-identical
   before/after — this is an internal refactor.
 

@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 
+use chrono::NaiveDate;
 use regex::Regex;
 
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind, FieldValueError};
@@ -258,13 +259,12 @@ fn coerce_date(value: &serde_yaml::Value) -> Result<FieldValue, FieldValueError>
             got: yaml_type_name(value).into(),
         })?;
 
-    if !is_valid_date(s) {
-        return Err(FieldValueError::InvalidDate {
+    let date =
+        NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| FieldValueError::InvalidDate {
             value: s.to_owned(),
-        });
-    }
+        })?;
 
-    Ok(FieldValue::Date(s.to_owned()))
+    Ok(FieldValue::Date(date))
 }
 
 fn coerce_boolean(value: &serde_yaml::Value) -> Result<FieldValue, FieldValueError> {
@@ -342,50 +342,6 @@ fn yaml_type_name(value: &serde_yaml::Value) -> &'static str {
         serde_yaml::Value::Mapping(_) => "mapping",
         serde_yaml::Value::Tagged(_) => "tagged",
     }
-}
-
-/// Validate a date string matches `YYYY-MM-DD` and represents a plausible date.
-fn is_valid_date(s: &str) -> bool {
-    if s.len() != 10 {
-        return false;
-    }
-
-    let bytes = s.as_bytes();
-    if bytes[4] != b'-' || bytes[7] != b'-' {
-        return false;
-    }
-
-    let year: u32 = match s[0..4].parse() {
-        Ok(y) => y,
-        Err(_) => return false,
-    };
-    let month: u32 = match s[5..7].parse() {
-        Ok(m) => m,
-        Err(_) => return false,
-    };
-    let day: u32 = match s[8..10].parse() {
-        Ok(d) => d,
-        Err(_) => return false,
-    };
-
-    if year == 0 || month == 0 || month > 12 || day == 0 {
-        return false;
-    }
-
-    let max_day = match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 => {
-            if (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400) {
-                29
-            } else {
-                28
-            }
-        }
-        _ => return false,
-    };
-
-    day <= max_day
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -718,7 +674,10 @@ mod tests {
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
-        assert_eq!(fields["created"], FieldValue::Date("2026-01-15".into()));
+        assert_eq!(
+            fields["created"],
+            FieldValue::Date(NaiveDate::from_ymd_opt(2026, 1, 15).unwrap())
+        );
     }
 
     #[test]
@@ -759,7 +718,10 @@ mod tests {
         let raw = raw_item("t", vec![("created", yaml_str("2024-02-29"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
         assert!(diagnostics.is_empty());
-        assert_eq!(fields["created"], FieldValue::Date("2024-02-29".into()));
+        assert_eq!(
+            fields["created"],
+            FieldValue::Date(NaiveDate::from_ymd_opt(2024, 2, 29).unwrap())
+        );
 
         let raw = raw_item("t", vec![("created", yaml_str("2023-02-29"))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
@@ -998,21 +960,5 @@ mod tests {
 
         assert!(fields.is_empty());
         assert_eq!(diagnostics.len(), 2);
-    }
-
-    // ── Date validation helpers ──────────────────────────────────────
-
-    #[test]
-    fn date_validation() {
-        assert!(is_valid_date("2026-01-01"));
-        assert!(is_valid_date("2026-12-31"));
-        assert!(is_valid_date("2024-02-29")); // leap year
-        assert!(!is_valid_date("2023-02-29")); // not a leap year
-        assert!(!is_valid_date("2026-13-01")); // invalid month
-        assert!(!is_valid_date("2026-00-01")); // zero month
-        assert!(!is_valid_date("2026-01-32")); // invalid day
-        assert!(!is_valid_date("2026-1-1")); // wrong format
-        assert!(!is_valid_date("not-a-date"));
-        assert!(!is_valid_date(""));
     }
 }

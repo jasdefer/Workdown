@@ -303,7 +303,7 @@ fn extract_string(value: &FieldValue) -> String {
     match value {
         FieldValue::String(string) => string.clone(),
         FieldValue::Choice(string) => string.clone(),
-        FieldValue::Date(string) => string.clone(),
+        FieldValue::Date(date) => date.format("%Y-%m-%d").to_string(),
         FieldValue::Link(id) => id.as_str().to_owned(),
         // For non-string types, fall back to a reasonable string representation.
         FieldValue::Integer(number) => number.to_string(),
@@ -720,7 +720,10 @@ mod tests {
         let schema = test_schema();
         let item = make_item(
             "t1",
-            vec![("due_date", FieldValue::Date("2026-03-15".into()))],
+            vec![(
+                "due_date",
+                FieldValue::Date(chrono::NaiveDate::from_ymd_opt(2026, 3, 15).unwrap()),
+            )],
         );
         let predicate = comparison("due_date", Operator::GreaterThan, "2026-03-01");
         assert!(check(&item, &predicate, &schema).unwrap());

@@ -286,9 +286,8 @@ pub(crate) fn compare_field_values(left: &FieldValue, right: &FieldValue) -> Opt
 
 fn format_field_value(field_value: &FieldValue) -> String {
     match field_value {
-        FieldValue::String(value) | FieldValue::Choice(value) | FieldValue::Date(value) => {
-            value.clone()
-        }
+        FieldValue::String(value) | FieldValue::Choice(value) => value.clone(),
+        FieldValue::Date(date) => date.format("%Y-%m-%d").to_string(),
         FieldValue::Link(id) => id.to_string(),
         FieldValue::Integer(value) => value.to_string(),
         FieldValue::Float(value) => value.to_string(),
@@ -310,6 +309,7 @@ fn format_condition_values(condition_values: &[ConditionValue]) -> Vec<String> {
             ConditionValue::String(value) => value.clone(),
             ConditionValue::Number(value) => value.to_string(),
             ConditionValue::Bool(value) => value.to_string(),
+            ConditionValue::Date(value) => value.format("%Y-%m-%d").to_string(),
         })
         .collect()
 }
@@ -358,8 +358,8 @@ mod tests {
     fn compare_dates() {
         assert_eq!(
             compare_field_values(
-                &FieldValue::Date("2026-01-01".into()),
-                &FieldValue::Date("2026-06-15".into())
+                &FieldValue::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+                &FieldValue::Date(chrono::NaiveDate::from_ymd_opt(2026, 6, 15).unwrap())
             ),
             Some(Ordering::Less)
         );

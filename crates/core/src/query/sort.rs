@@ -85,11 +85,12 @@ fn compare_present_values(
         Some(FieldType::Integer) => compare_integers(value_a, value_b),
         Some(FieldType::Float) => compare_floats(value_a, value_b),
         Some(FieldType::Boolean) => compare_booleans(value_a, value_b),
+        Some(FieldType::Date) => compare_dates(value_a, value_b),
         Some(FieldType::Multichoice) | Some(FieldType::List) => {
             compare_string_lists(value_a, value_b)
         }
         Some(FieldType::Links) => compare_id_lists(value_a, value_b),
-        // String, Choice, Date, Link, unknown: lexicographic.
+        // String, Choice, Link, unknown: lexicographic.
         _ => compare_as_strings(value_a, value_b),
     }
 }
@@ -114,6 +115,13 @@ fn compare_booleans(value_a: &FieldValue, value_b: &FieldValue) -> Ordering {
     match (value_a, value_b) {
         // false < true
         (FieldValue::Boolean(a), FieldValue::Boolean(b)) => a.cmp(b),
+        _ => Ordering::Equal,
+    }
+}
+
+fn compare_dates(value_a: &FieldValue, value_b: &FieldValue) -> Ordering {
+    match (value_a, value_b) {
+        (FieldValue::Date(a), FieldValue::Date(b)) => a.cmp(b),
         _ => Ordering::Equal,
     }
 }
@@ -155,7 +163,7 @@ fn extract_sort_string(value: &FieldValue) -> String {
     match value {
         FieldValue::String(string) => string.clone(),
         FieldValue::Choice(string) => string.clone(),
-        FieldValue::Date(string) => string.clone(),
+        FieldValue::Date(date) => date.format("%Y-%m-%d").to_string(),
         FieldValue::Link(id) => id.as_str().to_owned(),
         FieldValue::Integer(number) => number.to_string(),
         FieldValue::Float(number) => number.to_string(),
