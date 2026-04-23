@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workdown.dev/schemas/views.schema.json",
+  "title": "Workdown Views",
+  "description": "Validates the structure of a project's views.yaml file. Declares persisted views rendered by `workdown render` (board, tree, graph, table, gantt, charts, etc.).",
+  "type": "object",
+  "properties": {
+    "views": {
+      "type": "array",
+      "description": "Ordered list of view definitions. Each entry has a unique id used as the output filename.",
+      "items": { "$ref": "#/$defs/view" }
+    }
+  },
+  "required": ["views"],
+  "additionalProperties": false,
+
+  "$defs": {
+
+    "view_id": {
+      "type": "string",
+      "description": "Unique identifier for the view. Becomes the output filename (views/<id>.html). Lowercase, digits, hyphens, and underscores only.",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+
+    "where_clauses": {
+      "type": "array",
+      "description": "AND-combined filter expressions. Each string uses the `workdown query --where` grammar.",
+      "items": { "type": "string" }
+    },
+
+    "field_name": {
+      "type": "string",
+      "description": "Name of a field defined in schema.yaml (or the virtual `id` field).",
+      "pattern": "^[a-z_][a-z0-9_]*$"
+    },
+
+    "aggregate": {
+      "type": "string",
+      "description": "Aggregation function for chart and metric views.",
+      "enum": ["count", "sum", "avg", "min", "max"]
+    },
+
+    "bucket": {
+      "type": "string",
+      "description": "Date bucketing for heatmap axes bound to date fields.",
+      "enum": ["day", "week", "month"]
+    },
+
+    "view": {
+      "description": "A single view entry. The `type` field discriminates which slots are required.",
+      "oneOf": [
+        { "$ref": "#/$defs/board" },
+        { "$ref": "#/$defs/tree" },
+        { "$ref": "#/$defs/graph" },
+        { "$ref": "#/$defs/table" },
+        { "$ref": "#/$defs/gantt" },
+        { "$ref": "#/$defs/bar_chart" },
+        { "$ref": "#/$defs/line_chart" },
+        { "$ref": "#/$defs/workload" },
+        { "$ref": "#/$defs/metric" },
+        { "$ref": "#/$defs/treemap" },
+        { "$ref": "#/$defs/heatmap" }
+      ]
+    },
+
+    "board": {
+      "type": "object",
+      "description": "Kanban-style board grouped by a choice/multichoice/string field.",
+      "properties": {
+        "id":    { "$ref": "#/$defs/view_id" },
+        "type":  { "const": "board" },
+        "where": { "$ref": "#/$defs/where_clauses" },
+        "field": { "$ref": "#/$defs/field_name" }
+      },
+      "required": ["id", "type", "field"],
+      "additionalProperties": false
+    },
+
+    "tree": {
+      "type": "object",
+      "description": "Hierarchical tree following a single link field (e.g. parent).",
+      "properties": {
+        "id":    { "$ref": "#/$defs/view_id" },
+        "type":  { "const": "tree" },
+        "where": { "$ref": "#/$defs/where_clauses" },
+        "field": { "$ref": "#/$defs/field_name" }
+      },
+      "required": ["id", "type", "field"],
+      "additionalProperties": false
+    },
+
+    "graph": {
+      "type": "object",
+      "description": "Directed graph following a links field (e.g. depends_on).",
+      "properties": {
+        "id":    { "$ref": "#/$defs/view_id" },
+        "type":  { "const": "graph" },
+        "where": { "$ref": "#/$defs/where_clauses" },
+        "field": { "$ref": "#/$defs/field_name" }
+      },
+      "required": ["id", "type", "field"],
+      "additionalProperties": false
+    },
+
+    "table": {
+      "type": "object",
+      "description": "Tabular view with an ordered list of columns.",
+      "properties": {
+        "id":    { "$ref": "#/$defs/view_id" },
+        "type":  { "const": "table" },
+        "where": { "$ref": "#/$defs/where_clauses" },
+        "columns": {
+          "type": "array",
+          "description": "Ordered field names to render as columns.",
+          "items": { "$ref": "#/$defs/field_name" },
+          "minItems": 1
+        }
+      },
+      "required": ["id", "type", "columns"],
+      "additionalProperties": false
+    },
+
+    "gantt": {
+      "type": "object",
+      "description": "Gantt timeline using start/end date fields, optionally grouped by a link field.",
+      "properties": {
+        "id":    { "$ref": "#/$defs/view_id" },
+        "type":  { "const": "gantt" },
+        "where": { "$ref": "#/$defs/where_clauses" },
+        "start": { "$ref": "#/$defs/field_name" },
+        "end":   { "$ref": "#/$defs/field_name" },
+        "group": { "$ref": "#/$defs/field_name" }
+      },
+      "required": ["id", "type", "start", "end"],
+      "additionalProperties": false
+    },
+
+    "bar_chart": {
+      "type": "object",
+      "description": "Bar chart grouped by a categorical field; aggregates an optional numeric value.",
+      "properties": {
+        "id":        { "$ref": "#/$defs/view_id" },
+        "type":      { "const": "bar_chart" },
+        "where":     { "$ref": "#/$defs/where_clauses" },
+        "group_by":  { "$ref": "#/$defs/field_name" },
+        "value":     { "$ref": "#/$defs/field_name" },
+        "aggregate": { "$ref": "#/$defs/aggregate" }
+      },
+      "required": ["id", "type", "group_by", "aggregate"],
+      "additionalProperties": false
+    },
+
+    "line_chart": {
+      "type": "object",
+      "description": "Line chart with x/y fields (numeric or date).",
+      "properties": {
+        "id":    { "$ref": "#/$defs/view_id" },
+        "type":  { "const": "line_chart" },
+        "where": { "$ref": "#/$defs/where_clauses" },
+        "x":     { "$ref": "#/$defs/field_name" },
+        "y":     { "$ref": "#/$defs/field_name" }
+      },
+      "required": ["id", "type", "x", "y"],
+      "additionalProperties": false
+    },
+
+    "workload": {
+      "type": "object",
+      "description": "Capacity/workload view summing effort over a start/end window.",
+      "properties": {
+        "id":     { "$ref": "#/$defs/view_id" },
+        "type":   { "const": "workload" },
+        "where":  { "$ref": "#/$defs/where_clauses" },
+        "start":  { "$ref": "#/$defs/field_name" },
+        "end":    { "$ref": "#/$defs/field_name" },
+        "effort": { "$ref": "#/$defs/field_name" }
+      },
+      "required": ["id", "type", "start", "end", "effort"],
+      "additionalProperties": false
+    },
+
+    "metric": {
+      "type": "object",
+      "description": "Single-number metric. `aggregate: count` requires no value field; other aggregates aggregate a numeric `value` field.",
+      "properties": {
+        "id":        { "$ref": "#/$defs/view_id" },
+        "type":      { "const": "metric" },
+        "where":     { "$ref": "#/$defs/where_clauses" },
+        "aggregate": { "$ref": "#/$defs/aggregate" },
+        "value":     { "$ref": "#/$defs/field_name" },
+        "label":     { "type": "string", "description": "Display label." }
+      },
+      "required": ["id", "type", "aggregate"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "aggregate": { "const": "count" } },
+            "required": ["aggregate"]
+          },
+          "then": {
+            "properties": { "value": false }
+          }
+        }
+      ]
+    },
+
+    "treemap": {
+      "type": "object",
+      "description": "Treemap view grouped by a field, sized by a numeric field.",
+      "properties": {
+        "id":    { "$ref": "#/$defs/view_id" },
+        "type":  { "const": "treemap" },
+        "where": { "$ref": "#/$defs/where_clauses" },
+        "group": { "$ref": "#/$defs/field_name" },
+        "size":  { "$ref": "#/$defs/field_name" }
+      },
+      "required": ["id", "type", "group", "size"],
+      "additionalProperties": false
+    },
+
+    "heatmap": {
+      "type": "object",
+      "description": "Heatmap view with x/y axes and an aggregate. `bucket` applies date bucketing when an axis is a date field.",
+      "properties": {
+        "id":        { "$ref": "#/$defs/view_id" },
+        "type":      { "const": "heatmap" },
+        "where":     { "$ref": "#/$defs/where_clauses" },
+        "x":         { "$ref": "#/$defs/field_name" },
+        "y":         { "$ref": "#/$defs/field_name" },
+        "value":     { "$ref": "#/$defs/field_name" },
+        "aggregate": { "$ref": "#/$defs/aggregate" },
+        "bucket":    { "$ref": "#/$defs/bucket" }
+      },
+      "required": ["id", "type", "x", "y", "aggregate"],
+      "additionalProperties": false
+    }
+  }
+}

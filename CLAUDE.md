@@ -17,6 +17,7 @@ This repo is the **tool itself** (Rust CLI). Consumer projects run `workdown ini
   config.yaml          # Project config (from defaults/config.yaml)
   schema.yaml          # Field definitions and rules (from defaults/schema.yaml)
   resources.yaml       # Resource lists: people, teams, etc. (from defaults/resources.yaml)
+  views.yaml           # Persisted view definitions (from defaults/views.yaml)
   templates/           # Work item templates
 workdown-items/
   *.md                 # Work item files
@@ -27,8 +28,10 @@ workdown-items/
 - **`config.yaml`** — Entry point for the CLI. Defines project metadata, file paths (where work items live, where templates are, where resources are), and CLI defaults (which field to use for board/tree/graph views).
 - **`schema.yaml`** — User-editable. Defines fields, their types, validation rules, defaults, and aggregate behavior. This is what makes each project's work items structured differently. Fields can reference resources via `resource: <name>`.
 - **`resources.yaml`** — User-editable. Named lists of entities (people, teams, sprints, etc.) that work item fields can reference. A field with `resource: people` only accepts values matching an `id` from the `people` section.
-- **`schema.schema.json`** (shipped with CLI, not in consumer project) — JSON Schema that formally defines the structure of `schema.yaml`. Used by the CLI for validation and by editors for autocomplete. Not user-editable.
+- **`views.yaml`** — User-editable. Declares persisted views rendered by `workdown render` (board, tree, graph, table, gantt, charts, etc.). Each view references schema fields.
+- **`schema.schema.json`** (shipped with CLI, not in consumer project) — JSON Schema that formally defines the structure of `schema.yaml`. Used by editors for autocomplete. Not loaded by the CLI at runtime — see ADR-005.
 - **`resources.schema.json`** (shipped with CLI, not in consumer project) — JSON Schema that formally defines the structure of `resources.yaml`. Not user-editable.
+- **`views.schema.json`** (shipped with CLI, not in consumer project) — JSON Schema that formally defines the structure of `views.yaml`. Used by editors for autocomplete. Not loaded by the CLI at runtime — see ADR-005.
 
 ## Work Item File Format
 
@@ -65,13 +68,20 @@ Freeform Markdown body. Description, notes, acceptance criteria — anything.
 ## Project Structure (this repo)
 
 ```
-src/                   # Rust CLI source
-defaults/              # Default files for `workdown init`
-  schema.schema.json   # JSON Schema: formal definition of schema.yaml structure (not user-editable)
-  resources.schema.json # JSON Schema: formal definition of resources.yaml structure (not user-editable)
-  schema.yaml          # Default field definitions and validation rules
-  resources.yaml       # Default resource lists (people, teams, etc.)
-  config.yaml          # Default project config
+crates/
+  core/                # Shared business logic (model, parser, operations)
+    src/               # Rust source
+    defaults/          # Default files for `workdown init`
+      config.yaml      # Default project config
+      schema.yaml      # Default field definitions and validation rules
+      resources.yaml   # Default resource lists (people, teams, etc.)
+      views.yaml       # Default persisted view definitions
+      schema.schema.json    # JSON Schema: formal definition of schema.yaml structure (not user-editable)
+      resources.schema.json # JSON Schema: formal definition of resources.yaml structure (not user-editable)
+      views.schema.json     # JSON Schema: formal definition of views.yaml structure (not user-editable)
+    tests/             # Integration tests for the core crate
+  cli/                 # CLI binary (clap)
+  server/              # Local web server (`workdown serve`)
 docs/
   adr/                 # Architecture Decision Records
 ```
