@@ -20,6 +20,8 @@ pub mod board;
 pub mod common;
 pub mod filter;
 pub mod table;
+pub mod tree;
+mod traverse;
 
 #[cfg(test)]
 mod test_support;
@@ -36,6 +38,7 @@ pub use common::{
     UnplacedReason,
 };
 pub use table::{TableData, TableRow};
+pub use tree::{TreeData, TreeNode};
 
 /// Extracted, fully-resolved data for a single view.
 ///
@@ -45,6 +48,7 @@ pub use table::{TableData, TableRow};
 pub enum ViewData {
     Board(BoardData),
     Table(TableData),
+    Tree(TreeData),
 }
 
 /// Extract view data for rendering or JSON serialization.
@@ -57,6 +61,7 @@ pub fn extract(view: &View, store: &Store, schema: &Schema) -> ViewData {
     match &view.kind {
         ViewKind::Board { .. } => ViewData::Board(board::extract_board(view, store, schema)),
         ViewKind::Table { .. } => ViewData::Table(table::extract_table(view, store, schema)),
+        ViewKind::Tree { .. } => ViewData::Tree(tree::extract_tree(view, store, schema)),
         other => todo!("view type {} not yet implemented", other.view_type()),
     }
 }

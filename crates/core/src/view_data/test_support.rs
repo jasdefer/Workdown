@@ -49,3 +49,22 @@ pub(super) fn make_store(schema: &Schema, items: Vec<WorkItem>) -> Store {
     }
     store
 }
+
+/// Write Markdown files to a tempdir and return a Store with accurate
+/// reverse links. Required for tests that rely on
+/// [`Store::referring_items`] — [`make_store`] uses `insert()` which
+/// skips reverse-link computation.
+///
+/// The returned [`tempfile::TempDir`] must be kept alive for the duration
+/// of the test; dropping it deletes the underlying files.
+pub(super) fn make_store_with_files(
+    schema: &Schema,
+    files: Vec<(&str, &str)>,
+) -> (tempfile::TempDir, Store) {
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    for (name, content) in files {
+        std::fs::write(temp_dir.path().join(name), content).expect("write test file");
+    }
+    let store = Store::load(temp_dir.path(), schema).expect("store load");
+    (temp_dir, store)
+}
