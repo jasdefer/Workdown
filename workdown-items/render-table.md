@@ -7,16 +7,15 @@ parent: renderers
 depends_on: [view-data-intermediate]
 ---
 
-Render `TableView` as HTML and Markdown.
+Render `TableView` as a Markdown file written to `views/<id>.md`.
 
-## Output shapes
+## Notes
 
-- **HTML** — `<table>` with `<thead>` + `<tbody>`. Column order from `views.yaml`. Sortable via JS in the live server; static output is plain.
-- **Markdown** — GitHub-flavored table (pipe-delimited, aligned). Pipe characters in field values escaped. Empty values render as blanks.
+- GFM table is the natural form
+- Escape pipe characters in field values; empty values render as blanks
 
 ## Acceptance
 
-- `render_table_html(&TableView) -> String`
-- `render_table_markdown(&TableView) -> String`
-- Snapshot tests for both
-- MD output renders correctly in GitHub preview
+- `render_table(&TableView) -> String`
+- Snapshot test
+- Output renders correctly in GitHub preview

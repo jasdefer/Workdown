@@ -7,21 +7,16 @@ parent: renderers
 depends_on: [view-data-intermediate]
 ---
 
-Render `MetricView` — a single aggregated number with a label.
-
-## Output shapes
-
-- **HTML** — styled card: big number, label below. Inline CSS.
-- **Markdown** — `**Label:** <number>` on a single line
+Render `MetricView` as a Markdown file written to `views/<id>.md` — a single aggregated number with a label.
 
 ## Notes
 
 - Aggregates supported: `count`, `sum`, `avg`, `min`, `max`
 - `count` needs no `value` slot; other aggregates require one
-- The real payoff comes inside a future `dashboard` view (post-v1). Standalone metric files still have value on READMEs.
+- The real payoff comes inside a future `dashboard` view (post-v1); standalone metric files still have value when referenced from a README
 
 ## Acceptance
 
-- `render_metric_html(&MetricView) -> String`
-- `render_metric_markdown(&MetricView) -> String`
-- Snapshot tests for each aggregate
+- `render_metric(&MetricView) -> String`
+- Snapshot tests per aggregate
+- Output renders correctly in GitHub preview

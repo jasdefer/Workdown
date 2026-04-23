@@ -7,16 +7,15 @@ parent: renderers
 depends_on: [view-data-intermediate]
 ---
 
-Render `BoardView` as HTML and Markdown.
+Render `BoardView` as a Markdown file written to `views/<id>.md`.
 
-## Output shapes
+## Notes
 
-- **HTML** — one `<section>` per column, cards are `<article>` elements carrying `data-item-id` + `data-field`. Inline CSS. Hydration hooks for the live server to attach drag-drop.
-- **Markdown** — GFM table: columns = board field values, rows align cards into cells. Fallback to section-per-column when the table gets too wide.
+- One `##` heading per column value, cards under each as a bullet list is an obvious starting form — confirm during implementation
+- Must render cleanly in GitHub preview and typical MD editors
 
 ## Acceptance
 
-- `render_board_html(&BoardView) -> String`
-- `render_board_markdown(&BoardView) -> String`
-- Snapshot tests for both
-- HTML opens from `file://` and displays correctly; MD renders in GitHub preview
+- `render_board(&BoardView) -> String`
+- Snapshot test
+- Output renders correctly in GitHub preview

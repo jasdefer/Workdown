@@ -7,20 +7,17 @@ parent: renderers
 depends_on: [view-data-intermediate]
 ---
 
-Render `HeatmapView` — 2D grid of aggregated values, color intensity encodes the number.
-
-## Output shapes
-
-- **HTML** — SVG or div-grid heatmap. Axis labels, color-scale legend. Inline CSS.
+Render `HeatmapView` as a Markdown file written to `views/<id>.md` — a 2D grid of aggregated values.
 
 ## Notes
 
 - x and y axes accept choice, string, or date fields
 - Date axes support a `bucket: day | week | month` slot in the view config — extractor buckets dates before aggregating
 - Aggregate a numeric field, or count items when `value` is omitted
-- No Markdown (loses the color channel) or Mermaid (no heatmap support) output
+- No native Markdown idiom for a heatmap with colour — a GFM table grid is an obvious form
 
 ## Acceptance
 
-- `render_heatmap_html(&HeatmapView) -> String`
+- `render_heatmap(&HeatmapView) -> String`
 - Snapshot test with one categorical axis + one date axis bucketed by week
+- Output renders correctly in GitHub preview

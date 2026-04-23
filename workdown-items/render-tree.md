@@ -7,16 +7,15 @@ parent: renderers
 depends_on: [view-data-intermediate]
 ---
 
-Render `TreeView` as HTML, Markdown, and Mermaid.
+Render `TreeView` as a Markdown file written to `views/<id>.md`.
 
-## Output shapes
+## Notes
 
-- **HTML** — nested `<details>`/`<summary>` for zero-JS expand/collapse; hydrated by the live server for richer interactivity
-- **Markdown** — nested bulleted list, each node `[title](#id)`
-- **Mermaid** — `graph TD` with parent→child edges (decide `mindmap` alternative during impl)
+- Nested bullet list is the natural form
+- Link each node to its source work item (e.g. `[title](../workdown-items/<id>.md)`) — decide path convention at implementation
 
 ## Acceptance
 
-- Three render functions
-- Snapshot tests per format
-- HTML expand/collapse works without JS
+- `render_tree(&TreeView) -> String`
+- Snapshot test
+- Output renders correctly in GitHub preview

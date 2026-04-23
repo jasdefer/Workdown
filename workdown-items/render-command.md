@@ -26,12 +26,12 @@ depends_on:
 
 - No args: render every view in `views.yaml`
 - `workdown render <view-id>`: render just one
-- For each view, determine the applicable output formats for its type, call the view-type renderer, write each format to `views/<id>.<ext>`
+- For each view, call the view-type renderer and write the returned Markdown to `views/<id>.md`
 - Create the output directory if missing
 - Idempotent: re-running with no item changes produces identical files (so CI diffs are clean)
 
 ## Acceptance
 
 - Runs end-to-end against this repo's own work items
-- Produces the expected outputs for each view type in `views.yaml`
-- Paths are fixed per view id; no customization in v1
+- Produces one `.md` file per entry in `views.yaml`
+- Paths are fixed: `views/<id>.md`; no customization in v1

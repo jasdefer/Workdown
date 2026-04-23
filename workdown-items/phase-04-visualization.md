@@ -11,7 +11,7 @@ Build interactive and static visualization for workdown items.
 
 - Workspace split into `core` / `cli` / `server` crates with shared business logic
 - Declarative `.workdown/views.yaml` for persisted views
-- Three renderers (HTML, Markdown, Mermaid) fed by a shared `ViewData` intermediate
+- Markdown renderer (with embedded Mermaid where useful) fed by a shared `ViewData` intermediate
 - `workdown render` — writes static views to disk (committable)
 - `workdown serve` — local web app with board/tree/graph, drag-drop editing, SSE auto-update
 - Svelte + TypeScript frontend embedded in the binary

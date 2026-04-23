@@ -7,20 +7,16 @@ parent: renderers
 depends_on: [view-data-intermediate]
 ---
 
-Render `TreemapView` — hierarchical boxes sized by a numeric field, grouped by a link field (typically `parent`).
-
-## Output shapes
-
-- **HTML** — SVG squarified treemap. Rectangles labeled with item title + size. Inline CSS.
+Render `TreemapView` as a Markdown file written to `views/<id>.md` — a hierarchical summary sized by a numeric field, grouped by a link field.
 
 ## Notes
 
 - Hierarchy derived from the link field in `group:` (e.g. `group: parent`)
 - Size field must be numeric; validated in `views-cross-file-validation`
-- Squarified treemap algorithm is well-documented; implement directly or pull a small crate — decide during impl
-- No Markdown or Mermaid output — neither format has useful support
+- No native Markdown idiom for a true treemap — output is a data summary (nested bullet list with sizes is an obvious form)
 
 ## Acceptance
 
-- `render_treemap_html(&TreemapView) -> String`
+- `render_treemap(&TreemapView) -> String`
 - Snapshot test with a two-level nested fixture
+- Output renders correctly in GitHub preview
