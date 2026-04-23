@@ -27,6 +27,7 @@ pub mod line_chart;
 pub mod metric;
 pub mod table;
 pub mod tree;
+pub mod treemap;
 pub mod workload;
 mod traverse;
 
@@ -51,6 +52,7 @@ pub use line_chart::{LineChartData, LinePoint};
 pub use metric::MetricData;
 pub use table::{TableData, TableRow};
 pub use tree::{TreeData, TreeNode};
+pub use treemap::{TreemapData, TreemapNode};
 pub use workload::{WorkloadBucket, WorkloadData};
 
 /// Extracted, fully-resolved data for a single view.
@@ -67,6 +69,7 @@ pub enum ViewData {
     Metric(MetricData),
     Table(TableData),
     Tree(TreeData),
+    Treemap(TreemapData),
     Workload(WorkloadData),
 }
 
@@ -90,6 +93,9 @@ pub fn extract(view: &View, store: &Store, schema: &Schema) -> ViewData {
         ViewKind::Metric { .. } => ViewData::Metric(metric::extract_metric(view, store, schema)),
         ViewKind::Table { .. } => ViewData::Table(table::extract_table(view, store, schema)),
         ViewKind::Tree { .. } => ViewData::Tree(tree::extract_tree(view, store, schema)),
+        ViewKind::Treemap { .. } => {
+            ViewData::Treemap(treemap::extract_treemap(view, store, schema))
+        }
         ViewKind::Workload { .. } => {
             ViewData::Workload(workload::extract_workload(view, store, schema))
         }

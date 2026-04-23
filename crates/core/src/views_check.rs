@@ -226,13 +226,8 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 view_id,
                 "group",
                 group,
-                &[
-                    FieldType::Choice,
-                    FieldType::Multichoice,
-                    FieldType::String,
-                    FieldType::Link,
-                ],
-                "choice, multichoice, string, or link",
+                &[FieldType::Link],
+                "link",
                 out,
             );
             check_slot(
@@ -913,6 +908,36 @@ mod tests {
                 .any(|d| matches!(&d.kind, DiagnosticKind::ViewBucketWithoutDateAxis { .. })),
             "got: {diagnostics:?}"
         );
+    }
+
+    // ── Treemap group must be a link ───────────────────────────
+
+    #[test]
+    fn treemap_group_rejects_non_link() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Treemap {
+                group: "status".into(), // choice, not link
+                size: "effort".into(),
+            }),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+                if *slot == "group" && *actual_type == FieldType::Choice
+        ));
+    }
+
+    #[test]
+    fn treemap_group_accepts_link() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Treemap {
+                group: "parent".into(),
+                size: "effort".into(),
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
 
     // ── Metric: count-with-value ───────────────────────────────
