@@ -174,6 +174,7 @@ fn render_all(
 fn render_view_data(view_data: &ViewData, link_base: &str) -> Option<String> {
     match view_data {
         ViewData::Board(data) => Some(render::board::render_board(data, link_base)),
+        ViewData::Tree(data) => Some(render::tree::render_tree(data, link_base)),
         ViewData::BarChart(_)
         | ViewData::Gantt(_)
         | ViewData::Graph(_)
@@ -181,7 +182,6 @@ fn render_view_data(view_data: &ViewData, link_base: &str) -> Option<String> {
         | ViewData::LineChart(_)
         | ViewData::Metric(_)
         | ViewData::Table(_)
-        | ViewData::Tree(_)
         | ViewData::Treemap(_)
         | ViewData::Workload(_) => None,
     }

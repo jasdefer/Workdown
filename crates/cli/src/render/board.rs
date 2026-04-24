@@ -7,6 +7,8 @@
 
 use workdown_core::view_data::{BoardColumn, BoardData, Card};
 
+use crate::render::common::card_link;
+
 /// Render a `BoardData` as a Markdown string.
 ///
 /// `item_link_base` is the relative path from the rendered view file to the
@@ -43,28 +45,7 @@ fn render_column(column: &BoardColumn, field: &str, item_link_base: &str) -> Str
 }
 
 fn render_card(card: &Card, item_link_base: &str) -> String {
-    let link_text = card.title.as_deref().unwrap_or_else(|| card.id.as_str());
-    let escaped = escape_link_text(link_text);
-    format!("- [{escaped}]({item_link_base}/{id}.md)\n", id = card.id)
-}
-
-/// Escape characters that would break Markdown link-text parsing.
-///
-/// CommonMark terminates link text at unbalanced `]`, and a literal `\`
-/// before a bracket needs its own escape to remain literal. Other
-/// characters (parens, backticks, pipes, …) are fine inside link text.
-fn escape_link_text(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for character in text.chars() {
-        match character {
-            '\\' | '[' | ']' => {
-                out.push('\\');
-                out.push(character);
-            }
-            _ => out.push(character),
-        }
-    }
-    out
+    format!("- {}\n", card_link(card, item_link_base))
 }
 
 // ── Tests ───────────────────────────────────────────────────────────

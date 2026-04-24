@@ -7,3 +7,5 @@
 //! and writes `views/<id>.md`.
 
 pub mod board;
+pub mod common;
+pub mod tree;
