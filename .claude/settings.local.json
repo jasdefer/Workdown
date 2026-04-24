@@ -50,7 +50,8 @@
       "Bash(MSYS_NO_PATHCONV=1 docker run *)",
       "Bash(docker info *)",
       "Bash(command -v devcontainer)",
-      "Bash(xargs -I {} wc -l {})"
+      "Bash(xargs -I {} wc -l {})",
+      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\"; head -10 {}')"
     ]
   }
 }

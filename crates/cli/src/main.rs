@@ -1,5 +1,6 @@
 mod cli;
 mod commands;
+mod render;
 
 use std::process::ExitCode;
 
@@ -99,17 +100,11 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     )?;
                     Ok(ExitCode::SUCCESS)
                 }
-                cli::Command::Board => {
-                    tracing::info!("rendering board view");
-                    anyhow::bail!("not yet implemented — coming in Phase 4");
-                }
-                cli::Command::Tree => {
-                    tracing::info!("rendering tree view");
-                    anyhow::bail!("not yet implemented — coming in Phase 4");
-                }
-                cli::Command::Graph => {
-                    tracing::info!("rendering dependency graph");
-                    anyhow::bail!("not yet implemented — coming in Phase 4");
+                cli::Command::Render { view_id } => {
+                    tracing::info!("rendering views");
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    commands::render::run_render(&config, &project_root, view_id.as_deref())
                 }
                 cli::Command::Templates { action } => {
                     let project_root = std::env::current_dir()
