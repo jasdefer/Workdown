@@ -4,7 +4,7 @@ type: issue
 status: to_do
 title: Query and mutation endpoints
 parent: server
-depends_on: [serve-command-skeleton]
+depends_on: [serve-command-skeleton, renderers, item-mutations]
 ---
 
 Add the JSON API the frontend calls. All handlers are thin wrappers over `core`.

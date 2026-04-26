@@ -5,7 +5,6 @@ status: to_do
 title: workdown render command
 parent: renderers
 depends_on:
-  - view-data-intermediate
   - render-board
   - render-tree
   - render-graph
@@ -17,7 +16,6 @@ depends_on:
   - render-metric
   - render-treemap
   - render-heatmap
-  - views-yaml-design
 ---
 
 `workdown render` — reads `views.yaml`, produces static outputs per configured view.
