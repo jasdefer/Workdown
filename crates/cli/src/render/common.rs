@@ -16,6 +16,15 @@ pub fn card_link(card: &Card, item_link_base: &str) -> String {
     format!("[{escaped}]({item_link_base}/{id}.md)", id = card.id)
 }
 
+/// Render a bare work item id as a Markdown link: `[id](base/id.md)`.
+///
+/// Used by renderers that have only an id and no `Card` to lean on (the
+/// table renderer's `id` column, `Link`/`Links` cells). Workdown ids are
+/// validated to `[a-z0-9][a-z0-9-]*`, so the link text needs no escaping.
+pub fn id_link(id: &str, item_link_base: &str) -> String {
+    format!("[{id}]({item_link_base}/{id}.md)")
+}
+
 /// Escape characters that would break Markdown link-text parsing.
 ///
 /// CommonMark terminates link text at unbalanced `]`, and a literal `\`

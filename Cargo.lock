@@ -1720,6 +1720,7 @@ name = "workdown"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "comfy-table",
  "console",

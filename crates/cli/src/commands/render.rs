@@ -181,12 +181,12 @@ fn render_view_data(view_data: &ViewData, link_base: &str) -> Option<String> {
         ViewData::Board(data) => Some(render::board::render_board(data, link_base)),
         ViewData::Tree(data) => Some(render::tree::render_tree(data, link_base)),
         ViewData::Graph(data) => Some(render::graph::render_graph(data)),
+        ViewData::Table(data) => Some(render::table::render_table(data, link_base)),
         ViewData::BarChart(_)
         | ViewData::Gantt(_)
         | ViewData::Heatmap(_)
         | ViewData::LineChart(_)
         | ViewData::Metric(_)
-        | ViewData::Table(_)
         | ViewData::Treemap(_)
         | ViewData::Workload(_) => None,
     }

@@ -1,7 +1,7 @@
 ---
 id: render-table
 type: issue
-status: to_do
+status: done
 title: Table renderer
 parent: renderers
 depends_on: [view-data-intermediate]

@@ -61,8 +61,6 @@ flowchart TD
     render-command --> render-tree
     render-command --> render-treemap
     render-command --> render-workload
-    render-command --> view-data-intermediate
-    render-command --> views-yaml-design
     render-gantt --> view-data-intermediate
     render-graph --> view-data-intermediate
     render-heatmap --> view-data-intermediate
@@ -74,8 +72,8 @@ flowchart TD
     render-workload --> view-data-intermediate
     renderers --> foundation
     server --> foundation
-    server --> item-mutations
-    server --> renderers
+    server-endpoints-and-mutations --> item-mutations
+    server-endpoints-and-mutations --> renderers
     server-endpoints-and-mutations --> serve-command-skeleton
     server-sse-file-watching --> server-endpoints-and-mutations
     ui-build-integration --> serve-command-skeleton

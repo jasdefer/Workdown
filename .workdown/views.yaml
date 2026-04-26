@@ -16,3 +16,7 @@ views:
     field: depends_on
     group_by: parent
     title: title
+
+  - id: items
+    type: table
+    columns: [id, type, status, parent, depends_on]
