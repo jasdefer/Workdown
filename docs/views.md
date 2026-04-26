@@ -5,6 +5,7 @@
 ## Top-level shape
 
 ```yaml
+directory: views    # optional, defaults to "views"
 views:
   - { id: <unique>, type: <view-type>, ... }
   - { id: <unique>, type: <view-type>, ... }
@@ -13,6 +14,7 @@ views:
 - `views:` is a list. Order is preserved.
 - Each entry has a unique `id` (used as the output filename and the web-app bookmark URL).
 - Each entry has a `type` that discriminates the type-specific slots.
+- `directory:` (optional) — output directory where `workdown render` writes view files, relative to project root. Defaults to `"views"`. See [Output paths](#output-paths).
 
 Every view entry also accepts two optional cross-cutting slots: `where:` (filters) and `title:` (display-title field). Both are described below.
 
@@ -87,15 +89,13 @@ views:
 
 ## Output paths
 
-Every view writes static files to fixed paths derived from its `id` and type:
+Every view writes a single Markdown file. Filenames are `<id>.md`, written into the directory named by the top-level `directory:` key (default `"views"`):
 
 ```
-views/<id>.html
-views/<id>.md         # where the type supports markdown
-views/<id>.mermaid    # where the type supports mermaid
+<directory>/<id>.md
 ```
 
-Paths are not customizable in v1. `workdown render` creates the `views/` directory if it does not exist. Re-running without item changes produces identical files (CI-diff clean).
+Filenames are not customizable — they always derive from `id`. The directory is. `workdown render` creates the directory if it does not exist. Re-running without item changes produces identical files (CI-diff clean).
 
 The live server does not consume these files — it re-runs the renderers against the current working tree. Static files are for committed, shareable snapshots (READMEs, GitHub previews, CI artifacts).
 

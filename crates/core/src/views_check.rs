@@ -18,7 +18,7 @@
 use std::path::Path;
 
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
-use crate::model::schema::{FieldDefinition, FieldType, Schema, Severity};
+use crate::model::schema::{FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity};
 use crate::model::views::{Aggregate, View, ViewKind, Views};
 use crate::parser::schema::is_relation_anchor;
 use crate::parser::views::{ViewsLoadError, ViewsValidationError};
@@ -123,7 +123,12 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             "link",
             out,
         ),
-        ViewKind::Graph { field } => check_graph_field(schema, view_id, field, out),
+        ViewKind::Graph { field, group_by } => {
+            check_graph_field(schema, view_id, field, out);
+            if let Some(group_by) = group_by {
+                check_graph_group_by(schema, view_id, group_by, out);
+            }
+        }
         ViewKind::Table { columns } => {
             for column in columns {
                 check_slot(schema, view_id, "columns", column, &[], "", out);
@@ -358,6 +363,61 @@ fn check_graph_field(schema: &Schema, view_id: &str, field_name: &str, out: &mut
     }));
 }
 
+// ── Graph group_by helper ────────────────────────────────────────────
+
+/// Validates the `group_by` slot on a graph view.
+///
+/// Subgraph nesting requires:
+/// - the field exists in the schema (not an inverse name);
+/// - the field is a single-target `Link` (not `Links`, since each item must
+///   belong to exactly one parent box);
+/// - cycles are explicitly disabled (`allow_cycles: false`).
+///
+/// Each rule has its own diagnostic so the error message points at the
+/// actual constraint that was violated.
+fn check_graph_group_by(
+    schema: &Schema,
+    view_id: &str,
+    field_name: &str,
+    out: &mut Vec<Diagnostic>,
+) {
+    let Some(def) = schema.fields.get(field_name) else {
+        if schema.inverse_table.contains_key(field_name) {
+            out.push(error(DiagnosticKind::ViewGroupByInverseNotAllowed {
+                view_id: view_id.to_owned(),
+                field_name: field_name.to_owned(),
+            }));
+        } else {
+            out.push(error(DiagnosticKind::ViewUnknownField {
+                view_id: view_id.to_owned(),
+                slot: "group_by",
+                field_name: field_name.to_owned(),
+            }));
+        }
+        return;
+    };
+
+    match &def.type_config {
+        FieldTypeConfig::Link { allow_cycles, .. } => {
+            if *allow_cycles != Some(false) {
+                out.push(error(DiagnosticKind::ViewGroupByCyclic {
+                    view_id: view_id.to_owned(),
+                    field_name: field_name.to_owned(),
+                }));
+            }
+        }
+        _ => {
+            out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
+                view_id: view_id.to_owned(),
+                slot: "group_by",
+                field_name: field_name.to_owned(),
+                actual_type: def.field_type(),
+                expected: "link".to_owned(),
+            }));
+        }
+    }
+}
+
 // ── Aggregate value-slot helper ──────────────────────────────────────
 
 /// Verify the `value` slot's field type is compatible with the chosen
@@ -560,6 +620,7 @@ mod tests {
 
     fn one_view(kind: ViewKind) -> Views {
         Views {
+            output_dir: PathBuf::from("views"),
             views: vec![View {
                 id: "v".into(),
                 where_clauses: vec![],
@@ -571,6 +632,7 @@ mod tests {
 
     fn view_with_where(kind: ViewKind, where_clauses: Vec<String>) -> Views {
         Views {
+            output_dir: PathBuf::from("views"),
             views: vec![View {
                 id: "v".into(),
                 where_clauses,
@@ -582,6 +644,7 @@ mod tests {
 
     fn view_with_title(kind: ViewKind, title: &str) -> Views {
         Views {
+            output_dir: PathBuf::from("views"),
             views: vec![View {
                 id: "v".into(),
                 where_clauses: vec![],
@@ -668,6 +731,7 @@ mod tests {
         let diagnostics = evaluate(
             &one_view(ViewKind::Graph {
                 field: "status".into(), // choice, not link/links
+                group_by: None,
             }),
             &simple_schema(),
         );
@@ -683,6 +747,7 @@ mod tests {
         let diagnostics = evaluate(
             &one_view(ViewKind::Graph {
                 field: "parent".into(),
+                group_by: None,
             }),
             &simple_schema(),
         );
@@ -694,6 +759,7 @@ mod tests {
         let diagnostics = evaluate(
             &one_view(ViewKind::Graph {
                 field: "children".into(), // inverse of parent
+                group_by: None,
             }),
             &simple_schema(),
         );
@@ -705,6 +771,7 @@ mod tests {
         let diagnostics = evaluate(
             &one_view(ViewKind::Graph {
                 field: "nonexistent".into(),
+                group_by: None,
             }),
             &simple_schema(),
         );
@@ -712,6 +779,100 @@ mod tests {
             &diagnostics[0].kind,
             DiagnosticKind::ViewUnknownField { field_name, .. }
                 if field_name == "nonexistent"
+        ));
+    }
+
+    // ── Graph group_by ─────────────────────────────────────────
+
+    #[test]
+    fn graph_group_by_accepts_link_with_cycles_disabled() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Graph {
+                field: "depends_on".into(),
+                group_by: Some("parent".into()),
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn graph_group_by_rejects_links_field() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Graph {
+                field: "parent".into(),
+                group_by: Some("depends_on".into()), // links, not link
+            }),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+                if *slot == "group_by" && *actual_type == FieldType::Links
+        ));
+    }
+
+    #[test]
+    fn graph_group_by_rejects_unknown_field() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Graph {
+                field: "depends_on".into(),
+                group_by: Some("nonexistent".into()),
+            }),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewUnknownField { slot, field_name, .. }
+                if *slot == "group_by" && field_name == "nonexistent"
+        ));
+    }
+
+    #[test]
+    fn graph_group_by_rejects_inverse_name() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Graph {
+                field: "depends_on".into(),
+                group_by: Some("children".into()), // inverse of parent
+            }),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewGroupByInverseNotAllowed { field_name, .. }
+                if field_name == "children"
+        ));
+    }
+
+    #[test]
+    fn graph_group_by_rejects_link_with_cycles_allowed() {
+        let schema = build_schema(vec![
+            (
+                "depends_on",
+                FieldTypeConfig::Links {
+                    allow_cycles: Some(false),
+                    inverse: None,
+                },
+            ),
+            (
+                "topic",
+                FieldTypeConfig::Link {
+                    allow_cycles: Some(true),
+                    inverse: None,
+                },
+            ),
+        ]);
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Graph {
+                field: "depends_on".into(),
+                group_by: Some("topic".into()),
+            }),
+            &schema,
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewGroupByCyclic { field_name, .. }
+                if field_name == "topic"
         ));
     }
 

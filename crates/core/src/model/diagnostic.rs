@@ -139,6 +139,16 @@ pub enum DiagnosticKind {
         aggregate: super::views::Aggregate,
         actual_type: FieldType,
     },
+
+    /// A graph view's `group_by` field allows cycles (or leaves it unset).
+    /// Subgraph nesting requires the chain to be a forest — `allow_cycles`
+    /// must be explicitly `false`.
+    ViewGroupByCyclic { view_id: String, field_name: String },
+
+    /// A graph view's `group_by` references an inverse relation name. Only
+    /// the original Link field (parent direction) is accepted, since the
+    /// inverse direction is one-to-many and can't form unique nesting.
+    ViewGroupByInverseNotAllowed { view_id: String, field_name: String },
 }
 
 // ── Field value errors ───────────────────────────────────────────────
@@ -308,6 +318,24 @@ impl std::fmt::Display for Diagnostic {
                 write!(
                     f,
                     "view '{view_id}', slot '{slot}': aggregate '{aggregate}' not allowed on {actual_type} field"
+                )
+            }
+            DiagnosticKind::ViewGroupByCyclic {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'group_by': field '{field_name}' must set `allow_cycles: false` to be used for subgraph nesting"
+                )
+            }
+            DiagnosticKind::ViewGroupByInverseNotAllowed {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'group_by': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
                 )
             }
         }

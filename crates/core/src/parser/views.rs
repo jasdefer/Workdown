@@ -12,11 +12,15 @@
 //! and `views-validate-integration` issues.
 
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
 use crate::model::views::{Aggregate, Bucket, View, ViewKind, ViewType, Views};
+
+/// Default output directory written by `workdown render` when
+/// `views.yaml` does not set a `directory:` key.
+const DEFAULT_OUTPUT_DIR: &str = "views";
 
 // ── Public API ────────────────────────────────────────────────────────
 
@@ -49,7 +53,12 @@ pub fn parse_views(yaml: &str) -> Result<Views, ViewsLoadError> {
         return Err(ViewsLoadError::Validation(errors));
     }
 
-    Ok(Views { views })
+    let output_dir = raw
+        .directory
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_OUTPUT_DIR));
+
+    Ok(Views { output_dir, views })
 }
 
 /// Load a views file from disk.
@@ -100,6 +109,10 @@ fn format_errors(errors: &[ViewsValidationError]) -> String {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawViewsFile {
+    /// Output directory for rendered view files, relative to project
+    /// root. Optional; defaults to [`DEFAULT_OUTPUT_DIR`].
+    #[serde(default)]
+    directory: Option<String>,
     views: Vec<RawView>,
 }
 
@@ -180,6 +193,7 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
         },
         ViewType::Graph => ViewKind::Graph {
             field: require(raw.field, &id, view_type, "field")?,
+            group_by: raw.group_by,
         },
         ViewType::Table => ViewKind::Table {
             columns: require(raw.columns, &id, view_type, "columns")?,
@@ -262,6 +276,20 @@ mod tests {
     }
 
     #[test]
+    fn directory_defaults_when_omitted() {
+        let yaml = "views: []\n";
+        let parsed = parse_views(yaml).unwrap();
+        assert_eq!(parsed.output_dir, PathBuf::from("views"));
+    }
+
+    #[test]
+    fn directory_overrides_default() {
+        let yaml = "directory: rendered/views\nviews: []\n";
+        let parsed = parse_views(yaml).unwrap();
+        assert_eq!(parsed.output_dir, PathBuf::from("rendered/views"));
+    }
+
+    #[test]
     fn empty_object_rejected() {
         // `{}` has no `views` key. The schema requires it; the parser does too.
         let err = parse_views("{}").unwrap_err();
@@ -305,7 +333,27 @@ mod tests {
     #[test]
     fn parse_graph() {
         let view = parse_single("views:\n  - id: d\n    type: graph\n    field: depends_on\n");
-        assert!(matches!(view.kind, ViewKind::Graph { .. }));
+        match view.kind {
+            ViewKind::Graph { field, group_by } => {
+                assert_eq!(field, "depends_on");
+                assert!(group_by.is_none());
+            }
+            other => panic!("expected Graph, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_graph_with_group_by() {
+        let view = parse_single(
+            "views:\n  - id: d\n    type: graph\n    field: depends_on\n    group_by: parent\n",
+        );
+        match view.kind {
+            ViewKind::Graph { field, group_by } => {
+                assert_eq!(field, "depends_on");
+                assert_eq!(group_by.as_deref(), Some("parent"));
+            }
+            other => panic!("expected Graph, got {other:?}"),
+        }
     }
 
     #[test]

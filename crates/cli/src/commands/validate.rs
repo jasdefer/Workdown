@@ -155,7 +155,9 @@ fn file_for_diagnostic(
         | DiagnosticKind::ViewWhereParseError { .. }
         | DiagnosticKind::ViewBucketWithoutDateAxis { .. }
         | DiagnosticKind::ViewCountAggregateWithValue { .. }
-        | DiagnosticKind::ViewAggregateTypeMismatch { .. } => {
+        | DiagnosticKind::ViewAggregateTypeMismatch { .. }
+        | DiagnosticKind::ViewGroupByCyclic { .. }
+        | DiagnosticKind::ViewGroupByInverseNotAllowed { .. } => {
             Some(project_root.join(&config.paths.views))
         }
     }

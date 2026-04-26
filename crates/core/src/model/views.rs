@@ -4,6 +4,8 @@
 //! `workdown render` produces static files for, and that `workdown serve`
 //! exposes as live bookmarks. See `docs/views.md` for the design note.
 
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 /// A parsed and validated `views.yaml` file.
@@ -12,6 +14,10 @@ use serde::{Deserialize, Serialize};
 /// (missing required slots, duplicate ids) are rejected at parse time.
 #[derive(Debug, Clone)]
 pub struct Views {
+    /// Directory (relative to project root) where `workdown render`
+    /// writes the rendered view files. Sourced from the optional
+    /// `directory:` key in `views.yaml`; defaults to `"views"`.
+    pub output_dir: PathBuf,
     pub views: Vec<View>,
 }
 
@@ -45,6 +51,11 @@ pub enum ViewKind {
     },
     Graph {
         field: String,
+        /// Optional `Link` field whose chain becomes Mermaid `subgraph`
+        /// nesting when the renderer emits the view. Cardinality must be
+        /// single-target (one parent per item) so each item lives in
+        /// exactly one box. Inverse names are rejected by `views_check`.
+        group_by: Option<String>,
     },
     Table {
         columns: Vec<String>,

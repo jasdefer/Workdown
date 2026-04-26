@@ -5,6 +5,11 @@
   "description": "Validates the structure of a project's views.yaml file. Declares persisted views rendered by `workdown render` (board, tree, graph, table, gantt, charts, etc.).",
   "type": "object",
   "properties": {
+    "directory": {
+      "type": "string",
+      "description": "Output directory where `workdown render` writes view files, relative to the project root. Defaults to 'views'.",
+      "default": "views"
+    },
     "views": {
       "type": "array",
       "description": "Ordered list of view definitions. Each entry has a unique id used as the output filename.",
@@ -93,13 +98,14 @@
 
     "graph": {
       "type": "object",
-      "description": "Directed graph following a links field (e.g. depends_on).",
+      "description": "Directed graph following a links field (e.g. depends_on). Optionally nests nodes inside Mermaid subgraphs by walking a single-target Link field (e.g. parent).",
       "properties": {
-        "id":    { "$ref": "#/$defs/view_id" },
-        "type":  { "const": "graph" },
-        "where": { "$ref": "#/$defs/where_clauses" },
-        "title": { "$ref": "#/$defs/field_name" },
-        "field": { "$ref": "#/$defs/field_name" }
+        "id":       { "$ref": "#/$defs/view_id" },
+        "type":     { "const": "graph" },
+        "where":    { "$ref": "#/$defs/where_clauses" },
+        "title":    { "$ref": "#/$defs/field_name" },
+        "field":    { "$ref": "#/$defs/field_name" },
+        "group_by": { "$ref": "#/$defs/field_name" }
       },
       "required": ["id", "type", "field"],
       "additionalProperties": false

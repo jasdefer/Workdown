@@ -27,10 +27,6 @@ use workdown_core::views_check;
 use crate::cli::output;
 use crate::render;
 
-/// The top-level directory (relative to project root) where rendered
-/// views are written. Fixed in v1 per the `render-command` issue.
-const OUTPUT_DIR: &str = "views";
-
 pub fn run_render(
     config: &Config,
     project_root: &Path,
@@ -63,8 +59,17 @@ pub fn run_render(
         output::warning(&diagnostic.to_string());
     }
 
-    let link_base = format!("../{}", config.paths.work_items.display());
-    let output_dir = project_root.join(OUTPUT_DIR);
+    // Climb out of the output directory back to project root, then down
+    // into the work items dir. Each component of `output_dir` adds one
+    // `../` so nested output paths (e.g. `rendered/views`) still produce
+    // working links.
+    let depth = views.output_dir.components().count();
+    let link_base = format!(
+        "{}{}",
+        "../".repeat(depth),
+        config.paths.work_items.display()
+    );
+    let output_dir = project_root.join(&views.output_dir);
 
     match view_id {
         Some(id) => render_single(
@@ -175,9 +180,9 @@ fn render_view_data(view_data: &ViewData, link_base: &str) -> Option<String> {
     match view_data {
         ViewData::Board(data) => Some(render::board::render_board(data, link_base)),
         ViewData::Tree(data) => Some(render::tree::render_tree(data, link_base)),
+        ViewData::Graph(data) => Some(render::graph::render_graph(data)),
         ViewData::BarChart(_)
         | ViewData::Gantt(_)
-        | ViewData::Graph(_)
         | ViewData::Heatmap(_)
         | ViewData::LineChart(_)
         | ViewData::Metric(_)
@@ -202,7 +207,9 @@ fn invalid_view_ids(diagnostics: &[Diagnostic]) -> HashSet<String> {
             | DiagnosticKind::ViewWhereParseError { view_id, .. }
             | DiagnosticKind::ViewBucketWithoutDateAxis { view_id }
             | DiagnosticKind::ViewCountAggregateWithValue { view_id }
-            | DiagnosticKind::ViewAggregateTypeMismatch { view_id, .. } => Some(view_id.clone()),
+            | DiagnosticKind::ViewAggregateTypeMismatch { view_id, .. }
+            | DiagnosticKind::ViewGroupByCyclic { view_id, .. }
+            | DiagnosticKind::ViewGroupByInverseNotAllowed { view_id, .. } => Some(view_id.clone()),
             _ => None,
         })
         .collect()

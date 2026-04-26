@@ -9,6 +9,7 @@ use serde::Serialize;
 
 use crate::model::schema::Schema;
 use crate::model::views::{View, ViewKind};
+use crate::model::WorkItem;
 use crate::store::Store;
 
 use super::common::{build_card, Card};
@@ -32,13 +33,28 @@ pub fn extract_tree(view: &View, store: &Store, schema: &Schema) -> TreeData {
         panic!("extract_tree called with non-tree view kind");
     };
     let items = filtered_items(view, store, schema);
-    let forest = walk_forest(&items, field, store);
+    build_tree_data(&items, field, store, schema, view)
+}
+
+/// Build a [`TreeData`] from an already-filtered set of items by walking a
+/// link `field` upward to identify roots and downward to collect children.
+///
+/// Shared with the graph extractor, which uses it to construct the
+/// `Option<TreeData>` produced when a graph view's `group_by` slot is set.
+pub(super) fn build_tree_data(
+    items: &[&WorkItem],
+    field: &str,
+    store: &Store,
+    schema: &Schema,
+    view: &View,
+) -> TreeData {
+    let forest = walk_forest(items, field, store);
     let roots = forest
         .into_iter()
         .map(|traversal| to_tree_node(traversal, schema, view))
         .collect();
     TreeData {
-        field: field.clone(),
+        field: field.to_owned(),
         roots,
     }
 }

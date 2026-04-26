@@ -14,3 +14,5 @@ views:
   - id: dependencies
     type: graph
     field: depends_on
+    group_by: parent
+    title: title
