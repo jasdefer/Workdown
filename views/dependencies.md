@@ -21,11 +21,17 @@ flowchart TD
         end
         polish["Polish & dogfood"]
         subgraph renderers ["Renderers"]
+            aggregate-rollup["Compute schema-declared aggregate fields up the parent chain"]
+            duration-field-type["Add `duration` field type"]
             field-value-native-date["Store FieldValue::Date as chrono::NaiveDate"]
+            gantt-duration-mode["Gantt duration input mode"]
+            gantt-predecessor-mode["Gantt predecessor input mode"]
             render-bar-chart["Bar chart renderer"]
             render-board["Board renderer"]
             render-command["workdown render command"]
             render-gantt["Gantt renderer"]
+            render-gantt-by-depth["Gantt by depth view"]
+            render-gantt-by-initiative["Gantt by initiative view"]
             render-graph["Graph renderer"]
             render-heatmap["Heatmap renderer"]
             render-line-chart["Line chart renderer"]
@@ -46,6 +52,9 @@ flowchart TD
     end
     cli-move-command --> cli-set-command
     frontend --> server
+    gantt-duration-mode --> duration-field-type
+    gantt-duration-mode --> render-gantt
+    gantt-predecessor-mode --> gantt-duration-mode
     item-mutations --> foundation
     polish --> frontend
     render-bar-chart --> view-data-intermediate
@@ -62,6 +71,8 @@ flowchart TD
     render-command --> render-treemap
     render-command --> render-workload
     render-gantt --> view-data-intermediate
+    render-gantt-by-depth --> render-gantt
+    render-gantt-by-initiative --> render-gantt
     render-graph --> view-data-intermediate
     render-heatmap --> view-data-intermediate
     render-line-chart --> view-data-intermediate
@@ -72,6 +83,7 @@ flowchart TD
     render-workload --> view-data-intermediate
     renderers --> foundation
     server --> foundation
+    server --> item-mutations
     server-endpoints-and-mutations --> item-mutations
     server-endpoints-and-mutations --> renderers
     server-endpoints-and-mutations --> serve-command-skeleton

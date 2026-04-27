@@ -5,6 +5,8 @@ status: to_do
 title: Item mutations
 parent: phase-04-visualization
 depends_on: [foundation]
+start_date: 2026-05-02
+end_date: 2026-05-07
 ---
 
 Add the CLI subcommands that mutate items — exercised by the UI and usable standalone. Every UI mutation maps 1:1 to a command here.

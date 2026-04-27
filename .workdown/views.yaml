@@ -20,3 +20,12 @@ views:
   - id: items
     type: table
     columns: [id, type, status, parent, depends_on]
+
+  - id: roadmap
+    type: gantt
+    start: start_date
+    end: end_date
+    group: type
+    title: title
+    where:
+      - "type=milestone,epic"
