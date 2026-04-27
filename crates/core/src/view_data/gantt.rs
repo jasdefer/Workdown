@@ -13,7 +13,7 @@
 use chrono::NaiveDate;
 use serde::Serialize;
 
-use crate::model::schema::Schema;
+use crate::model::schema::{FieldTypeConfig, Schema};
 use crate::model::views::{View, ViewKind};
 use crate::query::format::format_field_value;
 use crate::store::Store;
@@ -87,7 +87,12 @@ pub fn extract_gantt(view: &View, store: &Store, schema: &Schema) -> GanttData {
         }
     }
 
-    bars.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
+    let section_order = section_order(group.as_deref(), schema, &bars);
+    bars.sort_by(|left, right| {
+        let li = section_index(&left.group, &section_order);
+        let ri = section_index(&right.group, &section_order);
+        (li, left.start, left.card.id.as_str()).cmp(&(ri, right.start, right.card.id.as_str()))
+    });
     unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
 
     GanttData {
@@ -96,6 +101,36 @@ pub fn extract_gantt(view: &View, store: &Store, schema: &Schema) -> GanttData {
         group_field: group.clone(),
         bars,
         unplaced,
+    }
+}
+
+/// Determine the ordered list of section labels for the bars.
+///
+/// `Choice` fields use their schema-declared `values:` list — preserving
+/// the order users intend to read columns in. Every other accepted group
+/// type (`String`, `List`, `Multichoice`, `Link`, `Links`) falls back to
+/// alphabetical order of the distinct group strings actually present on
+/// the bars; the schema doesn't carry a meaningful declared order for
+/// those. Bars whose group value is missing get `usize::MAX` and end up
+/// in the synthetic last section regardless of this list.
+fn section_order(group: Option<&str>, schema: &Schema, bars: &[GanttBar]) -> Vec<String> {
+    let field_def = group.and_then(|name| schema.fields.get(name));
+    if let Some(FieldTypeConfig::Choice { values }) = field_def.map(|d| &d.type_config) {
+        return values.clone();
+    }
+    let mut distinct: Vec<String> = bars.iter().filter_map(|b| b.group.clone()).collect();
+    distinct.sort();
+    distinct.dedup();
+    distinct
+}
+
+fn section_index(group_value: &Option<String>, section_order: &[String]) -> usize {
+    match group_value {
+        Some(value) => section_order
+            .iter()
+            .position(|s| s == value)
+            .unwrap_or(usize::MAX),
+        None => usize::MAX,
     }
 }
 
@@ -311,31 +346,38 @@ mod tests {
     }
 
     #[test]
-    fn bars_and_unplaced_sorted_by_id() {
+    fn bars_sorted_by_start_then_id_when_no_group() {
         let schema = date_schema();
-        let d1 = ymd(2026, 1, 1);
-        let d2 = ymd(2026, 1, 5);
+        let early = ymd(2026, 1, 1);
+        let late = ymd(2026, 1, 10);
+        let end = ymd(2026, 2, 1);
         let store = make_store(
             &schema,
             vec![
                 make_item(
                     "c",
                     vec![
-                        ("start", FieldValue::Date(d1)),
-                        ("end", FieldValue::Date(d2)),
+                        ("start", FieldValue::Date(late)),
+                        ("end", FieldValue::Date(end)),
                     ],
                     "",
                 ),
                 make_item(
                     "a",
                     vec![
-                        ("start", FieldValue::Date(d1)),
-                        ("end", FieldValue::Date(d2)),
+                        ("start", FieldValue::Date(early)),
+                        ("end", FieldValue::Date(end)),
                     ],
                     "",
                 ),
-                make_item("z", vec![], ""),
-                make_item("m", vec![], ""),
+                make_item(
+                    "b",
+                    vec![
+                        ("start", FieldValue::Date(early)),
+                        ("end", FieldValue::Date(end)),
+                    ],
+                    "",
+                ),
             ],
         );
         let view = gantt_view("start", "end", None);
@@ -343,8 +385,198 @@ mod tests {
         let data = extract_gantt(&view, &store, &schema);
 
         let bar_ids: Vec<&str> = data.bars.iter().map(|b| b.card.id.as_str()).collect();
-        assert_eq!(bar_ids, vec!["a", "c"]);
+        // a/b share the early start so id breaks the tie; c is later.
+        assert_eq!(bar_ids, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn unplaced_sorted_by_id() {
+        let schema = date_schema();
+        let store = make_store(
+            &schema,
+            vec![make_item("z", vec![], ""), make_item("m", vec![], "")],
+        );
+        let view = gantt_view("start", "end", None);
+
+        let data = extract_gantt(&view, &store, &schema);
+
         let unplaced_ids: Vec<&str> = data.unplaced.iter().map(|u| u.card.id.as_str()).collect();
         assert_eq!(unplaced_ids, vec!["m", "z"]);
+    }
+
+    #[test]
+    fn sections_follow_schema_declared_order_for_choice() {
+        let schema = make_schema(vec![
+            ("start", FieldTypeConfig::Date),
+            ("end", FieldTypeConfig::Date),
+            (
+                "team",
+                FieldTypeConfig::Choice {
+                    values: vec!["ops".into(), "eng".into(), "design".into()],
+                },
+            ),
+        ]);
+        let d1 = ymd(2026, 1, 1);
+        let d2 = ymd(2026, 1, 5);
+        let store = make_store(
+            &schema,
+            vec![
+                make_item(
+                    "a",
+                    vec![
+                        ("start", FieldValue::Date(d1)),
+                        ("end", FieldValue::Date(d2)),
+                        ("team", FieldValue::Choice("eng".into())),
+                    ],
+                    "",
+                ),
+                make_item(
+                    "b",
+                    vec![
+                        ("start", FieldValue::Date(d1)),
+                        ("end", FieldValue::Date(d2)),
+                        ("team", FieldValue::Choice("design".into())),
+                    ],
+                    "",
+                ),
+                make_item(
+                    "c",
+                    vec![
+                        ("start", FieldValue::Date(d1)),
+                        ("end", FieldValue::Date(d2)),
+                        ("team", FieldValue::Choice("ops".into())),
+                    ],
+                    "",
+                ),
+            ],
+        );
+        let view = gantt_view("start", "end", Some("team"));
+
+        let data = extract_gantt(&view, &store, &schema);
+
+        let groups: Vec<&str> = data
+            .bars
+            .iter()
+            .map(|b| b.group.as_deref().unwrap())
+            .collect();
+        assert_eq!(groups, vec!["ops", "eng", "design"]);
+    }
+
+    #[test]
+    fn sections_alphabetical_for_string_group() {
+        let schema = make_schema(vec![
+            ("start", FieldTypeConfig::Date),
+            ("end", FieldTypeConfig::Date),
+            ("squad", FieldTypeConfig::String { pattern: None }),
+        ]);
+        let d1 = ymd(2026, 1, 1);
+        let d2 = ymd(2026, 1, 5);
+        let store = make_store(
+            &schema,
+            vec![
+                make_item(
+                    "a",
+                    vec![
+                        ("start", FieldValue::Date(d1)),
+                        ("end", FieldValue::Date(d2)),
+                        ("squad", FieldValue::String("zeta".into())),
+                    ],
+                    "",
+                ),
+                make_item(
+                    "b",
+                    vec![
+                        ("start", FieldValue::Date(d1)),
+                        ("end", FieldValue::Date(d2)),
+                        ("squad", FieldValue::String("alpha".into())),
+                    ],
+                    "",
+                ),
+            ],
+        );
+        let view = gantt_view("start", "end", Some("squad"));
+
+        let data = extract_gantt(&view, &store, &schema);
+
+        let groups: Vec<&str> = data
+            .bars
+            .iter()
+            .map(|b| b.group.as_deref().unwrap())
+            .collect();
+        assert_eq!(groups, vec!["alpha", "zeta"]);
+    }
+
+    #[test]
+    fn link_group_value_is_target_id() {
+        let schema = make_schema(vec![
+            ("start", FieldTypeConfig::Date),
+            ("end", FieldTypeConfig::Date),
+            (
+                "parent",
+                FieldTypeConfig::Link {
+                    allow_cycles: Some(false),
+                    inverse: None,
+                },
+            ),
+        ]);
+        let d1 = ymd(2026, 1, 1);
+        let d2 = ymd(2026, 1, 5);
+        let store = make_store(
+            &schema,
+            vec![make_item(
+                "a",
+                vec![
+                    ("start", FieldValue::Date(d1)),
+                    ("end", FieldValue::Date(d2)),
+                    (
+                        "parent",
+                        FieldValue::Link(crate::model::WorkItemId::from("epic-x".to_owned())),
+                    ),
+                ],
+                "",
+            )],
+        );
+        let view = gantt_view("start", "end", Some("parent"));
+
+        let data = extract_gantt(&view, &store, &schema);
+
+        assert_eq!(data.bars[0].group.as_deref(), Some("epic-x"));
+    }
+
+    #[test]
+    fn missing_group_value_sorts_last() {
+        let schema = date_schema();
+        let d1 = ymd(2026, 1, 1);
+        let d2 = ymd(2026, 1, 5);
+        let store = make_store(
+            &schema,
+            vec![
+                make_item(
+                    "without-team",
+                    vec![
+                        ("start", FieldValue::Date(d1)),
+                        ("end", FieldValue::Date(d2)),
+                    ],
+                    "",
+                ),
+                make_item(
+                    "with-team",
+                    vec![
+                        ("start", FieldValue::Date(d1)),
+                        ("end", FieldValue::Date(d2)),
+                        ("team", FieldValue::Choice("eng".into())),
+                    ],
+                    "",
+                ),
+            ],
+        );
+        let view = gantt_view("start", "end", Some("team"));
+
+        let data = extract_gantt(&view, &store, &schema);
+
+        let ids: Vec<&str> = data.bars.iter().map(|b| b.card.id.as_str()).collect();
+        assert_eq!(ids, vec!["with-team", "without-team"]);
+        assert_eq!(data.bars[0].group.as_deref(), Some("eng"));
+        assert_eq!(data.bars[1].group, None);
     }
 }

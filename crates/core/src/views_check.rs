@@ -155,9 +155,11 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                         FieldType::Choice,
                         FieldType::Multichoice,
                         FieldType::String,
+                        FieldType::List,
                         FieldType::Link,
+                        FieldType::Links,
                     ],
-                    "choice, multichoice, string, or link",
+                    "choice, multichoice, string, list, link, or links",
                     out,
                 );
             }
@@ -891,6 +893,41 @@ mod tests {
             &diagnostics[0].kind,
             DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
                 if *slot == "start" && *actual_type == FieldType::Integer
+        ));
+    }
+
+    #[test]
+    fn gantt_group_accepts_choice_string_link_and_links() {
+        for field in ["status", "title", "parent", "depends_on"] {
+            let diagnostics = evaluate(
+                &one_view(ViewKind::Gantt {
+                    start: "start_date".into(),
+                    end: "end_date".into(),
+                    group: Some(field.into()),
+                }),
+                &simple_schema(),
+            );
+            assert!(
+                diagnostics.is_empty(),
+                "field '{field}' should be accepted as gantt group, got: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn gantt_group_rejects_non_value_field_types() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Gantt {
+                start: "start_date".into(),
+                end: "end_date".into(),
+                group: Some("effort".into()), // integer
+            }),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+                if *slot == "group" && *actual_type == FieldType::Integer
         ));
     }
 

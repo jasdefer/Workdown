@@ -8,6 +8,7 @@
 
 pub mod board;
 pub mod common;
+pub mod gantt;
 pub mod graph;
 pub mod table;
 pub mod tree;

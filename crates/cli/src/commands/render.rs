@@ -112,6 +112,7 @@ fn render_single(
     }
 
     let view_data = view_data::extract(view, store, schema);
+    emit_unplaced_warnings(view, &view_data);
     let markdown = render_view_data(&view_data, link_base).ok_or_else(|| {
         anyhow::anyhow!(
             "renderer for view type '{}' not yet implemented",
@@ -152,6 +153,7 @@ fn render_all(
 
     for view in renderable {
         let view_data = view_data::extract(view, store, schema);
+        emit_unplaced_warnings(view, &view_data);
         match render_view_data(&view_data, link_base) {
             Some(markdown) => {
                 let path = write_view_file(output_dir, &view.id, &markdown)?;
@@ -182,13 +184,31 @@ fn render_view_data(view_data: &ViewData, link_base: &str) -> Option<String> {
         ViewData::Tree(data) => Some(render::tree::render_tree(data, link_base)),
         ViewData::Graph(data) => Some(render::graph::render_graph(data)),
         ViewData::Table(data) => Some(render::table::render_table(data, link_base)),
+        ViewData::Gantt(data) => Some(render::gantt::render_gantt(data)),
         ViewData::BarChart(_)
-        | ViewData::Gantt(_)
         | ViewData::Heatmap(_)
         | ViewData::LineChart(_)
         | ViewData::Metric(_)
         | ViewData::Treemap(_)
         | ViewData::Workload(_) => None,
+    }
+}
+
+/// Surface any unplaced items from a view's extraction as CLI warnings.
+///
+/// The renderer already includes a footer in the rendered Markdown for
+/// users who open the file; this is the parallel terminal-side notice
+/// so it doesn't go unnoticed when running `workdown render` in CI or
+/// pre-commit. Pattern reused for chart views as their renderers land.
+fn emit_unplaced_warnings(view: &View, view_data: &ViewData) {
+    if let ViewData::Gantt(data) = view_data {
+        if !data.unplaced.is_empty() {
+            output::warning(&format!(
+                "view '{}': {} items dropped — see footer",
+                view.id,
+                data.unplaced.len()
+            ));
+        }
     }
 }
 
