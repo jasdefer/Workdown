@@ -49,8 +49,11 @@ pub(crate) fn coerce_fields(
                 }
             },
             _ => {
-                // Value is absent or null.
-                if def.required {
+                // Value is absent or null. Required-field check is deferred
+                // for aggregate fields — those can be filled in by the
+                // rollup pass, so the post-compute pass in `rollup::run`
+                // emits `MissingRequired` only for items that remain blank.
+                if def.required && def.aggregate.is_none() {
                     diagnostics.push(Diagnostic {
                         severity: Severity::Error,
                         kind: DiagnosticKind::MissingRequired {

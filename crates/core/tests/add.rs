@@ -596,3 +596,96 @@ fn add_without_template_still_has_empty_body() {
     // The body is empty — content ends with the closing delimiter and a newline.
     assert!(content.ends_with("---\n"));
 }
+
+// ── Aggregate rollup at add time ────────────────────────────────────
+
+const AGGREGATE_SCHEMA: &str = "\
+fields:
+  title:
+    type: string
+    default: $filename_pretty
+  parent:
+    type: link
+    allow_cycles: false
+    inverse: children
+  effort:
+    type: integer
+    aggregate:
+      function: sum
+";
+
+/// Set up a project whose schema declares an `effort` field aggregated
+/// upward via `parent`. Used to exercise add-time chain-conflict warnings.
+fn setup_aggregate_project() -> (TempDir, PathBuf) {
+    let directory = TempDir::new().unwrap();
+    let root = directory.path().to_path_buf();
+
+    fs::create_dir_all(root.join(".workdown/templates")).unwrap();
+    fs::create_dir_all(root.join("workdown-items")).unwrap();
+
+    fs::write(root.join(".workdown/config.yaml"), TEST_CONFIG).unwrap();
+    fs::write(root.join(".workdown/schema.yaml"), AGGREGATE_SCHEMA).unwrap();
+
+    (directory, root)
+}
+
+#[test]
+fn add_warns_when_new_item_creates_aggregate_chain_conflict() {
+    let (_directory, root) = setup_aggregate_project();
+    let config = load_test_config(&root);
+
+    // Existing parent already has an `effort` value set manually.
+    fs::write(
+        root.join("workdown-items/epic.md"),
+        "---\ntitle: Epic\neffort: 10\n---\n",
+    )
+    .unwrap();
+
+    // Adding a child with its own manual `effort` creates a chain conflict.
+    let mut field_values: HashMap<String, serde_yaml::Value> = HashMap::new();
+    field_values.insert(
+        "title".to_owned(),
+        serde_yaml::Value::String("Conflicting Child".to_owned()),
+    );
+    field_values.insert(
+        "parent".to_owned(),
+        serde_yaml::Value::String("epic".to_owned()),
+    );
+    field_values.insert("effort".to_owned(), serde_yaml::Value::Number(4.into()));
+
+    let outcome = run_add(&config, &root, field_values, None).unwrap();
+
+    assert!(outcome.path.exists());
+    let warning_text = format!("{:?}", outcome.warnings);
+    assert!(
+        warning_text.contains("AggregateChainConflict") && warning_text.contains("epic"),
+        "expected chain-conflict warning naming epic, got: {warning_text}"
+    );
+}
+
+#[test]
+fn add_no_aggregate_warning_when_parent_has_no_value() {
+    let (_directory, root) = setup_aggregate_project();
+    let config = load_test_config(&root);
+
+    fs::write(
+        root.join("workdown-items/epic.md"),
+        "---\ntitle: Epic\n---\n",
+    )
+    .unwrap();
+
+    let mut field_values: HashMap<String, serde_yaml::Value> = HashMap::new();
+    field_values.insert(
+        "title".to_owned(),
+        serde_yaml::Value::String("Clean Child".to_owned()),
+    );
+    field_values.insert(
+        "parent".to_owned(),
+        serde_yaml::Value::String("epic".to_owned()),
+    );
+    field_values.insert("effort".to_owned(), serde_yaml::Value::Number(7.into()));
+
+    let outcome = run_add(&config, &root, field_values, None).unwrap();
+
+    assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
+}

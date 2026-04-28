@@ -334,6 +334,13 @@ pub struct AggregateConfig {
     /// Whether to report an error if a leaf item is missing this field.
     #[serde(default)]
     pub error_on_missing: bool,
+
+    /// Name of the link field to walk upward for the rollup. Must reference
+    /// a `link` (single-valued) field in the schema. `None` defaults to
+    /// `"parent"` at use sites; the parser still requires that target field
+    /// to exist.
+    #[serde(default)]
+    pub over: Option<String>,
 }
 
 /// Available aggregation functions.

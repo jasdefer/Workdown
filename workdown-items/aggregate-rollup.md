@@ -1,7 +1,7 @@
 ---
 id: aggregate-rollup
 type: issue
-status: to_do
+status: done
 title: Compute schema-declared aggregate fields up the parent chain
 parent: renderers
 ---

@@ -65,6 +65,23 @@ pub enum DiagnosticKind {
         chain: Vec<WorkItemId>,
     },
 
+    // ── Aggregate rollup ──────────────────────────────────────────
+    /// An aggregate-configured field is set manually on two items in the
+    /// same parent chain. The rollup must have a single source per chain.
+    AggregateChainConflict {
+        field: String,
+        item_id: WorkItemId,
+        conflicting_ancestor_id: WorkItemId,
+    },
+
+    /// An aggregate-configured field with `error_on_missing: true` has a
+    /// tree-leaf in the rollup hierarchy that neither sets the value
+    /// manually nor inherits one from a covering ancestor.
+    AggregateMissingValue {
+        field: String,
+        leaf_id: WorkItemId,
+    },
+
     // ── Rule-level ────────────────────────────────────────────────
     /// A schema rule was violated by a specific item.
     RuleViolation {
@@ -230,6 +247,22 @@ impl std::fmt::Display for Diagnostic {
             DiagnosticKind::Cycle { field, chain } => {
                 let ids: Vec<&str> = chain.iter().map(|id| id.as_str()).collect();
                 write!(f, "cycle in '{field}': {}", ids.join(" \u{2192} "))
+            }
+            DiagnosticKind::AggregateChainConflict {
+                field,
+                item_id,
+                conflicting_ancestor_id,
+            } => {
+                write!(
+                    f,
+                    "item '{item_id}', field '{field}': aggregate conflict — ancestor '{conflicting_ancestor_id}' also sets this field manually"
+                )
+            }
+            DiagnosticKind::AggregateMissingValue { field, leaf_id } => {
+                write!(
+                    f,
+                    "item '{leaf_id}': aggregate field '{field}' is missing (no value here or in any ancestor)"
+                )
             }
             DiagnosticKind::RuleViolation {
                 item_id,

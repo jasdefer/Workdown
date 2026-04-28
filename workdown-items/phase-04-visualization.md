@@ -3,8 +3,6 @@ id: phase-04-visualization
 type: epic
 status: in_progress
 title: "Phase 04: Visualization"
-start_date: 2026-04-24
-end_date: 2026-07-03
 ---
 
 Build interactive and static visualization for workdown items.

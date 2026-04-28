@@ -219,18 +219,24 @@
 
     "aggregate": {
       "type": "object",
-      "description": "Aggregation config. The field is set manually on leaf items and computed automatically up the parent chain.",
+      "description": "Aggregation config. The field is set manually on leaf items and computed automatically by walking the link field named in `over` (default 'parent') upward through the hierarchy.",
       "required": ["function"],
       "properties": {
         "function": {
           "type": "string",
           "enum": ["sum", "min", "max", "average", "median", "count", "all", "any", "none"],
-          "description": "The aggregation function. Available functions depend on the field type: integer/float support sum, min, max, average, median, count; date supports min, max; boolean supports all, any, none."
+          "description": "The aggregation function. Available functions depend on the field type: integer/float support sum, min, max, average, median, count; date supports min, max, average; boolean supports all, any, none, count."
         },
         "error_on_missing": {
           "type": "boolean",
           "default": false,
           "description": "Whether to report an error if a leaf item in the hierarchy is missing this field."
+        },
+        "over": {
+          "type": "string",
+          "default": "parent",
+          "description": "Name of the link field to walk upward for the rollup. Must reference a `link` (single-valued) field in the schema. Defaults to 'parent' when omitted.",
+          "pattern": "^[a-z_][a-z0-9_]*$"
         }
       },
       "additionalProperties": false

@@ -181,6 +181,7 @@ fn validate_fields(
 
         validate_type_specific_properties(name, field, errors);
         validate_aggregate_compatibility(name, field, errors);
+        validate_aggregate_over(name, field, fields, errors);
         validate_default_compatibility(name, field, errors);
         validate_inverse_property(name, field, fields, &mut seen_inverses, errors);
     }
@@ -457,11 +458,16 @@ fn validate_aggregate_compatibility(
             AggregateFunction::Median,
             AggregateFunction::Count,
         ],
-        FieldType::Date => &[AggregateFunction::Min, AggregateFunction::Max],
+        FieldType::Date => &[
+            AggregateFunction::Min,
+            AggregateFunction::Max,
+            AggregateFunction::Average,
+        ],
         FieldType::Boolean => &[
             AggregateFunction::All,
             AggregateFunction::Any,
             AggregateFunction::None,
+            AggregateFunction::Count,
         ],
         // Other types can't have aggregate (caught by reject_prop), but
         // guard against it here too.
@@ -480,6 +486,49 @@ fn validate_aggregate_compatibility(
                 agg.function,
                 field.field_type,
                 allowed_str.join(", ")
+            ),
+        ));
+    }
+}
+
+/// Check that the aggregate's `over` link field exists and is of type `link`.
+///
+/// `over` defaults to `"parent"` when unset; the same existence/type rules
+/// apply to the default. A missing or wrong-typed `over` field is a hard
+/// schema-load error so the rollup pass can trust its configuration.
+fn validate_aggregate_over(
+    name: &str,
+    field: &RawFieldDefinition,
+    all_fields: &IndexMap<String, RawFieldDefinition>,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    let agg = match &field.aggregate {
+        Some(a) => a,
+        None => return,
+    };
+
+    let target_name = agg.over.as_deref().unwrap_or("parent");
+    let target = match all_fields.get(target_name) {
+        Some(f) => f,
+        None => {
+            let detail = if agg.over.is_some() {
+                format!("aggregate.over references unknown field '{target_name}'")
+            } else {
+                "aggregate uses the default 'over: parent' but no field 'parent' is defined; \
+                 add a `parent` link field or set `over` explicitly"
+                    .to_owned()
+            };
+            errors.push(field_error(name, detail));
+            return;
+        }
+    };
+
+    if target.field_type != FieldType::Link {
+        errors.push(field_error(
+            name,
+            format!(
+                "aggregate.over references field '{target_name}' of type '{}' (must be 'link')",
+                target.field_type
             ),
         ));
     }
@@ -1086,6 +1135,8 @@ fields:
     fn invalid_aggregate_function_for_type() {
         let yaml = "\
 fields:
+  parent:
+    type: link
   done:
     type: boolean
     aggregate:
@@ -1099,6 +1150,114 @@ fields:
         assert!(errors
             .iter()
             .any(|e| e.message.contains("aggregate function 'sum' is not valid")));
+    }
+
+    #[test]
+    fn date_average_is_valid_aggregate() {
+        let yaml = "\
+fields:
+  parent:
+    type: link
+  start_date:
+    type: date
+    aggregate:
+      function: average
+";
+        parse_schema(yaml).expect("date + average should parse");
+    }
+
+    #[test]
+    fn boolean_count_is_valid_aggregate() {
+        let yaml = "\
+fields:
+  parent:
+    type: link
+  done:
+    type: boolean
+    aggregate:
+      function: count
+";
+        parse_schema(yaml).expect("boolean + count should parse");
+    }
+
+    #[test]
+    fn aggregate_default_over_requires_parent_field() {
+        let yaml = "\
+fields:
+  effort:
+    type: integer
+    aggregate:
+      function: sum
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("default 'over: parent'")
+                && e.message.contains("no field 'parent' is defined")));
+    }
+
+    #[test]
+    fn aggregate_explicit_over_must_exist() {
+        let yaml = "\
+fields:
+  parent:
+    type: link
+  effort:
+    type: integer
+    aggregate:
+      function: sum
+      over: epic
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("aggregate.over references unknown field 'epic'")));
+    }
+
+    #[test]
+    fn aggregate_over_must_be_link_not_links() {
+        let yaml = "\
+fields:
+  owners:
+    type: links
+  effort:
+    type: integer
+    aggregate:
+      function: sum
+      over: owners
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(errors.iter().any(|e| {
+            e.message
+                .contains("aggregate.over references field 'owners' of type 'links' (must be 'link')")
+        }));
+    }
+
+    #[test]
+    fn aggregate_explicit_over_link_field_works() {
+        let yaml = "\
+fields:
+  epic:
+    type: link
+  effort:
+    type: integer
+    aggregate:
+      function: sum
+      over: epic
+";
+        parse_schema(yaml).expect("explicit over: <link field> should parse");
     }
 
     #[test]

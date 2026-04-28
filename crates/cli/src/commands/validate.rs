@@ -137,8 +137,13 @@ fn file_for_diagnostic(
         | DiagnosticKind::MissingRequired { item_id, .. }
         | DiagnosticKind::UnknownField { item_id, .. }
         | DiagnosticKind::BrokenLink { item_id, .. }
-        | DiagnosticKind::RuleViolation { item_id, .. } => store
+        | DiagnosticKind::RuleViolation { item_id, .. }
+        | DiagnosticKind::AggregateChainConflict { item_id, .. } => store
             .get(item_id.as_str())
+            .map(|item| item.source_path.clone()),
+
+        DiagnosticKind::AggregateMissingValue { leaf_id, .. } => store
+            .get(leaf_id.as_str())
             .map(|item| item.source_path.clone()),
 
         // These span multiple files or the whole collection.
@@ -192,6 +197,18 @@ fn format_diagnostic_line(diagnostic: &Diagnostic) -> String {
         }
         DiagnosticKind::RuleViolation { rule, detail, .. } => {
             format!("rule '{rule}': {detail}")
+        }
+        DiagnosticKind::AggregateChainConflict {
+            field,
+            conflicting_ancestor_id,
+            ..
+        } => {
+            format!(
+                "field '{field}': aggregate conflict — ancestor '{conflicting_ancestor_id}' also sets this field manually"
+            )
+        }
+        DiagnosticKind::AggregateMissingValue { field, .. } => {
+            format!("aggregate field '{field}' is missing (no value here or in any ancestor)")
         }
 
         // File-level and ungrouped — use the full Display impl.

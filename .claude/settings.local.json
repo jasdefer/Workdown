@@ -52,7 +52,9 @@
       "Bash(command -v devcontainer)",
       "Bash(xargs -I {} wc -l {})",
       "Bash(xargs -I {} sh -c 'echo \"=== {} ===\"; head -10 {}')",
-      "Bash(pwd -W)"
+      "Bash(pwd -W)",
+      "Bash(command -v docker)",
+      "Bash(command -v podman)"
     ]
   }
 }
