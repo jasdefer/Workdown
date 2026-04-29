@@ -7,6 +7,7 @@ parent: phase-04-visualization
 depends_on: [server]
 start_date: 2026-05-27
 end_date: 2026-06-26
+duration: "4w 2d"
 ---
 
 Svelte + TypeScript UI, built with Vite, embedded into the workdown binary via `rust-embed`. Runs in the browser when `workdown serve` is active.

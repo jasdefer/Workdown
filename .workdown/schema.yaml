@@ -60,6 +60,13 @@ fields:
       function: max
       error_on_missing: false
 
+  duration:
+    type: duration
+    required: false
+    aggregate:
+      function: sum
+      error_on_missing: false
+
 # ── Rules ──────────────────────────────────────────────────
 # Cross-field, cross-item, and collection-wide validation.
 # See schema.schema.json for the formal rule syntax definition.

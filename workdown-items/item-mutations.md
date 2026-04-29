@@ -7,6 +7,7 @@ parent: phase-04-visualization
 depends_on: [foundation]
 start_date: 2026-05-02
 end_date: 2026-05-07
+duration: "5d"
 ---
 
 Add the CLI subcommands that mutate items — exercised by the UI and usable standalone. Every UI mutation maps 1:1 to a command here.

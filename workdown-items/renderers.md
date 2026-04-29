@@ -7,6 +7,7 @@ parent: phase-04-visualization
 depends_on: [foundation]
 start_date: 2026-04-24
 end_date: 2026-05-02
+duration: "8d"
 ---
 
 Produce rendered views from work items as lightweight Markdown files. One shared
