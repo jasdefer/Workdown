@@ -122,13 +122,19 @@ fn render_unplaced_footer(unplaced: &[UnplacedCard], out: &mut String) {
     for unplaced_card in unplaced {
         match &unplaced_card.reason {
             UnplacedReason::MissingValue { field } => {
-                missing.entry(field.as_str()).or_default().push(unplaced_card);
+                missing
+                    .entry(field.as_str())
+                    .or_default()
+                    .push(unplaced_card);
             }
             UnplacedReason::InvalidRange { .. } => {
                 invalid_range.push(unplaced_card);
             }
             UnplacedReason::NonNumericValue { field, .. } => {
-                non_numeric.entry(field.as_str()).or_default().push(unplaced_card);
+                non_numeric
+                    .entry(field.as_str())
+                    .or_default()
+                    .push(unplaced_card);
             }
         }
     }
@@ -178,9 +184,7 @@ mod tests {
     use super::*;
     use chrono::NaiveDate;
     use workdown_core::model::WorkItemId;
-    use workdown_core::view_data::{
-        Card, GanttBar, GanttData, UnplacedCard, UnplacedReason,
-    };
+    use workdown_core::view_data::{Card, GanttBar, GanttData, UnplacedCard, UnplacedReason};
 
     fn ymd(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).unwrap()
@@ -219,7 +223,11 @@ mod tests {
         }
     }
 
-    fn data(bars: Vec<GanttBar>, group_field: Option<&str>, unplaced: Vec<UnplacedCard>) -> GanttData {
+    fn data(
+        bars: Vec<GanttBar>,
+        group_field: Option<&str>,
+        unplaced: Vec<UnplacedCard>,
+    ) -> GanttData {
         GanttData {
             start_field: "start".into(),
             end_field: "end".into(),
@@ -323,11 +331,7 @@ mod tests {
                 },
             },
         ];
-        let output = render_gantt(&data(
-            vec![bar("ok", Some("Ok"), d1, d2)],
-            None,
-            unplaced,
-        ));
+        let output = render_gantt(&data(vec![bar("ok", Some("Ok"), d1, d2)], None, unplaced));
         assert!(output.contains("> _4 items dropped:_\n"));
         assert!(output.contains("> _- missing 'end': \"Title C\"_\n"));
         assert!(output.contains("> _- missing 'start': \"Title A\", \"Title B\"_\n"));

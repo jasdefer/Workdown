@@ -54,7 +54,23 @@
       "Bash(xargs -I {} sh -c 'echo \"=== {} ===\"; head -10 {}')",
       "Bash(pwd -W)",
       "Bash(command -v docker)",
-      "Bash(command -v podman)"
+      "Bash(command -v podman)",
+      "Bash(grep -v \"test\\\\|//\")",
+      "Bash(sed -n '272,283p' crates/core/src/rules/assertion.rs)",
+      "Bash(sed -n '287,303p' crates/core/src/rules/assertion.rs)",
+      "Bash(sed -n '247,262p' crates/core/src/store/rollup.rs)",
+      "Bash(sed -n '264,276p' crates/core/src/store/rollup.rs)",
+      "Bash(sed -n '129,135p' crates/core/src/view_data/common.rs)",
+      "Bash(sed -n '121,126p' crates/core/src/view_data/common.rs)",
+      "Bash(sed -n '138,145p' crates/core/src/view_data/common.rs)",
+      "Bash(sed -n '230p' crates/core/src/model/schema.rs)",
+      "Bash(sed -n '243p' crates/core/src/model/schema.rs)",
+      "Bash(sed -n '349p' crates/core/src/model/schema.rs)",
+      "Bash(sed -n '204p;208p' crates/core/src/model/schema.rs)",
+      "Bash(sed -n '240p' crates/core/src/parser/schema.rs)",
+      "Bash(sed -n '382p' crates/core/src/parser/schema.rs)",
+      "Bash(sed -n '400p' crates/core/src/parser/schema.rs)",
+      "Bash(sed -n '442p' crates/core/src/parser/schema.rs)"
     ]
   }
 }
