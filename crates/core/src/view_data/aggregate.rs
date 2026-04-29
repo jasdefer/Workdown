@@ -37,6 +37,9 @@ fn as_number(value: &FieldValue) -> Option<f64> {
     match value {
         FieldValue::Integer(integer) => Some(*integer as f64),
         FieldValue::Float(float) => Some(*float),
+        // Duration aggregates as canonical seconds. Chart axes show raw
+        // seconds in v1 (no per-axis unit-formatting hook yet).
+        FieldValue::Duration(seconds) => Some(*seconds as f64),
         _ => None,
     }
 }

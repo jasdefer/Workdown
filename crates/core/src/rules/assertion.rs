@@ -276,6 +276,7 @@ pub(crate) fn compare_field_values(left: &FieldValue, right: &FieldValue) -> Opt
         (FieldValue::Integer(left), FieldValue::Float(right)) => (*left as f64).partial_cmp(right),
         (FieldValue::Float(left), FieldValue::Integer(right)) => left.partial_cmp(&(*right as f64)),
         (FieldValue::Date(left), FieldValue::Date(right)) => Some(left.cmp(right)),
+        (FieldValue::Duration(left), FieldValue::Duration(right)) => Some(left.cmp(right)),
         (FieldValue::String(left), FieldValue::String(right)) => Some(left.cmp(right)),
         (FieldValue::Boolean(left), FieldValue::Boolean(right)) => Some(left.cmp(right)),
         _ => None,
@@ -288,6 +289,7 @@ fn format_field_value(field_value: &FieldValue) -> String {
     match field_value {
         FieldValue::String(value) | FieldValue::Choice(value) => value.clone(),
         FieldValue::Date(date) => date.format("%Y-%m-%d").to_string(),
+        FieldValue::Duration(seconds) => crate::model::duration::format_duration_seconds(*seconds),
         FieldValue::Link(id) => id.to_string(),
         FieldValue::Integer(value) => value.to_string(),
         FieldValue::Float(value) => value.to_string(),

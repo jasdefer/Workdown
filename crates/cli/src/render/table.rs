@@ -8,6 +8,7 @@
 //! cells are escaped to `\|` and `<br>`. A table with zero columns
 //! emits the heading only; zero rows emits header + separator and stops.
 
+use workdown_core::model::duration::format_duration_seconds;
 use workdown_core::model::FieldValue;
 use workdown_core::view_data::{TableData, TableRow};
 
@@ -77,6 +78,7 @@ fn format_cell(cell: &Option<FieldValue>, column: &str, item_link_base: &str) ->
         FieldValue::Integer(n) => n.to_string(),
         FieldValue::Float(f) => f.to_string(),
         FieldValue::Date(d) => d.format("%Y-%m-%d").to_string(),
+        FieldValue::Duration(seconds) => format_duration_seconds(*seconds),
         FieldValue::Boolean(true) => "✓".to_owned(),
         FieldValue::Boolean(false) => "✗".to_owned(),
         FieldValue::Link(id) => id_link(id.as_str(), item_link_base),

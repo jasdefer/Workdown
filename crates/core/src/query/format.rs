@@ -4,6 +4,7 @@
 //! Table rendering is handled by the command layer using
 //! `cli::output::table()` to keep this module free of CLI dependencies.
 
+use crate::model::duration::format_duration_seconds;
 use crate::model::{FieldValue, WorkItem};
 use crate::query::types::QueryResult;
 
@@ -15,6 +16,7 @@ pub fn format_field_value(value: &FieldValue) -> String {
         FieldValue::String(string) => string.clone(),
         FieldValue::Choice(string) => string.clone(),
         FieldValue::Date(date) => date.format("%Y-%m-%d").to_string(),
+        FieldValue::Duration(seconds) => format_duration_seconds(*seconds),
         FieldValue::Link(id) => id.as_str().to_owned(),
         FieldValue::Integer(number) => number.to_string(),
         FieldValue::Float(number) => number.to_string(),
@@ -192,6 +194,7 @@ fn format_value_delimited(
         FieldValue::String(string) => Ok(string.clone()),
         FieldValue::Choice(string) => Ok(string.clone()),
         FieldValue::Date(date) => Ok(date.format("%Y-%m-%d").to_string()),
+        FieldValue::Duration(seconds) => Ok(format_duration_seconds(*seconds)),
         FieldValue::Link(id) => Ok(id.as_str().to_owned()),
         FieldValue::Integer(number) => Ok(number.to_string()),
         FieldValue::Float(number) => Ok(number.to_string()),

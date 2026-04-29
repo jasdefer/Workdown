@@ -35,7 +35,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["string", "choice", "multichoice", "integer", "float", "date", "boolean", "list", "link", "links"],
+          "enum": ["string", "choice", "multichoice", "integer", "float", "date", "duration", "boolean", "list", "link", "links"],
           "description": "The built-in type for this field."
         },
         "description": {
@@ -66,12 +66,18 @@
           "description": "Regex pattern the value must match. Only valid for string type."
         },
         "min": {
-          "type": "number",
-          "description": "Minimum allowed value. Only valid for integer and float types."
+          "oneOf": [
+            { "type": "number" },
+            { "type": "string" }
+          ],
+          "description": "Minimum allowed value. Number for integer/float; suffix-shorthand duration string (e.g. \"0s\", \"4w\") for duration."
         },
         "max": {
-          "type": "number",
-          "description": "Maximum allowed value. Only valid for integer and float types."
+          "oneOf": [
+            { "type": "number" },
+            { "type": "string" }
+          ],
+          "description": "Maximum allowed value. Number for integer/float; suffix-shorthand duration string (e.g. \"0s\", \"4w\") for duration."
         },
         "allow_cycles": {
           "type": "boolean",
@@ -160,7 +166,31 @@
               "pattern": false,
               "allow_cycles": false,
               "resource": false,
-              "inverse": false
+              "inverse": false,
+              "min": { "type": "number" },
+              "max": { "type": "number" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "duration" } }
+          },
+          "then": {
+            "properties": {
+              "values": false,
+              "pattern": false,
+              "allow_cycles": false,
+              "resource": false,
+              "inverse": false,
+              "min": {
+                "type": "string",
+                "pattern": "^-?\\s*(\\d+(s|min|h|d|w))(\\s+\\d+(s|min|h|d|w))*$"
+              },
+              "max": {
+                "type": "string",
+                "pattern": "^-?\\s*(\\d+(s|min|h|d|w))(\\s+\\d+(s|min|h|d|w))*$"
+              }
             }
           }
         },
@@ -225,7 +255,7 @@
         "function": {
           "type": "string",
           "enum": ["sum", "min", "max", "average", "median", "count", "all", "any", "none"],
-          "description": "The aggregation function. Available functions depend on the field type: integer/float support sum, min, max, average, median, count; date supports min, max, average; boolean supports all, any, none, count."
+          "description": "The aggregation function. Available functions depend on the field type: integer/float/duration support sum, min, max, average, median, count; date supports min, max, average; boolean supports all, any, none, count."
         },
         "error_on_missing": {
           "type": "boolean",

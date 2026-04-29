@@ -77,10 +77,7 @@ pub enum DiagnosticKind {
     /// An aggregate-configured field with `error_on_missing: true` has a
     /// tree-leaf in the rollup hierarchy that neither sets the value
     /// manually nor inherits one from a covering ancestor.
-    AggregateMissingValue {
-        field: String,
-        leaf_id: WorkItemId,
-    },
+    AggregateMissingValue { field: String, leaf_id: WorkItemId },
 
     // ── Rule-level ────────────────────────────────────────────────
     /// A schema rule was violated by a specific item.
@@ -195,6 +192,18 @@ pub enum FieldValueError {
         min: Option<f64>,
         max: Option<f64>,
     },
+
+    /// Duration value is outside the allowed range. Strings are
+    /// pre-formatted via `format_duration_seconds` so the message
+    /// reads in the same suffix-shorthand grammar as the input.
+    OutOfRangeDuration {
+        value: String,
+        min: Option<String>,
+        max: Option<String>,
+    },
+
+    /// Duration string failed to parse.
+    InvalidDuration { value: String, reason: String },
 
     /// Date string is not valid YYYY-MM-DD.
     InvalidDate { value: String },
@@ -389,6 +398,15 @@ impl std::fmt::Display for FieldValueError {
             }
             Self::OutOfRange { value, min, max } => {
                 write!(f, "{value} is out of range (min: {min:?}, max: {max:?})")
+            }
+            Self::OutOfRangeDuration { value, min, max } => {
+                write!(
+                    f,
+                    "duration '{value}' is out of range (min: {min:?}, max: {max:?})"
+                )
+            }
+            Self::InvalidDuration { value, reason } => {
+                write!(f, "'{value}' is not a valid duration: {reason}")
             }
             Self::InvalidDate { value } => {
                 write!(f, "'{value}' is not a valid date (expected YYYY-MM-DD)")

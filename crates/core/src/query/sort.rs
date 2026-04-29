@@ -6,6 +6,7 @@
 
 use std::cmp::Ordering;
 
+use crate::model::duration::format_duration_seconds;
 use crate::model::schema::{FieldType, Schema};
 use crate::model::{FieldValue, WorkItem};
 use crate::query::types::{SortDirection, SortSpec};
@@ -86,6 +87,7 @@ fn compare_present_values(
         Some(FieldType::Float) => compare_floats(value_a, value_b),
         Some(FieldType::Boolean) => compare_booleans(value_a, value_b),
         Some(FieldType::Date) => compare_dates(value_a, value_b),
+        Some(FieldType::Duration) => compare_durations(value_a, value_b),
         Some(FieldType::Multichoice) | Some(FieldType::List) => {
             compare_string_lists(value_a, value_b)
         }
@@ -122,6 +124,13 @@ fn compare_booleans(value_a: &FieldValue, value_b: &FieldValue) -> Ordering {
 fn compare_dates(value_a: &FieldValue, value_b: &FieldValue) -> Ordering {
     match (value_a, value_b) {
         (FieldValue::Date(a), FieldValue::Date(b)) => a.cmp(b),
+        _ => Ordering::Equal,
+    }
+}
+
+fn compare_durations(value_a: &FieldValue, value_b: &FieldValue) -> Ordering {
+    match (value_a, value_b) {
+        (FieldValue::Duration(a), FieldValue::Duration(b)) => a.cmp(b),
         _ => Ordering::Equal,
     }
 }
@@ -164,6 +173,7 @@ fn extract_sort_string(value: &FieldValue) -> String {
         FieldValue::String(string) => string.clone(),
         FieldValue::Choice(string) => string.clone(),
         FieldValue::Date(date) => date.format("%Y-%m-%d").to_string(),
+        FieldValue::Duration(seconds) => format_duration_seconds(*seconds),
         FieldValue::Link(id) => id.as_str().to_owned(),
         FieldValue::Integer(number) => number.to_string(),
         FieldValue::Float(number) => number.to_string(),
@@ -209,6 +219,13 @@ mod tests {
         fields.insert(
             "active".to_owned(),
             FieldDefinition::new(FieldTypeConfig::Boolean),
+        );
+        fields.insert(
+            "estimate".to_owned(),
+            FieldDefinition::new(FieldTypeConfig::Duration {
+                min: None,
+                max: None,
+            }),
         );
         let inverse_table = Schema::build_inverse_table(&fields);
         Schema {
@@ -387,6 +404,32 @@ mod tests {
         let ids: Vec<&str> = items.iter().map(|item| item.id.as_str()).collect();
         // done < open (lexicographic), then by points within same status
         assert_eq!(ids, vec!["c", "b", "a"]);
+    }
+
+    // ── Duration sort ───────────────────────────────────────────
+
+    #[test]
+    fn sort_by_duration_is_numeric_not_lexicographic() {
+        // 60s < 1h < 1d. Lexicographic on the formatted strings would
+        // mis-order: "1d 0h 0min 0s" < "1h 0min 0s" because '1' equal,
+        // 'd' < 'h'. We need numeric-by-canonical-seconds compare.
+        let schema = test_schema();
+        let item_minute = make_item("a", vec![("estimate", FieldValue::Duration(60))]);
+        let item_day = make_item("b", vec![("estimate", FieldValue::Duration(86_400))]);
+        let item_hour = make_item("c", vec![("estimate", FieldValue::Duration(3_600))]);
+
+        let mut items: Vec<&WorkItem> = vec![&item_day, &item_minute, &item_hour];
+        sort_items(
+            &mut items,
+            &[SortSpec {
+                field: "estimate".to_owned(),
+                direction: SortDirection::Ascending,
+            }],
+            &schema,
+        );
+
+        let ids: Vec<&str> = items.iter().map(|item| item.id.as_str()).collect();
+        assert_eq!(ids, vec!["a", "c", "b"]); // 60s < 3600s < 86400s
     }
 
     // ── Boolean sort ────────────────────────────────────────────

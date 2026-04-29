@@ -3,6 +3,7 @@
 //! The evaluator is type-aware — it uses the schema to determine how to
 //! compare field values (numeric for integers, lexicographic for strings, etc.).
 
+use crate::model::duration::{format_duration_seconds, parse_duration};
 use crate::model::schema::{FieldType, Schema};
 use crate::model::{FieldValue, WorkItem};
 use crate::query::types::{Comparison, FieldReference, Operator, Predicate};
@@ -152,6 +153,7 @@ fn eval_single(
         Some(FieldType::Integer) => eval_integer(field_value, comparison),
         Some(FieldType::Float) => eval_float(field_value, comparison),
         Some(FieldType::Boolean) => eval_boolean(field_value, comparison),
+        Some(FieldType::Duration) => eval_duration(field_value, comparison),
         Some(FieldType::Multichoice) | Some(FieldType::List) => eval_list(field_value, comparison),
         Some(FieldType::Links) => eval_links(field_value, comparison),
         // String, Choice, Date, Link, and unknown fields all use string comparison.
@@ -210,6 +212,34 @@ fn eval_float(field_value: &FieldValue, comparison: &Comparison) -> Result<bool,
     };
     let expected = match comparison.value.parse::<f64>() {
         Ok(number) => number,
+        Err(_) => return Ok(false),
+    };
+
+    Ok(match comparison.operator {
+        Operator::Equal => actual == expected,
+        Operator::NotEqual => actual != expected,
+        Operator::GreaterThan => actual > expected,
+        Operator::LessThan => actual < expected,
+        Operator::GreaterOrEqual => actual >= expected,
+        Operator::LessOrEqual => actual <= expected,
+        Operator::Contains | Operator::Matches => false,
+        Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
+    })
+}
+
+/// Duration comparison. Mirrors `eval_integer`: the value is compared
+/// as canonical i64 seconds. The RHS string is parsed via the same
+/// suffix-shorthand grammar used everywhere else (`5d`, `1w 2d`, etc.).
+fn eval_duration(
+    field_value: &FieldValue,
+    comparison: &Comparison,
+) -> Result<bool, QueryEvalError> {
+    let actual = match field_value {
+        FieldValue::Duration(seconds) => *seconds,
+        _ => return Ok(false),
+    };
+    let expected = match parse_duration(&comparison.value) {
+        Ok(seconds) => seconds,
         Err(_) => return Ok(false),
     };
 
@@ -304,6 +334,7 @@ fn extract_string(value: &FieldValue) -> String {
         FieldValue::String(string) => string.clone(),
         FieldValue::Choice(string) => string.clone(),
         FieldValue::Date(date) => date.format("%Y-%m-%d").to_string(),
+        FieldValue::Duration(seconds) => format_duration_seconds(*seconds),
         FieldValue::Link(id) => id.as_str().to_owned(),
         // For non-string types, fall back to a reasonable string representation.
         FieldValue::Integer(number) => number.to_string(),
@@ -435,6 +466,13 @@ mod tests {
         fields.insert(
             "due_date".to_owned(),
             FieldDefinition::new(FieldTypeConfig::Date),
+        );
+        fields.insert(
+            "estimate".to_owned(),
+            FieldDefinition::new(FieldTypeConfig::Duration {
+                min: None,
+                max: None,
+            }),
         );
 
         let inverse_table = Schema::build_inverse_table(&fields);
@@ -711,6 +749,52 @@ mod tests {
         let item = make_item("t1", vec![("status", FieldValue::Choice("open".into()))]);
         let predicate = Predicate::Not(Box::new(comparison("status", Operator::Equal, "done")));
         assert!(check(&item, &predicate, &schema).unwrap());
+    }
+
+    // ── Duration comparison (numeric on canonical seconds) ──────
+
+    #[test]
+    fn duration_greater_than_match() {
+        let schema = test_schema();
+        // 5d > 1h
+        let item = make_item("t1", vec![("estimate", FieldValue::Duration(432_000))]);
+        let predicate = comparison("estimate", Operator::GreaterThan, "1h");
+        assert!(check(&item, &predicate, &schema).unwrap());
+    }
+
+    #[test]
+    fn duration_greater_than_no_match() {
+        let schema = test_schema();
+        // 30min < 1h
+        let item = make_item("t1", vec![("estimate", FieldValue::Duration(1_800))]);
+        let predicate = comparison("estimate", Operator::GreaterThan, "1h");
+        assert!(!check(&item, &predicate, &schema).unwrap());
+    }
+
+    #[test]
+    fn duration_compound_rhs_parses() {
+        let schema = test_schema();
+        // estimate = 1w 2d (= 9 days = 777_600s); compare > "1w 1d" (= 8 days)
+        let item = make_item("t1", vec![("estimate", FieldValue::Duration(777_600))]);
+        let predicate = comparison("estimate", Operator::GreaterThan, "1w 1d");
+        assert!(check(&item, &predicate, &schema).unwrap());
+    }
+
+    #[test]
+    fn duration_negative_works() {
+        let schema = test_schema();
+        // -2d < 0s
+        let item = make_item("t1", vec![("estimate", FieldValue::Duration(-172_800))]);
+        let predicate = comparison("estimate", Operator::LessThan, "0s");
+        assert!(check(&item, &predicate, &schema).unwrap());
+    }
+
+    #[test]
+    fn duration_invalid_rhs_returns_false() {
+        let schema = test_schema();
+        let item = make_item("t1", vec![("estimate", FieldValue::Duration(432_000))]);
+        let predicate = comparison("estimate", Operator::GreaterThan, "garbage");
+        assert!(!check(&item, &predicate, &schema).unwrap());
     }
 
     // ── Date comparison (lexicographic) ─────────────────────────

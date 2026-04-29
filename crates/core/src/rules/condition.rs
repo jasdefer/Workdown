@@ -126,6 +126,9 @@ pub(crate) fn field_value_matches(
             *value as f64 == *expected
         }
         (FieldValue::Float(value), ConditionValue::Number(expected)) => value == expected,
+        (FieldValue::Duration(seconds), ConditionValue::Number(expected)) => {
+            *seconds as f64 == *expected
+        }
 
         // Boolean
         (FieldValue::Boolean(value), ConditionValue::Bool(expected)) => value == expected,

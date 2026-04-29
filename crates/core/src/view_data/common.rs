@@ -125,11 +125,16 @@ pub(super) fn as_date(value: Option<&FieldValue>) -> Option<NaiveDate> {
     }
 }
 
-/// Extract a numeric value (`Integer` or `Float`) as `f64`.
+/// Extract a numeric value (`Integer`, `Float`, or `Duration`) as `f64`.
+///
+/// Duration converts to its canonical seconds magnitude. Chart axes
+/// using duration values display as raw seconds in v1 — there's no
+/// per-axis unit-formatting hook yet.
 pub(super) fn as_number(value: Option<&FieldValue>) -> Option<f64> {
     match value {
         Some(FieldValue::Integer(integer)) => Some(*integer as f64),
         Some(FieldValue::Float(float)) => Some(*float),
+        Some(FieldValue::Duration(seconds)) => Some(*seconds as f64),
         _ => None,
     }
 }
@@ -139,6 +144,7 @@ pub(super) fn as_axis(value: Option<&FieldValue>) -> Option<AxisValue> {
     match value {
         Some(FieldValue::Integer(integer)) => Some(AxisValue::Number(*integer as f64)),
         Some(FieldValue::Float(float)) => Some(AxisValue::Number(*float)),
+        Some(FieldValue::Duration(seconds)) => Some(AxisValue::Number(*seconds as f64)),
         Some(FieldValue::Date(date)) => Some(AxisValue::Date(*date)),
         _ => None,
     }

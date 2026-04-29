@@ -110,8 +110,7 @@ fn run_for_field(
         })
         .collect();
     manual_items.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
-    let manual_set: HashSet<WorkItemId> =
-        manual_items.iter().map(|(id, _)| id.clone()).collect();
+    let manual_set: HashSet<WorkItemId> = manual_items.iter().map(|(id, _)| id.clone()).collect();
 
     let mut accumulators: HashMap<WorkItemId, Vec<FieldValue>> = HashMap::new();
 
@@ -271,6 +270,14 @@ fn sum(values: &[FieldValue]) -> Option<FieldValue> {
             let total: f64 = values.iter().filter_map(as_f64).sum();
             Some(FieldValue::Float(total))
         }
+        FieldValue::Duration(_) => {
+            // Saturating add prevents panic on overflow at i64::MAX.
+            let total: i64 = values
+                .iter()
+                .filter_map(as_duration_seconds)
+                .fold(0i64, i64::saturating_add);
+            Some(FieldValue::Duration(total))
+        }
         _ => None,
     }
 }
@@ -304,12 +311,24 @@ fn extremum(values: &[FieldValue], pick_min: bool) -> Option<FieldValue> {
             };
             Some(FieldValue::Date(chosen))
         }
+        FieldValue::Duration(_) => {
+            let nums: Vec<i64> = values.iter().filter_map(as_duration_seconds).collect();
+            let chosen = if pick_min {
+                *nums.iter().min().unwrap()
+            } else {
+                *nums.iter().max().unwrap()
+            };
+            Some(FieldValue::Duration(chosen))
+        }
         _ => None,
     }
 }
 
 /// `average` returns Float for numeric inputs (a true mean can be
-/// fractional even on integer fields) and a midpoint Date for date inputs.
+/// fractional even on integer fields), a midpoint Date for date inputs,
+/// and a truncated Duration (integer division on canonical seconds) for
+/// duration inputs. The truncation choice keeps round-trip behavior
+/// integer-clean — sub-second precision isn't part of the input grammar.
 fn average(values: &[FieldValue]) -> Option<FieldValue> {
     match values.first()? {
         FieldValue::Integer(_) | FieldValue::Float(_) => {
@@ -326,13 +345,37 @@ fn average(values: &[FieldValue]) -> Option<FieldValue> {
             let avg_days = sum_days / dates.len() as i64;
             NaiveDate::from_num_days_from_ce_opt(avg_days as i32).map(FieldValue::Date)
         }
+        FieldValue::Duration(_) => {
+            let nums: Vec<i64> = values.iter().filter_map(as_duration_seconds).collect();
+            // i128 sum prevents overflow when summing many large values.
+            let sum: i128 = nums.iter().map(|n| *n as i128).sum();
+            let avg = sum / nums.len() as i128;
+            Some(FieldValue::Duration(avg as i64))
+        }
         _ => None,
     }
 }
 
 /// `median` always returns Float for numeric inputs (even-length input
-/// produces a fractional midpoint).
+/// produces a fractional midpoint). For Duration, returns Duration with
+/// even-length midpoint truncated to integer seconds.
 fn median(values: &[FieldValue]) -> Option<FieldValue> {
+    if let Some(FieldValue::Duration(_)) = values.first() {
+        let mut nums: Vec<i64> = values.iter().filter_map(as_duration_seconds).collect();
+        if nums.is_empty() {
+            return None;
+        }
+        nums.sort();
+        let n = nums.len();
+        let median = if n % 2 == 1 {
+            nums[n / 2]
+        } else {
+            // i128 sum to avoid overflow on extreme values.
+            ((nums[n / 2 - 1] as i128 + nums[n / 2] as i128) / 2) as i64
+        };
+        return Some(FieldValue::Duration(median));
+    }
+
     let mut nums: Vec<f64> = values.iter().filter_map(as_f64).collect();
     if nums.is_empty() {
         return None;
@@ -347,10 +390,7 @@ fn median(values: &[FieldValue]) -> Option<FieldValue> {
     Some(FieldValue::Float(median))
 }
 
-fn boolean_reduce(
-    values: &[FieldValue],
-    reducer: impl Fn(&[bool]) -> bool,
-) -> Option<FieldValue> {
+fn boolean_reduce(values: &[FieldValue], reducer: impl Fn(&[bool]) -> bool) -> Option<FieldValue> {
     let bools: Vec<bool> = values.iter().filter_map(as_bool).collect();
     if bools.is_empty() {
         return None;
@@ -369,6 +409,13 @@ fn as_f64(value: &FieldValue) -> Option<f64> {
 fn as_i64(value: &FieldValue) -> Option<i64> {
     match value {
         FieldValue::Integer(i) => Some(*i),
+        _ => None,
+    }
+}
+
+fn as_duration_seconds(value: &FieldValue) -> Option<i64> {
+    match value {
+        FieldValue::Duration(seconds) => Some(*seconds),
         _ => None,
     }
 }
@@ -411,6 +458,9 @@ mod tests {
     }
     fn boolean(b: bool) -> FieldValue {
         FieldValue::Boolean(b)
+    }
+    fn duration(seconds: i64) -> FieldValue {
+        FieldValue::Duration(seconds)
     }
 
     #[test]
@@ -521,6 +571,64 @@ mod tests {
                 function: AggregateFunction::Average,
                 inputs: vec![date(2026, 1, 1), date(2026, 1, 5)],
                 expected: Some(date(2026, 1, 3)),
+            },
+            // ── Duration ────────────────────────────────────────────
+            // Canonical seconds: 1d=86_400, 2d=172_800, 3d=259_200.
+            Case {
+                label: "duration sum",
+                function: AggregateFunction::Sum,
+                inputs: vec![duration(86_400), duration(172_800), duration(259_200)],
+                expected: Some(duration(518_400)), // 6 days
+            },
+            Case {
+                label: "duration min",
+                function: AggregateFunction::Min,
+                inputs: vec![duration(259_200), duration(86_400), duration(172_800)],
+                expected: Some(duration(86_400)),
+            },
+            Case {
+                label: "duration max",
+                function: AggregateFunction::Max,
+                inputs: vec![duration(259_200), duration(86_400), duration(172_800)],
+                expected: Some(duration(259_200)),
+            },
+            Case {
+                label: "duration average",
+                function: AggregateFunction::Average,
+                inputs: vec![duration(86_400), duration(172_800), duration(259_200)],
+                expected: Some(duration(172_800)),
+            },
+            Case {
+                label: "duration average truncates",
+                function: AggregateFunction::Average,
+                // (1 + 2) / 2 = 1 (truncated, not 1.5)
+                inputs: vec![duration(1), duration(2)],
+                expected: Some(duration(1)),
+            },
+            Case {
+                label: "duration median odd",
+                function: AggregateFunction::Median,
+                inputs: vec![duration(86_400), duration(259_200), duration(172_800)],
+                expected: Some(duration(172_800)),
+            },
+            Case {
+                label: "duration median even truncates",
+                function: AggregateFunction::Median,
+                // midpoint of (1, 2) = (1+2)/2 = 1 (truncated)
+                inputs: vec![duration(1), duration(2)],
+                expected: Some(duration(1)),
+            },
+            Case {
+                label: "duration count",
+                function: AggregateFunction::Count,
+                inputs: vec![duration(86_400), duration(172_800)],
+                expected: Some(int(2)),
+            },
+            Case {
+                label: "duration sum with negatives",
+                function: AggregateFunction::Sum,
+                inputs: vec![duration(86_400), duration(-86_400), duration(3_600)],
+                expected: Some(duration(3_600)),
             },
             // ── Boolean ─────────────────────────────────────────────
             Case {
@@ -715,7 +823,10 @@ mod tests {
         let reverse_links = build_reverse_links(&items);
         let diagnostics = run(&mut items, &reverse_links, &schema);
 
-        assert!(diagnostics.is_empty(), "unexpected diagnostics: {diagnostics:#?}");
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics: {diagnostics:#?}"
+        );
         assert_eq!(items["root"].fields.get("effort"), Some(&int(5)));
         // Leaves still hold their manual values.
         assert_eq!(items["a"].fields.get("effort"), Some(&int(2)));

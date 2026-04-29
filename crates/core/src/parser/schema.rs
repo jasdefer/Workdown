@@ -308,6 +308,8 @@ fn validate_type_specific_properties(
             );
             reject_prop(name, "resource", &field.resource, field.field_type, errors);
             reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
+            validate_numeric_bound(name, "min", &field.min, field.field_type, errors);
+            validate_numeric_bound(name, "max", &field.max, field.field_type, errors);
         }
         FieldType::Date => {
             reject_prop(name, "values", &field.values, field.field_type, errors);
@@ -338,6 +340,34 @@ fn validate_type_specific_properties(
             );
             reject_prop(name, "resource", &field.resource, field.field_type, errors);
             reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
+        }
+        FieldType::Duration => {
+            reject_prop(name, "values", &field.values, field.field_type, errors);
+            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
+            reject_prop(
+                name,
+                "allow_cycles",
+                &field.allow_cycles,
+                field.field_type,
+                errors,
+            );
+            reject_prop(name, "resource", &field.resource, field.field_type, errors);
+            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
+            // min/max are duration strings; validate they parse and that
+            // min ≤ max if both are present.
+            validate_duration_bound(name, "min", &field.min, errors);
+            validate_duration_bound(name, "max", &field.max, errors);
+            if let (Some(min), Some(max)) = (
+                parse_duration_bound_opt(&field.min),
+                parse_duration_bound_opt(&field.max),
+            ) {
+                if min > max {
+                    errors.push(field_error(
+                        name,
+                        "'min' must be less than or equal to 'max'",
+                    ));
+                }
+            }
         }
         FieldType::List => {
             reject_prop(name, "values", &field.values, field.field_type, errors);
@@ -394,6 +424,90 @@ fn reject_prop<T: std::fmt::Debug>(
     }
 }
 
+/// Check that a numeric bound (`min` / `max` on integer/float fields) is
+/// a YAML number. Strings, sequences, mappings, etc. produce a clear error.
+fn validate_numeric_bound(
+    field_name: &str,
+    prop_name: &str,
+    value: &Option<serde_yaml::Value>,
+    field_type: FieldType,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    if let Some(value) = value {
+        if parse_numeric_bound(value).is_none() {
+            errors.push(field_error(
+                field_name,
+                format!(
+                    "'{prop_name}' must be a number for type '{field_type}', got {}",
+                    yaml_kind_name(value)
+                ),
+            ));
+        }
+    }
+}
+
+/// Extract an `f64` from a YAML value if it is a number. Returns `None`
+/// for any other YAML shape.
+fn parse_numeric_bound(value: &serde_yaml::Value) -> Option<f64> {
+    value.as_f64()
+}
+
+/// Check that a duration bound (`min` / `max` on duration fields) is a
+/// suffix-shorthand string that parses successfully. Pushes a clear
+/// error if the value is the wrong YAML shape or unparseable.
+fn validate_duration_bound(
+    field_name: &str,
+    prop_name: &str,
+    value: &Option<serde_yaml::Value>,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    let Some(value) = value else { return };
+    match value.as_str() {
+        Some(string) => {
+            if let Err(err) = crate::model::duration::parse_duration(string) {
+                errors.push(field_error(
+                    field_name,
+                    format!("'{prop_name}' is not a valid duration: {err}"),
+                ));
+            }
+        }
+        None => errors.push(field_error(
+            field_name,
+            format!(
+                "'{prop_name}' must be a duration string for type 'duration', got {}",
+                yaml_kind_name(value)
+            ),
+        )),
+    }
+}
+
+/// Extract canonical `i64` seconds from a duration bound YAML value.
+/// Returns `None` for any non-string YAML shape; returns `None` and lets
+/// validation surface the error if the string fails to parse.
+fn parse_duration_bound(value: &serde_yaml::Value) -> Option<i64> {
+    value
+        .as_str()
+        .and_then(|s| crate::model::duration::parse_duration(s).ok())
+}
+
+/// Same as `parse_duration_bound` but reads through an `Option` first.
+fn parse_duration_bound_opt(value: &Option<serde_yaml::Value>) -> Option<i64> {
+    value.as_ref().and_then(parse_duration_bound)
+}
+
+/// Human-readable name for a YAML value kind, for error messages.
+fn yaml_kind_name(value: &serde_yaml::Value) -> &'static str {
+    match value {
+        serde_yaml::Value::Null => "null",
+        serde_yaml::Value::Bool(_) => "boolean",
+        serde_yaml::Value::Number(_) => "number",
+        serde_yaml::Value::String(_) => "string",
+        serde_yaml::Value::Sequence(_) => "sequence",
+        serde_yaml::Value::Mapping(_) => "mapping",
+        serde_yaml::Value::Tagged(_) => "tagged value",
+    }
+}
+
 /// Convert a raw (flat) field definition into a typed [`FieldDefinition`]
 /// with a [`FieldTypeConfig`] variant. Called after validation passes,
 /// so type-specific fields are guaranteed to be present where required.
@@ -409,14 +523,18 @@ fn convert_field(raw: RawFieldDefinition) -> FieldDefinition {
             values: raw.values.unwrap_or_default(),
         },
         FieldType::Integer => FieldTypeConfig::Integer {
-            min: raw.min,
-            max: raw.max,
+            min: raw.min.as_ref().and_then(parse_numeric_bound),
+            max: raw.max.as_ref().and_then(parse_numeric_bound),
         },
         FieldType::Float => FieldTypeConfig::Float {
-            min: raw.min,
-            max: raw.max,
+            min: raw.min.as_ref().and_then(parse_numeric_bound),
+            max: raw.max.as_ref().and_then(parse_numeric_bound),
         },
         FieldType::Date => FieldTypeConfig::Date,
+        FieldType::Duration => FieldTypeConfig::Duration {
+            min: raw.min.as_ref().and_then(parse_duration_bound),
+            max: raw.max.as_ref().and_then(parse_duration_bound),
+        },
         FieldType::Boolean => FieldTypeConfig::Boolean,
         FieldType::List => FieldTypeConfig::List,
         FieldType::Link => FieldTypeConfig::Link {
@@ -462,6 +580,14 @@ fn validate_aggregate_compatibility(
             AggregateFunction::Min,
             AggregateFunction::Max,
             AggregateFunction::Average,
+        ],
+        FieldType::Duration => &[
+            AggregateFunction::Sum,
+            AggregateFunction::Min,
+            AggregateFunction::Max,
+            AggregateFunction::Average,
+            AggregateFunction::Median,
+            AggregateFunction::Count,
         ],
         FieldType::Boolean => &[
             AggregateFunction::All,
@@ -1113,6 +1239,232 @@ fields:
     }
 
     #[test]
+    fn integer_with_string_min_rejected() {
+        // Now that min/max are Option<serde_yaml::Value>, a string-typed
+        // bound on an integer field must be rejected at validation time.
+        let yaml = "\
+fields:
+  points:
+    type: integer
+    min: \"five\"
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(
+            errors.iter().any(|e| e
+                .message
+                .contains("'min' must be a number for type 'integer'")),
+            "expected numeric-bound error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn integer_min_max_still_parsed() {
+        // Regression: widening the raw type to serde_yaml::Value mustn't
+        // break the integer happy path.
+        let yaml = "\
+fields:
+  points:
+    type: integer
+    min: 0
+    max: 100
+";
+        let schema = parse_schema(yaml).expect("schema parses");
+        match schema.fields.get("points").map(|f| &f.type_config) {
+            Some(FieldTypeConfig::Integer { min, max }) => {
+                assert_eq!(*min, Some(0.0));
+                assert_eq!(*max, Some(100.0));
+            }
+            other => panic!("expected Integer field type, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn duration_field_parses_minimal() {
+        let yaml = "\
+fields:
+  estimate:
+    type: duration
+";
+        let schema = parse_schema(yaml).expect("schema parses");
+        match schema.fields.get("estimate").map(|f| &f.type_config) {
+            Some(FieldTypeConfig::Duration { min, max }) => {
+                assert_eq!(*min, None);
+                assert_eq!(*max, None);
+            }
+            other => panic!("expected Duration field type, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn duration_field_parses_with_bounds() {
+        let yaml = "\
+fields:
+  estimate:
+    type: duration
+    min: \"0s\"
+    max: \"4w\"
+";
+        let schema = parse_schema(yaml).expect("schema parses");
+        match schema.fields.get("estimate").map(|f| &f.type_config) {
+            Some(FieldTypeConfig::Duration { min, max }) => {
+                assert_eq!(*min, Some(0));
+                // 4w = 4 * 604_800 = 2_419_200
+                assert_eq!(*max, Some(2_419_200));
+            }
+            other => panic!("expected Duration field type, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn duration_aggregate_all_rejected() {
+        let yaml = "\
+fields:
+  estimate:
+    type: duration
+    aggregate:
+      function: all
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(
+            errors.iter().any(|e| e
+                .message
+                .contains("aggregate function 'all' is not valid for type 'duration'")),
+            "expected aggregate-not-valid error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn duration_aggregate_sum_accepted() {
+        let yaml = "\
+fields:
+  parent:
+    type: link
+    allow_cycles: false
+  estimate:
+    type: duration
+    aggregate:
+      function: sum
+";
+        parse_schema(yaml).expect("duration field with sum aggregate parses");
+    }
+
+    #[test]
+    fn duration_invalid_min_rejected() {
+        let yaml = "\
+fields:
+  estimate:
+    type: duration
+    min: \"5y\"
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.message.contains("'min' is not a valid duration")),
+            "expected duration-parse error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn duration_numeric_min_rejected() {
+        // For duration fields, min must be a string (suffix shorthand),
+        // not a bare number.
+        let yaml = "\
+fields:
+  estimate:
+    type: duration
+    min: 0
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(
+            errors.iter().any(|e| e
+                .message
+                .contains("'min' must be a duration string for type 'duration'")),
+            "expected duration-string error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn duration_min_greater_than_max_rejected() {
+        let yaml = "\
+fields:
+  estimate:
+    type: duration
+    min: \"4w\"
+    max: \"1d\"
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(
+            errors.iter().any(|e| e
+                .message
+                .contains("'min' must be less than or equal to 'max'")),
+            "expected min/max ordering error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn duration_pattern_rejected() {
+        let yaml = "\
+fields:
+  estimate:
+    type: duration
+    pattern: \"^.*$\"
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(
+            errors.iter().any(|e| e
+                .message
+                .contains("'pattern' is not valid for type 'duration'")),
+            "expected pattern-rejection error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn float_with_sequence_min_rejected() {
+        let yaml = "\
+fields:
+  ratio:
+    type: float
+    min: [1, 2]
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(
+            errors.iter().any(|e| e
+                .message
+                .contains("'min' must be a number for type 'float'")),
+            "expected numeric-bound error, got: {errors:?}"
+        );
+    }
+
+    #[test]
     fn aggregate_on_link_rejected() {
         let yaml = "\
 fields:
@@ -1217,9 +1569,9 @@ fields:
             SchemaLoadError::Validation(e) => e,
             other => panic!("expected Validation error, got: {other}"),
         };
-        assert!(errors
-            .iter()
-            .any(|e| e.message.contains("aggregate.over references unknown field 'epic'")));
+        assert!(errors.iter().any(|e| e
+            .message
+            .contains("aggregate.over references unknown field 'epic'")));
     }
 
     #[test]
@@ -1240,8 +1592,9 @@ fields:
             other => panic!("expected Validation error, got: {other}"),
         };
         assert!(errors.iter().any(|e| {
-            e.message
-                .contains("aggregate.over references field 'owners' of type 'links' (must be 'link')")
+            e.message.contains(
+                "aggregate.over references field 'owners' of type 'links' (must be 'link')",
+            )
         }));
     }
 

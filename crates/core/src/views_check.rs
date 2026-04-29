@@ -454,10 +454,13 @@ fn check_aggregate_value_slot(
     let actual = def.field_type();
     let allowed: &[FieldType] = match aggregate {
         Aggregate::Count => return,
-        Aggregate::Sum => &[FieldType::Integer, FieldType::Float],
-        Aggregate::Avg | Aggregate::Min | Aggregate::Max => {
-            &[FieldType::Integer, FieldType::Float, FieldType::Date]
-        }
+        Aggregate::Sum => &[FieldType::Integer, FieldType::Float, FieldType::Duration],
+        Aggregate::Avg | Aggregate::Min | Aggregate::Max => &[
+            FieldType::Integer,
+            FieldType::Float,
+            FieldType::Date,
+            FieldType::Duration,
+        ],
     };
     if !allowed.contains(&actual) {
         out.push(error(DiagnosticKind::ViewAggregateTypeMismatch {
