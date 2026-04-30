@@ -1,7 +1,7 @@
 ---
 id: render-gantt-by-depth
 type: issue
-status: to_do
+status: done
 title: Gantt by depth view
 parent: renderers
 depends_on: [render-gantt]

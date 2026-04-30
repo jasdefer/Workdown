@@ -60,6 +60,7 @@
         { "$ref": "#/$defs/table" },
         { "$ref": "#/$defs/gantt" },
         { "$ref": "#/$defs/gantt_by_initiative" },
+        { "$ref": "#/$defs/gantt_by_depth" },
         { "$ref": "#/$defs/bar_chart" },
         { "$ref": "#/$defs/line_chart" },
         { "$ref": "#/$defs/workload" },
@@ -173,6 +174,30 @@
         }
       },
       "required": ["id", "type", "start", "root_link"],
+      "additionalProperties": false
+    },
+
+    "gantt_by_depth": {
+      "type": "object",
+      "description": "Gantt timeline partitioned by depth — emits one Mermaid `gantt` block per non-empty depth level of `depth_link` (level 0 = roots, level 1 = direct children, etc.). Per-bar resolution mirrors `gantt`: exactly one of (`end`), (`duration`), or (`after` + `duration`) configures the input mode. Each item's depth is computed by walking `depth_link` upward against the full store, so depth is invariant under filtering.",
+      "properties": {
+        "id":         { "$ref": "#/$defs/view_id" },
+        "type":       { "const": "gantt_by_depth" },
+        "where":      { "$ref": "#/$defs/where_clauses" },
+        "title":      { "$ref": "#/$defs/field_name" },
+        "start":      { "$ref": "#/$defs/field_name" },
+        "end":        { "$ref": "#/$defs/field_name" },
+        "duration":   { "$ref": "#/$defs/field_name" },
+        "after":      {
+          "$ref": "#/$defs/field_name",
+          "description": "Predecessor-mode link/links field. Requires `duration`, forbids `end`. Must have `allow_cycles: false`."
+        },
+        "depth_link": {
+          "$ref": "#/$defs/field_name",
+          "description": "Single-target link field whose chain is walked upward to determine each item's depth. Must have `allow_cycles: false` and not be an inverse name."
+        }
+      },
+      "required": ["id", "type", "start", "depth_link"],
       "additionalProperties": false
     },
 

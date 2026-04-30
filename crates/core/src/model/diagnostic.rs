@@ -200,6 +200,16 @@ pub enum DiagnosticKind {
     /// inverse relation name. The chain walk reads the link directly off
     /// each item; only the original link field is accepted.
     ViewGanttRootLinkInverseNotAllowed { view_id: String, field_name: String },
+
+    /// A `gantt_by_depth` view's `depth_link` slot points at a link field
+    /// that allows cycles. Walking the chain to determine depth requires
+    /// a DAG — `allow_cycles` must be explicitly `false`.
+    ViewGanttDepthLinkCyclic { view_id: String, field_name: String },
+
+    /// A `gantt_by_depth` view's `depth_link` slot references an inverse
+    /// relation name. The chain walk reads the link directly off each
+    /// item; only the original link field is accepted.
+    ViewGanttDepthLinkInverseNotAllowed { view_id: String, field_name: String },
 }
 
 // ── Field value errors ───────────────────────────────────────────────
@@ -475,6 +485,24 @@ impl std::fmt::Display for Diagnostic {
                 write!(
                     f,
                     "view '{view_id}', slot 'root_link': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
+                )
+            }
+            DiagnosticKind::ViewGanttDepthLinkCyclic {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'depth_link': field '{field_name}' must set `allow_cycles: false`"
+                )
+            }
+            DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'depth_link': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
                 )
             }
         }

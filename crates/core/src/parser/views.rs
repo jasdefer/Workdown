@@ -155,6 +155,8 @@ struct RawView {
     #[serde(default)]
     root_link: Option<String>,
     #[serde(default)]
+    depth_link: Option<String>,
+    #[serde(default)]
     effort: Option<String>,
     #[serde(default)]
     group: Option<String>,
@@ -217,6 +219,13 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
             duration: raw.duration,
             after: raw.after,
             root_link: require(raw.root_link, &id, view_type, "root_link")?,
+        },
+        ViewType::GanttByDepth => ViewKind::GanttByDepth {
+            start: require(raw.start, &id, view_type, "start")?,
+            end: raw.end,
+            duration: raw.duration,
+            after: raw.after,
+            depth_link: require(raw.depth_link, &id, view_type, "depth_link")?,
         },
         ViewType::BarChart => ViewKind::BarChart {
             group_by: require(raw.group_by, &id, view_type, "group_by")?,
@@ -526,6 +535,76 @@ mod tests {
                     errors.as_slice(),
                     [ViewsValidationError::MissingSlot { id, slot, .. }]
                         if id == "r" && *slot == "root_link"
+                ));
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_depth_with_end() {
+        let view = parse_single(
+            "views:\n  - id: r\n    type: gantt_by_depth\n    start: start_date\n    end: end_date\n    depth_link: parent\n",
+        );
+        match view.kind {
+            ViewKind::GanttByDepth {
+                start,
+                end,
+                duration,
+                after,
+                depth_link,
+            } => {
+                assert_eq!(start, "start_date");
+                assert_eq!(end.as_deref(), Some("end_date"));
+                assert_eq!(duration, None);
+                assert_eq!(after, None);
+                assert_eq!(depth_link, "parent");
+            }
+            other => panic!("expected GanttByDepth, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_depth_with_duration() {
+        let view = parse_single(
+            "views:\n  - id: r\n    type: gantt_by_depth\n    start: start_date\n    duration: estimate\n    depth_link: parent\n",
+        );
+        match view.kind {
+            ViewKind::GanttByDepth {
+                duration,
+                depth_link,
+                ..
+            } => {
+                assert_eq!(duration.as_deref(), Some("estimate"));
+                assert_eq!(depth_link, "parent");
+            }
+            other => panic!("expected GanttByDepth, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_depth_with_after() {
+        let view = parse_single(
+            "views:\n  - id: r\n    type: gantt_by_depth\n    start: start_date\n    duration: estimate\n    after: depends_on\n    depth_link: parent\n",
+        );
+        match view.kind {
+            ViewKind::GanttByDepth { after, .. } => {
+                assert_eq!(after.as_deref(), Some("depends_on"));
+            }
+            other => panic!("expected GanttByDepth, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_depth_missing_depth_link_rejected() {
+        let yaml = "views:\n  - id: r\n    type: gantt_by_depth\n    start: start_date\n    end: end_date\n";
+        let err = parse_views(yaml).unwrap_err();
+        match err {
+            ViewsLoadError::Validation(errors) => {
+                assert!(matches!(
+                    errors.as_slice(),
+                    [ViewsValidationError::MissingSlot { id, slot, .. }]
+                        if id == "r" && *slot == "depth_link"
                 ));
             }
             other => panic!("expected Validation, got {other:?}"),

@@ -22,6 +22,7 @@ pub mod board;
 pub mod common;
 pub mod filter;
 pub mod gantt;
+pub mod gantt_by_depth;
 pub mod gantt_by_initiative;
 pub mod graph;
 pub mod heatmap;
@@ -49,6 +50,7 @@ pub use common::{
     UnplacedReason,
 };
 pub use gantt::{GanttBar, GanttData};
+pub use gantt_by_depth::{GanttByDepthData, Level};
 pub use gantt_by_initiative::{GanttByInitiativeData, Initiative};
 pub use graph::{Edge, GraphData};
 pub use heatmap::{HeatmapCell, HeatmapData};
@@ -66,6 +68,7 @@ pub enum ViewData {
     BarChart(BarChartData),
     Board(BoardData),
     Gantt(GanttData),
+    GanttByDepth(GanttByDepthData),
     GanttByInitiative(GanttByInitiativeData),
     Graph(GraphData),
     Heatmap(HeatmapData),
@@ -90,6 +93,9 @@ pub fn extract(view: &View, store: &Store, schema: &Schema) -> ViewData {
         }
         ViewKind::Board { .. } => ViewData::Board(board::extract_board(view, store, schema)),
         ViewKind::Gantt { .. } => ViewData::Gantt(gantt::extract_gantt(view, store, schema)),
+        ViewKind::GanttByDepth { .. } => ViewData::GanttByDepth(
+            gantt_by_depth::extract_gantt_by_depth(view, store, schema),
+        ),
         ViewKind::GanttByInitiative { .. } => ViewData::GanttByInitiative(
             gantt_by_initiative::extract_gantt_by_initiative(view, store, schema),
         ),

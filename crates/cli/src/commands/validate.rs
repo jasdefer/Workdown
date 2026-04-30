@@ -170,7 +170,9 @@ fn file_for_diagnostic(
         | DiagnosticKind::ViewGanttAfterCyclic { .. }
         | DiagnosticKind::ViewGanttAfterInverseNotAllowed { .. }
         | DiagnosticKind::ViewGanttRootLinkCyclic { .. }
-        | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { .. } => {
+        | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { .. }
+        | DiagnosticKind::ViewGanttDepthLinkCyclic { .. }
+        | DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { .. } => {
             Some(project_root.join(&config.paths.views))
         }
     }

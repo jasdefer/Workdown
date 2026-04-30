@@ -94,6 +94,23 @@ pub enum ViewKind {
         /// in `views_check`.
         root_link: String,
     },
+    /// Gantt partitioned by depth: one chart per non-empty depth level
+    /// of `depth_link` (level 0 = roots, level 1 = direct children, etc.).
+    /// Per-bar resolution mirrors `Gantt` (same three input recipes);
+    /// each item's depth is computed by walking `depth_link` upward
+    /// against the full store, so chains span filter boundaries. No
+    /// per-chart `group` slot — each chart is already scoped to one
+    /// level.
+    GanttByDepth {
+        start: String,
+        end: Option<String>,
+        duration: Option<String>,
+        after: Option<String>,
+        /// Single-target `Link` field whose chain is walked upward to
+        /// determine each item's depth. Must have `allow_cycles: false`
+        /// and not be an inverse name. Validated in `views_check`.
+        depth_link: String,
+    },
     BarChart {
         group_by: String,
         value: Option<String>,
@@ -136,6 +153,7 @@ impl ViewKind {
             Self::Table { .. } => ViewType::Table,
             Self::Gantt { .. } => ViewType::Gantt,
             Self::GanttByInitiative { .. } => ViewType::GanttByInitiative,
+            Self::GanttByDepth { .. } => ViewType::GanttByDepth,
             Self::BarChart { .. } => ViewType::BarChart,
             Self::LineChart { .. } => ViewType::LineChart,
             Self::Workload { .. } => ViewType::Workload,
@@ -156,6 +174,7 @@ pub enum ViewType {
     Table,
     Gantt,
     GanttByInitiative,
+    GanttByDepth,
     BarChart,
     LineChart,
     Workload,
@@ -173,6 +192,7 @@ impl std::fmt::Display for ViewType {
             Self::Table => "table",
             Self::Gantt => "gantt",
             Self::GanttByInitiative => "gantt_by_initiative",
+            Self::GanttByDepth => "gantt_by_depth",
             Self::BarChart => "bar_chart",
             Self::LineChart => "line_chart",
             Self::Workload => "workload",

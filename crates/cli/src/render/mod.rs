@@ -9,6 +9,7 @@
 pub mod board;
 pub mod common;
 pub mod gantt;
+pub mod gantt_by_depth;
 pub mod gantt_by_initiative;
 pub mod gantt_common;
 pub mod graph;

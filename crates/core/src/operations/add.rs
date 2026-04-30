@@ -361,7 +361,9 @@ fn is_diagnostic_for_item(diagnostic: &Diagnostic, item_id: &WorkItemId) -> bool
         | DiagnosticKind::ViewGanttAfterCyclic { .. }
         | DiagnosticKind::ViewGanttAfterInverseNotAllowed { .. }
         | DiagnosticKind::ViewGanttRootLinkCyclic { .. }
-        | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { .. } => false,
+        | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { .. }
+        | DiagnosticKind::ViewGanttDepthLinkCyclic { .. }
+        | DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { .. } => false,
     }
 }
 

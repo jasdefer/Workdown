@@ -187,6 +187,24 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             );
             check_root_link_slot(schema, view_id, root_link, out);
         }
+        ViewKind::GanttByDepth {
+            start,
+            end,
+            duration,
+            after,
+            depth_link,
+        } => {
+            check_gantt_input_modes(
+                schema,
+                view_id,
+                start,
+                end.as_deref(),
+                duration.as_deref(),
+                after.as_deref(),
+                out,
+            );
+            check_depth_link_slot(schema, view_id, depth_link, out);
+        }
         ViewKind::BarChart {
             group_by,
             value,
@@ -573,6 +591,56 @@ fn check_root_link_slot(
             out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
                 view_id: view_id.to_owned(),
                 slot: "root_link",
+                field_name: field_name.to_owned(),
+                actual_type: def.field_type(),
+                expected: "link".to_owned(),
+            }));
+        }
+    }
+}
+
+// ── Gantt depth_link slot helper ─────────────────────────────────────
+
+/// Validates the `depth_link` slot on a `gantt_by_depth` view.
+///
+/// Mirrors `check_root_link_slot`: must be a single-target `Link` with
+/// `allow_cycles: false`, not an inverse name. Each rule has its own
+/// diagnostic kind so the error points at the actual violation.
+fn check_depth_link_slot(
+    schema: &Schema,
+    view_id: &str,
+    field_name: &str,
+    out: &mut Vec<Diagnostic>,
+) {
+    let Some(def) = schema.fields.get(field_name) else {
+        if schema.inverse_table.contains_key(field_name) {
+            out.push(error(DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed {
+                view_id: view_id.to_owned(),
+                field_name: field_name.to_owned(),
+            }));
+        } else {
+            out.push(error(DiagnosticKind::ViewUnknownField {
+                view_id: view_id.to_owned(),
+                slot: "depth_link",
+                field_name: field_name.to_owned(),
+            }));
+        }
+        return;
+    };
+
+    match &def.type_config {
+        FieldTypeConfig::Link { allow_cycles, .. } => {
+            if *allow_cycles != Some(false) {
+                out.push(error(DiagnosticKind::ViewGanttDepthLinkCyclic {
+                    view_id: view_id.to_owned(),
+                    field_name: field_name.to_owned(),
+                }));
+            }
+        }
+        _ => {
+            out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
+                view_id: view_id.to_owned(),
+                slot: "depth_link",
                 field_name: field_name.to_owned(),
                 actual_type: def.field_type(),
                 expected: "link".to_owned(),
@@ -1520,6 +1588,111 @@ mod tests {
         assert!(diagnostics.iter().any(|d| matches!(
             &d.kind,
             DiagnosticKind::ViewGanttEndAndDurationConflict { .. }
+        )));
+    }
+
+    // ── gantt_by_depth depth_link ──────────────────────────────────
+
+    #[test]
+    fn gantt_by_depth_accepts_link_with_cycles_disabled() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::GanttByDepth {
+                start: "start_date".into(),
+                end: Some("end_date".into()),
+                duration: None,
+                after: None,
+                depth_link: "parent".into(),
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got {diagnostics:?}");
+    }
+
+    #[test]
+    fn gantt_by_depth_depth_link_rejects_unknown_field() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::GanttByDepth {
+                start: "start_date".into(),
+                end: Some("end_date".into()),
+                duration: None,
+                after: None,
+                depth_link: "nonexistent".into(),
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.iter().any(|d| matches!(
+            &d.kind,
+            DiagnosticKind::ViewUnknownField { slot, field_name, .. }
+                if *slot == "depth_link" && field_name == "nonexistent"
+        )));
+    }
+
+    #[test]
+    fn gantt_by_depth_depth_link_rejects_links_field() {
+        // Links is rejected — depth requires single-target.
+        let diagnostics = evaluate(
+            &one_view(ViewKind::GanttByDepth {
+                start: "start_date".into(),
+                end: Some("end_date".into()),
+                duration: None,
+                after: None,
+                depth_link: "depends_on".into(), // Links, not Link
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.iter().any(|d| matches!(
+            &d.kind,
+            DiagnosticKind::ViewFieldTypeMismatch { slot, expected, .. }
+                if *slot == "depth_link" && expected == "link"
+        )));
+    }
+
+    #[test]
+    fn gantt_by_depth_depth_link_rejects_inverse_name() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::GanttByDepth {
+                start: "start_date".into(),
+                end: Some("end_date".into()),
+                duration: None,
+                after: None,
+                depth_link: "children".into(), // inverse of parent
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.iter().any(|d| matches!(
+            &d.kind,
+            DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { field_name, .. }
+                if field_name == "children"
+        )));
+    }
+
+    #[test]
+    fn gantt_by_depth_depth_link_rejects_link_with_cycles_allowed() {
+        let schema = build_schema(vec![
+            ("start_date", FieldTypeConfig::Date),
+            ("end_date", FieldTypeConfig::Date),
+            (
+                "topic",
+                FieldTypeConfig::Link {
+                    allow_cycles: Some(true),
+                    inverse: None,
+                },
+            ),
+        ]);
+        let diagnostics = evaluate(
+            &one_view(ViewKind::GanttByDepth {
+                start: "start_date".into(),
+                end: Some("end_date".into()),
+                duration: None,
+                after: None,
+                depth_link: "topic".into(),
+            }),
+            &schema,
+        );
+        assert!(diagnostics.iter().any(|d| matches!(
+            &d.kind,
+            DiagnosticKind::ViewGanttDepthLinkCyclic { field_name, .. }
+                if field_name == "topic"
         )));
     }
 

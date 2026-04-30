@@ -185,6 +185,9 @@ fn render_view_data(view_data: &ViewData, link_base: &str) -> Option<String> {
         ViewData::Graph(data) => Some(render::graph::render_graph(data)),
         ViewData::Table(data) => Some(render::table::render_table(data, link_base)),
         ViewData::Gantt(data) => Some(render::gantt::render_gantt(data)),
+        ViewData::GanttByDepth(data) => {
+            Some(render::gantt_by_depth::render_gantt_by_depth(data))
+        }
         ViewData::GanttByInitiative(data) => Some(
             render::gantt_by_initiative::render_gantt_by_initiative(data),
         ),
@@ -206,6 +209,7 @@ fn render_view_data(view_data: &ViewData, link_base: &str) -> Option<String> {
 fn emit_unplaced_warnings(view: &View, view_data: &ViewData) {
     let count = match view_data {
         ViewData::Gantt(data) => data.unplaced.len(),
+        ViewData::GanttByDepth(data) => data.unplaced.len(),
         ViewData::GanttByInitiative(data) => data.unplaced.len(),
         _ => 0,
     };
@@ -242,7 +246,9 @@ fn invalid_view_ids(diagnostics: &[Diagnostic]) -> HashSet<String> {
             | DiagnosticKind::ViewGanttAfterCyclic { view_id, .. }
             | DiagnosticKind::ViewGanttAfterInverseNotAllowed { view_id, .. }
             | DiagnosticKind::ViewGanttRootLinkCyclic { view_id, .. }
-            | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { view_id, .. } => {
+            | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { view_id, .. }
+            | DiagnosticKind::ViewGanttDepthLinkCyclic { view_id, .. }
+            | DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { view_id, .. } => {
                 Some(view_id.clone())
             }
             _ => None,
