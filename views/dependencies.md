@@ -52,6 +52,10 @@ flowchart TD
             ui-build-integration["UI build integration and asset embedding"]
         end
     end
+    subgraph time-tracking ["Time tracking"]
+        duration-comparison-rule["Cross-field comparison rule for duration values"]
+        git-derived-default-generator["Default generator that reads dates from git history"]
+    end
     cli-move-command --> cli-set-command
     frontend --> server
     gantt-duration-mode --> duration-field-type

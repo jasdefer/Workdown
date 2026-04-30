@@ -4,13 +4,14 @@
 - [cli-add-audit](../workdown-items/cli-add-audit.md)
 - [cli-move-command](../workdown-items/cli-move-command.md)
 - [cli-set-command](../workdown-items/cli-set-command.md)
+- [duration-comparison-rule](../workdown-items/duration-comparison-rule.md)
 - [frontend](../workdown-items/frontend.md)
+- [git-derived-default-generator](../workdown-items/git-derived-default-generator.md)
 - [item-mutations](../workdown-items/item-mutations.md)
 - [polish](../workdown-items/polish.md)
 - [render-bar-chart](../workdown-items/render-bar-chart.md)
 - [render-command](../workdown-items/render-command.md)
 - [render-gantt-by-depth](../workdown-items/render-gantt-by-depth.md)
-- [render-gantt-by-initiative](../workdown-items/render-gantt-by-initiative.md)
 - [render-heatmap](../workdown-items/render-heatmap.md)
 - [render-line-chart](../workdown-items/render-line-chart.md)
 - [render-metric](../workdown-items/render-metric.md)
@@ -22,10 +23,12 @@
 - [server-endpoints-and-mutations](../workdown-items/server-endpoints-and-mutations.md)
 - [server-sse-file-watching](../workdown-items/server-sse-file-watching.md)
 - [store-diagnostics-consistency](../workdown-items/store-diagnostics-consistency.md)
+- [time-tracking](../workdown-items/time-tracking.md)
 - [ui-build-integration](../workdown-items/ui-build-integration.md)
 
 ## in_progress
 - [phase-04-visualization](../workdown-items/phase-04-visualization.md)
+- [render-gantt-by-initiative](../workdown-items/render-gantt-by-initiative.md)
 
 ## done
 - [adr-phase-04-architecture](../workdown-items/adr-phase-04-architecture.md)

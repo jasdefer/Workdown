@@ -13,5 +13,5 @@ gantt
     Phase 04 Visualization :phase-04-visualization, 2026-04-24, 2026-07-02
 ```
 
-> _1 items dropped:_
-> _- missing 'start_date': "Foundation"_
+> _2 items dropped:_
+> _- missing 'start_date': "Foundation", "Time tracking"_
