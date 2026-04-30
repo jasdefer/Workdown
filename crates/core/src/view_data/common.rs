@@ -125,6 +125,14 @@ pub(super) fn as_date(value: Option<&FieldValue>) -> Option<NaiveDate> {
     }
 }
 
+/// Extract canonical seconds from a `Duration` field value, if it is one.
+pub(super) fn as_duration_seconds(value: Option<&FieldValue>) -> Option<i64> {
+    match value {
+        Some(FieldValue::Duration(seconds)) => Some(*seconds),
+        _ => None,
+    }
+}
+
 /// Extract a numeric value (`Integer`, `Float`, or `Duration`) as `f64`.
 ///
 /// Duration converts to its canonical seconds magnitude. Chart axes

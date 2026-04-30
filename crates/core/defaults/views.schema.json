@@ -132,17 +132,18 @@
 
     "gantt": {
       "type": "object",
-      "description": "Gantt timeline using start/end date fields, optionally grouped by a link field.",
+      "description": "Gantt timeline anchored at a start date. Each bar's end is determined either by an explicit end-date field (`end`) or by computing `start + duration` from a duration field (`duration`). Exactly one of `end` or `duration` must be set, enforced by `workdown validate`. Optionally grouped by a categorical or link field.",
       "properties": {
-        "id":    { "$ref": "#/$defs/view_id" },
-        "type":  { "const": "gantt" },
-        "where": { "$ref": "#/$defs/where_clauses" },
-        "title": { "$ref": "#/$defs/field_name" },
-        "start": { "$ref": "#/$defs/field_name" },
-        "end":   { "$ref": "#/$defs/field_name" },
-        "group": { "$ref": "#/$defs/field_name" }
+        "id":       { "$ref": "#/$defs/view_id" },
+        "type":     { "const": "gantt" },
+        "where":    { "$ref": "#/$defs/where_clauses" },
+        "title":    { "$ref": "#/$defs/field_name" },
+        "start":    { "$ref": "#/$defs/field_name" },
+        "end":      { "$ref": "#/$defs/field_name" },
+        "duration": { "$ref": "#/$defs/field_name" },
+        "group":    { "$ref": "#/$defs/field_name" }
       },
-      "required": ["id", "type", "start", "end"],
+      "required": ["id", "type", "start"],
       "additionalProperties": false
     },
 

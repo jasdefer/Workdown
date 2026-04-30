@@ -1,14 +1,31 @@
 //! Gantt view extractor.
 //!
 //! Emits one bar per filter-matched item with a valid `[start..=end]`
-//! window. Items missing either date or with `start > end` land in
-//! `unplaced` with a structured reason; `start == end` is a legitimate
-//! zero-duration bar and the renderer decides how to display it.
+//! window. Bars always carry resolved `(start, end)` `NaiveDate`s
+//! regardless of how the view declared them — the view configures one
+//! of two input recipes:
 //!
-//! The optional `group` slot resolves to a stringified field value per
-//! bar (via `format_field_value`), giving swim-lane style renderings
-//! something to group by; missing `group` values surface as `None` on
-//! the bar.
+//! - **`start + end`**: read both dates directly.
+//! - **`start + duration`**: read `start`, read the duration field's
+//!   canonical seconds, ceil to whole days, set `end = start + (days - 1)`.
+//!   The view is guaranteed to set exactly one of `end` / `duration` by
+//!   `views_check`.
+//!
+//! Inclusive `[start, end]` convention: `start == end` is a 1-day bar,
+//! matching Mermaid's two-date task syntax. So `duration = "1d"` yields
+//! `end = start` (1-day bar), `"5d"` yields `end = start + 4` (5-day bar).
+//!
+//! Sub-day durations ceil up: `4h` becomes a 1-day bar. Day-grid Mermaid
+//! can't represent sub-day ranges meaningfully; ceil keeps every hour of
+//! work visible on the chart.
+//!
+//! Non-positive durations (`0s`, `-2d`) naturally fall into `InvalidRange`:
+//! `ceil_days = 0` makes `end = start - 1`, which the existing
+//! `start > end` check catches without special-casing.
+//!
+//! Items missing a required value land in `unplaced` with a structured
+//! reason. The optional `group` slot resolves to a stringified field
+//! value per bar; missing `group` values surface as `None`.
 
 use chrono::NaiveDate;
 use serde::Serialize;
@@ -18,13 +35,14 @@ use crate::model::views::{View, ViewKind};
 use crate::query::format::format_field_value;
 use crate::store::Store;
 
-use super::common::{as_date, build_card, Card, UnplacedCard, UnplacedReason};
+use super::common::{as_date, as_duration_seconds, build_card, Card, UnplacedCard, UnplacedReason};
 use super::filter::filtered_items;
+
+/// Seconds per day for ceil-to-days conversion.
+const SECONDS_PER_DAY: i64 = 86_400;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct GanttData {
-    pub start_field: String,
-    pub end_field: String,
     pub group_field: Option<String>,
     pub bars: Vec<GanttBar>,
     pub unplaced: Vec<UnplacedCard>,
@@ -39,7 +57,13 @@ pub struct GanttBar {
 }
 
 pub fn extract_gantt(view: &View, store: &Store, schema: &Schema) -> GanttData {
-    let ViewKind::Gantt { start, end, group } = &view.kind else {
+    let ViewKind::Gantt {
+        start,
+        end,
+        duration,
+        group,
+    } = &view.kind
+    else {
         panic!("extract_gantt called with non-gantt view kind");
     };
     let items = filtered_items(view, store, schema);
@@ -49,41 +73,64 @@ pub fn extract_gantt(view: &View, store: &Store, schema: &Schema) -> GanttData {
 
     for item in &items {
         let card = build_card(item, schema, view);
-        let start_date = as_date(item.fields.get(start));
-        let end_date = as_date(item.fields.get(end));
-
-        match (start_date, end_date) {
-            (Some(start_date), Some(end_date)) => {
-                if start_date > end_date {
-                    unplaced.push(UnplacedCard {
-                        card,
-                        reason: UnplacedReason::InvalidRange {
-                            start_field: start.clone(),
-                            end_field: end.clone(),
-                        },
-                    });
-                } else {
-                    let group_value = group
-                        .as_deref()
-                        .and_then(|name| item.fields.get(name).map(format_field_value));
-                    bars.push(GanttBar {
-                        card,
-                        start: start_date,
-                        end: end_date,
-                        group: group_value,
-                    });
-                }
-            }
-            (None, _) => unplaced.push(UnplacedCard {
+        let Some(start_date) = as_date(item.fields.get(start)) else {
+            unplaced.push(UnplacedCard {
                 card,
                 reason: UnplacedReason::MissingValue {
                     field: start.clone(),
                 },
-            }),
-            (_, None) => unplaced.push(UnplacedCard {
-                card,
-                reason: UnplacedReason::MissingValue { field: end.clone() },
-            }),
+            });
+            continue;
+        };
+
+        let resolved_end = match (end, duration) {
+            (Some(end_field), None) => match as_date(item.fields.get(end_field)) {
+                Some(end_date) => Ok(end_date),
+                None => Err(UnplacedReason::MissingValue {
+                    field: end_field.clone(),
+                }),
+            },
+            (None, Some(duration_field)) => {
+                match as_duration_seconds(item.fields.get(duration_field)) {
+                    Some(seconds) => match end_from_duration(start_date, seconds) {
+                        Some(end_date) => Ok(end_date),
+                        None => Err(UnplacedReason::InvalidRange {
+                            start_field: start.clone(),
+                            end_field: duration_field.clone(),
+                        }),
+                    },
+                    None => Err(UnplacedReason::MissingValue {
+                        field: duration_field.clone(),
+                    }),
+                }
+            }
+            // views_check guarantees exactly one of (end, duration).
+            _ => unreachable!("views_check ensures exactly one of end / duration"),
+        };
+
+        match resolved_end {
+            Ok(end_date) if start_date > end_date => {
+                let end_field_name = end.as_ref().or(duration.as_ref()).cloned().unwrap();
+                unplaced.push(UnplacedCard {
+                    card,
+                    reason: UnplacedReason::InvalidRange {
+                        start_field: start.clone(),
+                        end_field: end_field_name,
+                    },
+                });
+            }
+            Ok(end_date) => {
+                let group_value = group
+                    .as_deref()
+                    .and_then(|name| item.fields.get(name).map(format_field_value));
+                bars.push(GanttBar {
+                    card,
+                    start: start_date,
+                    end: end_date,
+                    group: group_value,
+                });
+            }
+            Err(reason) => unplaced.push(UnplacedCard { card, reason }),
         }
     }
 
@@ -96,12 +143,29 @@ pub fn extract_gantt(view: &View, store: &Store, schema: &Schema) -> GanttData {
     unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
 
     GanttData {
-        start_field: start.clone(),
-        end_field: end.clone(),
         group_field: group.clone(),
         bars,
         unplaced,
     }
+}
+
+/// Compute the inclusive end date from a start date and a duration in
+/// canonical seconds. Returns `None` for non-positive durations or
+/// chrono date overflow — both routed to `InvalidRange` by the caller.
+///
+/// Sub-day durations ceil up: `4h` → 1 day → `end = start`. Whole-day
+/// durations: `1d` → 1 day → `end = start`; `5d` → 5 days → `end = start + 4`.
+fn end_from_duration(start: NaiveDate, seconds: i64) -> Option<NaiveDate> {
+    if seconds <= 0 {
+        return None;
+    }
+    // Ceil division: (s + 86399) / 86400. Pre-checked positive, so no
+    // sign edge cases and the worst case `i64::MAX + 86399` overflows
+    // i64 — guard with i128 arithmetic.
+    let ceil_days = ((seconds as i128 + (SECONDS_PER_DAY as i128 - 1)) / SECONDS_PER_DAY as i128)
+        .min(u64::MAX as i128) as u64;
+    // Inclusive end: a 1-day bar has end == start, so we add ceil_days - 1.
+    start.checked_add_days(chrono::Days::new(ceil_days.saturating_sub(1)))
 }
 
 /// Determine the ordered list of section labels for the bars.
@@ -153,7 +217,22 @@ mod tests {
             title: None,
             kind: ViewKind::Gantt {
                 start: start.to_owned(),
-                end: end.to_owned(),
+                end: Some(end.to_owned()),
+                duration: None,
+                group: group.map(str::to_owned),
+            },
+        }
+    }
+
+    fn gantt_view_duration(start: &str, duration: &str, group: Option<&str>) -> View {
+        View {
+            id: "my-gantt".into(),
+            where_clauses: vec![],
+            title: None,
+            kind: ViewKind::Gantt {
+                start: start.to_owned(),
+                end: None,
+                duration: Some(duration.to_owned()),
                 group: group.map(str::to_owned),
             },
         }
@@ -578,5 +657,227 @@ mod tests {
         assert_eq!(ids, vec!["with-team", "without-team"]);
         assert_eq!(data.bars[0].group.as_deref(), Some("eng"));
         assert_eq!(data.bars[1].group, None);
+    }
+
+    // ── Duration mode ────────────────────────────────────────────────
+
+    fn duration_schema() -> Schema {
+        make_schema(vec![
+            ("start", FieldTypeConfig::Date),
+            (
+                "estimate",
+                FieldTypeConfig::Duration {
+                    min: None,
+                    max: None,
+                },
+            ),
+        ])
+    }
+
+    fn duration_store(id: &str, start: NaiveDate, seconds: i64) -> (Schema, crate::store::Store) {
+        let schema = duration_schema();
+        let store = make_store(
+            &schema,
+            vec![make_item(
+                id,
+                vec![
+                    ("start", FieldValue::Date(start)),
+                    ("estimate", FieldValue::Duration(seconds)),
+                ],
+                "",
+            )],
+        );
+        (schema, store)
+    }
+
+    #[test]
+    fn duration_mode_full_day_value() {
+        // 5d → 5 days → end = start + 4 (inclusive convention)
+        let start = ymd(2026, 1, 1);
+        let (schema, store) = duration_store("a", start, 5 * 86_400);
+        let view = gantt_view_duration("start", "estimate", None);
+
+        let data = extract_gantt(&view, &store, &schema);
+
+        assert_eq!(data.bars.len(), 1);
+        assert_eq!(data.bars[0].start, start);
+        assert_eq!(data.bars[0].end, ymd(2026, 1, 5));
+        assert!(data.unplaced.is_empty());
+    }
+
+    #[test]
+    fn duration_mode_sub_day_ceils_to_one_day() {
+        // 4h → ceil to 1 day → end = start (1-day bar)
+        let start = ymd(2026, 1, 1);
+        let (schema, store) = duration_store("a", start, 4 * 3_600);
+        let view = gantt_view_duration("start", "estimate", None);
+
+        let data = extract_gantt(&view, &store, &schema);
+
+        assert_eq!(data.bars.len(), 1);
+        assert_eq!(data.bars[0].start, start);
+        assert_eq!(data.bars[0].end, start);
+    }
+
+    #[test]
+    fn duration_mode_compound_value() {
+        // 2w 3d = 17 days → end = start + 16
+        let start = ymd(2026, 1, 1);
+        let seconds = (2 * 7 + 3) * 86_400;
+        let (schema, store) = duration_store("a", start, seconds);
+        let view = gantt_view_duration("start", "estimate", None);
+
+        let data = extract_gantt(&view, &store, &schema);
+
+        assert_eq!(data.bars.len(), 1);
+        assert_eq!(data.bars[0].end, ymd(2026, 1, 17));
+    }
+
+    #[test]
+    fn duration_mode_one_day_exactly_yields_one_day_bar() {
+        // 1d → ceil to 1 day → end = start
+        let start = ymd(2026, 1, 1);
+        let (schema, store) = duration_store("a", start, 86_400);
+        let view = gantt_view_duration("start", "estimate", None);
+
+        let data = extract_gantt(&view, &store, &schema);
+
+        assert_eq!(data.bars[0].start, start);
+        assert_eq!(data.bars[0].end, start);
+    }
+
+    #[test]
+    fn duration_mode_one_second_over_one_day_yields_two_day_bar() {
+        // 1d + 1s → ceil to 2 days → end = start + 1
+        let start = ymd(2026, 1, 1);
+        let (schema, store) = duration_store("a", start, 86_401);
+        let view = gantt_view_duration("start", "estimate", None);
+
+        let data = extract_gantt(&view, &store, &schema);
+
+        assert_eq!(data.bars[0].end, ymd(2026, 1, 2));
+    }
+
+    #[test]
+    fn duration_mode_missing_duration_value_unplaces() {
+        let schema = duration_schema();
+        let store = make_store(
+            &schema,
+            vec![make_item(
+                "a",
+                vec![("start", FieldValue::Date(ymd(2026, 1, 1)))],
+                "",
+            )],
+        );
+        let view = gantt_view_duration("start", "estimate", None);
+
+        let data = extract_gantt(&view, &store, &schema);
+
+        assert!(data.bars.is_empty());
+        match &data.unplaced[0].reason {
+            UnplacedReason::MissingValue { field } => assert_eq!(field, "estimate"),
+            other => panic!("expected MissingValue for duration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn duration_mode_missing_start_unplaces_with_start_field() {
+        let schema = duration_schema();
+        let store = make_store(
+            &schema,
+            vec![make_item(
+                "a",
+                vec![("estimate", FieldValue::Duration(86_400))],
+                "",
+            )],
+        );
+        let view = gantt_view_duration("start", "estimate", None);
+
+        let data = extract_gantt(&view, &store, &schema);
+
+        match &data.unplaced[0].reason {
+            UnplacedReason::MissingValue { field } => assert_eq!(field, "start"),
+            other => panic!("expected MissingValue for start, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn duration_mode_zero_duration_unplaces_invalid_range() {
+        let start = ymd(2026, 1, 1);
+        let (schema, store) = duration_store("a", start, 0);
+        let view = gantt_view_duration("start", "estimate", None);
+
+        let data = extract_gantt(&view, &store, &schema);
+
+        assert!(data.bars.is_empty());
+        match &data.unplaced[0].reason {
+            UnplacedReason::InvalidRange { .. } => {}
+            other => panic!("expected InvalidRange, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn duration_mode_negative_duration_unplaces_invalid_range() {
+        let start = ymd(2026, 1, 1);
+        let (schema, store) = duration_store("a", start, -2 * 86_400);
+        let view = gantt_view_duration("start", "estimate", None);
+
+        let data = extract_gantt(&view, &store, &schema);
+
+        assert!(data.bars.is_empty());
+        match &data.unplaced[0].reason {
+            UnplacedReason::InvalidRange { .. } => {}
+            other => panic!("expected InvalidRange, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn duration_mode_equivalent_to_end_mode() {
+        // Two views over the same store: one with explicit end_date,
+        // one with duration. Expect identical bar windows.
+        let start = ymd(2026, 1, 1);
+        let end = ymd(2026, 1, 5);
+        let dur_seconds = 5 * 86_400;
+
+        let schema = make_schema(vec![
+            ("start", FieldTypeConfig::Date),
+            ("end", FieldTypeConfig::Date),
+            (
+                "estimate",
+                FieldTypeConfig::Duration {
+                    min: None,
+                    max: None,
+                },
+            ),
+        ]);
+        let store = make_store(
+            &schema,
+            vec![make_item(
+                "a",
+                vec![
+                    ("start", FieldValue::Date(start)),
+                    ("end", FieldValue::Date(end)),
+                    ("estimate", FieldValue::Duration(dur_seconds)),
+                ],
+                "",
+            )],
+        );
+
+        let end_view = gantt_view("start", "end", None);
+        let dur_view = gantt_view_duration("start", "estimate", None);
+
+        let end_data = extract_gantt(&end_view, &store, &schema);
+        let dur_data = extract_gantt(&dur_view, &store, &schema);
+
+        // Structural equivalence: same number of bars, same windows.
+        assert_eq!(end_data.bars.len(), dur_data.bars.len());
+        for (a, b) in end_data.bars.iter().zip(dur_data.bars.iter()) {
+            assert_eq!(a.card.id.as_str(), b.card.id.as_str());
+            assert_eq!(a.start, b.start);
+            assert_eq!(a.end, b.end);
+            assert_eq!(a.group, b.group);
+        }
+        assert!(end_data.unplaced.is_empty());
+        assert!(dur_data.unplaced.is_empty());
     }
 }

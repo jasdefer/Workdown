@@ -62,7 +62,13 @@ pub enum ViewKind {
     },
     Gantt {
         start: String,
-        end: String,
+        /// Date field naming the bar's end. Mutually exclusive with
+        /// `duration`: exactly one is set per view, enforced by
+        /// `views_check`.
+        end: Option<String>,
+        /// Duration field used to compute the bar's end as
+        /// `start + duration`. Mutually exclusive with `end`.
+        duration: Option<String>,
         group: Option<String>,
     },
     BarChart {

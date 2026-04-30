@@ -1,7 +1,7 @@
 ---
 id: gantt-duration-mode
 type: issue
-status: to_do
+status: done
 title: Gantt duration input mode
 parent: renderers
 depends_on: [render-gantt, duration-field-type]

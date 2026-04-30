@@ -162,7 +162,9 @@ fn file_for_diagnostic(
         | DiagnosticKind::ViewCountAggregateWithValue { .. }
         | DiagnosticKind::ViewAggregateTypeMismatch { .. }
         | DiagnosticKind::ViewGroupByCyclic { .. }
-        | DiagnosticKind::ViewGroupByInverseNotAllowed { .. } => {
+        | DiagnosticKind::ViewGroupByInverseNotAllowed { .. }
+        | DiagnosticKind::ViewGanttEndOrDurationRequired { .. }
+        | DiagnosticKind::ViewGanttEndAndDurationConflict { .. } => {
             Some(project_root.join(&config.paths.views))
         }
     }

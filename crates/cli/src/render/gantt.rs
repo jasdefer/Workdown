@@ -229,8 +229,6 @@ mod tests {
         unplaced: Vec<UnplacedCard>,
     ) -> GanttData {
         GanttData {
-            start_field: "start".into(),
-            end_field: "end".into(),
             group_field: group_field.map(str::to_owned),
             bars,
             unplaced,

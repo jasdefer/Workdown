@@ -134,7 +134,12 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 check_slot(schema, view_id, "columns", column, &[], "", out);
             }
         }
-        ViewKind::Gantt { start, end, group } => {
+        ViewKind::Gantt {
+            start,
+            end,
+            duration,
+            group,
+        } => {
             check_slot(
                 schema,
                 view_id,
@@ -144,7 +149,36 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 "date",
                 out,
             );
-            check_slot(schema, view_id, "end", end, &[FieldType::Date], "date", out);
+            // Cross-slot rule: exactly one of `end` / `duration`. When the
+            // user sets both or neither, emit the combination diagnostic
+            // and skip type-checking either field — once they pick one,
+            // the next pass surfaces any field-type errors on it.
+            match (end, duration) {
+                (Some(_), Some(_)) => out.push(error(
+                    DiagnosticKind::ViewGanttEndAndDurationConflict {
+                        view_id: view_id.to_owned(),
+                    },
+                )),
+                (None, None) => out.push(error(
+                    DiagnosticKind::ViewGanttEndOrDurationRequired {
+                        view_id: view_id.to_owned(),
+                    },
+                )),
+                (Some(end), None) => {
+                    check_slot(schema, view_id, "end", end, &[FieldType::Date], "date", out);
+                }
+                (None, Some(duration)) => {
+                    check_slot(
+                        schema,
+                        view_id,
+                        "duration",
+                        duration,
+                        &[FieldType::Duration],
+                        "duration",
+                        out,
+                    );
+                }
+            }
             if let Some(group) = group {
                 check_slot(
                     schema,
@@ -619,6 +653,13 @@ mod tests {
                     max: None,
                 },
             ),
+            (
+                "estimate",
+                FieldTypeConfig::Duration {
+                    min: None,
+                    max: None,
+                },
+            ),
             ("assignee", FieldTypeConfig::String { pattern: None }),
         ])
     }
@@ -886,7 +927,8 @@ mod tests {
         let diagnostics = evaluate(
             &one_view(ViewKind::Gantt {
                 start: "effort".into(), // integer
-                end: "end_date".into(),
+                end: Some("end_date".into()),
+                duration: None,
                 group: None,
             }),
             &simple_schema(),
@@ -905,7 +947,8 @@ mod tests {
             let diagnostics = evaluate(
                 &one_view(ViewKind::Gantt {
                     start: "start_date".into(),
-                    end: "end_date".into(),
+                    end: Some("end_date".into()),
+                    duration: None,
                     group: Some(field.into()),
                 }),
                 &simple_schema(),
@@ -922,7 +965,8 @@ mod tests {
         let diagnostics = evaluate(
             &one_view(ViewKind::Gantt {
                 start: "start_date".into(),
-                end: "end_date".into(),
+                end: Some("end_date".into()),
+                duration: None,
                 group: Some("effort".into()), // integer
             }),
             &simple_schema(),
@@ -932,6 +976,72 @@ mod tests {
             DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
                 if *slot == "group" && *actual_type == FieldType::Integer
         ));
+    }
+
+    #[test]
+    fn gantt_neither_end_nor_duration_errors() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Gantt {
+                start: "start_date".into(),
+                end: None,
+                duration: None,
+                group: None,
+            }),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewGanttEndOrDurationRequired { .. }
+        ));
+    }
+
+    #[test]
+    fn gantt_both_end_and_duration_errors() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Gantt {
+                start: "start_date".into(),
+                end: Some("end_date".into()),
+                duration: Some("estimate".into()),
+                group: None,
+            }),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewGanttEndAndDurationConflict { .. }
+        ));
+    }
+
+    #[test]
+    fn gantt_duration_must_be_duration_field() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Gantt {
+                start: "start_date".into(),
+                end: None,
+                duration: Some("end_date".into()), // date, not duration
+                group: None,
+            }),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+                if *slot == "duration" && *actual_type == FieldType::Date
+        ));
+    }
+
+    #[test]
+    fn gantt_duration_with_correct_type_passes() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Gantt {
+                start: "start_date".into(),
+                end: None,
+                duration: Some("estimate".into()),
+                group: None,
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "expected no diagnostics, got {diagnostics:?}");
     }
 
     #[test]
@@ -1460,7 +1570,9 @@ mod tests {
 
     #[test]
     fn parse_multiple_validation_errors_produce_multiple_diagnostics() {
-        let yaml = "views:\n  - id: x\n    type: gantt\n    start: start_date\n  - id: y\n    type: bar_chart\n    group_by: status\n";
+        // tree missing `field`, bar_chart missing `aggregate` — both
+        // produce parse-stage MissingSlot diagnostics that stack.
+        let yaml = "views:\n  - id: x\n    type: tree\n  - id: y\n    type: bar_chart\n    group_by: status\n";
         let err = parse_views(yaml).unwrap_err();
         let diagnostics = parse_errors_to_diagnostics(err, &view_path());
         assert_eq!(diagnostics.len(), 2);

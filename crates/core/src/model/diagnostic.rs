@@ -163,6 +163,14 @@ pub enum DiagnosticKind {
     /// the original Link field (parent direction) is accepted, since the
     /// inverse direction is one-to-many and can't form unique nesting.
     ViewGroupByInverseNotAllowed { view_id: String, field_name: String },
+
+    /// A gantt view sets neither `end` nor `duration`. Exactly one is
+    /// required: bars need a way to determine where they finish.
+    ViewGanttEndOrDurationRequired { view_id: String },
+
+    /// A gantt view sets both `end` and `duration`. They are alternative
+    /// ways to specify when the bar ends; pick one.
+    ViewGanttEndAndDurationConflict { view_id: String },
 }
 
 // ── Field value errors ───────────────────────────────────────────────
@@ -378,6 +386,18 @@ impl std::fmt::Display for Diagnostic {
                 write!(
                     f,
                     "view '{view_id}', slot 'group_by': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
+                )
+            }
+            DiagnosticKind::ViewGanttEndOrDurationRequired { view_id } => {
+                write!(
+                    f,
+                    "view '{view_id}': gantt requires exactly one of 'end' or 'duration'"
+                )
+            }
+            DiagnosticKind::ViewGanttEndAndDurationConflict { view_id } => {
+                write!(
+                    f,
+                    "view '{view_id}': gantt has both 'end' and 'duration' set; pick one"
                 )
             }
         }

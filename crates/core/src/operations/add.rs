@@ -353,7 +353,9 @@ fn is_diagnostic_for_item(diagnostic: &Diagnostic, item_id: &WorkItemId) -> bool
         | DiagnosticKind::ViewCountAggregateWithValue { .. }
         | DiagnosticKind::ViewAggregateTypeMismatch { .. }
         | DiagnosticKind::ViewGroupByCyclic { .. }
-        | DiagnosticKind::ViewGroupByInverseNotAllowed { .. } => false,
+        | DiagnosticKind::ViewGroupByInverseNotAllowed { .. }
+        | DiagnosticKind::ViewGanttEndOrDurationRequired { .. }
+        | DiagnosticKind::ViewGanttEndAndDurationConflict { .. } => false,
     }
 }
 

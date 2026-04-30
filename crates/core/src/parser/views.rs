@@ -149,6 +149,8 @@ struct RawView {
     #[serde(default)]
     end: Option<String>,
     #[serde(default)]
+    duration: Option<String>,
+    #[serde(default)]
     effort: Option<String>,
     #[serde(default)]
     group: Option<String>,
@@ -200,7 +202,8 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
         },
         ViewType::Gantt => ViewKind::Gantt {
             start: require(raw.start, &id, view_type, "start")?,
-            end: require(raw.end, &id, view_type, "end")?,
+            end: raw.end,
+            duration: raw.duration,
             group: raw.group,
         },
         ViewType::BarChart => ViewKind::BarChart {
@@ -373,10 +376,37 @@ mod tests {
             "views:\n  - id: roadmap\n    type: gantt\n    start: start_date\n    end: end_date\n    group: parent\n",
         );
         match view.kind {
-            ViewKind::Gantt { start, end, group } => {
+            ViewKind::Gantt {
+                start,
+                end,
+                duration,
+                group,
+            } => {
                 assert_eq!(start, "start_date");
-                assert_eq!(end, "end_date");
+                assert_eq!(end.as_deref(), Some("end_date"));
+                assert_eq!(duration, None);
                 assert_eq!(group.as_deref(), Some("parent"));
+            }
+            other => panic!("expected Gantt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_with_duration() {
+        let view = parse_single(
+            "views:\n  - id: roadmap\n    type: gantt\n    start: start_date\n    duration: estimate\n",
+        );
+        match view.kind {
+            ViewKind::Gantt {
+                start,
+                end,
+                duration,
+                group,
+            } => {
+                assert_eq!(start, "start_date");
+                assert_eq!(end, None);
+                assert_eq!(duration.as_deref(), Some("estimate"));
+                assert_eq!(group, None);
             }
             other => panic!("expected Gantt, got {other:?}"),
         }
@@ -585,7 +615,9 @@ views:
 
     #[test]
     fn multiple_errors_reported_together() {
-        let yaml = "views:\n  - id: x\n    type: gantt\n    start: start_date\n  - id: y\n    type: bar_chart\n    group_by: status\n";
+        // tree missing `field`, bar_chart missing `aggregate` — both
+        // produce parse-stage MissingSlot errors that stack.
+        let yaml = "views:\n  - id: x\n    type: tree\n  - id: y\n    type: bar_chart\n    group_by: status\n";
         let err = parse_views(yaml).unwrap_err();
         match err {
             ViewsLoadError::Validation(errors) => assert_eq!(errors.len(), 2),
