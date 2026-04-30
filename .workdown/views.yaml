@@ -57,3 +57,12 @@ views:
     title: title
     where:
       - "type=milestone,epic"
+
+  - id: roadmap-by-depth
+    type: gantt_by_depth
+    start: start_date
+    end: end_date
+    depth_link: parent
+    title: title
+    where:
+      - "type=milestone,epic"

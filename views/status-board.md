@@ -11,7 +11,6 @@
 - [polish](../workdown-items/polish.md)
 - [render-bar-chart](../workdown-items/render-bar-chart.md)
 - [render-command](../workdown-items/render-command.md)
-- [render-gantt-by-depth](../workdown-items/render-gantt-by-depth.md)
 - [render-heatmap](../workdown-items/render-heatmap.md)
 - [render-line-chart](../workdown-items/render-line-chart.md)
 - [render-metric](../workdown-items/render-metric.md)
@@ -28,7 +27,6 @@
 
 ## in_progress
 - [phase-04-visualization](../workdown-items/phase-04-visualization.md)
-- [render-gantt-by-initiative](../workdown-items/render-gantt-by-initiative.md)
 
 ## done
 - [adr-phase-04-architecture](../workdown-items/adr-phase-04-architecture.md)
@@ -41,6 +39,8 @@
 - [gantt-predecessor-mode](../workdown-items/gantt-predecessor-mode.md)
 - [render-board](../workdown-items/render-board.md)
 - [render-gantt](../workdown-items/render-gantt.md)
+- [render-gantt-by-depth](../workdown-items/render-gantt-by-depth.md)
+- [render-gantt-by-initiative](../workdown-items/render-gantt-by-initiative.md)
 - [render-graph](../workdown-items/render-graph.md)
 - [render-table](../workdown-items/render-table.md)
 - [render-tree](../workdown-items/render-tree.md)
