@@ -13,7 +13,7 @@
 | [foundation-cleanup](../workdown-items/foundation-cleanup.md) | issue | done | [foundation](../workdown-items/foundation.md) |  |
 | [frontend](../workdown-items/frontend.md) | milestone | to_do | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [server](../workdown-items/server.md) |
 | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) | issue | done | [renderers](../workdown-items/renderers.md) | [render-gantt](../workdown-items/render-gantt.md), [duration-field-type](../workdown-items/duration-field-type.md) |
-| [gantt-predecessor-mode](../workdown-items/gantt-predecessor-mode.md) | issue | to_do | [renderers](../workdown-items/renderers.md) | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) |
+| [gantt-predecessor-mode](../workdown-items/gantt-predecessor-mode.md) | issue | done | [renderers](../workdown-items/renderers.md) | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) |
 | [item-mutations](../workdown-items/item-mutations.md) | milestone | to_do | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md) |
 | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | epic | in_progress |  |  |
 | [polish](../workdown-items/polish.md) | milestone | to_do | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [frontend](../workdown-items/frontend.md) |
