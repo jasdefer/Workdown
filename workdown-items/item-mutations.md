@@ -6,7 +6,7 @@ title: Item mutations
 parent: phase-04-visualization
 depends_on: [foundation]
 start_date: 2026-05-02
-end_date: 2026-05-07
+end_date: 2026-05-06
 duration: "5d"
 ---
 

@@ -16,6 +16,7 @@
     - [cli-move-command](../workdown-items/cli-move-command.md)
     - [cli-set-command](../workdown-items/cli-set-command.md)
   - [polish](../workdown-items/polish.md)
+    - [store-diagnostics-consistency](../workdown-items/store-diagnostics-consistency.md)
   - [renderers](../workdown-items/renderers.md)
     - [aggregate-rollup](../workdown-items/aggregate-rollup.md)
     - [duration-field-type](../workdown-items/duration-field-type.md)

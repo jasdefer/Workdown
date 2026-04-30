@@ -6,7 +6,7 @@ title: Frontend
 parent: phase-04-visualization
 depends_on: [server]
 start_date: 2026-05-27
-end_date: 2026-06-26
+end_date: 2026-06-25
 duration: "4w 2d"
 ---
 

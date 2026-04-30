@@ -1,13 +1,10 @@
 # Board: status
 
 ## to_do
-- [aggregate-rollup](../workdown-items/aggregate-rollup.md)
 - [cli-add-audit](../workdown-items/cli-add-audit.md)
 - [cli-move-command](../workdown-items/cli-move-command.md)
 - [cli-set-command](../workdown-items/cli-set-command.md)
-- [duration-field-type](../workdown-items/duration-field-type.md)
 - [frontend](../workdown-items/frontend.md)
-- [gantt-duration-mode](../workdown-items/gantt-duration-mode.md)
 - [gantt-predecessor-mode](../workdown-items/gantt-predecessor-mode.md)
 - [item-mutations](../workdown-items/item-mutations.md)
 - [polish](../workdown-items/polish.md)
@@ -25,6 +22,7 @@
 - [server](../workdown-items/server.md)
 - [server-endpoints-and-mutations](../workdown-items/server-endpoints-and-mutations.md)
 - [server-sse-file-watching](../workdown-items/server-sse-file-watching.md)
+- [store-diagnostics-consistency](../workdown-items/store-diagnostics-consistency.md)
 - [ui-build-integration](../workdown-items/ui-build-integration.md)
 
 ## in_progress
@@ -32,9 +30,12 @@
 
 ## done
 - [adr-phase-04-architecture](../workdown-items/adr-phase-04-architecture.md)
+- [aggregate-rollup](../workdown-items/aggregate-rollup.md)
+- [duration-field-type](../workdown-items/duration-field-type.md)
 - [field-value-native-date](../workdown-items/field-value-native-date.md)
 - [foundation](../workdown-items/foundation.md)
 - [foundation-cleanup](../workdown-items/foundation-cleanup.md)
+- [gantt-duration-mode](../workdown-items/gantt-duration-mode.md)
 - [render-board](../workdown-items/render-board.md)
 - [render-gantt](../workdown-items/render-gantt.md)
 - [render-graph](../workdown-items/render-graph.md)

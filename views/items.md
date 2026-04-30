@@ -3,16 +3,16 @@
 | id | type | status | parent | depends_on |
 | --- | --- | --- | --- | --- |
 | [adr-phase-04-architecture](../workdown-items/adr-phase-04-architecture.md) | issue | done | [foundation](../workdown-items/foundation.md) |  |
-| [aggregate-rollup](../workdown-items/aggregate-rollup.md) | issue | to_do | [renderers](../workdown-items/renderers.md) |  |
+| [aggregate-rollup](../workdown-items/aggregate-rollup.md) | issue | done | [renderers](../workdown-items/renderers.md) |  |
 | [cli-add-audit](../workdown-items/cli-add-audit.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) |  |
 | [cli-move-command](../workdown-items/cli-move-command.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) | [cli-set-command](../workdown-items/cli-set-command.md) |
 | [cli-set-command](../workdown-items/cli-set-command.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) |  |
-| [duration-field-type](../workdown-items/duration-field-type.md) | issue | to_do | [renderers](../workdown-items/renderers.md) |  |
+| [duration-field-type](../workdown-items/duration-field-type.md) | issue | done | [renderers](../workdown-items/renderers.md) |  |
 | [field-value-native-date](../workdown-items/field-value-native-date.md) | issue | done | [renderers](../workdown-items/renderers.md) |  |
 | [foundation](../workdown-items/foundation.md) | milestone | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) |  |
 | [foundation-cleanup](../workdown-items/foundation-cleanup.md) | issue | done | [foundation](../workdown-items/foundation.md) |  |
 | [frontend](../workdown-items/frontend.md) | milestone | to_do | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [server](../workdown-items/server.md) |
-| [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) | issue | to_do | [renderers](../workdown-items/renderers.md) | [render-gantt](../workdown-items/render-gantt.md), [duration-field-type](../workdown-items/duration-field-type.md) |
+| [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) | issue | done | [renderers](../workdown-items/renderers.md) | [render-gantt](../workdown-items/render-gantt.md), [duration-field-type](../workdown-items/duration-field-type.md) |
 | [gantt-predecessor-mode](../workdown-items/gantt-predecessor-mode.md) | issue | to_do | [renderers](../workdown-items/renderers.md) | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) |
 | [item-mutations](../workdown-items/item-mutations.md) | milestone | to_do | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md) |
 | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | epic | in_progress |  |  |
@@ -36,6 +36,7 @@
 | [server](../workdown-items/server.md) | milestone | to_do | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md), [item-mutations](../workdown-items/item-mutations.md) |
 | [server-endpoints-and-mutations](../workdown-items/server-endpoints-and-mutations.md) | issue | to_do | [server](../workdown-items/server.md) | [serve-command-skeleton](../workdown-items/serve-command-skeleton.md), [renderers](../workdown-items/renderers.md), [item-mutations](../workdown-items/item-mutations.md) |
 | [server-sse-file-watching](../workdown-items/server-sse-file-watching.md) | issue | to_do | [server](../workdown-items/server.md) | [server-endpoints-and-mutations](../workdown-items/server-endpoints-and-mutations.md) |
+| [store-diagnostics-consistency](../workdown-items/store-diagnostics-consistency.md) | issue | to_do | [polish](../workdown-items/polish.md) |  |
 | [ui-build-integration](../workdown-items/ui-build-integration.md) | issue | to_do | [server](../workdown-items/server.md) | [serve-command-skeleton](../workdown-items/serve-command-skeleton.md) |
 | [view-data-intermediate](../workdown-items/view-data-intermediate.md) | issue | done | [renderers](../workdown-items/renderers.md) | [field-value-native-date](../workdown-items/field-value-native-date.md), [views-title-slot](../workdown-items/views-title-slot.md) |
 | [views-config-path](../workdown-items/views-config-path.md) | issue | done | [foundation](../workdown-items/foundation.md) |  |

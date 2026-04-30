@@ -29,3 +29,12 @@ views:
     title: title
     where:
       - "type=milestone,epic"
+
+  - id: roadmap-by-duration
+    type: gantt
+    start: start_date
+    duration: duration
+    group: type
+    title: title
+    where:
+      - "type=milestone,epic"

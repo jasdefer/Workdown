@@ -6,7 +6,7 @@ title: Interactive server
 parent: phase-04-visualization
 depends_on: [foundation, item-mutations]
 start_date: 2026-05-07
-end_date: 2026-05-27
+end_date: 2026-05-26
 duration: "20d"
 ---
 

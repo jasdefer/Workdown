@@ -19,7 +19,9 @@ flowchart TD
             cli-move-command["workdown move — shortcut for the board field"]
             cli-set-command["workdown set — generic field mutation"]
         end
-        polish["Polish & dogfood"]
+        subgraph polish ["Polish & dogfood"]
+            store-diagnostics-consistency["Make store-diagnostic surfacing consistent across commands"]
+        end
         subgraph renderers ["Renderers"]
             aggregate-rollup["Compute schema-declared aggregate fields up the parent chain"]
             duration-field-type["Add `duration` field type"]

@@ -6,7 +6,7 @@ title: Renderers
 parent: phase-04-visualization
 depends_on: [foundation]
 start_date: 2026-04-24
-end_date: 2026-05-02
+end_date: 2026-05-01
 duration: "8d"
 ---
 
