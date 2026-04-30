@@ -77,6 +77,23 @@ pub enum ViewKind {
         after: Option<String>,
         group: Option<String>,
     },
+    /// Gantt partitioned by initiative: one chart per top-level ancestor
+    /// of `root_link`. Per-bar resolution mirrors `Gantt` (same three
+    /// input recipes); items are bucketed by walking `root_link` upward
+    /// against the full store, so chains span filter boundaries. No
+    /// per-chart `group` slot — each chart is already scoped to one
+    /// initiative.
+    GanttByInitiative {
+        start: String,
+        end: Option<String>,
+        duration: Option<String>,
+        after: Option<String>,
+        /// Single-target `Link` field whose chain is walked upward to
+        /// find each item's initiative root. Must have
+        /// `allow_cycles: false` and not be an inverse name. Validated
+        /// in `views_check`.
+        root_link: String,
+    },
     BarChart {
         group_by: String,
         value: Option<String>,
@@ -118,6 +135,7 @@ impl ViewKind {
             Self::Graph { .. } => ViewType::Graph,
             Self::Table { .. } => ViewType::Table,
             Self::Gantt { .. } => ViewType::Gantt,
+            Self::GanttByInitiative { .. } => ViewType::GanttByInitiative,
             Self::BarChart { .. } => ViewType::BarChart,
             Self::LineChart { .. } => ViewType::LineChart,
             Self::Workload { .. } => ViewType::Workload,
@@ -137,6 +155,7 @@ pub enum ViewType {
     Graph,
     Table,
     Gantt,
+    GanttByInitiative,
     BarChart,
     LineChart,
     Workload,
@@ -153,6 +172,7 @@ impl std::fmt::Display for ViewType {
             Self::Graph => "graph",
             Self::Table => "table",
             Self::Gantt => "gantt",
+            Self::GanttByInitiative => "gantt_by_initiative",
             Self::BarChart => "bar_chart",
             Self::LineChart => "line_chart",
             Self::Workload => "workload",

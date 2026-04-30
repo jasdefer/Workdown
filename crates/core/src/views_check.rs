@@ -141,74 +141,15 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             after,
             group,
         } => {
-            check_slot(
+            check_gantt_input_modes(
                 schema,
                 view_id,
-                "start",
                 start,
-                &[FieldType::Date],
-                "date",
+                end.as_deref(),
+                duration.as_deref(),
+                after.as_deref(),
                 out,
             );
-            // Cross-slot rules. Three valid combinations:
-            //   (start, end)         — bar window read directly
-            //   (start, duration)    — end computed as start + duration
-            //   (start, after, dur)  — start anchored on predecessors,
-            //                          end computed as start + duration
-            // Anything else is rejected. When a combination is invalid
-            // we still type-check whatever fields are present so the
-            // user gets all the actionable feedback in one pass.
-            if let Some(after_field) = after {
-                if end.is_some() {
-                    out.push(error(DiagnosticKind::ViewGanttAfterWithEndConflict {
-                        view_id: view_id.to_owned(),
-                    }));
-                }
-                if duration.is_none() {
-                    out.push(error(DiagnosticKind::ViewGanttAfterRequiresDuration {
-                        view_id: view_id.to_owned(),
-                    }));
-                }
-                check_after_slot(schema, view_id, after_field, out);
-                if let Some(duration) = duration {
-                    check_slot(
-                        schema,
-                        view_id,
-                        "duration",
-                        duration,
-                        &[FieldType::Duration],
-                        "duration",
-                        out,
-                    );
-                }
-            } else {
-                match (end, duration) {
-                    (Some(_), Some(_)) => out.push(error(
-                        DiagnosticKind::ViewGanttEndAndDurationConflict {
-                            view_id: view_id.to_owned(),
-                        },
-                    )),
-                    (None, None) => out.push(error(
-                        DiagnosticKind::ViewGanttEndOrDurationRequired {
-                            view_id: view_id.to_owned(),
-                        },
-                    )),
-                    (Some(end), None) => {
-                        check_slot(schema, view_id, "end", end, &[FieldType::Date], "date", out);
-                    }
-                    (None, Some(duration)) => {
-                        check_slot(
-                            schema,
-                            view_id,
-                            "duration",
-                            duration,
-                            &[FieldType::Duration],
-                            "duration",
-                            out,
-                        );
-                    }
-                }
-            }
             if let Some(group) = group {
                 check_slot(
                     schema,
@@ -227,6 +168,24 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                     out,
                 );
             }
+        }
+        ViewKind::GanttByInitiative {
+            start,
+            end,
+            duration,
+            after,
+            root_link,
+        } => {
+            check_gantt_input_modes(
+                schema,
+                view_id,
+                start,
+                end.as_deref(),
+                duration.as_deref(),
+                after.as_deref(),
+                out,
+            );
+            check_root_link_slot(schema, view_id, root_link, out);
         }
         ViewKind::BarChart {
             group_by,
@@ -476,6 +435,144 @@ fn check_graph_group_by(
             out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
                 view_id: view_id.to_owned(),
                 slot: "group_by",
+                field_name: field_name.to_owned(),
+                actual_type: def.field_type(),
+                expected: "link".to_owned(),
+            }));
+        }
+    }
+}
+
+// ── Gantt input-mode helper ──────────────────────────────────────────
+
+/// Validate the `start` slot and the cross-slot input-mode rules shared
+/// by [`ViewKind::Gantt`] and [`ViewKind::GanttByInitiative`]. Three
+/// valid combinations:
+///   (start, end)         — bar window read directly
+///   (start, duration)    — end computed as start + duration
+///   (start, after, dur)  — start anchored on predecessors,
+///                          end computed as start + duration
+/// Anything else is rejected. When a combination is invalid we still
+/// type-check whatever fields are present so the user gets all the
+/// actionable feedback in one pass.
+fn check_gantt_input_modes(
+    schema: &Schema,
+    view_id: &str,
+    start: &str,
+    end: Option<&str>,
+    duration: Option<&str>,
+    after: Option<&str>,
+    out: &mut Vec<Diagnostic>,
+) {
+    check_slot(
+        schema,
+        view_id,
+        "start",
+        start,
+        &[FieldType::Date],
+        "date",
+        out,
+    );
+    if let Some(after_field) = after {
+        if end.is_some() {
+            out.push(error(DiagnosticKind::ViewGanttAfterWithEndConflict {
+                view_id: view_id.to_owned(),
+            }));
+        }
+        if duration.is_none() {
+            out.push(error(DiagnosticKind::ViewGanttAfterRequiresDuration {
+                view_id: view_id.to_owned(),
+            }));
+        }
+        check_after_slot(schema, view_id, after_field, out);
+        if let Some(duration) = duration {
+            check_slot(
+                schema,
+                view_id,
+                "duration",
+                duration,
+                &[FieldType::Duration],
+                "duration",
+                out,
+            );
+        }
+    } else {
+        match (end, duration) {
+            (Some(_), Some(_)) => {
+                out.push(error(DiagnosticKind::ViewGanttEndAndDurationConflict {
+                    view_id: view_id.to_owned(),
+                }))
+            }
+            (None, None) => out.push(error(DiagnosticKind::ViewGanttEndOrDurationRequired {
+                view_id: view_id.to_owned(),
+            })),
+            (Some(end), None) => {
+                check_slot(schema, view_id, "end", end, &[FieldType::Date], "date", out);
+            }
+            (None, Some(duration)) => {
+                check_slot(
+                    schema,
+                    view_id,
+                    "duration",
+                    duration,
+                    &[FieldType::Duration],
+                    "duration",
+                    out,
+                );
+            }
+        }
+    }
+}
+
+// ── Gantt root_link slot helper ──────────────────────────────────────
+
+/// Validate the `root_link` slot on a `gantt_by_initiative` view.
+///
+/// Initiative partitioning walks the chain upward to find each item's
+/// root, so the slot requires:
+/// - the field exists in the schema (not an inverse name);
+/// - the field is a single-target `Link` (not `Links`, since each item
+///   must belong to exactly one initiative);
+/// - cycles are explicitly disabled (`allow_cycles: false`).
+///
+/// Each rule has its own diagnostic so the error message points at the
+/// actual constraint violated. Mirrors `check_after_slot`'s structure
+/// but Link-only and with root_link-specific diagnostic kinds.
+fn check_root_link_slot(
+    schema: &Schema,
+    view_id: &str,
+    field_name: &str,
+    out: &mut Vec<Diagnostic>,
+) {
+    let Some(def) = schema.fields.get(field_name) else {
+        if schema.inverse_table.contains_key(field_name) {
+            out.push(error(DiagnosticKind::ViewGanttRootLinkInverseNotAllowed {
+                view_id: view_id.to_owned(),
+                field_name: field_name.to_owned(),
+            }));
+        } else {
+            out.push(error(DiagnosticKind::ViewUnknownField {
+                view_id: view_id.to_owned(),
+                slot: "root_link",
+                field_name: field_name.to_owned(),
+            }));
+        }
+        return;
+    };
+
+    match &def.type_config {
+        FieldTypeConfig::Link { allow_cycles, .. } => {
+            if *allow_cycles != Some(false) {
+                out.push(error(DiagnosticKind::ViewGanttRootLinkCyclic {
+                    view_id: view_id.to_owned(),
+                    field_name: field_name.to_owned(),
+                }));
+            }
+        }
+        _ => {
+            out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
+                view_id: view_id.to_owned(),
+                slot: "root_link",
                 field_name: field_name.to_owned(),
                 actual_type: def.field_type(),
                 expected: "link".to_owned(),
@@ -1129,7 +1226,10 @@ mod tests {
             }),
             &simple_schema(),
         );
-        assert!(diagnostics.is_empty(), "expected no diagnostics, got {diagnostics:?}");
+        assert!(
+            diagnostics.is_empty(),
+            "expected no diagnostics, got {diagnostics:?}"
+        );
     }
 
     // ── Gantt after-mode (predecessor) ─────────────────────────
@@ -1297,6 +1397,130 @@ mod tests {
             DiagnosticKind::ViewGanttAfterCyclic { field_name, .. }
                 if field_name == "blocks"
         ));
+    }
+
+    // ── gantt_by_initiative root_link ──────────────────────────────
+
+    #[test]
+    fn gantt_by_initiative_accepts_link_with_cycles_disabled() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::GanttByInitiative {
+                start: "start_date".into(),
+                end: Some("end_date".into()),
+                duration: None,
+                after: None,
+                root_link: "parent".into(),
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got {diagnostics:?}");
+    }
+
+    #[test]
+    fn gantt_by_initiative_root_link_rejects_unknown_field() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::GanttByInitiative {
+                start: "start_date".into(),
+                end: Some("end_date".into()),
+                duration: None,
+                after: None,
+                root_link: "nonexistent".into(),
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.iter().any(|d| matches!(
+            &d.kind,
+            DiagnosticKind::ViewUnknownField { slot, field_name, .. }
+                if *slot == "root_link" && field_name == "nonexistent"
+        )));
+    }
+
+    #[test]
+    fn gantt_by_initiative_root_link_rejects_links_field() {
+        // Links is rejected — initiative partition requires single-target.
+        let diagnostics = evaluate(
+            &one_view(ViewKind::GanttByInitiative {
+                start: "start_date".into(),
+                end: Some("end_date".into()),
+                duration: None,
+                after: None,
+                root_link: "depends_on".into(), // Links, not Link
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.iter().any(|d| matches!(
+            &d.kind,
+            DiagnosticKind::ViewFieldTypeMismatch { slot, expected, .. }
+                if *slot == "root_link" && expected == "link"
+        )));
+    }
+
+    #[test]
+    fn gantt_by_initiative_root_link_rejects_inverse_name() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::GanttByInitiative {
+                start: "start_date".into(),
+                end: Some("end_date".into()),
+                duration: None,
+                after: None,
+                root_link: "children".into(), // inverse of parent
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.iter().any(|d| matches!(
+            &d.kind,
+            DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { field_name, .. }
+                if field_name == "children"
+        )));
+    }
+
+    #[test]
+    fn gantt_by_initiative_root_link_rejects_link_with_cycles_allowed() {
+        let schema = build_schema(vec![
+            ("start_date", FieldTypeConfig::Date),
+            ("end_date", FieldTypeConfig::Date),
+            (
+                "topic",
+                FieldTypeConfig::Link {
+                    allow_cycles: Some(true),
+                    inverse: None,
+                },
+            ),
+        ]);
+        let diagnostics = evaluate(
+            &one_view(ViewKind::GanttByInitiative {
+                start: "start_date".into(),
+                end: Some("end_date".into()),
+                duration: None,
+                after: None,
+                root_link: "topic".into(),
+            }),
+            &schema,
+        );
+        assert!(diagnostics.iter().any(|d| matches!(
+            &d.kind,
+            DiagnosticKind::ViewGanttRootLinkCyclic { field_name, .. }
+                if field_name == "topic"
+        )));
+    }
+
+    #[test]
+    fn gantt_by_initiative_input_mode_rules_mirror_basic_gantt() {
+        // Both end and duration set → conflict (same as basic gantt).
+        let diagnostics = evaluate(
+            &one_view(ViewKind::GanttByInitiative {
+                start: "start_date".into(),
+                end: Some("end_date".into()),
+                duration: Some("estimate".into()),
+                after: None,
+                root_link: "parent".into(),
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.iter().any(|d| matches!(
+            &d.kind,
+            DiagnosticKind::ViewGanttEndAndDurationConflict { .. }
+        )));
     }
 
     #[test]

@@ -66,7 +66,8 @@ pub(crate) fn run(
         }
         let mut missing: Vec<WorkItemId> = items
             .iter()
-            .filter_map(|(id, item)| (!item.fields.contains_key(field_name)).then(|| id.clone()))
+            .filter(|(_, item)| !item.fields.contains_key(field_name))
+            .map(|(id, _)| id.clone())
             .collect();
         missing.sort_by(|a, b| a.as_str().cmp(b.as_str()));
         for item_id in missing {

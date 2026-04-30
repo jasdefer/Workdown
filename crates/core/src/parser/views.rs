@@ -153,6 +153,8 @@ struct RawView {
     #[serde(default)]
     after: Option<String>,
     #[serde(default)]
+    root_link: Option<String>,
+    #[serde(default)]
     effort: Option<String>,
     #[serde(default)]
     group: Option<String>,
@@ -208,6 +210,13 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
             duration: raw.duration,
             after: raw.after,
             group: raw.group,
+        },
+        ViewType::GanttByInitiative => ViewKind::GanttByInitiative {
+            start: require(raw.start, &id, view_type, "start")?,
+            end: raw.end,
+            duration: raw.duration,
+            after: raw.after,
+            root_link: require(raw.root_link, &id, view_type, "root_link")?,
         },
         ViewType::BarChart => ViewKind::BarChart {
             group_by: require(raw.group_by, &id, view_type, "group_by")?,
@@ -454,6 +463,92 @@ mod tests {
     }
 
     #[test]
+    fn parse_gantt_by_initiative_with_end() {
+        let view = parse_single(
+            "views:\n  - id: r\n    type: gantt_by_initiative\n    start: start_date\n    end: end_date\n    root_link: parent\n",
+        );
+        match view.kind {
+            ViewKind::GanttByInitiative {
+                start,
+                end,
+                duration,
+                after,
+                root_link,
+            } => {
+                assert_eq!(start, "start_date");
+                assert_eq!(end.as_deref(), Some("end_date"));
+                assert_eq!(duration, None);
+                assert_eq!(after, None);
+                assert_eq!(root_link, "parent");
+            }
+            other => panic!("expected GanttByInitiative, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_initiative_with_duration() {
+        let view = parse_single(
+            "views:\n  - id: r\n    type: gantt_by_initiative\n    start: start_date\n    duration: estimate\n    root_link: parent\n",
+        );
+        match view.kind {
+            ViewKind::GanttByInitiative {
+                duration,
+                root_link,
+                ..
+            } => {
+                assert_eq!(duration.as_deref(), Some("estimate"));
+                assert_eq!(root_link, "parent");
+            }
+            other => panic!("expected GanttByInitiative, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_initiative_with_after() {
+        let view = parse_single(
+            "views:\n  - id: r\n    type: gantt_by_initiative\n    start: start_date\n    duration: estimate\n    after: depends_on\n    root_link: parent\n",
+        );
+        match view.kind {
+            ViewKind::GanttByInitiative { after, .. } => {
+                assert_eq!(after.as_deref(), Some("depends_on"));
+            }
+            other => panic!("expected GanttByInitiative, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_initiative_missing_root_link_rejected() {
+        let yaml = "views:\n  - id: r\n    type: gantt_by_initiative\n    start: start_date\n    end: end_date\n";
+        let err = parse_views(yaml).unwrap_err();
+        match err {
+            ViewsLoadError::Validation(errors) => {
+                assert!(matches!(
+                    errors.as_slice(),
+                    [ViewsValidationError::MissingSlot { id, slot, .. }]
+                        if id == "r" && *slot == "root_link"
+                ));
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_initiative_missing_start_rejected() {
+        let yaml = "views:\n  - id: r\n    type: gantt_by_initiative\n    end: end_date\n    root_link: parent\n";
+        let err = parse_views(yaml).unwrap_err();
+        match err {
+            ViewsLoadError::Validation(errors) => {
+                assert!(matches!(
+                    errors.as_slice(),
+                    [ViewsValidationError::MissingSlot { id, slot, .. }]
+                        if id == "r" && *slot == "start"
+                ));
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_bar_chart() {
         let view = parse_single(
             "views:\n  - id: by-status\n    type: bar_chart\n    group_by: status\n    value: effort\n    aggregate: sum\n",
@@ -563,6 +658,12 @@ views:
     start: start_date
     end: end_date
     title: title
+  - id: v-gantt-by-initiative
+    type: gantt_by_initiative
+    start: start_date
+    end: end_date
+    root_link: parent
+    title: title
   - id: v-bar
     type: bar_chart
     group_by: status
@@ -596,7 +697,7 @@ views:
     title: title
 "#;
         let parsed = parse_views(yaml).unwrap();
-        assert_eq!(parsed.views.len(), 11);
+        assert_eq!(parsed.views.len(), 12);
         for view in &parsed.views {
             assert_eq!(
                 view.title.as_deref(),
@@ -692,6 +793,11 @@ views:
     start: start_date
     end: end_date
     group: parent
+  - id: roadmap-by-initiative
+    type: gantt_by_initiative
+    start: start_date
+    end: end_date
+    root_link: parent
   - id: effort-by-status
     type: bar_chart
     group_by: status
@@ -723,6 +829,6 @@ views:
     bucket: week
 "#;
         let parsed = parse_views(yaml).unwrap();
-        assert_eq!(parsed.views.len(), 11);
+        assert_eq!(parsed.views.len(), 12);
     }
 }

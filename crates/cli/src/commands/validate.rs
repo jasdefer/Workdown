@@ -168,7 +168,9 @@ fn file_for_diagnostic(
         | DiagnosticKind::ViewGanttAfterRequiresDuration { .. }
         | DiagnosticKind::ViewGanttAfterWithEndConflict { .. }
         | DiagnosticKind::ViewGanttAfterCyclic { .. }
-        | DiagnosticKind::ViewGanttAfterInverseNotAllowed { .. } => {
+        | DiagnosticKind::ViewGanttAfterInverseNotAllowed { .. }
+        | DiagnosticKind::ViewGanttRootLinkCyclic { .. }
+        | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { .. } => {
             Some(project_root.join(&config.paths.views))
         }
     }

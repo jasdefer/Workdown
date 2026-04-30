@@ -40,6 +40,11 @@ views:
     start: start_date
     end: end_date
     group: parent
+  - id: roadmap-by-initiative
+    type: gantt_by_initiative
+    start: start_date
+    end: end_date
+    root_link: parent
   - id: effort-by-status
     type: bar_chart
     group_by: status
@@ -118,7 +123,7 @@ fn default_views_yaml_validates() {
 }
 
 #[test]
-fn full_example_with_all_eleven_view_types_validates() {
+fn full_example_with_all_view_types_validates() {
     let schema = compile_schema();
     assert_valid(&schema, FULL_EXAMPLE_YAML);
 }
@@ -321,8 +326,8 @@ extra: nope
 
 #[test]
 fn title_slot_on_every_view_type_validates() {
-    // Same 11-entry fixture as `full_example_with_all_eleven_view_types_validates`,
-    // but every entry carries `title: title`. Ensures each per-type branch
+    // Same fixture as `full_example_with_all_view_types_validates` but
+    // every entry carries `title: title`. Ensures each per-type branch
     // accepts the shared slot.
     let schema = compile_schema();
     let yaml = r#"
@@ -347,6 +352,12 @@ views:
     type: gantt
     start: start_date
     end: end_date
+    title: title
+  - id: roadmap-by-initiative
+    type: gantt_by_initiative
+    start: start_date
+    end: end_date
+    root_link: parent
     title: title
   - id: effort-by-status
     type: bar_chart

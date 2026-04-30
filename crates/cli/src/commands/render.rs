@@ -185,6 +185,9 @@ fn render_view_data(view_data: &ViewData, link_base: &str) -> Option<String> {
         ViewData::Graph(data) => Some(render::graph::render_graph(data)),
         ViewData::Table(data) => Some(render::table::render_table(data, link_base)),
         ViewData::Gantt(data) => Some(render::gantt::render_gantt(data)),
+        ViewData::GanttByInitiative(data) => Some(
+            render::gantt_by_initiative::render_gantt_by_initiative(data),
+        ),
         ViewData::BarChart(_)
         | ViewData::Heatmap(_)
         | ViewData::LineChart(_)
@@ -201,14 +204,16 @@ fn render_view_data(view_data: &ViewData, link_base: &str) -> Option<String> {
 /// so it doesn't go unnoticed when running `workdown render` in CI or
 /// pre-commit. Pattern reused for chart views as their renderers land.
 fn emit_unplaced_warnings(view: &View, view_data: &ViewData) {
-    if let ViewData::Gantt(data) = view_data {
-        if !data.unplaced.is_empty() {
-            output::warning(&format!(
-                "view '{}': {} items dropped — see footer",
-                view.id,
-                data.unplaced.len()
-            ));
-        }
+    let count = match view_data {
+        ViewData::Gantt(data) => data.unplaced.len(),
+        ViewData::GanttByInitiative(data) => data.unplaced.len(),
+        _ => 0,
+    };
+    if count > 0 {
+        output::warning(&format!(
+            "view '{}': {count} items dropped — see footer",
+            view.id,
+        ));
     }
 }
 
@@ -229,7 +234,17 @@ fn invalid_view_ids(diagnostics: &[Diagnostic]) -> HashSet<String> {
             | DiagnosticKind::ViewCountAggregateWithValue { view_id }
             | DiagnosticKind::ViewAggregateTypeMismatch { view_id, .. }
             | DiagnosticKind::ViewGroupByCyclic { view_id, .. }
-            | DiagnosticKind::ViewGroupByInverseNotAllowed { view_id, .. } => Some(view_id.clone()),
+            | DiagnosticKind::ViewGroupByInverseNotAllowed { view_id, .. }
+            | DiagnosticKind::ViewGanttEndOrDurationRequired { view_id }
+            | DiagnosticKind::ViewGanttEndAndDurationConflict { view_id }
+            | DiagnosticKind::ViewGanttAfterRequiresDuration { view_id }
+            | DiagnosticKind::ViewGanttAfterWithEndConflict { view_id }
+            | DiagnosticKind::ViewGanttAfterCyclic { view_id, .. }
+            | DiagnosticKind::ViewGanttAfterInverseNotAllowed { view_id, .. }
+            | DiagnosticKind::ViewGanttRootLinkCyclic { view_id, .. }
+            | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { view_id, .. } => {
+                Some(view_id.clone())
+            }
             _ => None,
         })
         .collect()

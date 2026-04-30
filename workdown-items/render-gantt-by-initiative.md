@@ -1,7 +1,7 @@
 ---
 id: render-gantt-by-initiative
 type: issue
-status: to_do
+status: done
 title: Gantt by initiative view
 parent: renderers
 depends_on: [render-gantt]

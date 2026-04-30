@@ -190,6 +190,16 @@ pub enum DiagnosticKind {
     /// After-mode reads predecessors directly off each item; only the
     /// original link/links field is accepted.
     ViewGanttAfterInverseNotAllowed { view_id: String, field_name: String },
+
+    /// A `gantt_by_initiative` view's `root_link` slot points at a link
+    /// field that allows cycles. Walking the chain to a root requires a
+    /// DAG — `allow_cycles` must be explicitly `false`.
+    ViewGanttRootLinkCyclic { view_id: String, field_name: String },
+
+    /// A `gantt_by_initiative` view's `root_link` slot references an
+    /// inverse relation name. The chain walk reads the link directly off
+    /// each item; only the original link field is accepted.
+    ViewGanttRootLinkInverseNotAllowed { view_id: String, field_name: String },
 }
 
 // ── Field value errors ───────────────────────────────────────────────
@@ -447,6 +457,24 @@ impl std::fmt::Display for Diagnostic {
                 write!(
                     f,
                     "view '{view_id}', slot 'after': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
+                )
+            }
+            DiagnosticKind::ViewGanttRootLinkCyclic {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'root_link': field '{field_name}' must set `allow_cycles: false`"
+                )
+            }
+            DiagnosticKind::ViewGanttRootLinkInverseNotAllowed {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'root_link': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
                 )
             }
         }

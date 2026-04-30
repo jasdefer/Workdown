@@ -78,35 +78,14 @@ pub fn extract_gantt(view: &View, store: &Store, schema: &Schema) -> GanttData {
     else {
         panic!("extract_gantt called with non-gantt view kind");
     };
-    let items = filtered_items(view, store, schema);
-
-    let (mut bars, mut unplaced) = match after {
-        Some(after_field) => {
-            // views_check guarantees after-mode has duration set, end unset.
-            let duration_field = duration
-                .as_deref()
-                .expect("views_check ensures duration is set in after-mode");
-            extract_after_mode(
-                view,
-                schema,
-                store,
-                &items,
-                start,
-                after_field,
-                duration_field,
-                group.as_deref(),
-            )
-        }
-        None => extract_simple_mode(
-            view,
-            schema,
-            &items,
-            start,
-            end.as_deref(),
-            duration.as_deref(),
-            group.as_deref(),
-        ),
+    let cfg = GanttResolution {
+        start,
+        end: end.as_deref(),
+        duration: duration.as_deref(),
+        after: after.as_deref(),
+        group: group.as_deref(),
     };
+    let (mut bars, unplaced) = resolve_bars(view, store, schema, &cfg);
 
     let section_order = section_order(group.as_deref(), schema, &bars);
     bars.sort_by(|left, right| {
@@ -114,13 +93,72 @@ pub fn extract_gantt(view: &View, store: &Store, schema: &Schema) -> GanttData {
         let ri = section_index(&right.group, &section_order);
         (li, left.start, left.card.id.as_str()).cmp(&(ri, right.start, right.card.id.as_str()))
     });
-    unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
 
     GanttData {
         group_field: group.clone(),
         bars,
         unplaced,
     }
+}
+
+/// Slots that drive bar resolution for any Gantt-shaped view.
+///
+/// `extract_gantt` reads its slots from `ViewKind::Gantt`; sibling views
+/// (e.g. `gantt_by_initiative`) read from their own `ViewKind` variant
+/// and fill this struct to call into [`resolve_bars`].
+pub(super) struct GanttResolution<'a> {
+    pub start: &'a str,
+    pub end: Option<&'a str>,
+    pub duration: Option<&'a str>,
+    pub after: Option<&'a str>,
+    pub group: Option<&'a str>,
+}
+
+/// Run the per-item resolution for any Gantt-shaped view.
+///
+/// Applies the view's `where`-filter, picks one of the three input recipes
+/// from `cfg`, and returns the resulting bars + unplaced cards. Unplaced
+/// cards are sorted by id (final order); bars are returned in resolution
+/// order — callers add their own bar sort (section-aware in
+/// `extract_gantt`, partition-then-(start,id) in by-initiative).
+pub(super) fn resolve_bars(
+    view: &View,
+    store: &Store,
+    schema: &Schema,
+    cfg: &GanttResolution<'_>,
+) -> (Vec<GanttBar>, Vec<UnplacedCard>) {
+    let items = filtered_items(view, store, schema);
+
+    let (bars, mut unplaced) = match cfg.after {
+        Some(after_field) => {
+            // views_check guarantees after-mode has duration set, end unset.
+            let duration_field = cfg
+                .duration
+                .expect("views_check ensures duration is set in after-mode");
+            extract_after_mode(
+                view,
+                schema,
+                store,
+                &items,
+                cfg.start,
+                after_field,
+                duration_field,
+                cfg.group,
+            )
+        }
+        None => extract_simple_mode(
+            view,
+            schema,
+            &items,
+            cfg.start,
+            cfg.end,
+            cfg.duration,
+            cfg.group,
+        ),
+    };
+
+    unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
+    (bars, unplaced)
 }
 
 /// Extract bars/unplaced for the original two recipes:
@@ -236,8 +274,7 @@ fn extract_after_mode(
     group: Option<&str>,
 ) -> (Vec<GanttBar>, Vec<UnplacedCard>) {
     let closure = compute_after_closure(filtered, after_field, store);
-    let resolutions =
-        resolve_after_closure(&closure, after_field, start_field, duration_field);
+    let resolutions = resolve_after_closure(&closure, after_field, start_field, duration_field);
 
     let mut bars: Vec<GanttBar> = Vec::new();
     let mut unplaced: Vec<UnplacedCard> = Vec::new();
@@ -361,7 +398,8 @@ fn resolve_after_closure(
     // Stable id-sorted processing for deterministic resolution and tests.
     let mut ready: Vec<String> = in_degree
         .iter()
-        .filter_map(|(id, deg)| (*deg == 0).then(|| id.clone()))
+        .filter(|(_, deg)| **deg == 0)
+        .map(|(id, _)| id.clone())
         .collect();
     ready.sort();
     let mut queue: VecDeque<String> = ready.into();
@@ -371,13 +409,7 @@ fn resolve_after_closure(
     while let Some(id) = queue.pop_front() {
         let item = closure[&id];
         let preds = &all_preds[&id];
-        let resolution = resolve_item(
-            item,
-            preds,
-            &resolutions,
-            start_field,
-            duration_field,
-        );
+        let resolution = resolve_item(item, preds, &resolutions, start_field, duration_field);
         resolutions.insert(id.clone(), resolution);
 
         if let Some(deps) = dependents.get(&id) {
@@ -567,12 +599,7 @@ mod tests {
         }
     }
 
-    fn gantt_view_after(
-        start: &str,
-        after: &str,
-        duration: &str,
-        group: Option<&str>,
-    ) -> View {
+    fn gantt_view_after(start: &str, after: &str, duration: &str, group: Option<&str>) -> View {
         View {
             id: "my-gantt".into(),
             where_clauses: vec![],
@@ -1396,10 +1423,7 @@ mod tests {
 
         assert!(data.bars.is_empty());
         assert_eq!(data.unplaced.len(), 1);
-        assert!(matches!(
-            &data.unplaced[0].reason,
-            UnplacedReason::NoAnchor
-        ));
+        assert!(matches!(&data.unplaced[0].reason, UnplacedReason::NoAnchor));
     }
 
     #[test]
@@ -1461,11 +1485,7 @@ mod tests {
         let store = make_store(
             &schema,
             vec![
-                make_item(
-                    "a",
-                    vec![("start", FieldValue::Date(ymd(2026, 1, 1)))],
-                    "",
-                ),
+                make_item("a", vec![("start", FieldValue::Date(ymd(2026, 1, 1)))], ""),
                 make_item(
                     "b",
                     vec![

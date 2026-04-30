@@ -59,6 +59,7 @@
         { "$ref": "#/$defs/graph" },
         { "$ref": "#/$defs/table" },
         { "$ref": "#/$defs/gantt" },
+        { "$ref": "#/$defs/gantt_by_initiative" },
         { "$ref": "#/$defs/bar_chart" },
         { "$ref": "#/$defs/line_chart" },
         { "$ref": "#/$defs/workload" },
@@ -148,6 +149,30 @@
         "group":    { "$ref": "#/$defs/field_name" }
       },
       "required": ["id", "type", "start"],
+      "additionalProperties": false
+    },
+
+    "gantt_by_initiative": {
+      "type": "object",
+      "description": "Gantt timeline partitioned by initiative — emits one Mermaid `gantt` block per top-level ancestor of `root_link`. Per-bar resolution mirrors `gantt`: exactly one of (`end`), (`duration`), or (`after` + `duration`) configures the input mode. Items are bucketed by walking `root_link` upward against the full store, so chains span filter boundaries.",
+      "properties": {
+        "id":        { "$ref": "#/$defs/view_id" },
+        "type":      { "const": "gantt_by_initiative" },
+        "where":     { "$ref": "#/$defs/where_clauses" },
+        "title":     { "$ref": "#/$defs/field_name" },
+        "start":     { "$ref": "#/$defs/field_name" },
+        "end":       { "$ref": "#/$defs/field_name" },
+        "duration":  { "$ref": "#/$defs/field_name" },
+        "after":     {
+          "$ref": "#/$defs/field_name",
+          "description": "Predecessor-mode link/links field. Requires `duration`, forbids `end`. Must have `allow_cycles: false`."
+        },
+        "root_link": {
+          "$ref": "#/$defs/field_name",
+          "description": "Single-target link field whose chain is walked upward to find each item's initiative root. Must have `allow_cycles: false` and not be an inverse name."
+        }
+      },
+      "required": ["id", "type", "start", "root_link"],
       "additionalProperties": false
     },
 
