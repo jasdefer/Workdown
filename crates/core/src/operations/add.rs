@@ -355,7 +355,11 @@ fn is_diagnostic_for_item(diagnostic: &Diagnostic, item_id: &WorkItemId) -> bool
         | DiagnosticKind::ViewGroupByCyclic { .. }
         | DiagnosticKind::ViewGroupByInverseNotAllowed { .. }
         | DiagnosticKind::ViewGanttEndOrDurationRequired { .. }
-        | DiagnosticKind::ViewGanttEndAndDurationConflict { .. } => false,
+        | DiagnosticKind::ViewGanttEndAndDurationConflict { .. }
+        | DiagnosticKind::ViewGanttAfterRequiresDuration { .. }
+        | DiagnosticKind::ViewGanttAfterWithEndConflict { .. }
+        | DiagnosticKind::ViewGanttAfterCyclic { .. }
+        | DiagnosticKind::ViewGanttAfterInverseNotAllowed { .. } => false,
     }
 }
 

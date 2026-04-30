@@ -138,6 +138,7 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             start,
             end,
             duration,
+            after,
             group,
         } => {
             check_slot(
@@ -149,25 +150,27 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 "date",
                 out,
             );
-            // Cross-slot rule: exactly one of `end` / `duration`. When the
-            // user sets both or neither, emit the combination diagnostic
-            // and skip type-checking either field — once they pick one,
-            // the next pass surfaces any field-type errors on it.
-            match (end, duration) {
-                (Some(_), Some(_)) => out.push(error(
-                    DiagnosticKind::ViewGanttEndAndDurationConflict {
+            // Cross-slot rules. Three valid combinations:
+            //   (start, end)         — bar window read directly
+            //   (start, duration)    — end computed as start + duration
+            //   (start, after, dur)  — start anchored on predecessors,
+            //                          end computed as start + duration
+            // Anything else is rejected. When a combination is invalid
+            // we still type-check whatever fields are present so the
+            // user gets all the actionable feedback in one pass.
+            if let Some(after_field) = after {
+                if end.is_some() {
+                    out.push(error(DiagnosticKind::ViewGanttAfterWithEndConflict {
                         view_id: view_id.to_owned(),
-                    },
-                )),
-                (None, None) => out.push(error(
-                    DiagnosticKind::ViewGanttEndOrDurationRequired {
-                        view_id: view_id.to_owned(),
-                    },
-                )),
-                (Some(end), None) => {
-                    check_slot(schema, view_id, "end", end, &[FieldType::Date], "date", out);
+                    }));
                 }
-                (None, Some(duration)) => {
+                if duration.is_none() {
+                    out.push(error(DiagnosticKind::ViewGanttAfterRequiresDuration {
+                        view_id: view_id.to_owned(),
+                    }));
+                }
+                check_after_slot(schema, view_id, after_field, out);
+                if let Some(duration) = duration {
                     check_slot(
                         schema,
                         view_id,
@@ -177,6 +180,33 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                         "duration",
                         out,
                     );
+                }
+            } else {
+                match (end, duration) {
+                    (Some(_), Some(_)) => out.push(error(
+                        DiagnosticKind::ViewGanttEndAndDurationConflict {
+                            view_id: view_id.to_owned(),
+                        },
+                    )),
+                    (None, None) => out.push(error(
+                        DiagnosticKind::ViewGanttEndOrDurationRequired {
+                            view_id: view_id.to_owned(),
+                        },
+                    )),
+                    (Some(end), None) => {
+                        check_slot(schema, view_id, "end", end, &[FieldType::Date], "date", out);
+                    }
+                    (None, Some(duration)) => {
+                        check_slot(
+                            schema,
+                            view_id,
+                            "duration",
+                            duration,
+                            &[FieldType::Duration],
+                            "duration",
+                            out,
+                        );
+                    }
                 }
             }
             if let Some(group) = group {
@@ -449,6 +479,57 @@ fn check_graph_group_by(
                 field_name: field_name.to_owned(),
                 actual_type: def.field_type(),
                 expected: "link".to_owned(),
+            }));
+        }
+    }
+}
+
+// ── Gantt after slot helper ──────────────────────────────────────────
+
+/// Validates the `after` slot on a gantt view (predecessor mode).
+///
+/// Predecessor resolution requires:
+/// - the field exists in the schema (not an inverse name);
+/// - the field is `Link` or `Links` (single or multiple predecessors);
+/// - cycles are explicitly disabled (`allow_cycles: false`).
+///
+/// Each rule has its own diagnostic so the error message points at the
+/// actual constraint that was violated. Mirrors `check_graph_group_by`
+/// but with after-specific diagnostic kinds.
+fn check_after_slot(schema: &Schema, view_id: &str, field_name: &str, out: &mut Vec<Diagnostic>) {
+    let Some(def) = schema.fields.get(field_name) else {
+        if schema.inverse_table.contains_key(field_name) {
+            out.push(error(DiagnosticKind::ViewGanttAfterInverseNotAllowed {
+                view_id: view_id.to_owned(),
+                field_name: field_name.to_owned(),
+            }));
+        } else {
+            out.push(error(DiagnosticKind::ViewUnknownField {
+                view_id: view_id.to_owned(),
+                slot: "after",
+                field_name: field_name.to_owned(),
+            }));
+        }
+        return;
+    };
+
+    match &def.type_config {
+        FieldTypeConfig::Link { allow_cycles, .. }
+        | FieldTypeConfig::Links { allow_cycles, .. } => {
+            if *allow_cycles != Some(false) {
+                out.push(error(DiagnosticKind::ViewGanttAfterCyclic {
+                    view_id: view_id.to_owned(),
+                    field_name: field_name.to_owned(),
+                }));
+            }
+        }
+        _ => {
+            out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
+                view_id: view_id.to_owned(),
+                slot: "after",
+                field_name: field_name.to_owned(),
+                actual_type: def.field_type(),
+                expected: "link or links".to_owned(),
             }));
         }
     }
@@ -929,6 +1010,7 @@ mod tests {
                 start: "effort".into(), // integer
                 end: Some("end_date".into()),
                 duration: None,
+                after: None,
                 group: None,
             }),
             &simple_schema(),
@@ -949,6 +1031,7 @@ mod tests {
                     start: "start_date".into(),
                     end: Some("end_date".into()),
                     duration: None,
+                    after: None,
                     group: Some(field.into()),
                 }),
                 &simple_schema(),
@@ -967,6 +1050,7 @@ mod tests {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
                 duration: None,
+                after: None,
                 group: Some("effort".into()), // integer
             }),
             &simple_schema(),
@@ -985,6 +1069,7 @@ mod tests {
                 start: "start_date".into(),
                 end: None,
                 duration: None,
+                after: None,
                 group: None,
             }),
             &simple_schema(),
@@ -1002,6 +1087,7 @@ mod tests {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
                 duration: Some("estimate".into()),
+                after: None,
                 group: None,
             }),
             &simple_schema(),
@@ -1019,6 +1105,7 @@ mod tests {
                 start: "start_date".into(),
                 end: None,
                 duration: Some("end_date".into()), // date, not duration
+                after: None,
                 group: None,
             }),
             &simple_schema(),
@@ -1037,11 +1124,179 @@ mod tests {
                 start: "start_date".into(),
                 end: None,
                 duration: Some("estimate".into()),
+                after: None,
                 group: None,
             }),
             &simple_schema(),
         );
         assert!(diagnostics.is_empty(), "expected no diagnostics, got {diagnostics:?}");
+    }
+
+    // ── Gantt after-mode (predecessor) ─────────────────────────
+
+    #[test]
+    fn gantt_after_with_duration_passes() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Gantt {
+                start: "start_date".into(),
+                end: None,
+                duration: Some("estimate".into()),
+                after: Some("depends_on".into()),
+                group: None,
+            }),
+            &simple_schema(),
+        );
+        assert!(
+            diagnostics.is_empty(),
+            "expected no diagnostics, got {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn gantt_after_accepts_single_link() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Gantt {
+                start: "start_date".into(),
+                end: None,
+                duration: Some("estimate".into()),
+                after: Some("parent".into()),
+                group: None,
+            }),
+            &simple_schema(),
+        );
+        assert!(
+            diagnostics.is_empty(),
+            "expected no diagnostics, got {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn gantt_after_without_duration_errors() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Gantt {
+                start: "start_date".into(),
+                end: None,
+                duration: None,
+                after: Some("depends_on".into()),
+                group: None,
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.iter().any(|d| matches!(
+            &d.kind,
+            DiagnosticKind::ViewGanttAfterRequiresDuration { .. }
+        )));
+    }
+
+    #[test]
+    fn gantt_after_with_end_errors() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Gantt {
+                start: "start_date".into(),
+                end: Some("end_date".into()),
+                duration: Some("estimate".into()),
+                after: Some("depends_on".into()),
+                group: None,
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.iter().any(|d| matches!(
+            &d.kind,
+            DiagnosticKind::ViewGanttAfterWithEndConflict { .. }
+        )));
+    }
+
+    #[test]
+    fn gantt_after_must_be_link_or_links() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Gantt {
+                start: "start_date".into(),
+                end: None,
+                duration: Some("estimate".into()),
+                after: Some("status".into()), // choice, not link
+                group: None,
+            }),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewFieldTypeMismatch { slot, expected, .. }
+                if *slot == "after" && expected == "link or links"
+        ));
+    }
+
+    #[test]
+    fn gantt_after_rejects_unknown_field() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Gantt {
+                start: "start_date".into(),
+                end: None,
+                duration: Some("estimate".into()),
+                after: Some("nonexistent".into()),
+                group: None,
+            }),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewUnknownField { slot, field_name, .. }
+                if *slot == "after" && field_name == "nonexistent"
+        ));
+    }
+
+    #[test]
+    fn gantt_after_rejects_inverse_name() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Gantt {
+                start: "start_date".into(),
+                end: None,
+                duration: Some("estimate".into()),
+                after: Some("dependents".into()), // inverse of depends_on
+                group: None,
+            }),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewGanttAfterInverseNotAllowed { field_name, .. }
+                if field_name == "dependents"
+        ));
+    }
+
+    #[test]
+    fn gantt_after_rejects_link_with_cycles_allowed() {
+        let schema = build_schema(vec![
+            ("start_date", FieldTypeConfig::Date),
+            (
+                "estimate",
+                FieldTypeConfig::Duration {
+                    min: None,
+                    max: None,
+                },
+            ),
+            (
+                "blocks",
+                FieldTypeConfig::Links {
+                    allow_cycles: Some(true),
+                    inverse: None,
+                },
+            ),
+        ]);
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Gantt {
+                start: "start_date".into(),
+                end: None,
+                duration: Some("estimate".into()),
+                after: Some("blocks".into()),
+                group: None,
+            }),
+            &schema,
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewGanttAfterCyclic { field_name, .. }
+                if field_name == "blocks"
+        ));
     }
 
     #[test]

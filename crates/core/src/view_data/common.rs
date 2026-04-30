@@ -92,6 +92,23 @@ pub enum UnplacedReason {
         field: String,
         got: FieldType,
     },
+    /// Gantt after-mode: a root item (empty `after`) had no `start` field
+    /// value to anchor it. Predecessor mode requires every chain to start
+    /// somewhere — either an explicit predecessor or an explicit start date.
+    NoAnchor,
+    /// Gantt after-mode: a predecessor exists but couldn't be resolved
+    /// (missing duration, missing start on its own root, transitively
+    /// unresolvable, etc.). The chain breaks at `id`.
+    PredecessorUnresolved {
+        id: String,
+    },
+    /// Gantt after-mode: defense-in-depth catch when topo sort can't
+    /// drain the queue. Indicates a cycle in the `via` link field that
+    /// upstream `allow_cycles: false` validation should already have
+    /// flagged.
+    Cycle {
+        via: String,
+    },
 }
 
 // ── Aggregate / axis values ─────────────────────────────────────────

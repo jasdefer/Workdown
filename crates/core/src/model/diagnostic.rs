@@ -171,6 +171,25 @@ pub enum DiagnosticKind {
     /// A gantt view sets both `end` and `duration`. They are alternative
     /// ways to specify when the bar ends; pick one.
     ViewGanttEndAndDurationConflict { view_id: String },
+
+    /// A gantt view sets `after` without `duration`. Predecessor mode
+    /// computes each bar's window as `start + duration`, so duration is
+    /// required.
+    ViewGanttAfterRequiresDuration { view_id: String },
+
+    /// A gantt view sets both `after` and `end`. After-mode derives end
+    /// from `start + duration`; an explicit `end` field has no role.
+    ViewGanttAfterWithEndConflict { view_id: String },
+
+    /// A gantt view's `after` slot points at a link/links field that
+    /// allows cycles. Predecessor resolution requires a DAG — `allow_cycles`
+    /// must be explicitly `false`.
+    ViewGanttAfterCyclic { view_id: String, field_name: String },
+
+    /// A gantt view's `after` slot references an inverse relation name.
+    /// After-mode reads predecessors directly off each item; only the
+    /// original link/links field is accepted.
+    ViewGanttAfterInverseNotAllowed { view_id: String, field_name: String },
 }
 
 // ── Field value errors ───────────────────────────────────────────────
@@ -398,6 +417,36 @@ impl std::fmt::Display for Diagnostic {
                 write!(
                     f,
                     "view '{view_id}': gantt has both 'end' and 'duration' set; pick one"
+                )
+            }
+            DiagnosticKind::ViewGanttAfterRequiresDuration { view_id } => {
+                write!(
+                    f,
+                    "view '{view_id}': gantt 'after' requires 'duration' (predecessor mode computes end as start + duration)"
+                )
+            }
+            DiagnosticKind::ViewGanttAfterWithEndConflict { view_id } => {
+                write!(
+                    f,
+                    "view '{view_id}': gantt 'after' is incompatible with 'end' (use 'duration' instead)"
+                )
+            }
+            DiagnosticKind::ViewGanttAfterCyclic {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'after': field '{field_name}' must set `allow_cycles: false`"
+                )
+            }
+            DiagnosticKind::ViewGanttAfterInverseNotAllowed {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'after': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
                 )
             }
         }

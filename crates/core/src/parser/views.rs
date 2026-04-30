@@ -151,6 +151,8 @@ struct RawView {
     #[serde(default)]
     duration: Option<String>,
     #[serde(default)]
+    after: Option<String>,
+    #[serde(default)]
     effort: Option<String>,
     #[serde(default)]
     group: Option<String>,
@@ -204,6 +206,7 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
             start: require(raw.start, &id, view_type, "start")?,
             end: raw.end,
             duration: raw.duration,
+            after: raw.after,
             group: raw.group,
         },
         ViewType::BarChart => ViewKind::BarChart {
@@ -380,11 +383,13 @@ mod tests {
                 start,
                 end,
                 duration,
+                after,
                 group,
             } => {
                 assert_eq!(start, "start_date");
                 assert_eq!(end.as_deref(), Some("end_date"));
                 assert_eq!(duration, None);
+                assert_eq!(after, None);
                 assert_eq!(group.as_deref(), Some("parent"));
             }
             other => panic!("expected Gantt, got {other:?}"),
@@ -401,13 +406,49 @@ mod tests {
                 start,
                 end,
                 duration,
+                after,
                 group,
             } => {
                 assert_eq!(start, "start_date");
                 assert_eq!(end, None);
                 assert_eq!(duration.as_deref(), Some("estimate"));
+                assert_eq!(after, None);
                 assert_eq!(group, None);
             }
+            other => panic!("expected Gantt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_with_after() {
+        let view = parse_single(
+            "views:\n  - id: roadmap\n    type: gantt\n    start: start_date\n    duration: estimate\n    after: depends_on\n",
+        );
+        match view.kind {
+            ViewKind::Gantt {
+                start,
+                end,
+                duration,
+                after,
+                group,
+            } => {
+                assert_eq!(start, "start_date");
+                assert_eq!(end, None);
+                assert_eq!(duration.as_deref(), Some("estimate"));
+                assert_eq!(after.as_deref(), Some("depends_on"));
+                assert_eq!(group, None);
+            }
+            other => panic!("expected Gantt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_after_omitted_leaves_none() {
+        let view = parse_single(
+            "views:\n  - id: roadmap\n    type: gantt\n    start: start_date\n    end: end_date\n",
+        );
+        match view.kind {
+            ViewKind::Gantt { after, .. } => assert_eq!(after, None),
             other => panic!("expected Gantt, got {other:?}"),
         }
     }

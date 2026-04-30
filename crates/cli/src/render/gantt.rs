@@ -118,6 +118,9 @@ fn render_unplaced_footer(unplaced: &[UnplacedCard], out: &mut String) {
     let mut missing: BTreeMap<&str, Vec<&UnplacedCard>> = BTreeMap::new();
     let mut invalid_range: Vec<&UnplacedCard> = Vec::new();
     let mut non_numeric: BTreeMap<&str, Vec<&UnplacedCard>> = BTreeMap::new();
+    let mut no_anchor: Vec<&UnplacedCard> = Vec::new();
+    let mut predecessor_unresolved: BTreeMap<&str, Vec<&UnplacedCard>> = BTreeMap::new();
+    let mut cycle: BTreeMap<&str, Vec<&UnplacedCard>> = BTreeMap::new();
 
     for unplaced_card in unplaced {
         match &unplaced_card.reason {
@@ -136,6 +139,18 @@ fn render_unplaced_footer(unplaced: &[UnplacedCard], out: &mut String) {
                     .or_default()
                     .push(unplaced_card);
             }
+            UnplacedReason::NoAnchor => {
+                no_anchor.push(unplaced_card);
+            }
+            UnplacedReason::PredecessorUnresolved { id } => {
+                predecessor_unresolved
+                    .entry(id.as_str())
+                    .or_default()
+                    .push(unplaced_card);
+            }
+            UnplacedReason::Cycle { via } => {
+                cycle.entry(via.as_str()).or_default().push(unplaced_card);
+            }
         }
     }
 
@@ -153,6 +168,19 @@ fn render_unplaced_footer(unplaced: &[UnplacedCard], out: &mut String) {
     }
     for (field, cards) in &non_numeric {
         let _ = writeln!(out, "> _- non-numeric '{field}': {}_", format_titles(cards));
+    }
+    if !no_anchor.is_empty() {
+        let _ = writeln!(out, "> _- no anchor: {}_", format_titles(&no_anchor));
+    }
+    for (id, cards) in &predecessor_unresolved {
+        let _ = writeln!(
+            out,
+            "> _- predecessor '{id}' unresolved: {}_",
+            format_titles(cards)
+        );
+    }
+    for (via, cards) in &cycle {
+        let _ = writeln!(out, "> _- cycle in '{via}': {}_", format_titles(cards));
     }
 }
 

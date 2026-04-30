@@ -1,7 +1,7 @@
 ---
 id: gantt-predecessor-mode
 type: issue
-status: to_do
+status: done
 title: Gantt predecessor input mode
 parent: renderers
 depends_on: [gantt-duration-mode]

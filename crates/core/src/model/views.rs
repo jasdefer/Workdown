@@ -69,6 +69,12 @@ pub enum ViewKind {
         /// Duration field used to compute the bar's end as
         /// `start + duration`. Mutually exclusive with `end`.
         duration: Option<String>,
+        /// Optional links-typed field naming each item's predecessors.
+        /// When set, the view runs in after-mode: each item's start is
+        /// `max(start_field?, max(pred.end))`. Requires `duration`,
+        /// forbids `end`. Field must be `Link` or `Links` with
+        /// `allow_cycles: false`. Cross-checked in `views_check`.
+        after: Option<String>,
         group: Option<String>,
     },
     BarChart {

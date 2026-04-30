@@ -164,7 +164,11 @@ fn file_for_diagnostic(
         | DiagnosticKind::ViewGroupByCyclic { .. }
         | DiagnosticKind::ViewGroupByInverseNotAllowed { .. }
         | DiagnosticKind::ViewGanttEndOrDurationRequired { .. }
-        | DiagnosticKind::ViewGanttEndAndDurationConflict { .. } => {
+        | DiagnosticKind::ViewGanttEndAndDurationConflict { .. }
+        | DiagnosticKind::ViewGanttAfterRequiresDuration { .. }
+        | DiagnosticKind::ViewGanttAfterWithEndConflict { .. }
+        | DiagnosticKind::ViewGanttAfterCyclic { .. }
+        | DiagnosticKind::ViewGanttAfterInverseNotAllowed { .. } => {
             Some(project_root.join(&config.paths.views))
         }
     }
