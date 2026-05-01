@@ -1,5 +1,7 @@
 # Gantt by depth
 
+Timeline of items from `start_date` to `end_date`, partitioned by depth in `parent` — one chart per level (0 = roots, 1 = children, ...).
+
 ## Level 0
 
 ```mermaid

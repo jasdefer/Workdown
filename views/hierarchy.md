@@ -1,5 +1,7 @@
 # Tree: parent
 
+Hierarchical outline following `parent` upward to roots.
+
 - [phase-04-visualization](../workdown-items/phase-04-visualization.md)
   - [foundation](../workdown-items/foundation.md)
     - [adr-phase-04-architecture](../workdown-items/adr-phase-04-architecture.md)

@@ -1,5 +1,7 @@
 # Gantt by initiative
 
+Timeline of items from `start_date` to `end_date`, partitioned by top-level ancestor in `parent` — one chart per initiative.
+
 ## Phase 04 Visualization
 
 ```mermaid

@@ -23,11 +23,15 @@
 use workdown_core::view_data::GanttData;
 
 use super::gantt_common::{render_gantt_block, render_unplaced_footer};
+use crate::render::common::emit_description;
 
 /// Render a `GanttData` as a Markdown string.
-pub fn render_gantt(data: &GanttData) -> String {
+///
+/// `description` is the one-line caption emitted below the heading.
+pub fn render_gantt(data: &GanttData, description: &str) -> String {
     let mut out = String::new();
     out.push_str("# Gantt\n\n");
+    emit_description(description, &mut out);
 
     if !data.bars.is_empty() {
         out.push_str(&render_gantt_block(&data.bars, data.group_field.as_deref()));
@@ -96,7 +100,7 @@ mod tests {
 
     #[test]
     fn empty_bars_emits_heading_only_no_mermaid_block() {
-        let output = render_gantt(&data(vec![], None, vec![]));
+        let output = render_gantt(&data(vec![], None, vec![]), "");
         assert_eq!(output, "# Gantt\n\n");
         assert!(!output.contains("```mermaid"));
     }
@@ -107,7 +111,7 @@ mod tests {
             vec![bar("a", Some("Task A"), ymd(2026, 1, 1), ymd(2026, 1, 5))],
             None,
             vec![],
-        ));
+        ), "");
         assert!(output.contains("```mermaid\ngantt\n    dateFormat YYYY-MM-DD\n"));
         assert!(output.contains("    Task A :a, 2026-01-01, 2026-01-05\n"));
         assert!(!output.contains("section"));
@@ -126,7 +130,7 @@ mod tests {
             ],
             Some("team"),
             vec![],
-        ));
+        ), "");
         let ops_at = output.find("    section ops\n").expect("ops section");
         let eng_at = output.find("    section eng\n").expect("eng section");
         let bar_c_at = output.find("c, 2026-01-01").expect("c bar");
@@ -149,7 +153,7 @@ mod tests {
             ],
             Some("team"),
             vec![],
-        ));
+        ), "");
         assert!(output.contains("    section eng\n"));
         assert!(output.contains("    section (no team)\n"));
         let eng_at = output.find("section eng\n").unwrap();
@@ -188,7 +192,7 @@ mod tests {
                 },
             },
         ];
-        let output = render_gantt(&data(vec![bar("ok", Some("Ok"), d1, d2)], None, unplaced));
+        let output = render_gantt(&data(vec![bar("ok", Some("Ok"), d1, d2)], None, unplaced), "");
         assert!(output.contains("> _4 items dropped:_\n"));
         assert!(output.contains("> _- missing 'end': \"Title C\"_\n"));
         assert!(output.contains("> _- missing 'start': \"Title A\", \"Title B\"_\n"));
@@ -208,7 +212,7 @@ mod tests {
                 field: "start".into(),
             },
         }];
-        let output = render_gantt(&data(vec![], None, unplaced));
+        let output = render_gantt(&data(vec![], None, unplaced), "");
         assert!(output.contains("> _- missing 'start': \"orphan\"_\n"));
     }
 
@@ -220,7 +224,7 @@ mod tests {
                 field: "start".into(),
             },
         }];
-        let output = render_gantt(&data(vec![], None, unplaced));
+        let output = render_gantt(&data(vec![], None, unplaced), "");
         assert!(output.starts_with("# Gantt\n\n"));
         assert!(!output.contains("```mermaid"));
         assert!(output.contains("> _1 items dropped:_\n"));
@@ -237,7 +241,7 @@ mod tests {
             )],
             None,
             vec![],
-        ));
+        ), "");
         assert!(output.contains("    Fix bug login urgent priority :a, 2026-01-01, 2026-01-05\n"));
     }
 
@@ -252,7 +256,7 @@ mod tests {
             )],
             None,
             vec![],
-        ));
+        ), "");
         assert!(output.contains("    line one line two :a, 2026-01-01, 2026-01-05\n"));
     }
 
@@ -262,7 +266,7 @@ mod tests {
             vec![bar("plain-task", None, ymd(2026, 1, 1), ymd(2026, 1, 5))],
             None,
             vec![],
-        ));
+        ), "");
         assert!(output.contains("    plain-task :plain-task, 2026-01-01, 2026-01-05\n"));
     }
 
@@ -274,7 +278,7 @@ mod tests {
                 field: "start".into(),
             },
         }];
-        let output = render_gantt(&data(vec![], None, unplaced));
+        let output = render_gantt(&data(vec![], None, unplaced), "");
         assert!(output.contains(r#"> _- missing 'start': "snake\_case\_title"_"#));
     }
 
@@ -293,7 +297,7 @@ mod tests {
                 end_field: "end".into(),
             },
         }];
-        let output = render_gantt(&data(bars, Some("team"), unplaced));
+        let output = render_gantt(&data(bars, Some("team"), unplaced), "");
         let expected = "# Gantt\n\n\
             ```mermaid\n\
             gantt\n    \

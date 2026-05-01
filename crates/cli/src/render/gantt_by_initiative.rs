@@ -15,11 +15,18 @@
 use workdown_core::view_data::GanttByInitiativeData;
 
 use super::gantt_common::{label_for, render_gantt_block, render_unplaced_footer};
+use crate::render::common::emit_description;
 
 /// Render a `GanttByInitiativeData` as a Markdown string.
-pub fn render_gantt_by_initiative(data: &GanttByInitiativeData) -> String {
+///
+/// `description` is the one-line caption emitted below the heading.
+pub fn render_gantt_by_initiative(
+    data: &GanttByInitiativeData,
+    description: &str,
+) -> String {
     let mut out = String::new();
     out.push_str("# Gantt by initiative\n\n");
+    emit_description(description, &mut out);
 
     let mut first = true;
     for initiative in &data.initiatives {
@@ -80,7 +87,7 @@ mod tests {
 
     #[test]
     fn empty_data_emits_heading_only() {
-        let output = render_gantt_by_initiative(&data(vec![], vec![]));
+        let output = render_gantt_by_initiative(&data(vec![], vec![]), "");
         assert_eq!(output, "# Gantt by initiative\n\n");
     }
 
@@ -90,7 +97,7 @@ mod tests {
             root: card("epic", Some("User Auth Epic")),
             bars: vec![bar("a", Some("Login"), ymd(2026, 1, 1), ymd(2026, 1, 5))],
         };
-        let output = render_gantt_by_initiative(&data(vec![init], vec![]));
+        let output = render_gantt_by_initiative(&data(vec![init], vec![]), "");
         assert!(output.starts_with("# Gantt by initiative\n\n"));
         assert!(output.contains("## User Auth Epic\n\n"));
         assert!(output.contains("```mermaid\ngantt\n    dateFormat YYYY-MM-DD\n"));
@@ -108,7 +115,7 @@ mod tests {
             root: card("beta", Some("Beta")),
             bars: vec![bar("b", None, ymd(2026, 1, 1), ymd(2026, 1, 5))],
         };
-        let output = render_gantt_by_initiative(&data(vec![alpha, beta], vec![]));
+        let output = render_gantt_by_initiative(&data(vec![alpha, beta], vec![]), "");
         let alpha_at = output.find("## Alpha").unwrap();
         let beta_at = output.find("## Beta").unwrap();
         assert!(alpha_at < beta_at);
@@ -120,7 +127,7 @@ mod tests {
             root: card("empty-epic", Some("Empty Epic")),
             bars: vec![],
         };
-        let output = render_gantt_by_initiative(&data(vec![init], vec![]));
+        let output = render_gantt_by_initiative(&data(vec![init], vec![]), "");
         assert_eq!(output, "# Gantt by initiative\n\n");
         assert!(!output.contains("Empty Epic"));
     }
@@ -131,7 +138,7 @@ mod tests {
             root: card("plain-epic", None),
             bars: vec![bar("a", None, ymd(2026, 1, 1), ymd(2026, 1, 5))],
         };
-        let output = render_gantt_by_initiative(&data(vec![init], vec![]));
+        let output = render_gantt_by_initiative(&data(vec![init], vec![]), "");
         assert!(output.contains("## plain-epic\n\n"));
     }
 
@@ -147,7 +154,7 @@ mod tests {
                 field: "start".into(),
             },
         }];
-        let output = render_gantt_by_initiative(&data(vec![init], unplaced));
+        let output = render_gantt_by_initiative(&data(vec![init], unplaced), "");
         let block_at = output.find("```mermaid").unwrap();
         let footer_at = output.find("> _1 items dropped:_").unwrap();
         assert!(block_at < footer_at);
@@ -171,7 +178,7 @@ mod tests {
                 end_field: "end".into(),
             },
         }];
-        let output = render_gantt_by_initiative(&data(vec![alpha, beta], unplaced));
+        let output = render_gantt_by_initiative(&data(vec![alpha, beta], unplaced), "");
         let expected = "# Gantt by initiative\n\n\
             ## Alpha\n\n\
             ```mermaid\n\
@@ -201,7 +208,7 @@ mod tests {
                 field: "start".into(),
             },
         }];
-        let output = render_gantt_by_initiative(&data(vec![], unplaced));
+        let output = render_gantt_by_initiative(&data(vec![], unplaced), "");
         assert!(output.starts_with("# Gantt by initiative\n\n"));
         assert!(!output.contains("```mermaid"));
         assert!(output.contains("> _1 items dropped:_\n"));

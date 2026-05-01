@@ -1,5 +1,7 @@
 # Gantt
 
+Timeline of items starting at `max(start_date, predecessor end)` for `duration` each; predecessors from `depends_on`, grouped by `type`.
+
 ```mermaid
 gantt
     dateFormat YYYY-MM-DD

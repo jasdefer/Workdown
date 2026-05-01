@@ -1,5 +1,7 @@
 # Gantt
 
+Timeline of items starting at `start_date` for `duration` each, grouped by `type`.
+
 ```mermaid
 gantt
     dateFormat YYYY-MM-DD

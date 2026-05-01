@@ -8,16 +8,18 @@
 
 use workdown_core::view_data::{TreeData, TreeNode};
 
-use crate::render::common::card_link;
+use crate::render::common::{card_link, emit_description};
 
 /// Render a `TreeData` as a Markdown string.
 ///
 /// `item_link_base` is the relative path from the rendered view file to
 /// the work items directory — see `render::board::render_board` for the
-/// same parameter.
-pub fn render_tree(data: &TreeData, item_link_base: &str) -> String {
+/// same parameter. `description` is the one-line caption emitted below
+/// the heading.
+pub fn render_tree(data: &TreeData, item_link_base: &str, description: &str) -> String {
     let mut out = String::new();
     out.push_str(&format!("# Tree: {}\n\n", data.field));
+    emit_description(description, &mut out);
     for root in &data.roots {
         render_node(root, 0, item_link_base, &mut out);
     }

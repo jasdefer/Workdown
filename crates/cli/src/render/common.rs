@@ -25,6 +25,19 @@ pub fn id_link(id: &str, item_link_base: &str) -> String {
     format!("[{id}]({item_link_base}/{id}.md)")
 }
 
+/// Emit a one-line view description below the `# Heading`.
+///
+/// Renderers receive a description string from the dispatcher (built by
+/// [`super::description::description_for`]). Empty strings — currently
+/// only used for view kinds without a description — produce no output,
+/// keeping the rendered file flush against its content.
+pub fn emit_description(description: &str, out: &mut String) {
+    if !description.is_empty() {
+        out.push_str(description);
+        out.push_str("\n\n");
+    }
+}
+
 /// Escape characters that would break Markdown link-text parsing.
 ///
 /// CommonMark terminates link text at unbalanced `]`, and a literal `\`

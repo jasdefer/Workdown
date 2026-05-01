@@ -1,5 +1,7 @@
 # Board: status
 
+Cards grouped into columns by `status`.
+
 ## to_do
 - [cli-add-audit](../workdown-items/cli-add-audit.md)
 - [cli-move-command](../workdown-items/cli-move-command.md)

@@ -12,16 +12,19 @@ use workdown_core::model::duration::format_duration_seconds;
 use workdown_core::model::FieldValue;
 use workdown_core::view_data::{TableData, TableRow};
 
-use crate::render::common::id_link;
+use crate::render::common::{emit_description, id_link};
 
 /// Render a `TableData` as a Markdown string.
 ///
 /// `item_link_base` is the relative path from the rendered view file to
 /// the work items directory — see `render::board::render_board` for the
-/// same parameter.
-pub fn render_table(data: &TableData, item_link_base: &str) -> String {
+/// same parameter. `description` is the one-line caption below the
+/// heading; tables typically receive an empty string since column
+/// headers already convey field names.
+pub fn render_table(data: &TableData, item_link_base: &str, description: &str) -> String {
     let mut out = String::new();
     out.push_str("# Table\n\n");
+    emit_description(description, &mut out);
 
     if data.columns.is_empty() {
         return out;
@@ -137,28 +140,28 @@ mod tests {
     #[test]
     fn renders_top_heading() {
         let data = table(vec!["id"], vec![]);
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output.starts_with("# Table\n\n"));
     }
 
     #[test]
     fn zero_columns_renders_heading_only() {
         let data = table(vec![], vec![]);
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert_eq!(output, "# Table\n\n");
     }
 
     #[test]
     fn zero_rows_emits_header_and_separator_only() {
         let data = table(vec!["id", "status"], vec![]);
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert_eq!(output, "# Table\n\n| id | status |\n| --- | --- |\n");
     }
 
     #[test]
     fn id_column_renders_as_link() {
         let data = table(vec!["id"], vec![row("task-a", vec![id_cell("task-a")])]);
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output.contains("| [task-a](../workdown-items/task-a.md) |\n"));
     }
 
@@ -168,7 +171,7 @@ mod tests {
             vec!["id", "points"],
             vec![row("a", vec![id_cell("a"), None])],
         );
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output.contains("| [a](../workdown-items/a.md) |  |\n"));
     }
 
@@ -181,7 +184,7 @@ mod tests {
                 vec![id_cell("a"), Some(FieldValue::String("a | b".into()))],
             )],
         );
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output.contains(r"| a \| b |"));
     }
 
@@ -197,7 +200,7 @@ mod tests {
                 ],
             )],
         );
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output.contains("| line one<br>line two |"));
     }
 
@@ -210,7 +213,7 @@ mod tests {
                 vec![id_cell("a"), Some(FieldValue::String("one\r\ntwo".into()))],
             )],
         );
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output.contains("| one<br>two |"));
     }
 
@@ -220,7 +223,7 @@ mod tests {
             vec!["id", "points"],
             vec![row("a", vec![id_cell("a"), Some(FieldValue::Integer(42))])],
         );
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output.contains("| 42 |\n"));
     }
 
@@ -233,7 +236,7 @@ mod tests {
                 vec![id_cell("a"), Some(FieldValue::Float(3.14159))],
             )],
         );
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output.contains("| 3.14159 |\n"));
     }
 
@@ -244,7 +247,7 @@ mod tests {
             vec!["id", "due"],
             vec![row("a", vec![id_cell("a"), Some(FieldValue::Date(date))])],
         );
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output.contains("| 2026-04-30 |\n"));
     }
 
@@ -257,7 +260,7 @@ mod tests {
                 vec![id_cell("a"), Some(FieldValue::Boolean(true))],
             )],
         );
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output.contains("| ✓ |\n"));
     }
 
@@ -270,7 +273,7 @@ mod tests {
                 vec![id_cell("a"), Some(FieldValue::Boolean(false))],
             )],
         );
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output.contains("| ✗ |\n"));
     }
 
@@ -283,7 +286,7 @@ mod tests {
                 vec![id_cell("a"), Some(FieldValue::Choice("open".into()))],
             )],
         );
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output.contains("| open |\n"));
     }
 
@@ -299,7 +302,7 @@ mod tests {
                 ],
             )],
         );
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output.contains("| red, blue |\n"));
     }
 
@@ -315,7 +318,7 @@ mod tests {
                 ],
             )],
         );
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output.contains("| alpha, beta |\n"));
     }
 
@@ -331,7 +334,7 @@ mod tests {
                 ],
             )],
         );
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output.contains("| [epic-x](../workdown-items/epic-x.md) |\n"));
     }
 
@@ -350,7 +353,7 @@ mod tests {
                 ],
             )],
         );
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         assert!(output
             .contains("| [foo](../workdown-items/foo.md), [bar](../workdown-items/bar.md) |\n"));
     }
@@ -358,7 +361,7 @@ mod tests {
     #[test]
     fn uses_configured_item_link_base() {
         let data = table(vec!["id"], vec![row("a", vec![id_cell("a")])]);
-        let output = render_table(&data, "../nested/items");
+        let output = render_table(&data, "../nested/items", "");
         assert!(output.contains("| [a](../nested/items/a.md) |\n"));
     }
 
@@ -385,7 +388,7 @@ mod tests {
                 ),
             ],
         );
-        let output = render_table(&data, "../workdown-items");
+        let output = render_table(&data, "../workdown-items", "");
         let expected = "# Table\n\n\
             | id | status | points |\n\
             | --- | --- | --- |\n\

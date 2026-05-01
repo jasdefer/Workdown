@@ -15,11 +15,15 @@
 use workdown_core::view_data::GanttByDepthData;
 
 use super::gantt_common::{render_gantt_block, render_unplaced_footer};
+use crate::render::common::emit_description;
 
 /// Render a `GanttByDepthData` as a Markdown string.
-pub fn render_gantt_by_depth(data: &GanttByDepthData) -> String {
+///
+/// `description` is the one-line caption emitted below the heading.
+pub fn render_gantt_by_depth(data: &GanttByDepthData, description: &str) -> String {
     let mut out = String::new();
     out.push_str("# Gantt by depth\n\n");
+    emit_description(description, &mut out);
 
     let mut first = true;
     for level in &data.levels {
@@ -77,7 +81,7 @@ mod tests {
 
     #[test]
     fn empty_data_emits_heading_only() {
-        let output = render_gantt_by_depth(&data(vec![], vec![]));
+        let output = render_gantt_by_depth(&data(vec![], vec![]), "");
         assert_eq!(output, "# Gantt by depth\n\n");
     }
 
@@ -87,7 +91,7 @@ mod tests {
             depth: 0,
             bars: vec![bar("a", Some("Login"), ymd(2026, 1, 1), ymd(2026, 1, 5))],
         };
-        let output = render_gantt_by_depth(&data(vec![level], vec![]));
+        let output = render_gantt_by_depth(&data(vec![level], vec![]), "");
         assert!(output.starts_with("# Gantt by depth\n\n"));
         assert!(output.contains("## Level 0\n\n"));
         assert!(output.contains("```mermaid\ngantt\n    dateFormat YYYY-MM-DD\n"));
@@ -105,7 +109,7 @@ mod tests {
             depth: 1,
             bars: vec![bar("child", None, ymd(2026, 1, 5), ymd(2026, 1, 10))],
         };
-        let output = render_gantt_by_depth(&data(vec![l0, l1], vec![]));
+        let output = render_gantt_by_depth(&data(vec![l0, l1], vec![]), "");
         let l0_at = output.find("## Level 0").unwrap();
         let l1_at = output.find("## Level 1").unwrap();
         assert!(l0_at < l1_at);
@@ -122,7 +126,7 @@ mod tests {
             depth: 2,
             bars: vec![bar("leaf", None, ymd(2026, 1, 5), ymd(2026, 1, 10))],
         };
-        let output = render_gantt_by_depth(&data(vec![l0, l2], vec![]));
+        let output = render_gantt_by_depth(&data(vec![l0, l2], vec![]), "");
         assert!(output.contains("## Level 0"));
         assert!(!output.contains("## Level 1"));
         assert!(output.contains("## Level 2"));
@@ -134,7 +138,7 @@ mod tests {
             depth: 0,
             bars: vec![],
         };
-        let output = render_gantt_by_depth(&data(vec![level], vec![]));
+        let output = render_gantt_by_depth(&data(vec![level], vec![]), "");
         assert_eq!(output, "# Gantt by depth\n\n");
         assert!(!output.contains("## Level"));
     }
@@ -151,7 +155,7 @@ mod tests {
                 field: "start".into(),
             },
         }];
-        let output = render_gantt_by_depth(&data(vec![level], unplaced));
+        let output = render_gantt_by_depth(&data(vec![level], unplaced), "");
         let block_at = output.find("```mermaid").unwrap();
         let footer_at = output.find("> _1 items dropped:_").unwrap();
         assert!(block_at < footer_at);
@@ -180,7 +184,7 @@ mod tests {
                 end_field: "end".into(),
             },
         }];
-        let output = render_gantt_by_depth(&data(vec![l0, l1], unplaced));
+        let output = render_gantt_by_depth(&data(vec![l0, l1], unplaced), "");
         let expected = "# Gantt by depth\n\n\
             ## Level 0\n\n\
             ```mermaid\n\
@@ -207,7 +211,7 @@ mod tests {
                 field: "start".into(),
             },
         }];
-        let output = render_gantt_by_depth(&data(vec![], unplaced));
+        let output = render_gantt_by_depth(&data(vec![], unplaced), "");
         assert!(output.starts_with("# Gantt by depth\n\n"));
         assert!(!output.contains("```mermaid"));
         assert!(output.contains("> _1 items dropped:_\n"));

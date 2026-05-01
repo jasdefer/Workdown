@@ -113,7 +113,8 @@ fn render_single(
 
     let view_data = view_data::extract(view, store, schema);
     emit_unplaced_warnings(view, &view_data);
-    let markdown = render_view_data(&view_data, link_base).ok_or_else(|| {
+    let description = render::description::description_for(view);
+    let markdown = render_view_data(&view_data, link_base, &description).ok_or_else(|| {
         anyhow::anyhow!(
             "renderer for view type '{}' not yet implemented",
             view.kind.view_type()
@@ -154,7 +155,8 @@ fn render_all(
     for view in renderable {
         let view_data = view_data::extract(view, store, schema);
         emit_unplaced_warnings(view, &view_data);
-        match render_view_data(&view_data, link_base) {
+        let description = render::description::description_for(view);
+        match render_view_data(&view_data, link_base, &description) {
             Some(markdown) => {
                 let path = write_view_file(output_dir, &view.id, &markdown)?;
                 output::success(&format!("Wrote {}", path.display()));
@@ -178,16 +180,22 @@ fn render_all(
 /// callers decide whether that's fatal (single-view mode) or skippable
 /// (bulk mode). Each new renderer moves one arm from the fallthrough
 /// into the match.
-fn render_view_data(view_data: &ViewData, link_base: &str) -> Option<String> {
+fn render_view_data(
+    view_data: &ViewData,
+    link_base: &str,
+    description: &str,
+) -> Option<String> {
     match view_data {
-        ViewData::Board(data) => Some(render::board::render_board(data, link_base)),
-        ViewData::Tree(data) => Some(render::tree::render_tree(data, link_base)),
-        ViewData::Graph(data) => Some(render::graph::render_graph(data)),
-        ViewData::Table(data) => Some(render::table::render_table(data, link_base)),
-        ViewData::Gantt(data) => Some(render::gantt::render_gantt(data)),
-        ViewData::GanttByDepth(data) => Some(render::gantt_by_depth::render_gantt_by_depth(data)),
+        ViewData::Board(data) => Some(render::board::render_board(data, link_base, description)),
+        ViewData::Tree(data) => Some(render::tree::render_tree(data, link_base, description)),
+        ViewData::Graph(data) => Some(render::graph::render_graph(data, description)),
+        ViewData::Table(data) => Some(render::table::render_table(data, link_base, description)),
+        ViewData::Gantt(data) => Some(render::gantt::render_gantt(data, description)),
+        ViewData::GanttByDepth(data) => {
+            Some(render::gantt_by_depth::render_gantt_by_depth(data, description))
+        }
         ViewData::GanttByInitiative(data) => Some(
-            render::gantt_by_initiative::render_gantt_by_initiative(data),
+            render::gantt_by_initiative::render_gantt_by_initiative(data, description),
         ),
         ViewData::BarChart(_)
         | ViewData::Heatmap(_)

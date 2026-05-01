@@ -13,16 +13,20 @@ use std::fmt::Write as _;
 
 use workdown_core::view_data::{Card, GraphData, TreeNode};
 
+use crate::render::common::emit_description;
+
 /// Render a `GraphData` as a Markdown string.
 ///
 /// Workdown ids are validated to `[a-z0-9][a-z0-9-]*` (no trailing
 /// hyphen) at parse time, which is a strict subset of what Mermaid
 /// accepts as a raw flowchart node id — so we can use the workdown id
 /// directly as the Mermaid node id without escaping or aliasing.
-pub fn render_graph(data: &GraphData) -> String {
+/// `description` is the one-line caption emitted below the heading.
+pub fn render_graph(data: &GraphData, description: &str) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "# Graph: {}", data.field);
     out.push('\n');
+    emit_description(description, &mut out);
 
     if data.nodes.is_empty() {
         return out;
@@ -162,14 +166,14 @@ mod tests {
     #[test]
     fn renders_top_heading_with_field_name() {
         let data = graph("depends_on", vec![card("a", None)], vec![]);
-        let output = render_graph(&data);
+        let output = render_graph(&data, "");
         assert!(output.starts_with("# Graph: depends_on\n"));
     }
 
     #[test]
     fn empty_graph_emits_heading_only() {
         let data = graph("depends_on", vec![], vec![]);
-        let output = render_graph(&data);
+        let output = render_graph(&data, "");
         assert_eq!(output, "# Graph: depends_on\n\n");
         assert!(!output.contains("```mermaid"));
     }
@@ -181,7 +185,7 @@ mod tests {
             vec![card("a", Some("Item A")), card("b", None)],
             vec![edge("a", "b")],
         );
-        let output = render_graph(&data);
+        let output = render_graph(&data, "");
         assert!(output.contains("```mermaid\nflowchart TD\n"));
         assert!(output.contains("    a[\"Item A\"]\n"));
         assert!(output.contains("    b[\"b\"]\n"));
@@ -212,7 +216,7 @@ mod tests {
                 )],
             }),
         };
-        let output = render_graph(&data);
+        let output = render_graph(&data, "");
         assert!(output.contains("    subgraph epic-a [\"Epic A\"]\n"));
         assert!(output.contains("        task-1[\"Task 1\"]\n"));
         assert!(output.contains("        task-2[\"Task 2\"]\n"));
@@ -247,7 +251,7 @@ mod tests {
                 )],
             }),
         };
-        let output = render_graph(&data);
+        let output = render_graph(&data, "");
         assert!(output.contains("    subgraph milestone [\"milestone\"]\n"));
         assert!(output.contains("        subgraph epic [\"epic\"]\n"));
         assert!(output.contains("            task[\"task\"]\n"));
@@ -260,7 +264,7 @@ mod tests {
             vec![card("a", Some("has \"quotes\"\nand newline"))],
             vec![],
         );
-        let output = render_graph(&data);
+        let output = render_graph(&data, "");
         assert!(output.contains("    a[\"has 'quotes' and newline\"]\n"));
     }
 
@@ -271,7 +275,7 @@ mod tests {
             vec![card("a", None), card("b", None)],
             vec![edge("a", "b"), edge("b", "a"), edge("a", "a")],
         );
-        let output = render_graph(&data);
+        let output = render_graph(&data, "");
         assert!(output.contains("    a --> b\n"));
         assert!(output.contains("    b --> a\n"));
         assert!(output.contains("    a --> a\n"));
@@ -296,7 +300,7 @@ mod tests {
                 ],
             }),
         };
-        let output = render_graph(&data);
+        let output = render_graph(&data, "");
         assert!(output.contains("    subgraph epic [\"Epic\"]\n"));
         assert!(output.contains("    loose[\"Loose\"]\n"));
         assert!(output.contains("    loose --> epic\n"));

@@ -1,5 +1,7 @@
 # Gantt
 
+Timeline of items from `start_date` to `end_date`, grouped by `type`.
+
 ```mermaid
 gantt
     dateFormat YYYY-MM-DD

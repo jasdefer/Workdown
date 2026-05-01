@@ -7,17 +7,19 @@
 
 use workdown_core::view_data::{BoardColumn, BoardData, Card};
 
-use crate::render::common::card_link;
+use crate::render::common::{card_link, emit_description};
 
 /// Render a `BoardData` as a Markdown string.
 ///
 /// `item_link_base` is the relative path from the rendered view file to the
 /// work items directory — e.g. `"../workdown-items"` for a default project
 /// with the view written to `views/<id>.md`. The render command computes
-/// this from `config.yaml` and passes it in.
-pub fn render_board(data: &BoardData, item_link_base: &str) -> String {
+/// this from `config.yaml` and passes it in. `description` is a one-line
+/// caption emitted below the heading; empty string skips it.
+pub fn render_board(data: &BoardData, item_link_base: &str, description: &str) -> String {
     let mut out = String::new();
     out.push_str(&format!("# Board: {}\n\n", data.field));
+    emit_description(description, &mut out);
 
     let sections: Vec<String> = data
         .columns
@@ -82,7 +84,7 @@ mod tests {
     #[test]
     fn renders_top_heading_with_field_name() {
         let data = board("status", vec![column(None, vec![])]);
-        let output = render_board(&data, "../workdown-items");
+        let output = render_board(&data, "../workdown-items", "");
         assert!(output.starts_with("# Board: status\n"));
     }
 
@@ -97,7 +99,7 @@ mod tests {
                 column(None, vec![]),
             ],
         );
-        let output = render_board(&data, "../workdown-items");
+        let output = render_board(&data, "../workdown-items", "");
         let open_at = output.find("## open").expect("open heading");
         let in_progress_at = output.find("## in_progress").expect("in_progress heading");
         let done_at = output.find("## done").expect("done heading");
@@ -110,7 +112,7 @@ mod tests {
     #[test]
     fn synthetic_column_labeled_with_no_field_name() {
         let data = board("team", vec![column(None, vec![card("orphan", None)])]);
-        let output = render_board(&data, "../workdown-items");
+        let output = render_board(&data, "../workdown-items", "");
         assert!(output.contains("## No team\n"));
         assert!(!output.contains("## No status"));
     }
@@ -118,7 +120,7 @@ mod tests {
     #[test]
     fn empty_column_shows_no_cards_marker() {
         let data = board("status", vec![column(Some("done"), vec![])]);
-        let output = render_board(&data, "../workdown-items");
+        let output = render_board(&data, "../workdown-items", "");
         assert!(output.contains("## done\n_(no cards)_\n"));
     }
 
@@ -131,7 +133,7 @@ mod tests {
                 vec![card("impl-login", Some("Implement user login"))],
             )],
         );
-        let output = render_board(&data, "../workdown-items");
+        let output = render_board(&data, "../workdown-items", "");
         assert!(output.contains("- [Implement user login](../workdown-items/impl-login.md)\n"));
     }
 
@@ -141,7 +143,7 @@ mod tests {
             "status",
             vec![column(Some("open"), vec![card("impl-login", None)])],
         );
-        let output = render_board(&data, "../workdown-items");
+        let output = render_board(&data, "../workdown-items", "");
         assert!(output.contains("- [impl-login](../workdown-items/impl-login.md)\n"));
     }
 
@@ -154,7 +156,7 @@ mod tests {
                 vec![card("weird", Some(r"has [brackets] and \ backslash"))],
             )],
         );
-        let output = render_board(&data, "../workdown-items");
+        let output = render_board(&data, "../workdown-items", "");
         assert!(
             output.contains(r"- [has \[brackets\] and \\ backslash](../workdown-items/weird.md)")
         );
@@ -166,7 +168,7 @@ mod tests {
             "status",
             vec![column(Some("open"), vec![card("foo", None)])],
         );
-        let output = render_board(&data, "../nested/items");
+        let output = render_board(&data, "../nested/items", "");
         assert!(output.contains("- [foo](../nested/items/foo.md)\n"));
     }
 
@@ -179,7 +181,7 @@ mod tests {
                 column(Some("done"), vec![card("b", None)]),
             ],
         );
-        let output = render_board(&data, "../workdown-items");
+        let output = render_board(&data, "../workdown-items", "");
         assert!(output.contains("](../workdown-items/a.md)\n\n## done\n"));
     }
 }

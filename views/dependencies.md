@@ -1,5 +1,7 @@
 # Graph: depends_on
 
+Directed graph of items connected through `depends_on`, nested by `parent`.
+
 ```mermaid
 flowchart TD
     subgraph phase-04-visualization ["Phase 04: Visualization"]
