@@ -93,9 +93,9 @@ pub fn extract(view: &View, store: &Store, schema: &Schema) -> ViewData {
         }
         ViewKind::Board { .. } => ViewData::Board(board::extract_board(view, store, schema)),
         ViewKind::Gantt { .. } => ViewData::Gantt(gantt::extract_gantt(view, store, schema)),
-        ViewKind::GanttByDepth { .. } => ViewData::GanttByDepth(
-            gantt_by_depth::extract_gantt_by_depth(view, store, schema),
-        ),
+        ViewKind::GanttByDepth { .. } => {
+            ViewData::GanttByDepth(gantt_by_depth::extract_gantt_by_depth(view, store, schema))
+        }
         ViewKind::GanttByInitiative { .. } => ViewData::GanttByInitiative(
             gantt_by_initiative::extract_gantt_by_initiative(view, store, schema),
         ),

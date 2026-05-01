@@ -185,9 +185,7 @@ fn render_view_data(view_data: &ViewData, link_base: &str) -> Option<String> {
         ViewData::Graph(data) => Some(render::graph::render_graph(data)),
         ViewData::Table(data) => Some(render::table::render_table(data, link_base)),
         ViewData::Gantt(data) => Some(render::gantt::render_gantt(data)),
-        ViewData::GanttByDepth(data) => {
-            Some(render::gantt_by_depth::render_gantt_by_depth(data))
-        }
+        ViewData::GanttByDepth(data) => Some(render::gantt_by_depth::render_gantt_by_depth(data)),
         ViewData::GanttByInitiative(data) => Some(
             render::gantt_by_initiative::render_gantt_by_initiative(data),
         ),

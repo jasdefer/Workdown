@@ -76,7 +76,9 @@ pub fn extract_gantt_by_depth(view: &View, store: &Store, schema: &Schema) -> Ga
     let levels: Vec<Level> = depths
         .into_iter()
         .map(|depth| {
-            let mut bars = buckets.remove(&depth).expect("bucket exists for sorted depth");
+            let mut bars = buckets
+                .remove(&depth)
+                .expect("bucket exists for sorted depth");
             bars.sort_by(|left, right| {
                 (left.start, left.card.id.as_str()).cmp(&(right.start, right.card.id.as_str()))
             });
