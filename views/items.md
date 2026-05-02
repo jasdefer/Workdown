@@ -28,7 +28,7 @@
 | [render-graph](../workdown-items/render-graph.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-heatmap](../workdown-items/render-heatmap.md) | issue | to_do | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-line-chart](../workdown-items/render-line-chart.md) | issue | to_do | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
-| [render-metric](../workdown-items/render-metric.md) | issue | to_do | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
+| [render-metric](../workdown-items/render-metric.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-table](../workdown-items/render-table.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-tree](../workdown-items/render-tree.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-treemap](../workdown-items/render-treemap.md) | issue | to_do | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |

@@ -67,6 +67,14 @@ views:
     where:
       - "type=milestone,epic"
 
+  - id: effort-treemap
+    type: treemap
+    group: parent
+    size: duration
+    title: title
+    where:
+      - "status!=removed"
+
   - id: project-stats
     type: metric
     where:
