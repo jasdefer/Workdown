@@ -1,0 +1,16 @@
+# Metrics
+
+| Label | Value |
+| --- | --- |
+| Total items | 47 |
+| To do | 22 |
+| In progress | 1 |
+| Done | 24 |
+| Sum of scheduled duration | 20w |
+| Earliest start | 2026-04-24 |
+| Latest end | 2026-07-02 |
+
+> _123 items dropped:_
+> _- "Sum of scheduled duration" missing 'duration': "adr-phase-04-architecture", "aggregate-rollup", "cli-add-audit", "cli-move-command", "cli-set-command", "duration-comparison-rule", "duration-field-type", "field-value-native-date", "foundation", "foundation-cleanup", "gantt-duration-mode", "gantt-predecessor-mode", "git-derived-default-generator", "render-bar-chart", "render-board", "render-command", "render-gantt", "render-gantt-by-depth", "render-gantt-by-initiative", "render-graph", "render-heatmap", "render-line-chart", "render-metric", "render-table", "render-tree", "render-treemap", "render-workload", "serve-command-skeleton", "server-endpoints-and-mutations", "server-sse-file-watching", "store-diagnostics-consistency", "time-tracking", "ui-build-integration", "view-data-intermediate", "views-config-path", "views-cross-file-validation", "views-json-schema", "views-title-slot", "views-validate-integration", "views-yaml-design", "workspace-refactor"_
+> _- "Earliest start" missing 'start_date': "adr-phase-04-architecture", "aggregate-rollup", "cli-add-audit", "cli-move-command", "cli-set-command", "duration-comparison-rule", "duration-field-type", "field-value-native-date", "foundation", "foundation-cleanup", "gantt-duration-mode", "gantt-predecessor-mode", "git-derived-default-generator", "render-bar-chart", "render-board", "render-command", "render-gantt", "render-gantt-by-depth", "render-gantt-by-initiative", "render-graph", "render-heatmap", "render-line-chart", "render-metric", "render-table", "render-tree", "render-treemap", "render-workload", "serve-command-skeleton", "server-endpoints-and-mutations", "server-sse-file-watching", "store-diagnostics-consistency", "time-tracking", "ui-build-integration", "view-data-intermediate", "views-config-path", "views-cross-file-validation", "views-json-schema", "views-title-slot", "views-validate-integration", "views-yaml-design", "workspace-refactor"_
+> _- "Latest end" missing 'end_date': "adr-phase-04-architecture", "aggregate-rollup", "cli-add-audit", "cli-move-command", "cli-set-command", "duration-comparison-rule", "duration-field-type", "field-value-native-date", "foundation", "foundation-cleanup", "gantt-duration-mode", "gantt-predecessor-mode", "git-derived-default-generator", "render-bar-chart", "render-board", "render-command", "render-gantt", "render-gantt-by-depth", "render-gantt-by-initiative", "render-graph", "render-heatmap", "render-line-chart", "render-metric", "render-table", "render-tree", "render-treemap", "render-workload", "serve-command-skeleton", "server-endpoints-and-mutations", "server-sse-file-watching", "store-diagnostics-consistency", "time-tracking", "ui-build-integration", "view-data-intermediate", "views-config-path", "views-cross-file-validation", "views-json-schema", "views-title-slot", "views-validate-integration", "views-yaml-design", "workspace-refactor"_

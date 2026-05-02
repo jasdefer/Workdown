@@ -66,3 +66,29 @@ views:
     title: title
     where:
       - "type=milestone,epic"
+
+  - id: project-stats
+    type: metric
+    where:
+      - "status!=removed"
+    metrics:
+      - label: Total items
+        aggregate: count
+      - label: To do
+        aggregate: count
+        where: ["status=to_do"]
+      - label: In progress
+        aggregate: count
+        where: ["status=in_progress"]
+      - label: Done
+        aggregate: count
+        where: ["status=done"]
+      - label: Sum of scheduled duration
+        aggregate: sum
+        value: duration
+      - label: Earliest start
+        aggregate: min
+        value: start_date
+      - label: Latest end
+        aggregate: max
+        value: end_date
