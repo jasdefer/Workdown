@@ -72,7 +72,8 @@
       "Bash(sed -n '400p' crates/core/src/parser/schema.rs)",
       "Bash(sed -n '442p' crates/core/src/parser/schema.rs)",
       "Bash(xargs -I {} sh -c 'echo \"=== {} ===\" && head -10 {}')",
-      "Bash(MSYS_NO_PATHCONV=1 docker exec -w //workspaces/Workdown thirsty_thompson cargo test --workspace)"
+      "Bash(MSYS_NO_PATHCONV=1 docker exec -w //workspaces/Workdown thirsty_thompson cargo test --workspace)",
+      "Bash(grep -nE '\\\\\\)\\\\\\)\\\\;$' crates/cli/src/render/gantt.rs crates/cli/src/render/gantt_by_depth.rs crates/cli/src/render/gantt_by_initiative.rs)"
     ]
   }
 }
