@@ -12,11 +12,11 @@
 
 use serde::Serialize;
 
-use crate::model::schema::Schema;
+use crate::model::schema::{FieldType, Schema};
 use crate::model::views::{View, ViewKind};
 use crate::store::Store;
 
-use super::common::{as_number, build_card, Card, UnplacedCard, UnplacedReason};
+use super::common::{as_size, build_card, Card, SizeValue, UnplacedCard, UnplacedReason};
 use super::filter::filtered_items;
 use super::traverse::{walk_forest, Traversal};
 
@@ -32,7 +32,7 @@ pub struct TreemapData {
 pub struct TreemapNode {
     /// `None` on the synthetic top-level root; `Some` on every real item.
     pub card: Option<Card>,
-    pub size: f64,
+    pub size: SizeValue,
     pub children: Vec<TreemapNode>,
 }
 
@@ -50,7 +50,11 @@ pub fn extract_treemap(view: &View, store: &Store, schema: &Schema) -> TreemapDa
         .filter_map(|traversal| to_treemap_node(traversal, size, schema, view, &mut unplaced))
         .collect();
 
-    let total_size: f64 = root_nodes.iter().map(|node| node.size).sum();
+    let zero = zero_for_size_field(size, schema);
+    let total_size = root_nodes
+        .iter()
+        .map(|node| node.size)
+        .fold(zero, |left, right| left + right);
 
     unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
 
@@ -88,9 +92,13 @@ fn to_treemap_node(
             // All descendants dropped out; nothing left to show.
             return None;
         }
-        children.iter().map(|node| node.size).sum()
+        let zero = zero_for_size_field(size_field, schema);
+        children
+            .iter()
+            .map(|node| node.size)
+            .fold(zero, |left, right| left + right)
     } else {
-        match as_number(item.fields.get(size_field)) {
+        match as_size(item.fields.get(size_field)) {
             Some(value) => value,
             None => {
                 unplaced.push(UnplacedCard {
@@ -109,6 +117,20 @@ fn to_treemap_node(
         size,
         children,
     })
+}
+
+/// Picks the `SizeValue` zero matching the size field's schema type.
+///
+/// Used to seed sums (synthetic root, internal-node rollups) with the
+/// right variant so children of a duration field don't accidentally
+/// add into a `Number` accumulator. `views_check` guarantees the field
+/// resolves to one of the allowed numeric types; an unexpected type is
+/// a programming error and falls back to `Number(0)` defensively.
+fn zero_for_size_field(field: &str, schema: &Schema) -> SizeValue {
+    match schema.fields.get(field).map(|config| config.field_type()) {
+        Some(FieldType::Duration) => SizeValue::Duration(0),
+        _ => SizeValue::Number(0.0),
+    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -144,6 +166,25 @@ mod tests {
             (
                 "effort",
                 FieldTypeConfig::Integer {
+                    min: None,
+                    max: None,
+                },
+            ),
+        ])
+    }
+
+    fn duration_schema() -> Schema {
+        make_schema(vec![
+            (
+                "parent",
+                FieldTypeConfig::Link {
+                    allow_cycles: Some(false),
+                    inverse: Some("children".into()),
+                },
+            ),
+            (
+                "estimate",
+                FieldTypeConfig::Duration {
                     min: None,
                     max: None,
                 },
@@ -289,7 +330,44 @@ mod tests {
         assert!(close_enough(data.root.size, 0.0));
     }
 
-    fn close_enough(left: f64, right: f64) -> bool {
-        (left - right).abs() < 1e-9
+    #[test]
+    fn duration_size_field_preserves_variant() {
+        let schema = duration_schema();
+        let (_tmp, store) = make_store_with_files(
+            &schema,
+            vec![
+                ("root.md", "---\n---\n"),
+                ("a.md", "---\nparent: root\nestimate: 1h\n---\n"),
+                ("b.md", "---\nparent: root\nestimate: 30min\n---\n"),
+            ],
+        );
+        let view = treemap_view("parent", "estimate");
+
+        let data = extract_treemap(&view, &store, &schema);
+
+        // 1h + 30min = 5400s; carried through as Duration variant.
+        assert_eq!(data.root.size, SizeValue::Duration(5400));
+        let root_node = &data.root.children[0];
+        assert_eq!(root_node.size, SizeValue::Duration(5400));
+        assert_eq!(root_node.children.len(), 2);
+        for child in &root_node.children {
+            assert!(matches!(child.size, SizeValue::Duration(_)));
+        }
+    }
+
+    #[test]
+    fn duration_empty_view_uses_duration_zero() {
+        let schema = duration_schema();
+        let (_tmp, store) = make_store_with_files(&schema, vec![]);
+        let view = treemap_view("parent", "estimate");
+
+        let data = extract_treemap(&view, &store, &schema);
+
+        // No children → variant defaults to schema's field type.
+        assert_eq!(data.root.size, SizeValue::Duration(0));
+    }
+
+    fn close_enough(left: SizeValue, right: f64) -> bool {
+        (left.as_f64() - right).abs() < 1e-9
     }
 }

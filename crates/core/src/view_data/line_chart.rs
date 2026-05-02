@@ -14,7 +14,9 @@ use crate::model::views::{View, ViewKind};
 use crate::model::WorkItemId;
 use crate::store::Store;
 
-use super::common::{as_axis, as_number, build_card, AxisValue, UnplacedCard, UnplacedReason};
+use super::common::{
+    as_axis, as_size, build_card, AxisValue, SizeValue, UnplacedCard, UnplacedReason,
+};
 use super::filter::filtered_items;
 
 #[derive(Debug, Clone, Serialize)]
@@ -29,7 +31,7 @@ pub struct LineChartData {
 pub struct LinePoint {
     pub id: WorkItemId,
     pub x: AxisValue,
-    pub y: f64,
+    pub y: SizeValue,
 }
 
 pub fn extract_line_chart(view: &View, store: &Store, schema: &Schema) -> LineChartData {
@@ -43,7 +45,7 @@ pub fn extract_line_chart(view: &View, store: &Store, schema: &Schema) -> LineCh
 
     for item in &items {
         let x_value = as_axis(item.fields.get(x));
-        let y_value = as_number(item.fields.get(y));
+        let y_value = as_size(item.fields.get(y));
 
         match (x_value, y_value) {
             (Some(x_value), Some(y_value)) => points.push(LinePoint {
@@ -81,10 +83,13 @@ fn compare_axis(left: &AxisValue, right: &AxisValue) -> Ordering {
             left.partial_cmp(right).unwrap_or(Ordering::Equal)
         }
         (AxisValue::Date(left), AxisValue::Date(right)) => left.cmp(right),
+        (AxisValue::Duration(left), AxisValue::Duration(right)) => left.cmp(right),
         // Same-field items are always the same variant; mixed types shouldn't
         // happen in practice but keep ordering total for determinism.
-        (AxisValue::Number(_), AxisValue::Date(_)) => Ordering::Less,
-        (AxisValue::Date(_), AxisValue::Number(_)) => Ordering::Greater,
+        (AxisValue::Number(_), _) => Ordering::Less,
+        (_, AxisValue::Number(_)) => Ordering::Greater,
+        (AxisValue::Duration(_), AxisValue::Date(_)) => Ordering::Less,
+        (AxisValue::Date(_), AxisValue::Duration(_)) => Ordering::Greater,
     }
 }
 

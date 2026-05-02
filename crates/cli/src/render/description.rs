@@ -83,12 +83,14 @@ pub fn description_for(view: &View) -> String {
             );
             format!("{prefix}, partitioned by depth in `{depth_link}` — one chart per level (0 = roots, 1 = children, ...).")
         }
+        ViewKind::Treemap { group, size } => {
+            format!("Hierarchical breakdown of `{size}` summed up the `{group}` chain.")
+        }
         // Renderers below are not yet implemented; descriptions land when
         // their renderers do.
         ViewKind::BarChart { .. }
         | ViewKind::LineChart { .. }
         | ViewKind::Workload { .. }
-        | ViewKind::Treemap { .. }
         | ViewKind::Heatmap { .. } => String::new(),
     }
 }
@@ -264,6 +266,18 @@ mod tests {
         assert_eq!(
             description_for(&v),
             "Timeline of items from `start_date` to `end_date`, partitioned by top-level ancestor in `parent` — one chart per initiative."
+        );
+    }
+
+    #[test]
+    fn treemap_describes_size_and_group_fields() {
+        let v = view(ViewKind::Treemap {
+            group: "parent".into(),
+            size: "effort".into(),
+        });
+        assert_eq!(
+            description_for(&v),
+            "Hierarchical breakdown of `effort` summed up the `parent` chain."
         );
     }
 

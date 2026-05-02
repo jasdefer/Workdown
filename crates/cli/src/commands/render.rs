@@ -195,10 +195,14 @@ fn render_view_data(view_data: &ViewData, link_base: &str, description: &str) ->
             render::gantt_by_initiative::render_gantt_by_initiative(data, description),
         ),
         ViewData::Metric(data) => Some(render::metric::render_metric(data, description)),
+        ViewData::Treemap(data) => Some(render::treemap::render_treemap(
+            data,
+            link_base,
+            description,
+        )),
         ViewData::BarChart(_)
         | ViewData::Heatmap(_)
         | ViewData::LineChart(_)
-        | ViewData::Treemap(_)
         | ViewData::Workload(_) => None,
     }
 }
@@ -215,6 +219,7 @@ fn emit_unplaced_warnings(view: &View, view_data: &ViewData) {
         ViewData::GanttByDepth(data) => data.unplaced.len(),
         ViewData::GanttByInitiative(data) => data.unplaced.len(),
         ViewData::Metric(data) => data.rows.iter().map(|row| row.unplaced.len()).sum(),
+        ViewData::Treemap(data) => data.unplaced.len(),
         _ => 0,
     };
     if count > 0 {

@@ -20,7 +20,7 @@ use crate::model::schema::Schema;
 use crate::model::views::{View, ViewKind};
 use crate::store::Store;
 
-use super::common::{as_date, as_number, build_card, UnplacedCard, UnplacedReason};
+use super::common::{as_date, as_size, build_card, UnplacedCard, UnplacedReason};
 use super::filter::filtered_items;
 
 #[derive(Debug, Clone, Serialize)]
@@ -51,7 +51,11 @@ pub fn extract_workload(view: &View, store: &Store, schema: &Schema) -> Workload
         let card = build_card(item, schema, view);
         let start_date = as_date(item.fields.get(start));
         let end_date = as_date(item.fields.get(end));
-        let effort_value = as_number(item.fields.get(effort));
+        // Workload's per-day spread math needs f64; the Duration variant
+        // is dropped here pending a proper renderer-side unit story.
+        // `views_check` currently rejects duration-typed effort fields, so
+        // this only sees Number values today.
+        let effort_value = as_size(item.fields.get(effort)).map(|size| size.as_f64());
 
         let (start_date, end_date, effort_value) = match (start_date, end_date, effort_value) {
             (Some(start_date), Some(end_date), Some(effort_value)) => {

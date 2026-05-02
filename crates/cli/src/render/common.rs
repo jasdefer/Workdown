@@ -38,6 +38,21 @@ pub fn emit_description(description: &str, out: &mut String) {
     }
 }
 
+/// Render an integer-valued f64 without a trailing `.0`.
+///
+/// Counts and integer sums round-trip through f64 but should display as
+/// `12`, not `12.0`. Non-integer floats keep their default precision.
+/// Used by renderers that surface arithmetic-derived numbers (metric
+/// values, treemap sizes, etc.) — raw `FieldValue::Float` rendering
+/// uses Rust's default `f64::to_string()` and doesn't need this.
+pub fn format_number(n: f64) -> String {
+    if n.is_finite() && n.fract() == 0.0 && n.abs() < 1e15 {
+        format!("{}", n as i64)
+    } else {
+        n.to_string()
+    }
+}
+
 /// Escape characters that would break Markdown link-text parsing.
 ///
 /// CommonMark terminates link text at unbalanced `]`, and a literal `\`

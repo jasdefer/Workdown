@@ -8,6 +8,8 @@
 //! unrenderable — so the renderer can show them in a side panel or ignore
 //! them.
 
+use std::ops::Add;
+
 use chrono::NaiveDate;
 use serde::Serialize;
 
@@ -135,6 +137,50 @@ pub enum AggregateValue {
 pub enum AxisValue {
     Number(f64),
     Date(NaiveDate),
+    Duration(i64),
+}
+
+/// A magnitude carried by a non-aggregated leaf field — the size column
+/// of a treemap, the y-coordinate of a line chart, etc.
+///
+/// Mirrors the `Number`/`Duration` arms of [`AggregateValue`] without
+/// the `Date` arm (sizes can't be dates). Carrying the variant through
+/// the data structure lets downstream renderers format `5d` instead of
+/// raw seconds — same role `AggregateValue` plays for metric/heatmap.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum SizeValue {
+    Number(f64),
+    Duration(i64),
+}
+
+impl SizeValue {
+    /// Magnitude as `f64`. For `Duration`, this is canonical seconds.
+    /// Used for sorting and percentage math, where the variant doesn't
+    /// matter — only relative magnitude does.
+    pub fn as_f64(self) -> f64 {
+        match self {
+            SizeValue::Number(number) => number,
+            SizeValue::Duration(seconds) => seconds as f64,
+        }
+    }
+}
+
+/// Sum two values of the same variant. Mixing variants is a programming
+/// error — every `SizeValue` in a single tree comes from the same
+/// schema field, so the variant is uniform.
+impl Add for SizeValue {
+    type Output = SizeValue;
+
+    fn add(self, other: Self) -> Self {
+        match (self, other) {
+            (SizeValue::Number(left), SizeValue::Number(right)) => SizeValue::Number(left + right),
+            (SizeValue::Duration(left), SizeValue::Duration(right)) => {
+                SizeValue::Duration(left + right)
+            }
+            _ => panic!("SizeValue::add called with mismatched variants"),
+        }
+    }
 }
 
 // ── FieldValue conversions ──────────────────────────────────────────
@@ -155,26 +201,27 @@ pub(super) fn as_duration_seconds(value: Option<&FieldValue>) -> Option<i64> {
     }
 }
 
-/// Extract a numeric value (`Integer`, `Float`, or `Duration`) as `f64`.
-///
-/// Duration converts to its canonical seconds magnitude. Chart axes
-/// using duration values display as raw seconds in v1 — there's no
-/// per-axis unit-formatting hook yet.
-pub(super) fn as_number(value: Option<&FieldValue>) -> Option<f64> {
+/// Extract a [`SizeValue`] from a numeric field (`Integer`, `Float`, or
+/// `Duration`). Preserves the duration variant so renderers can format
+/// `5d` instead of raw seconds; for sorting/arithmetic that doesn't
+/// care about the unit, callers pull the magnitude via [`SizeValue::as_f64`].
+pub(super) fn as_size(value: Option<&FieldValue>) -> Option<SizeValue> {
     match value {
-        Some(FieldValue::Integer(integer)) => Some(*integer as f64),
-        Some(FieldValue::Float(float)) => Some(*float),
-        Some(FieldValue::Duration(seconds)) => Some(*seconds as f64),
+        Some(FieldValue::Integer(integer)) => Some(SizeValue::Number(*integer as f64)),
+        Some(FieldValue::Float(float)) => Some(SizeValue::Number(*float)),
+        Some(FieldValue::Duration(seconds)) => Some(SizeValue::Duration(*seconds)),
         _ => None,
     }
 }
 
-/// Extract an [`AxisValue`] — numeric or date — from a field value.
+/// Extract an [`AxisValue`] — numeric, date, or duration — from a field
+/// value. Duration values keep their variant so renderers can format
+/// axis ticks as `1d` instead of `86400`.
 pub(super) fn as_axis(value: Option<&FieldValue>) -> Option<AxisValue> {
     match value {
         Some(FieldValue::Integer(integer)) => Some(AxisValue::Number(*integer as f64)),
         Some(FieldValue::Float(float)) => Some(AxisValue::Number(*float)),
-        Some(FieldValue::Duration(seconds)) => Some(AxisValue::Number(*seconds as f64)),
+        Some(FieldValue::Duration(seconds)) => Some(AxisValue::Duration(*seconds)),
         Some(FieldValue::Date(date)) => Some(AxisValue::Date(*date)),
         _ => None,
     }

@@ -39,7 +39,7 @@ Every view type also accepts the cross-cutting optional slots `where:` and `titl
 | `line_chart` | `x`, `y` | — | not implemented | — |
 | `workload` | `start`, `end`, `effort` | — | not implemented | — |
 | `metric` | `metrics` (list of rows; each row needs `aggregate`, optionally `value`, `label`, `where`) | — | shipped | GFM table, one row per metric |
-| `treemap` | `group`, `size` | — | not implemented | — |
+| `treemap` | `group`, `size` | — | shipped | Nested bullet list with size + share-of-parent annotations |
 | `heatmap` | `x`, `y`, `aggregate` | `value`, `bucket` | not implemented | — |
 
 Slot semantics:
@@ -184,7 +184,7 @@ views:
 `workdown validate` runs a set of checks that compare `views.yaml` against `schema.yaml`. All findings are errors in v1 (no warnings):
 
 - **Reference resolution** — every field name referenced by a view slot must exist in `schema.fields` (the virtual `id` field is always accepted).
-- **Type compatibility** — the slot dictates the allowed field type(s). For example: `board.field` must be `choice`, `multichoice`, or `string`; `tree.field` must be `link`; `graph.field` must be `links`; `gantt.start`/`gantt.end` must be `date`, `gantt.duration` must be `duration`; numeric aggregation slots (`workload.effort`, `treemap.size`, `bar_chart.value`, `heatmap.value`, `metric.value`) must be `integer` or `float`; `title:` must be `string` or `choice`. `table.columns[*]` is existence-only — any type is accepted as a column.
+- **Type compatibility** — the slot dictates the allowed field type(s). For example: `board.field` must be `choice`, `multichoice`, or `string`; `tree.field` must be `link`; `graph.field` must be `links`; `gantt.start`/`gantt.end` must be `date`, `gantt.duration` must be `duration`; numeric slots accept `integer` or `float`, plus `duration` where the renderer can format it (`treemap.size`, `line_chart.x`/`y`, and aggregation slots `bar_chart.value`, `heatmap.value`, `metric.value`); `workload.effort` is currently `integer` or `float` only; `title:` must be `string` or `choice`. `table.columns[*]` is existence-only — any type is accepted as a column.
 - **Gantt input modes** — every gantt-family view (`gantt`, `gantt_by_initiative`, `gantt_by_depth`) must declare `start` plus exactly one of: `end`, `duration`, or `after`+`duration`. `end` and `duration` together is rejected; `after` requires `duration` and forbids `end`.
 - **Predecessor / partition link slots** — `gantt.after`, `gantt_by_initiative.root_link`, and `gantt_by_depth.depth_link` must point at a `link`/`links` field (single-target only for `root_link`/`depth_link`) with `allow_cycles: false`, and not at an inverse relation name (e.g. `children` when `parent.inverse: children`).
 - **Heatmap bucket coupling** — if `bucket:` is set, at least one of `x` or `y` must resolve to a `date` field.

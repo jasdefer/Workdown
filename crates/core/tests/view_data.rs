@@ -248,7 +248,7 @@ fn extract_exercises_every_variant() {
                 assert_eq!(treemap.root.children.len(), 1);
                 let epic = &treemap.root.children[0];
                 assert_eq!(epic.card.as_ref().unwrap().id.as_str(), "epic-auth");
-                let sum: f64 = epic.children.iter().map(|child| child.size).sum();
+                let sum: f64 = epic.children.iter().map(|child| child.size.as_f64()).sum();
                 assert!((sum - 10.0).abs() < 1e-9);
             }
             (id, data) => panic!("unexpected view/variant pair: id={id}, data={data:?}"),

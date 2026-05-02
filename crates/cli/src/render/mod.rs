@@ -17,3 +17,4 @@ pub mod graph;
 pub mod metric;
 pub mod table;
 pub mod tree;
+pub mod treemap;

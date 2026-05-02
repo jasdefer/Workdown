@@ -46,7 +46,7 @@ use crate::store::Store;
 pub use bar_chart::{BarChartBar, BarChartData};
 pub use board::{BoardColumn, BoardData};
 pub use common::{
-    build_card, resolve_title, AggregateValue, AxisValue, Card, CardField, UnplacedCard,
+    build_card, resolve_title, AggregateValue, AxisValue, Card, CardField, SizeValue, UnplacedCard,
     UnplacedReason,
 };
 pub use gantt::{GanttBar, GanttData};

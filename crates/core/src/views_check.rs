@@ -221,8 +221,13 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 view_id,
                 "x",
                 x,
-                &[FieldType::Integer, FieldType::Float, FieldType::Date],
-                "integer, float, or date",
+                &[
+                    FieldType::Integer,
+                    FieldType::Float,
+                    FieldType::Date,
+                    FieldType::Duration,
+                ],
+                "integer, float, date, or duration",
                 out,
             );
             check_slot(
@@ -230,8 +235,8 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 view_id,
                 "y",
                 y,
-                &[FieldType::Integer, FieldType::Float],
-                "integer or float",
+                &[FieldType::Integer, FieldType::Float, FieldType::Duration],
+                "integer, float, or duration",
                 out,
             );
         }
@@ -276,8 +281,8 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 view_id,
                 "size",
                 size,
-                &[FieldType::Integer, FieldType::Float],
-                "integer or float",
+                &[FieldType::Integer, FieldType::Float, FieldType::Duration],
+                "integer, float, or duration",
                 out,
             );
         }
@@ -2023,6 +2028,42 @@ mod tests {
             &one_view(ViewKind::Treemap {
                 group: "parent".into(),
                 size: "effort".into(),
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn treemap_size_accepts_duration() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Treemap {
+                group: "parent".into(),
+                size: "estimate".into(),
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn line_chart_y_accepts_duration() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::LineChart {
+                x: "start_date".into(),
+                y: "estimate".into(),
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn line_chart_x_accepts_duration() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::LineChart {
+                x: "estimate".into(),
+                y: "effort".into(),
             }),
             &simple_schema(),
         );

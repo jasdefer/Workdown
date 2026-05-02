@@ -15,7 +15,7 @@ use workdown_core::view_data::{
     AggregateValue, MetricData, MetricRowData, UnplacedCard, UnplacedReason,
 };
 
-use crate::render::common::emit_description;
+use crate::render::common::{emit_description, format_number};
 
 /// Render a `MetricData` as a Markdown string.
 ///
@@ -54,17 +54,6 @@ fn format_value(value: &Option<AggregateValue>) -> String {
         Some(AggregateValue::Number(n)) => format_number(*n),
         Some(AggregateValue::Date(d)) => d.format("%Y-%m-%d").to_string(),
         Some(AggregateValue::Duration(seconds)) => format_duration_seconds(*seconds),
-    }
-}
-
-/// Render an integer-valued f64 without a trailing `.0`. Counts and
-/// integer sums round-trip through f64 but should display as `12`,
-/// not `12.0`. Non-integer floats keep their default precision.
-fn format_number(n: f64) -> String {
-    if n.is_finite() && n.fract() == 0.0 && n.abs() < 1e15 {
-        format!("{}", n as i64)
-    } else {
-        n.to_string()
     }
 }
 
