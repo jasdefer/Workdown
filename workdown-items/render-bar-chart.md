@@ -1,7 +1,7 @@
 ---
 id: render-bar-chart
 type: issue
-status: to_do
+status: done
 title: Bar chart renderer
 parent: renderers
 depends_on: [view-data-intermediate]

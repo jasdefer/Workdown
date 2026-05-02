@@ -22,7 +22,7 @@
 | [item-mutations](../workdown-items/item-mutations.md) | milestone | to_do | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md) |
 | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | epic | in_progress |  |  |
 | [polish](../workdown-items/polish.md) | milestone | to_do | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [frontend](../workdown-items/frontend.md) |
-| [render-bar-chart](../workdown-items/render-bar-chart.md) | issue | to_do | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
+| [render-bar-chart](../workdown-items/render-bar-chart.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-board](../workdown-items/render-board.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-command](../workdown-items/render-command.md) | issue | to_do | [renderers](../workdown-items/renderers.md) | [render-board](../workdown-items/render-board.md), [render-tree](../workdown-items/render-tree.md), [render-graph](../workdown-items/render-graph.md), [render-table](../workdown-items/render-table.md), [render-gantt](../workdown-items/render-gantt.md), [render-bar-chart](../workdown-items/render-bar-chart.md), [render-line-chart](../workdown-items/render-line-chart.md), [render-workload](../workdown-items/render-workload.md), [render-metric](../workdown-items/render-metric.md), [render-treemap](../workdown-items/render-treemap.md), [render-heatmap](../workdown-items/render-heatmap.md) |
 | [render-gantt](../workdown-items/render-gantt.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
@@ -30,7 +30,7 @@
 | [render-gantt-by-initiative](../workdown-items/render-gantt-by-initiative.md) | issue | done | [renderers](../workdown-items/renderers.md) | [render-gantt](../workdown-items/render-gantt.md) |
 | [render-graph](../workdown-items/render-graph.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-heatmap](../workdown-items/render-heatmap.md) | issue | to_do | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
-| [render-line-chart](../workdown-items/render-line-chart.md) | issue | to_do | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
+| [render-line-chart](../workdown-items/render-line-chart.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-metric](../workdown-items/render-metric.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-table](../workdown-items/render-table.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-tree](../workdown-items/render-tree.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |

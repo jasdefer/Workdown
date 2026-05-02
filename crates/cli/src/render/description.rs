@@ -13,7 +13,7 @@
 //! headers already convey the field names) can be omitted from this
 //! module — callers tolerate an empty string.
 
-use workdown_core::model::views::{View, ViewKind};
+use workdown_core::model::views::{Aggregate, View, ViewKind};
 
 /// Build the caption for a view, ready to be emitted right under the
 /// rendered `# Heading`. Returns an empty string for view kinds that
@@ -90,11 +90,20 @@ pub fn description_for(view: &View) -> String {
             Some(group) => format!("Points of `{y}` over `{x}`, split into series by `{group}`."),
             None => format!("Points of `{y}` over `{x}`."),
         },
+        ViewKind::BarChart {
+            group_by,
+            value,
+            aggregate,
+        } => match (aggregate, value) {
+            (Aggregate::Count, _) => format!("Bars showing item count by `{group_by}`."),
+            (agg, Some(value)) => {
+                format!("Bars showing {agg} of `{value}` by `{group_by}`.")
+            }
+            (agg, None) => format!("Bars showing {agg} by `{group_by}`."),
+        },
         // Renderers below are not yet implemented; descriptions land when
         // their renderers do.
-        ViewKind::BarChart { .. } | ViewKind::Workload { .. } | ViewKind::Heatmap { .. } => {
-            String::new()
-        }
+        ViewKind::Workload { .. } | ViewKind::Heatmap { .. } => String::new(),
     }
 }
 
@@ -279,10 +288,7 @@ mod tests {
             y: "actual".into(),
             group: None,
         });
-        assert_eq!(
-            description_for(&v),
-            "Points of `actual` over `estimate`."
-        );
+        assert_eq!(description_for(&v), "Points of `actual` over `estimate`.");
     }
 
     #[test]
@@ -322,6 +328,29 @@ mod tests {
         assert_eq!(
             description_for(&v),
             "Timeline of items from `start_date` to `end_date`, partitioned by depth in `parent` — one chart per level (0 = roots, 1 = children, ...)."
+        );
+    }
+
+    #[test]
+    fn bar_chart_count_form() {
+        let v = view(ViewKind::BarChart {
+            group_by: "status".into(),
+            value: None,
+            aggregate: Aggregate::Count,
+        });
+        assert_eq!(description_for(&v), "Bars showing item count by `status`.");
+    }
+
+    #[test]
+    fn bar_chart_aggregate_with_value_form() {
+        let v = view(ViewKind::BarChart {
+            group_by: "status".into(),
+            value: Some("points".into()),
+            aggregate: Aggregate::Sum,
+        });
+        assert_eq!(
+            description_for(&v),
+            "Bars showing sum of `points` by `status`."
         );
     }
 }

@@ -6,7 +6,9 @@
 //! `config.yaml` + `views.yaml`, calls the extractors, calls the renderers,
 //! and writes `views/<id>.md`.
 
+pub mod bar_chart;
 pub mod board;
+pub mod chart_common;
 pub mod common;
 pub mod description;
 pub mod gantt;

@@ -22,42 +22,25 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use chrono::{Datelike, NaiveDate};
 use plotters::prelude::*;
 
 use workdown_core::view_data::{AxisValue, LineChartData, LinePoint, SizeValue, UnplacedReason};
 
+use crate::render::chart_common::{
+    axis_label, date_to_f64, format_axis_tick, hex_to_rgb, numeric_extent, pad_extent,
+    pick_duration_unit, AxisKind, OKABE_ITO,
+};
 use crate::render::common::{card_link, emit_description};
 
 const SVG_WIDTH: u32 = 800;
 const SVG_HEIGHT: u32 = 400;
-
-/// Color-blind-safe categorical palette by Okabe & Ito (2008).
-///
-/// Eight distinct hues that remain distinguishable for the most common
-/// forms of color-vision deficiency. Used in series-sort order and
-/// recycled (i.e. `OKABE_ITO[i % 8]`) when a view has more than 8 groups.
-pub(super) const OKABE_ITO: [&str; 8] = [
-    "#E69F00", // orange
-    "#56B4E9", // sky blue
-    "#009E73", // bluish green
-    "#F0E442", // yellow
-    "#0072B2", // blue
-    "#D55E00", // vermillion
-    "#CC79A7", // reddish purple
-    "#000000", // black
-];
 
 /// Render a `LineChartData` as a Markdown string.
 ///
 /// `item_link_base` is the relative path from the rendered view file to
 /// the work items directory — same parameter as `render_treemap`.
 /// `description` is the one-line caption emitted below the heading.
-pub fn render_line_chart(
-    data: &LineChartData,
-    item_link_base: &str,
-    description: &str,
-) -> String {
+pub fn render_line_chart(data: &LineChartData, item_link_base: &str, description: &str) -> String {
     let mut out = String::new();
     let _ = writeln!(
         out,
@@ -108,22 +91,6 @@ struct Series {
     label: String,
     color: RGBColor,
     points: Vec<(f64, f64)>,
-}
-
-/// How an axis converts source values to f64 plot coordinates and back
-/// to display strings.
-#[derive(Debug, Clone, Copy)]
-enum AxisKind {
-    /// Numeric — pass through as f64; tick labels use `format_number`.
-    Number,
-    /// Date — `(date - 0001-01-01).num_days() as f64`; tick labels use `YYYY-MM-DD`.
-    Date,
-    /// Duration — divide canonical seconds by `divisor`; tick labels are the
-    /// quotient with at most two decimals; axis label appends the unit.
-    Duration {
-        divisor: i64,
-        label: &'static str,
-    },
 }
 
 fn render_svg(data: &LineChartData) -> String {
@@ -275,59 +242,6 @@ fn size_to_f64(value: SizeValue, kind: AxisKind) -> f64 {
     }
 }
 
-/// Days since CE epoch, used as the f64 encoding for date axes.
-fn date_to_f64(date: NaiveDate) -> f64 {
-    date.num_days_from_ce() as f64
-}
-
-/// Format a single axis tick. Bridge from plot-space f64 back to a human
-/// label per the axis kind.
-///
-/// Numeric and duration ticks both pass through `format_compact_number` so
-/// that plotters' fractional tick generation (`2.6` round-tripping as
-/// `2.5999999999999996`) doesn't leak into the rendered SVG. Date ticks
-/// round to the nearest whole day.
-fn format_axis_tick(value: f64, kind: AxisKind) -> String {
-    match kind {
-        AxisKind::Number | AxisKind::Duration { .. } => format_compact_number(value),
-        AxisKind::Date => {
-            let days = value.round() as i32;
-            match NaiveDate::from_num_days_from_ce_opt(days) {
-                Some(date) => date.format("%Y-%m-%d").to_string(),
-                None => String::new(),
-            }
-        }
-    }
-}
-
-/// Format a tick-friendly number: integers drop their decimal, non-
-/// integers round to two decimals and trim trailing zeros.
-///
-/// Plotters generates floating-point tick values that don't always have
-/// clean decimal expansions (`2.6` arrives as `2.5999999999999996`).
-/// `format_number` from `render::common` is for treemap-style sums and
-/// passes those through verbatim — fine there, ugly on a line chart axis.
-fn format_compact_number(value: f64) -> String {
-    if value.fract() == 0.0 && value.abs() < 1e15 {
-        format!("{}", value as i64)
-    } else {
-        format!("{value:.2}")
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_owned()
-    }
-}
-
-/// Compose the axis title shown to the user. Number/date axes show the
-/// raw field name; duration axes append the chosen unit so readers know
-/// what the tick numbers mean.
-fn axis_label(field: &str, kind: AxisKind) -> String {
-    match kind {
-        AxisKind::Number | AxisKind::Date => field.to_owned(),
-        AxisKind::Duration { label, .. } => format!("{field} ({label})"),
-    }
-}
-
 /// Group points into series, assign palette colors, and convert values
 /// to f64 plot coordinates.
 ///
@@ -364,10 +278,7 @@ fn build_series(
     let mut synthetic_points: Vec<(f64, f64)> = Vec::new();
 
     for point in points {
-        let xy = (
-            axis_to_f64(point.x, x_kind),
-            size_to_f64(point.y, y_kind),
-        );
+        let xy = (axis_to_f64(point.x, x_kind), size_to_f64(point.y, y_kind));
         match &point.group {
             Some(label) => grouped.entry(label.clone()).or_default().push(xy),
             None => synthetic_points.push(xy),
@@ -394,236 +305,16 @@ fn build_series(
     series
 }
 
-/// Compute (min, max) over an iterator of finite f64s. Falls back to
-/// `(0.0, 1.0)` when empty so plotters always has a non-zero range.
-fn numeric_extent<I: Iterator<Item = f64>>(values: I) -> (f64, f64) {
-    let mut min = f64::INFINITY;
-    let mut max = f64::NEG_INFINITY;
-    for value in values {
-        if value.is_finite() {
-            if value < min {
-                min = value;
-            }
-            if value > max {
-                max = value;
-            }
-        }
-    }
-    if !min.is_finite() || !max.is_finite() {
-        return (0.0, 1.0);
-    }
-    (min, max)
-}
-
-/// Pad a numeric extent so points don't sit on the chart edges. Uses 5%
-/// of the range on each side; collapses degenerate ranges to a unit
-/// window so plotters has somewhere to draw ticks.
-fn pad_extent(min: f64, max: f64) -> (f64, f64) {
-    if (max - min).abs() < f64::EPSILON {
-        // All values identical — give each side a 0.5 unit margin.
-        return (min - 0.5, max + 0.5);
-    }
-    let pad = (max - min) * 0.05;
-    (min - pad, max + pad)
-}
-
-/// Choice of unit for an axis backed by a `Duration` field.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct DurationUnit {
-    divisor_seconds: i64,
-    label: &'static str,
-}
-
-const SECONDS_PER_MINUTE: i64 = 60;
-const SECONDS_PER_HOUR: i64 = 3_600;
-const SECONDS_PER_DAY: i64 = 86_400;
-const SECONDS_PER_WEEK: i64 = 604_800;
-
-/// Pick the largest unit whose count for `max_seconds` is at least 1.
-///
-/// Goal: render axis ticks as small whole numbers in a single, consistent
-/// unit — `0`, `1`, `2`, `3` weeks, not `0`, `604800`, `1209600` seconds.
-/// Callers divide every duration value by `divisor_seconds` (as f64) to
-/// plot, and append `label` to the axis title.
-///
-/// `0` and negative ranges fall through to seconds — the chart still
-/// plots, and the renderer doesn't have to special-case the empty axis.
-fn pick_duration_unit(max_seconds: i64) -> DurationUnit {
-    let abs = max_seconds.unsigned_abs() as i64;
-    if abs >= SECONDS_PER_WEEK {
-        DurationUnit {
-            divisor_seconds: SECONDS_PER_WEEK,
-            label: "weeks",
-        }
-    } else if abs >= SECONDS_PER_DAY {
-        DurationUnit {
-            divisor_seconds: SECONDS_PER_DAY,
-            label: "days",
-        }
-    } else if abs >= SECONDS_PER_HOUR {
-        DurationUnit {
-            divisor_seconds: SECONDS_PER_HOUR,
-            label: "hours",
-        }
-    } else if abs >= SECONDS_PER_MINUTE {
-        DurationUnit {
-            divisor_seconds: SECONDS_PER_MINUTE,
-            label: "minutes",
-        }
-    } else {
-        DurationUnit {
-            divisor_seconds: 1,
-            label: "seconds",
-        }
-    }
-}
-
-/// Convert a `#RRGGBB` palette entry into the plotters `RGBColor` form.
-///
-/// Panics on a malformed entry — `OKABE_ITO` is the only caller and a
-/// test asserts every entry parses, so a panic here is a programming
-/// error caught at test time.
-fn hex_to_rgb(hex: &str) -> RGBColor {
-    let bytes = hex
-        .strip_prefix('#')
-        .expect("palette color should start with '#'");
-    assert_eq!(bytes.len(), 6, "palette color should be #RRGGBB");
-    let r = u8::from_str_radix(&bytes[0..2], 16).expect("valid hex r");
-    let g = u8::from_str_radix(&bytes[2..4], 16).expect("valid hex g");
-    let b = u8::from_str_radix(&bytes[4..6], 16).expect("valid hex b");
-    RGBColor(r, g, b)
-}
-
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use crate::render::chart_common::{SECONDS_PER_DAY, SECONDS_PER_HOUR};
+    use chrono::NaiveDate;
     use workdown_core::model::WorkItemId;
     use workdown_core::view_data::{Card, LineChartData, LinePoint, UnplacedCard, UnplacedReason};
-
-    // ── Palette ─────────────────────────────────────────────────────
-
-    #[test]
-    fn okabe_ito_has_eight_distinct_colors() {
-        let mut sorted: Vec<&str> = OKABE_ITO.to_vec();
-        sorted.sort();
-        sorted.dedup();
-        assert_eq!(sorted.len(), 8, "palette should have 8 distinct colors");
-    }
-
-    #[test]
-    fn okabe_ito_entries_are_valid_hex() {
-        for color in OKABE_ITO {
-            let parsed = hex_to_rgb(color);
-            // Smoke test: any panic during parsing fails the test.
-            let _ = parsed;
-        }
-    }
-
-    // ── Duration unit picker ────────────────────────────────────────
-
-    #[test]
-    fn pick_duration_unit_seconds_for_small_values() {
-        assert_eq!(pick_duration_unit(45).label, "seconds");
-    }
-
-    #[test]
-    fn pick_duration_unit_minutes_at_60_seconds() {
-        assert_eq!(pick_duration_unit(60).label, "minutes");
-    }
-
-    #[test]
-    fn pick_duration_unit_hours_at_one_hour() {
-        assert_eq!(pick_duration_unit(SECONDS_PER_HOUR).label, "hours");
-    }
-
-    #[test]
-    fn pick_duration_unit_days_at_one_day() {
-        assert_eq!(pick_duration_unit(SECONDS_PER_DAY).label, "days");
-    }
-
-    #[test]
-    fn pick_duration_unit_weeks_at_one_week() {
-        assert_eq!(pick_duration_unit(SECONDS_PER_WEEK).label, "weeks");
-    }
-
-    #[test]
-    fn pick_duration_unit_weeks_for_large_values() {
-        assert_eq!(pick_duration_unit(4 * SECONDS_PER_WEEK).label, "weeks");
-    }
-
-    #[test]
-    fn pick_duration_unit_zero_falls_through_to_seconds() {
-        assert_eq!(pick_duration_unit(0).label, "seconds");
-    }
-
-    #[test]
-    fn pick_duration_unit_negative_uses_absolute_magnitude() {
-        assert_eq!(pick_duration_unit(-2 * SECONDS_PER_DAY).label, "days");
-    }
-
-    // ── Tick formatter ──────────────────────────────────────────────
-
-    #[test]
-    fn format_axis_tick_number_drops_decimal_for_integers() {
-        assert_eq!(format_axis_tick(3.0, AxisKind::Number), "3");
-    }
-
-    #[test]
-    fn format_axis_tick_date_renders_iso() {
-        let date = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
-        let tick = format_axis_tick(date_to_f64(date), AxisKind::Date);
-        assert_eq!(tick, "2026-01-05");
-    }
-
-    #[test]
-    fn format_axis_tick_duration_drops_decimal_for_integers() {
-        let unit = pick_duration_unit(2 * SECONDS_PER_DAY);
-        let kind = AxisKind::Duration {
-            divisor: unit.divisor_seconds,
-            label: unit.label,
-        };
-        // 2.0 days → "2"
-        assert_eq!(format_axis_tick(2.0, kind), "2");
-    }
-
-    #[test]
-    fn axis_label_appends_unit_for_duration() {
-        let unit = pick_duration_unit(2 * SECONDS_PER_DAY);
-        let kind = AxisKind::Duration {
-            divisor: unit.divisor_seconds,
-            label: unit.label,
-        };
-        assert_eq!(axis_label("estimate", kind), "estimate (days)");
-    }
-
-    #[test]
-    fn axis_label_for_number_is_field_name() {
-        assert_eq!(axis_label("score", AxisKind::Number), "score");
-    }
-
-    #[test]
-    fn axis_label_for_date_is_field_name() {
-        assert_eq!(axis_label("day", AxisKind::Date), "day");
-    }
-
-    // ── Padding ─────────────────────────────────────────────────────
-
-    #[test]
-    fn pad_extent_collapses_zero_range_to_unit_window() {
-        let (min, max) = pad_extent(5.0, 5.0);
-        assert!(max - min > 0.5, "should give a 1-unit window");
-    }
-
-    #[test]
-    fn pad_extent_adds_5_percent_padding() {
-        let (min, max) = pad_extent(0.0, 100.0);
-        // 5% of 100 = 5
-        assert!((min - -5.0).abs() < f64::EPSILON);
-        assert!((max - 105.0).abs() < f64::EPSILON);
-    }
 
     // ── Render fixtures ─────────────────────────────────────────────
 
@@ -700,9 +391,9 @@ mod tests {
             "../workdown-items",
             "Estimate vs actual effort.",
         );
-        assert!(output.contains(
-            "# Line chart: actual over estimate\n\nEstimate vs actual effort.\n\n"
-        ));
+        assert!(
+            output.contains("# Line chart: actual over estimate\n\nEstimate vs actual effort.\n\n")
+        );
     }
 
     // ── Single series ───────────────────────────────────────────────
@@ -751,9 +442,24 @@ mod tests {
     #[test]
     fn multi_series_uses_distinct_palette_colors_per_group() {
         let points = vec![
-            point("a", AxisValue::Number(1.0), SizeValue::Number(2.0), Some("eng")),
-            point("b", AxisValue::Number(2.0), SizeValue::Number(4.0), Some("ops")),
-            point("c", AxisValue::Number(3.0), SizeValue::Number(6.0), Some("eng")),
+            point(
+                "a",
+                AxisValue::Number(1.0),
+                SizeValue::Number(2.0),
+                Some("eng"),
+            ),
+            point(
+                "b",
+                AxisValue::Number(2.0),
+                SizeValue::Number(4.0),
+                Some("ops"),
+            ),
+            point(
+                "c",
+                AxisValue::Number(3.0),
+                SizeValue::Number(6.0),
+                Some("eng"),
+            ),
         ];
         let output = render_line_chart(
             &data("x", "y", Some("team"), points, vec![]),
@@ -774,8 +480,18 @@ mod tests {
     #[test]
     fn multi_series_includes_group_labels() {
         let points = vec![
-            point("a", AxisValue::Number(1.0), SizeValue::Number(2.0), Some("eng")),
-            point("b", AxisValue::Number(2.0), SizeValue::Number(4.0), Some("ops")),
+            point(
+                "a",
+                AxisValue::Number(1.0),
+                SizeValue::Number(2.0),
+                Some("eng"),
+            ),
+            point(
+                "b",
+                AxisValue::Number(2.0),
+                SizeValue::Number(4.0),
+                Some("ops"),
+            ),
         ];
         let output = render_line_chart(
             &data("x", "y", Some("team"), points, vec![]),
@@ -789,7 +505,12 @@ mod tests {
     #[test]
     fn missing_group_value_lands_in_synthetic_series() {
         let points = vec![
-            point("a", AxisValue::Number(1.0), SizeValue::Number(2.0), Some("eng")),
+            point(
+                "a",
+                AxisValue::Number(1.0),
+                SizeValue::Number(2.0),
+                Some("eng"),
+            ),
             point("b", AxisValue::Number(2.0), SizeValue::Number(4.0), None),
         ];
         let output = render_line_chart(
@@ -798,7 +519,10 @@ mod tests {
             "",
         );
         // Synthetic series labelled "(no team)".
-        assert!(output.contains("(no team)"), "expected '(no team)' synthetic series");
+        assert!(
+            output.contains("(no team)"),
+            "expected '(no team)' synthetic series"
+        );
     }
 
     #[test]
@@ -863,8 +587,18 @@ mod tests {
     #[test]
     fn duration_y_axis_label_includes_unit() {
         let points = vec![
-            point("a", AxisValue::Number(1.0), SizeValue::Duration(2 * SECONDS_PER_DAY), None),
-            point("b", AxisValue::Number(2.0), SizeValue::Duration(4 * SECONDS_PER_DAY), None),
+            point(
+                "a",
+                AxisValue::Number(1.0),
+                SizeValue::Duration(2 * SECONDS_PER_DAY),
+                None,
+            ),
+            point(
+                "b",
+                AxisValue::Number(2.0),
+                SizeValue::Duration(4 * SECONDS_PER_DAY),
+                None,
+            ),
         ];
         let output = render_line_chart(
             &data("x", "estimate", None, points, vec![]),

@@ -84,6 +84,20 @@ views:
     where:
       - "status!=removed"
 
+  - id: items-by-status
+    type: bar_chart
+    group_by: status
+    aggregate: count
+    where:
+      - "status!=removed"
+
+  - id: items-by-type
+    type: bar_chart
+    group_by: type
+    aggregate: count
+    where:
+      - "status!=removed"
+
   - id: project-stats
     type: metric
     where:
