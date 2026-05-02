@@ -180,27 +180,24 @@ fn render_all(
 /// callers decide whether that's fatal (single-view mode) or skippable
 /// (bulk mode). Each new renderer moves one arm from the fallthrough
 /// into the match.
-fn render_view_data(
-    view_data: &ViewData,
-    link_base: &str,
-    description: &str,
-) -> Option<String> {
+fn render_view_data(view_data: &ViewData, link_base: &str, description: &str) -> Option<String> {
     match view_data {
         ViewData::Board(data) => Some(render::board::render_board(data, link_base, description)),
         ViewData::Tree(data) => Some(render::tree::render_tree(data, link_base, description)),
         ViewData::Graph(data) => Some(render::graph::render_graph(data, description)),
         ViewData::Table(data) => Some(render::table::render_table(data, link_base, description)),
         ViewData::Gantt(data) => Some(render::gantt::render_gantt(data, description)),
-        ViewData::GanttByDepth(data) => {
-            Some(render::gantt_by_depth::render_gantt_by_depth(data, description))
-        }
+        ViewData::GanttByDepth(data) => Some(render::gantt_by_depth::render_gantt_by_depth(
+            data,
+            description,
+        )),
         ViewData::GanttByInitiative(data) => Some(
             render::gantt_by_initiative::render_gantt_by_initiative(data, description),
         ),
+        ViewData::Metric(data) => Some(render::metric::render_metric(data, description)),
         ViewData::BarChart(_)
         | ViewData::Heatmap(_)
         | ViewData::LineChart(_)
-        | ViewData::Metric(_)
         | ViewData::Treemap(_)
         | ViewData::Workload(_) => None,
     }
@@ -217,6 +214,7 @@ fn emit_unplaced_warnings(view: &View, view_data: &ViewData) {
         ViewData::Gantt(data) => data.unplaced.len(),
         ViewData::GanttByDepth(data) => data.unplaced.len(),
         ViewData::GanttByInitiative(data) => data.unplaced.len(),
+        ViewData::Metric(data) => data.rows.iter().map(|row| row.unplaced.len()).sum(),
         _ => 0,
     };
     if count > 0 {
@@ -254,9 +252,11 @@ fn invalid_view_ids(diagnostics: &[Diagnostic]) -> HashSet<String> {
             | DiagnosticKind::ViewGanttRootLinkCyclic { view_id, .. }
             | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { view_id, .. }
             | DiagnosticKind::ViewGanttDepthLinkCyclic { view_id, .. }
-            | DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { view_id, .. } => {
-                Some(view_id.clone())
-            }
+            | DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { view_id, .. }
+            | DiagnosticKind::ViewMetricRowUnknownField { view_id, .. }
+            | DiagnosticKind::ViewMetricRowAggregateTypeMismatch { view_id, .. }
+            | DiagnosticKind::ViewMetricRowCountWithValue { view_id, .. }
+            | DiagnosticKind::ViewMetricRowWhereParseError { view_id, .. } => Some(view_id.clone()),
             _ => None,
         })
         .collect()

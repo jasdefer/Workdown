@@ -27,12 +27,12 @@ pub fn description_for(view: &View) -> String {
             format!("Hierarchical outline following `{field}` upward to roots.")
         }
         ViewKind::Graph { field, group_by } => match group_by {
-            Some(group) => format!(
-                "Directed graph of items connected through `{field}`, nested by `{group}`."
-            ),
+            Some(group) => {
+                format!("Directed graph of items connected through `{field}`, nested by `{group}`.")
+            }
             None => format!("Directed graph of items connected through `{field}`."),
         },
-        ViewKind::Table { .. } => String::new(),
+        ViewKind::Table { .. } | ViewKind::Metric { .. } => String::new(),
         ViewKind::Gantt {
             start,
             end,
@@ -40,7 +40,12 @@ pub fn description_for(view: &View) -> String {
             after,
             group,
         } => {
-            let prefix = gantt_input_mode_prefix(start, end.as_deref(), duration.as_deref(), after.as_deref());
+            let prefix = gantt_input_mode_prefix(
+                start,
+                end.as_deref(),
+                duration.as_deref(),
+                after.as_deref(),
+            );
             let mut out = format!("{prefix}.");
             if let Some(group) = group {
                 out.pop();
@@ -55,7 +60,12 @@ pub fn description_for(view: &View) -> String {
             after,
             root_link,
         } => {
-            let prefix = gantt_input_mode_prefix(start, end.as_deref(), duration.as_deref(), after.as_deref());
+            let prefix = gantt_input_mode_prefix(
+                start,
+                end.as_deref(),
+                duration.as_deref(),
+                after.as_deref(),
+            );
             format!("{prefix}, partitioned by top-level ancestor in `{root_link}` — one chart per initiative.")
         }
         ViewKind::GanttByDepth {
@@ -65,7 +75,12 @@ pub fn description_for(view: &View) -> String {
             after,
             depth_link,
         } => {
-            let prefix = gantt_input_mode_prefix(start, end.as_deref(), duration.as_deref(), after.as_deref());
+            let prefix = gantt_input_mode_prefix(
+                start,
+                end.as_deref(),
+                duration.as_deref(),
+                after.as_deref(),
+            );
             format!("{prefix}, partitioned by depth in `{depth_link}` — one chart per level (0 = roots, 1 = children, ...).")
         }
         // Renderers below are not yet implemented; descriptions land when
@@ -73,7 +88,6 @@ pub fn description_for(view: &View) -> String {
         ViewKind::BarChart { .. }
         | ViewKind::LineChart { .. }
         | ViewKind::Workload { .. }
-        | ViewKind::Metric { .. }
         | ViewKind::Treemap { .. }
         | ViewKind::Heatmap { .. } => String::new(),
     }

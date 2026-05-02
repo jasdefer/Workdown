@@ -14,5 +14,6 @@ pub mod gantt_by_depth;
 pub mod gantt_by_initiative;
 pub mod gantt_common;
 pub mod graph;
+pub mod metric;
 pub mod table;
 pub mod tree;

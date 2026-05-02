@@ -210,6 +210,39 @@ pub enum DiagnosticKind {
     /// relation name. The chain walk reads the link directly off each
     /// item; only the original link field is accepted.
     ViewGanttDepthLinkInverseNotAllowed { view_id: String, field_name: String },
+
+    /// A metric row references a schema field that doesn't exist.
+    /// `slot` is `"value"` or `"where"`.
+    ViewMetricRowUnknownField {
+        view_id: String,
+        metric_index: usize,
+        slot: &'static str,
+        field_name: String,
+    },
+
+    /// A metric row's `value` field's type isn't compatible with the
+    /// chosen aggregate.
+    ViewMetricRowAggregateTypeMismatch {
+        view_id: String,
+        metric_index: usize,
+        aggregate: super::views::Aggregate,
+        actual_type: FieldType,
+    },
+
+    /// A metric row uses `aggregate: count` together with `value`.
+    /// `count` takes no value field.
+    ViewMetricRowCountWithValue {
+        view_id: String,
+        metric_index: usize,
+    },
+
+    /// A metric row's per-row `where:` expression failed to parse.
+    ViewMetricRowWhereParseError {
+        view_id: String,
+        metric_index: usize,
+        raw: String,
+        detail: String,
+    },
 }
 
 // ── Field value errors ───────────────────────────────────────────────
@@ -503,6 +536,48 @@ impl std::fmt::Display for Diagnostic {
                 write!(
                     f,
                     "view '{view_id}', slot 'depth_link': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
+                )
+            }
+            DiagnosticKind::ViewMetricRowUnknownField {
+                view_id,
+                metric_index,
+                slot,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', metrics[{metric_index}].{slot}: unknown field '{field_name}'"
+                )
+            }
+            DiagnosticKind::ViewMetricRowAggregateTypeMismatch {
+                view_id,
+                metric_index,
+                aggregate,
+                actual_type,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', metrics[{metric_index}].value: aggregate '{aggregate}' not allowed on {actual_type} field"
+                )
+            }
+            DiagnosticKind::ViewMetricRowCountWithValue {
+                view_id,
+                metric_index,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', metrics[{metric_index}]: aggregate 'count' takes no 'value' slot"
+                )
+            }
+            DiagnosticKind::ViewMetricRowWhereParseError {
+                view_id,
+                metric_index,
+                raw,
+                detail,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', metrics[{metric_index}].where clause '{raw}': {detail}"
                 )
             }
         }

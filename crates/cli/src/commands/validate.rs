@@ -172,7 +172,11 @@ fn file_for_diagnostic(
         | DiagnosticKind::ViewGanttRootLinkCyclic { .. }
         | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { .. }
         | DiagnosticKind::ViewGanttDepthLinkCyclic { .. }
-        | DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { .. } => {
+        | DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { .. }
+        | DiagnosticKind::ViewMetricRowUnknownField { .. }
+        | DiagnosticKind::ViewMetricRowAggregateTypeMismatch { .. }
+        | DiagnosticKind::ViewMetricRowCountWithValue { .. }
+        | DiagnosticKind::ViewMetricRowWhereParseError { .. } => {
             Some(project_root.join(&config.paths.views))
         }
     }

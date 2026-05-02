@@ -250,17 +250,32 @@
 
     "metric": {
       "type": "object",
-      "description": "Single-number metric. `aggregate: count` requires no value field; other aggregates aggregate a numeric `value` field.",
+      "description": "Stat-row table: one labelled aggregate per row. The view-level `where` filters the underlying item set; each row's optional `where` narrows further (AND-combined). Renders as a single GFM table to `views/<id>.md`.",
       "properties": {
-        "id":        { "$ref": "#/$defs/view_id" },
-        "type":      { "const": "metric" },
-        "where":     { "$ref": "#/$defs/where_clauses" },
-        "title":     { "$ref": "#/$defs/field_name" },
+        "id":      { "$ref": "#/$defs/view_id" },
+        "type":    { "const": "metric" },
+        "where":   { "$ref": "#/$defs/where_clauses" },
+        "title":   { "$ref": "#/$defs/field_name" },
+        "metrics": {
+          "type": "array",
+          "description": "Ordered list of stat rows. Empty arrays are allowed (renders heading-only).",
+          "items": { "$ref": "#/$defs/metric_row" }
+        }
+      },
+      "required": ["id", "type", "metrics"],
+      "additionalProperties": false
+    },
+
+    "metric_row": {
+      "type": "object",
+      "description": "One stat row inside a metric view. `aggregate: count` takes no value field; other aggregates aggregate a numeric, date, or duration `value` field.",
+      "properties": {
+        "label":     { "type": "string", "description": "Display label. When omitted, derived from the aggregate and value field (e.g. 'Sum of points')." },
         "aggregate": { "$ref": "#/$defs/aggregate" },
         "value":     { "$ref": "#/$defs/field_name" },
-        "label":     { "type": "string", "description": "Display label." }
+        "where":     { "$ref": "#/$defs/where_clauses" }
       },
-      "required": ["id", "type", "aggregate"],
+      "required": ["aggregate"],
       "additionalProperties": false,
       "allOf": [
         {

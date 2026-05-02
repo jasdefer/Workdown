@@ -113,15 +113,20 @@ pub enum UnplacedReason {
 
 // ── Aggregate / axis values ─────────────────────────────────────────
 
-/// Result of an aggregate (sum/avg/min/max) on a numeric or date field.
+/// Result of an aggregate (sum/avg/min/max) on a numeric, date, or
+/// duration field.
 ///
-/// Count always produces `Number(n as f64)`. Sum applies to numeric
-/// fields only; avg/min/max apply to numeric or date fields.
+/// Count always produces `Number(n as f64)`. Sum applies to numeric or
+/// duration fields; avg/min/max apply to numeric, date, or duration
+/// fields. `Duration` is returned (rather than `Number(seconds_as_f64)`)
+/// when the input field is a duration field, so renderers can format
+/// `5d` instead of `432000`.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum AggregateValue {
     Number(f64),
     Date(NaiveDate),
+    Duration(i64),
 }
 
 /// A point coordinate on a chart's x-axis (or similar).

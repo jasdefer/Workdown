@@ -19,7 +19,7 @@ use std::path::Path;
 
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::model::schema::{FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity};
-use crate::model::views::{Aggregate, View, ViewKind, Views};
+use crate::model::views::{Aggregate, MetricRow, View, ViewKind, Views};
 use crate::parser::schema::is_relation_anchor;
 use crate::parser::views::{ViewsLoadError, ViewsValidationError};
 use crate::query::parse::parse_where;
@@ -256,16 +256,9 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 out,
             );
         }
-        ViewKind::Metric {
-            value, aggregate, ..
-        } => {
-            if let Some(value) = value {
-                check_aggregate_value_slot(schema, view_id, value, *aggregate, out);
-            }
-            if *aggregate == Aggregate::Count && value.is_some() {
-                out.push(error(DiagnosticKind::ViewCountAggregateWithValue {
-                    view_id: view_id.to_owned(),
-                }));
+        ViewKind::Metric { metrics } => {
+            for (idx, row) in metrics.iter().enumerate() {
+                check_metric_row(schema, view_id, idx, row, out);
             }
         }
         ViewKind::Treemap { group, size } => {
@@ -752,6 +745,141 @@ fn check_aggregate_value_slot(
     }
 }
 
+// ── Metric row helper ────────────────────────────────────────────────
+
+/// Validate one row of a metric view: value-field type compatibility,
+/// `count`-with-`value` conflict, and per-row `where` clause syntax +
+/// field references. Diagnostics carry `metric_index` so messages
+/// pinpoint which row failed.
+fn check_metric_row(
+    schema: &Schema,
+    view_id: &str,
+    metric_index: usize,
+    row: &MetricRow,
+    out: &mut Vec<Diagnostic>,
+) {
+    if let Some(value) = &row.value {
+        check_metric_row_value_slot(schema, view_id, metric_index, value, row.aggregate, out);
+    }
+    if row.aggregate == Aggregate::Count && row.value.is_some() {
+        out.push(error(DiagnosticKind::ViewMetricRowCountWithValue {
+            view_id: view_id.to_owned(),
+            metric_index,
+        }));
+    }
+    for raw in &row.where_clauses {
+        match parse_where(raw) {
+            Ok(predicate) => {
+                walk_metric_row_predicate(&predicate, view_id, metric_index, schema, out)
+            }
+            Err(err) => out.push(error(DiagnosticKind::ViewMetricRowWhereParseError {
+                view_id: view_id.to_owned(),
+                metric_index,
+                raw: raw.clone(),
+                detail: err.to_string(),
+            })),
+        }
+    }
+}
+
+fn check_metric_row_value_slot(
+    schema: &Schema,
+    view_id: &str,
+    metric_index: usize,
+    field_name: &str,
+    aggregate: Aggregate,
+    out: &mut Vec<Diagnostic>,
+) {
+    if field_name == "id" {
+        return;
+    }
+    let Some(def) = schema.fields.get(field_name) else {
+        out.push(error(DiagnosticKind::ViewMetricRowUnknownField {
+            view_id: view_id.to_owned(),
+            metric_index,
+            slot: "value",
+            field_name: field_name.to_owned(),
+        }));
+        return;
+    };
+    let actual = def.field_type();
+    let allowed: &[FieldType] = match aggregate {
+        Aggregate::Count => return,
+        Aggregate::Sum => &[FieldType::Integer, FieldType::Float, FieldType::Duration],
+        Aggregate::Avg | Aggregate::Min | Aggregate::Max => &[
+            FieldType::Integer,
+            FieldType::Float,
+            FieldType::Date,
+            FieldType::Duration,
+        ],
+    };
+    if !allowed.contains(&actual) {
+        out.push(error(DiagnosticKind::ViewMetricRowAggregateTypeMismatch {
+            view_id: view_id.to_owned(),
+            metric_index,
+            aggregate,
+            actual_type: actual,
+        }));
+    }
+}
+
+fn walk_metric_row_predicate(
+    predicate: &Predicate,
+    view_id: &str,
+    metric_index: usize,
+    schema: &Schema,
+    out: &mut Vec<Diagnostic>,
+) {
+    match predicate {
+        Predicate::Comparison(comparison) => {
+            check_metric_row_where_field_ref(&comparison.field, view_id, metric_index, schema, out)
+        }
+        Predicate::And(inner) | Predicate::Or(inner) => {
+            for p in inner {
+                walk_metric_row_predicate(p, view_id, metric_index, schema, out);
+            }
+        }
+        Predicate::Not(inner) => {
+            walk_metric_row_predicate(inner, view_id, metric_index, schema, out)
+        }
+    }
+}
+
+fn check_metric_row_where_field_ref(
+    field_ref: &FieldReference,
+    view_id: &str,
+    metric_index: usize,
+    schema: &Schema,
+    out: &mut Vec<Diagnostic>,
+) {
+    match field_ref {
+        FieldReference::Local(name) => {
+            if name == "id" {
+                return;
+            }
+            if !schema.fields.contains_key(name) {
+                out.push(error(DiagnosticKind::ViewMetricRowUnknownField {
+                    view_id: view_id.to_owned(),
+                    metric_index,
+                    slot: "where",
+                    field_name: name.clone(),
+                }));
+            }
+        }
+        FieldReference::Related { relation, .. } => {
+            if is_relation_anchor(relation, &schema.fields) {
+                return;
+            }
+            out.push(error(DiagnosticKind::ViewMetricRowUnknownField {
+                view_id: view_id.to_owned(),
+                metric_index,
+                slot: "where",
+                field_name: relation.clone(),
+            }));
+        }
+    }
+}
+
 // ── Heatmap bucket-coupling helper ───────────────────────────────────
 
 /// Does at least one of the two axis fields resolve to a `date` field in the schema?
@@ -845,7 +973,7 @@ fn error(kind: DiagnosticKind) -> Diagnostic {
 mod tests {
     use super::*;
     use crate::model::schema::{FieldDefinition, FieldTypeConfig, Schema};
-    use crate::model::views::{Aggregate, Bucket, View, ViewKind, Views};
+    use crate::model::views::{Aggregate, Bucket, MetricRow, View, ViewKind, Views};
     use crate::parser::views::parse_views;
     use indexmap::IndexMap;
     use std::path::PathBuf;
@@ -1777,9 +1905,12 @@ mod tests {
     fn metric_avg_accepts_date_value() {
         let diagnostics = evaluate(
             &one_view(ViewKind::Metric {
-                label: None,
-                value: Some("end_date".into()),
-                aggregate: Aggregate::Avg,
+                metrics: vec![MetricRow {
+                    label: None,
+                    aggregate: Aggregate::Avg,
+                    value: Some("end_date".into()),
+                    where_clauses: vec![],
+                }],
             }),
             &simple_schema(),
         );
@@ -1904,15 +2035,20 @@ mod tests {
     fn metric_count_with_value_errors() {
         let diagnostics = evaluate(
             &one_view(ViewKind::Metric {
-                label: None,
-                value: Some("effort".into()),
-                aggregate: Aggregate::Count,
+                metrics: vec![MetricRow {
+                    label: None,
+                    aggregate: Aggregate::Count,
+                    value: Some("effort".into()),
+                    where_clauses: vec![],
+                }],
             }),
             &simple_schema(),
         );
-        assert!(diagnostics
-            .iter()
-            .any(|d| matches!(&d.kind, DiagnosticKind::ViewCountAggregateWithValue { .. })));
+        assert!(diagnostics.iter().any(|d| matches!(
+            &d.kind,
+            DiagnosticKind::ViewMetricRowCountWithValue { metric_index, .. }
+                if *metric_index == 0
+        )));
     }
 
     #[test]
@@ -1921,31 +2057,87 @@ mod tests {
         // they're orthogonal problems.
         let diagnostics = evaluate(
             &one_view(ViewKind::Metric {
-                label: None,
-                value: Some("nonexistent".into()),
-                aggregate: Aggregate::Count,
+                metrics: vec![MetricRow {
+                    label: None,
+                    aggregate: Aggregate::Count,
+                    value: Some("nonexistent".into()),
+                    where_clauses: vec![],
+                }],
             }),
             &simple_schema(),
         );
+        assert!(diagnostics.iter().any(|d| matches!(
+            &d.kind,
+            DiagnosticKind::ViewMetricRowUnknownField { slot, field_name, .. }
+                if *slot == "value" && field_name == "nonexistent"
+        )));
         assert!(diagnostics
             .iter()
-            .any(|d| matches!(&d.kind, DiagnosticKind::ViewUnknownField { .. })));
-        assert!(diagnostics
-            .iter()
-            .any(|d| matches!(&d.kind, DiagnosticKind::ViewCountAggregateWithValue { .. })));
+            .any(|d| matches!(&d.kind, DiagnosticKind::ViewMetricRowCountWithValue { .. })));
     }
 
     #[test]
     fn metric_sum_with_value_passes() {
         let diagnostics = evaluate(
             &one_view(ViewKind::Metric {
-                label: None,
-                value: Some("effort".into()),
-                aggregate: Aggregate::Sum,
+                metrics: vec![MetricRow {
+                    label: None,
+                    aggregate: Aggregate::Sum,
+                    value: Some("effort".into()),
+                    where_clauses: vec![],
+                }],
             }),
             &simple_schema(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn metric_per_row_where_parse_error_pinpoints_index() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Metric {
+                metrics: vec![
+                    MetricRow {
+                        label: None,
+                        aggregate: Aggregate::Count,
+                        value: None,
+                        where_clauses: vec![],
+                    },
+                    MetricRow {
+                        label: None,
+                        aggregate: Aggregate::Count,
+                        value: None,
+                        where_clauses: vec!["justtext".into()],
+                    },
+                ],
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.iter().any(|d| matches!(
+            &d.kind,
+            DiagnosticKind::ViewMetricRowWhereParseError { metric_index, raw, .. }
+                if *metric_index == 1 && raw == "justtext"
+        )));
+    }
+
+    #[test]
+    fn metric_per_row_where_unknown_field_pinpoints_index() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Metric {
+                metrics: vec![MetricRow {
+                    label: None,
+                    aggregate: Aggregate::Count,
+                    value: None,
+                    where_clauses: vec!["typo_field=x".into()],
+                }],
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.iter().any(|d| matches!(
+            &d.kind,
+            DiagnosticKind::ViewMetricRowUnknownField { slot, field_name, .. }
+                if *slot == "where" && field_name == "typo_field"
+        )));
     }
 
     // ── Where-clause checks ────────────────────────────────────

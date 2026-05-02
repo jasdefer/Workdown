@@ -70,6 +70,10 @@ fn is_view_diagnostic(diagnostic: &Diagnostic) -> bool {
             | DiagnosticKind::ViewWhereParseError { .. }
             | DiagnosticKind::ViewBucketWithoutDateAxis { .. }
             | DiagnosticKind::ViewCountAggregateWithValue { .. }
+            | DiagnosticKind::ViewMetricRowUnknownField { .. }
+            | DiagnosticKind::ViewMetricRowAggregateTypeMismatch { .. }
+            | DiagnosticKind::ViewMetricRowCountWithValue { .. }
+            | DiagnosticKind::ViewMetricRowWhereParseError { .. }
     )
 }
 

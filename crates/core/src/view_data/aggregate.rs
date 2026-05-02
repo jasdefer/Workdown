@@ -2,14 +2,14 @@
 //!
 //! Called from bar_chart, metric, and heatmap extractors. Returns an
 //! [`AggregateValue`] so the same helper serves numeric aggregates
-//! (sum/avg/min/max over integer/float) and date aggregates (avg/min/max
-//! on dates). `count` always returns `Number(n as f64)`.
+//! (sum/avg/min/max over integer/float), date aggregates (avg/min/max
+//! on dates), and duration aggregates (sum/avg/min/max on durations).
+//! `count` always returns `Number(n as f64)`.
 //!
-//! Inputs are filtered to the aggregate's expected type before reduction:
-//! non-matching values are skipped silently (the extractor has already
-//! routed `NonNumericValue` items to `unplaced`). An empty valid set
-//! returns `None` for avg/min/max (drop the result) and `Number(0.0)`
-//! for sum.
+//! Type routing: durations checked first, then numbers, then dates.
+//! `views_check` enforces single-typed inputs per aggregate, so mixing
+//! is a programming error in practice. An empty valid set returns
+//! `None` for avg/min/max (drop the result) and `Number(0.0)` for sum.
 
 use chrono::{Datelike, NaiveDate};
 
@@ -24,9 +24,7 @@ pub(super) fn compute_aggregate(
 ) -> Option<AggregateValue> {
     match aggregate {
         Aggregate::Count => Some(AggregateValue::Number(values.len() as f64)),
-        Aggregate::Sum => Some(AggregateValue::Number(
-            values.iter().copied().filter_map(as_number).sum(),
-        )),
+        Aggregate::Sum => Some(sum(values)),
         Aggregate::Avg => average(values),
         Aggregate::Min => extremum(values, true),
         Aggregate::Max => extremum(values, false),
@@ -37,9 +35,13 @@ fn as_number(value: &FieldValue) -> Option<f64> {
     match value {
         FieldValue::Integer(integer) => Some(*integer as f64),
         FieldValue::Float(float) => Some(*float),
-        // Duration aggregates as canonical seconds. Chart axes show raw
-        // seconds in v1 (no per-axis unit-formatting hook yet).
-        FieldValue::Duration(seconds) => Some(*seconds as f64),
+        _ => None,
+    }
+}
+
+fn as_duration(value: &FieldValue) -> Option<i64> {
+    match value {
+        FieldValue::Duration(seconds) => Some(*seconds),
         _ => None,
     }
 }
@@ -51,7 +53,20 @@ fn as_date(value: &FieldValue) -> Option<NaiveDate> {
     }
 }
 
+fn sum(values: &[&FieldValue]) -> AggregateValue {
+    let durations: Vec<i64> = values.iter().copied().filter_map(as_duration).collect();
+    if !durations.is_empty() {
+        return AggregateValue::Duration(durations.iter().sum());
+    }
+    AggregateValue::Number(values.iter().copied().filter_map(as_number).sum())
+}
+
 fn average(values: &[&FieldValue]) -> Option<AggregateValue> {
+    let durations: Vec<i64> = values.iter().copied().filter_map(as_duration).collect();
+    if !durations.is_empty() {
+        let sum: i64 = durations.iter().sum();
+        return Some(AggregateValue::Duration(sum / durations.len() as i64));
+    }
     let numbers: Vec<f64> = values.iter().copied().filter_map(as_number).collect();
     if !numbers.is_empty() {
         let sum: f64 = numbers.iter().sum();
@@ -72,6 +87,15 @@ fn average(values: &[&FieldValue]) -> Option<AggregateValue> {
 }
 
 fn extremum(values: &[&FieldValue], pick_min: bool) -> Option<AggregateValue> {
+    let durations: Vec<i64> = values.iter().copied().filter_map(as_duration).collect();
+    if !durations.is_empty() {
+        let result = if pick_min {
+            *durations.iter().min().unwrap()
+        } else {
+            *durations.iter().max().unwrap()
+        };
+        return Some(AggregateValue::Duration(result));
+    }
     let numbers: Vec<f64> = values.iter().copied().filter_map(as_number).collect();
     if !numbers.is_empty() {
         let result = if pick_min {
@@ -104,6 +128,10 @@ mod tests {
 
     fn date(y: i32, m: u32, d: u32) -> FieldValue {
         FieldValue::Date(NaiveDate::from_ymd_opt(y, m, d).unwrap())
+    }
+
+    fn duration(seconds: i64) -> FieldValue {
+        FieldValue::Duration(seconds)
     }
 
     #[test]
@@ -190,5 +218,33 @@ mod tests {
         assert_eq!(compute_aggregate(&refs, Aggregate::Avg), None);
         assert_eq!(compute_aggregate(&refs, Aggregate::Min), None);
         assert_eq!(compute_aggregate(&refs, Aggregate::Max), None);
+    }
+
+    // ── Duration paths ─────────────────────────────────────────────
+
+    #[test]
+    fn sum_over_durations_returns_duration() {
+        let values = [duration(3600), duration(7200), duration(1800)];
+        let refs: Vec<&FieldValue> = values.iter().collect();
+        let result = compute_aggregate(&refs, Aggregate::Sum);
+        assert_eq!(result, Some(AggregateValue::Duration(12600)));
+    }
+
+    #[test]
+    fn avg_over_durations_returns_duration() {
+        let values = [duration(60), duration(120), duration(180)];
+        let refs: Vec<&FieldValue> = values.iter().collect();
+        let result = compute_aggregate(&refs, Aggregate::Avg);
+        assert_eq!(result, Some(AggregateValue::Duration(120)));
+    }
+
+    #[test]
+    fn min_max_over_durations() {
+        let values = [duration(300), duration(100), duration(200)];
+        let refs: Vec<&FieldValue> = values.iter().collect();
+        let min = compute_aggregate(&refs, Aggregate::Min);
+        let max = compute_aggregate(&refs, Aggregate::Max);
+        assert_eq!(min, Some(AggregateValue::Duration(100)));
+        assert_eq!(max, Some(AggregateValue::Duration(300)));
     }
 }

@@ -20,10 +20,7 @@ use crate::render::common::emit_description;
 /// Render a `GanttByInitiativeData` as a Markdown string.
 ///
 /// `description` is the one-line caption emitted below the heading.
-pub fn render_gantt_by_initiative(
-    data: &GanttByInitiativeData,
-    description: &str,
-) -> String {
+pub fn render_gantt_by_initiative(data: &GanttByInitiativeData, description: &str) -> String {
     let mut out = String::new();
     out.push_str("# Gantt by initiative\n\n");
     emit_description(description, &mut out);

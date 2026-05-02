@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::model::views::{Aggregate, Bucket, View, ViewKind, ViewType, Views};
+use crate::model::views::{Aggregate, Bucket, MetricRow, View, ViewKind, ViewType, Views};
 
 /// Default output directory written by `workdown render` when
 /// `views.yaml` does not set a `directory:` key.
@@ -161,15 +161,17 @@ struct RawView {
     #[serde(default)]
     group: Option<String>,
 
-    // Bar chart / Metric / Heatmap
+    // Bar chart / Heatmap
     #[serde(default)]
     group_by: Option<String>,
     #[serde(default)]
     value: Option<String>,
     #[serde(default)]
     aggregate: Option<Aggregate>,
+
+    // Metric
     #[serde(default)]
-    label: Option<String>,
+    metrics: Option<Vec<RawMetricRow>>,
 
     // Line chart / Heatmap
     #[serde(default)]
@@ -184,6 +186,19 @@ struct RawView {
     // Heatmap
     #[serde(default)]
     bucket: Option<Bucket>,
+}
+
+/// One row inside a metric view's `metrics:` list.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawMetricRow {
+    #[serde(default)]
+    label: Option<String>,
+    aggregate: Aggregate,
+    #[serde(default)]
+    value: Option<String>,
+    #[serde(default, rename = "where")]
+    where_clauses: Vec<String>,
 }
 
 // ── Conversion: raw → validated ───────────────────────────────────────
@@ -242,9 +257,15 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
             effort: require(raw.effort, &id, view_type, "effort")?,
         },
         ViewType::Metric => ViewKind::Metric {
-            aggregate: require(raw.aggregate, &id, view_type, "aggregate")?,
-            label: raw.label,
-            value: raw.value,
+            metrics: require(raw.metrics, &id, view_type, "metrics")?
+                .into_iter()
+                .map(|row| MetricRow {
+                    label: row.label,
+                    aggregate: row.aggregate,
+                    value: row.value,
+                    where_clauses: row.where_clauses,
+                })
+                .collect(),
         },
         ViewType::Treemap => ViewKind::Treemap {
             group: require(raw.group, &id, view_type, "group")?,
@@ -665,20 +686,86 @@ mod tests {
     #[test]
     fn parse_metric_count() {
         let view = parse_single(
-            "views:\n  - id: open\n    type: metric\n    aggregate: count\n    label: Open items\n",
+            "views:\n  - id: open\n    type: metric\n    metrics:\n      - aggregate: count\n        label: Open items\n",
         );
         match view.kind {
-            ViewKind::Metric {
-                aggregate,
-                label,
-                value,
-            } => {
-                assert_eq!(aggregate, Aggregate::Count);
-                assert_eq!(label.as_deref(), Some("Open items"));
-                assert!(value.is_none());
+            ViewKind::Metric { metrics } => {
+                assert_eq!(metrics.len(), 1);
+                assert_eq!(metrics[0].aggregate, Aggregate::Count);
+                assert_eq!(metrics[0].label.as_deref(), Some("Open items"));
+                assert!(metrics[0].value.is_none());
+                assert!(metrics[0].where_clauses.is_empty());
             }
             other => panic!("expected Metric, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_metric_multiple_rows() {
+        let yaml = r#"
+views:
+  - id: stats
+    type: metric
+    metrics:
+      - label: Total
+        aggregate: count
+      - label: In progress
+        aggregate: count
+        where: ["status=in_progress"]
+      - label: Sum points
+        aggregate: sum
+        value: points
+"#;
+        let view = parse_single(yaml);
+        match view.kind {
+            ViewKind::Metric { metrics } => {
+                assert_eq!(metrics.len(), 3);
+                assert_eq!(metrics[0].label.as_deref(), Some("Total"));
+                assert_eq!(metrics[0].aggregate, Aggregate::Count);
+                assert!(metrics[0].where_clauses.is_empty());
+
+                assert_eq!(metrics[1].label.as_deref(), Some("In progress"));
+                assert_eq!(metrics[1].where_clauses, vec!["status=in_progress"]);
+
+                assert_eq!(metrics[2].aggregate, Aggregate::Sum);
+                assert_eq!(metrics[2].value.as_deref(), Some("points"));
+            }
+            other => panic!("expected Metric, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_metric_empty_metrics_allowed() {
+        let view = parse_single("views:\n  - id: empty\n    type: metric\n    metrics: []\n");
+        match view.kind {
+            ViewKind::Metric { metrics } => assert!(metrics.is_empty()),
+            other => panic!("expected Metric, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_metric_missing_metrics_rejected() {
+        let yaml = "views:\n  - id: m\n    type: metric\n";
+        let err = parse_views(yaml).unwrap_err();
+        match err {
+            ViewsLoadError::Validation(errors) => {
+                assert!(matches!(
+                    errors.as_slice(),
+                    [ViewsValidationError::MissingSlot { id, slot, .. }]
+                        if id == "m" && *slot == "metrics"
+                ));
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_metric_row_missing_aggregate_rejected() {
+        // `aggregate` is required on each row — serde catches this as a
+        // missing required field on `RawMetricRow`.
+        let yaml = "views:\n  - id: m\n    type: metric\n    metrics:\n      - label: oops\n";
+        let err = parse_views(yaml).unwrap_err();
+        assert!(matches!(err, ViewsLoadError::InvalidYaml(_)), "got {err:?}");
     }
 
     #[test]
@@ -761,7 +848,8 @@ views:
     title: title
   - id: v-metric
     type: metric
-    aggregate: count
+    metrics:
+      - aggregate: count
     title: title
   - id: v-treemap
     type: treemap
@@ -893,8 +981,9 @@ views:
     effort: effort
   - id: open-count
     type: metric
-    aggregate: count
-    label: Open items
+    metrics:
+      - aggregate: count
+        label: Open items
     where: ["status=to_do,in_progress"]
   - id: effort-by-milestone
     type: treemap

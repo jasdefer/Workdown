@@ -125,10 +125,12 @@ pub enum ViewKind {
         end: String,
         effort: String,
     },
+    /// One file per metric view, containing a stat-row table. Each
+    /// [`MetricRow`] is one labelled aggregate. Per-row `where` clauses
+    /// AND-combine with the view-level filter so different rows can
+    /// scope to different item subsets.
     Metric {
-        label: Option<String>,
-        value: Option<String>,
-        aggregate: Aggregate,
+        metrics: Vec<MetricRow>,
     },
     Treemap {
         group: String,
@@ -141,6 +143,23 @@ pub enum ViewKind {
         aggregate: Aggregate,
         bucket: Option<Bucket>,
     },
+}
+
+/// One row within a metric view: a labelled aggregate over a (possibly
+/// further-filtered) subset of the view's items.
+#[derive(Debug, Clone)]
+pub struct MetricRow {
+    /// Display label for the row. When `None`, the extractor generates
+    /// one from the aggregate and value field (e.g. `"Sum of points"`,
+    /// or `"Count"` when there's no value field).
+    pub label: Option<String>,
+    pub aggregate: Aggregate,
+    /// Field whose values are aggregated. Required for sum/avg/min/max,
+    /// forbidden for count (cross-checked in `views_check`).
+    pub value: Option<String>,
+    /// Per-row filter expressions, AND-combined with the view-level
+    /// `where_clauses` before aggregation.
+    pub where_clauses: Vec<String>,
 }
 
 impl ViewKind {

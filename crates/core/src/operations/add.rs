@@ -363,7 +363,11 @@ fn is_diagnostic_for_item(diagnostic: &Diagnostic, item_id: &WorkItemId) -> bool
         | DiagnosticKind::ViewGanttRootLinkCyclic { .. }
         | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { .. }
         | DiagnosticKind::ViewGanttDepthLinkCyclic { .. }
-        | DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { .. } => false,
+        | DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { .. }
+        | DiagnosticKind::ViewMetricRowUnknownField { .. }
+        | DiagnosticKind::ViewMetricRowAggregateTypeMismatch { .. }
+        | DiagnosticKind::ViewMetricRowCountWithValue { .. }
+        | DiagnosticKind::ViewMetricRowWhereParseError { .. } => false,
     }
 }
 

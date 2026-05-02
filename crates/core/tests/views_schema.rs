@@ -61,8 +61,9 @@ views:
     effort: effort
   - id: open-count
     type: metric
-    aggregate: count
-    label: Open items
+    metrics:
+      - aggregate: count
+        label: Open items
     where: ["status=to_do,in_progress"]
   - id: effort-by-milestone
     type: treemap
@@ -150,15 +151,29 @@ views:
 }
 
 #[test]
-fn metric_without_aggregate_rejected() {
+fn metric_without_metrics_slot_rejected() {
     let schema = compile_schema();
     assert_invalid(
         &schema,
         "\
 views:
-  - id: missing-aggregate
+  - id: missing-metrics
     type: metric
-    label: oops
+",
+    );
+}
+
+#[test]
+fn metric_row_without_aggregate_rejected() {
+    let schema = compile_schema();
+    assert_invalid(
+        &schema,
+        "\
+views:
+  - id: bad-row
+    type: metric
+    metrics:
+      - label: oops
 ",
     );
 }
@@ -247,8 +262,9 @@ fn metric_count_with_value_rejected() {
 views:
   - id: bad-count
     type: metric
-    aggregate: count
-    value: effort
+    metrics:
+      - aggregate: count
+        value: effort
 ",
     );
 }
@@ -262,8 +278,45 @@ fn metric_sum_with_value_validates() {
 views:
   - id: total-effort
     type: metric
-    aggregate: sum
-    value: effort
+    metrics:
+      - aggregate: sum
+        value: effort
+",
+    );
+}
+
+#[test]
+fn metric_empty_metrics_array_validates() {
+    let schema = compile_schema();
+    assert_valid(
+        &schema,
+        "\
+views:
+  - id: empty
+    type: metric
+    metrics: []
+",
+    );
+}
+
+#[test]
+fn metric_multiple_rows_validates() {
+    let schema = compile_schema();
+    assert_valid(
+        &schema,
+        "\
+views:
+  - id: stats
+    type: metric
+    metrics:
+      - label: Total
+        aggregate: count
+      - label: In progress
+        aggregate: count
+        where: [\"status=in_progress\"]
+      - label: Story points
+        aggregate: sum
+        value: points
 ",
     );
 }
@@ -291,7 +344,8 @@ fn bad_aggregate_value_rejected() {
 views:
   - id: bad-aggregate
     type: metric
-    aggregate: median
+    metrics:
+      - aggregate: median
 ",
     );
 }
@@ -377,7 +431,8 @@ views:
     title: title
   - id: open-count
     type: metric
-    aggregate: count
+    metrics:
+      - aggregate: count
     title: title
   - id: effort-by-milestone
     type: treemap

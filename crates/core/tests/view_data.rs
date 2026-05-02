@@ -74,9 +74,10 @@ views:
     group: status
   - id: open-count
     type: metric
-    aggregate: count
     where:
       - status=open
+    metrics:
+      - aggregate: count
   - id: points-by-status
     type: bar_chart
     group_by: status
@@ -213,7 +214,8 @@ fn extract_exercises_every_variant() {
             }
             ("open-count", ViewData::Metric(metric)) => {
                 // where status=open → 2 items (task-login, task-reset).
-                match metric.value {
+                assert_eq!(metric.rows.len(), 1);
+                match metric.rows[0].value {
                     Some(AggregateValue::Number(n)) => assert_eq!(n, 2.0),
                     other => panic!("expected Number(2), got {other:?}"),
                 }
