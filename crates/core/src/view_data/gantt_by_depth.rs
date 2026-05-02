@@ -8,7 +8,7 @@
 //! filtered out still reports its true depth.
 //!
 //! Per-bar resolution (start, end, unplaced reasons) is delegated to
-//! [`super::gantt::resolve_bars`]; this module is just the depth
+//! `super::gantt::resolve_bars`; this module is just the depth
 //! computation, bucketing, and ordering.
 
 use std::collections::HashMap;

@@ -72,7 +72,7 @@ impl PartialEq<&str> for WorkItemId {
 // ── WorkItem ────────────────────────────────────────────────────────
 
 /// A work item with typed field values, ready for use by commands.
-/// Produced by coercing a [`crate::parser::RawWorkItem`]'s fields against the project schema.
+/// Produced by coercing a `crate::parser::RawWorkItem`'s fields against the project schema.
 #[derive(Debug)]
 pub struct WorkItem {
     /// Resolved ID: from frontmatter `id` field if present, otherwise filename without `.md`.

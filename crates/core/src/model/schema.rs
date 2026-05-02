@@ -68,7 +68,7 @@ pub(crate) struct RawSchema {
 /// A validated field definition with type-specific configuration
 /// encoded in [`FieldTypeConfig`].
 ///
-/// Produced by converting a [`RawFieldDefinition`] after schema validation.
+/// Produced by converting a `RawFieldDefinition` after schema validation.
 /// Invalid states (e.g., a Boolean with `values`) are unrepresentable.
 #[derive(Debug, Clone)]
 pub struct FieldDefinition {

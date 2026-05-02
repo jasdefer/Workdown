@@ -11,7 +11,7 @@
 //! chart heading.
 //!
 //! Per-bar resolution (start, end, unplaced reasons) is delegated to
-//! [`super::gantt::resolve_bars`]; this module is just the partition
+//! `super::gantt::resolve_bars`; this module is just the partition
 //! and ordering on top.
 
 use std::collections::HashMap;
