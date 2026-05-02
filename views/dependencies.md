@@ -5,6 +5,10 @@ Directed graph of items connected through `depends_on`, nested by `parent`.
 ```mermaid
 flowchart TD
     subgraph phase-04-visualization ["Phase 04: Visualization"]
+        subgraph code-quality ["Code-quality cleanup"]
+            diagnostic-scope-routing["Make diagnostic source-routing structural, not enumerative"]
+            diagnostic-variant-cleanup["Collapse parallel View* slot variants and unify their validation helpers"]
+        end
         subgraph foundation ["Foundation"]
             adr-phase-04-architecture["ADR — visualization architecture"]
             foundation-cleanup["Consolidate duplication and tighten types before more foundation work"]

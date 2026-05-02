@@ -9,8 +9,8 @@ gantt
     Phase 04 Visualization :phase-04-visualization, 2026-04-24, 2026-07-02
 ```
 
-> _7 items dropped:_
-> _- no anchor: "Foundation", "Time tracking"_
+> _8 items dropped:_
+> _- no anchor: "Code-quality cleanup", "Foundation", "Time tracking"_
 > _- predecessor 'foundation' unresolved: "Item mutations", "Renderers", "Interactive server"_
 > _- predecessor 'frontend' unresolved: "Polish & dogfood"_
 > _- predecessor 'server' unresolved: "Frontend"_

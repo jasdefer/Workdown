@@ -15,5 +15,5 @@ gantt
     Polish & dogfood :polish, 2026-06-26, 2026-07-02
 ```
 
-> _2 items dropped:_
-> _- missing 'start_date': "Foundation", "Time tracking"_
+> _3 items dropped:_
+> _- missing 'start_date': "Code-quality cleanup", "Foundation", "Time tracking"_

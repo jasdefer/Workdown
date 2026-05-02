@@ -7,6 +7,9 @@
 | [cli-add-audit](../workdown-items/cli-add-audit.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) |  |
 | [cli-move-command](../workdown-items/cli-move-command.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) | [cli-set-command](../workdown-items/cli-set-command.md) |
 | [cli-set-command](../workdown-items/cli-set-command.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) |  |
+| [code-quality](../workdown-items/code-quality.md) | milestone | to_do | [phase-04-visualization](../workdown-items/phase-04-visualization.md) |  |
+| [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md) | issue | to_do | [code-quality](../workdown-items/code-quality.md) |  |
+| [diagnostic-variant-cleanup](../workdown-items/diagnostic-variant-cleanup.md) | issue | to_do | [code-quality](../workdown-items/code-quality.md) |  |
 | [duration-comparison-rule](../workdown-items/duration-comparison-rule.md) | issue | to_do | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [duration-field-type](../workdown-items/duration-field-type.md) | issue | done | [renderers](../workdown-items/renderers.md) |  |
 | [field-value-native-date](../workdown-items/field-value-native-date.md) | issue | done | [renderers](../workdown-items/renderers.md) |  |
@@ -31,7 +34,7 @@
 | [render-metric](../workdown-items/render-metric.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-table](../workdown-items/render-table.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-tree](../workdown-items/render-tree.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
-| [render-treemap](../workdown-items/render-treemap.md) | issue | to_do | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
+| [render-treemap](../workdown-items/render-treemap.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-workload](../workdown-items/render-workload.md) | issue | to_do | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [renderers](../workdown-items/renderers.md) | milestone | to_do | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md) |
 | [serve-command-skeleton](../workdown-items/serve-command-skeleton.md) | issue | to_do | [server](../workdown-items/server.md) |  |

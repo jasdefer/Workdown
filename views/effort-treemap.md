@@ -13,6 +13,8 @@ Hierarchical breakdown of `duration` summed up the `parent` chain.
 - [Audit workdown add for UI-driven creation](../workdown-items/cli-add-audit.md)
 - [workdown move — shortcut for the board field](../workdown-items/cli-move-command.md)
 - [workdown set — generic field mutation](../workdown-items/cli-set-command.md)
+- [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md)
+- [Collapse parallel View* slot variants and unify their validation helpers](../workdown-items/diagnostic-variant-cleanup.md)
 - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md)
 - [Add `duration` field type](../workdown-items/duration-field-type.md)
 - [Store FieldValue::Date as chrono::NaiveDate](../workdown-items/field-value-native-date.md)
