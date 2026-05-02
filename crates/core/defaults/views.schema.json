@@ -219,14 +219,18 @@
 
     "line_chart": {
       "type": "object",
-      "description": "Line chart with x/y fields (numeric or date).",
+      "description": "Line chart with x/y fields (numeric, date, or duration). Optionally split into multiple series by a categorical or link `group` field.",
       "properties": {
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "line_chart" },
         "where": { "$ref": "#/$defs/where_clauses" },
         "title": { "$ref": "#/$defs/field_name" },
         "x":     { "$ref": "#/$defs/field_name" },
-        "y":     { "$ref": "#/$defs/field_name" }
+        "y":     { "$ref": "#/$defs/field_name" },
+        "group": {
+          "$ref": "#/$defs/field_name",
+          "description": "Optional choice/string/link field that splits points into multiple series. Items missing the value plot in a synthetic `(no <field>)` series."
+        }
       },
       "required": ["id", "type", "x", "y"],
       "additionalProperties": false

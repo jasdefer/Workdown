@@ -86,12 +86,15 @@ pub fn description_for(view: &View) -> String {
         ViewKind::Treemap { group, size } => {
             format!("Hierarchical breakdown of `{size}` summed up the `{group}` chain.")
         }
+        ViewKind::LineChart { x, y, group } => match group {
+            Some(group) => format!("Points of `{y}` over `{x}`, split into series by `{group}`."),
+            None => format!("Points of `{y}` over `{x}`."),
+        },
         // Renderers below are not yet implemented; descriptions land when
         // their renderers do.
-        ViewKind::BarChart { .. }
-        | ViewKind::LineChart { .. }
-        | ViewKind::Workload { .. }
-        | ViewKind::Heatmap { .. } => String::new(),
+        ViewKind::BarChart { .. } | ViewKind::Workload { .. } | ViewKind::Heatmap { .. } => {
+            String::new()
+        }
     }
 }
 
@@ -266,6 +269,32 @@ mod tests {
         assert_eq!(
             description_for(&v),
             "Timeline of items from `start_date` to `end_date`, partitioned by top-level ancestor in `parent` — one chart per initiative."
+        );
+    }
+
+    #[test]
+    fn line_chart_without_group() {
+        let v = view(ViewKind::LineChart {
+            x: "estimate".into(),
+            y: "actual".into(),
+            group: None,
+        });
+        assert_eq!(
+            description_for(&v),
+            "Points of `actual` over `estimate`."
+        );
+    }
+
+    #[test]
+    fn line_chart_with_group_appends_split_phrase() {
+        let v = view(ViewKind::LineChart {
+            x: "estimate".into(),
+            y: "actual".into(),
+            group: Some("team".into()),
+        });
+        assert_eq!(
+            description_for(&v),
+            "Points of `actual` over `estimate`, split into series by `team`."
         );
     }
 

@@ -215,7 +215,7 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 check_aggregate_value_slot(schema, view_id, value, *aggregate, out);
             }
         }
-        ViewKind::LineChart { x, y } => {
+        ViewKind::LineChart { x, y, group } => {
             check_slot(
                 schema,
                 view_id,
@@ -239,6 +239,24 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 "integer, float, or duration",
                 out,
             );
+            if let Some(group) = group {
+                check_slot(
+                    schema,
+                    view_id,
+                    "group",
+                    group,
+                    &[
+                        FieldType::Choice,
+                        FieldType::Multichoice,
+                        FieldType::String,
+                        FieldType::List,
+                        FieldType::Link,
+                        FieldType::Links,
+                    ],
+                    "choice, multichoice, string, list, link, or links",
+                    out,
+                );
+            }
         }
         ViewKind::Workload { start, end, effort } => {
             check_slot(
@@ -1943,6 +1961,7 @@ mod tests {
             &one_view(ViewKind::LineChart {
                 x: "start_date".into(),
                 y: "effort".into(),
+                group: None,
             }),
             &simple_schema(),
         );
@@ -1955,6 +1974,7 @@ mod tests {
             &one_view(ViewKind::LineChart {
                 x: "effort".into(),
                 y: "start_date".into(),
+                group: None,
             }),
             &simple_schema(),
         );
@@ -2052,6 +2072,7 @@ mod tests {
             &one_view(ViewKind::LineChart {
                 x: "start_date".into(),
                 y: "estimate".into(),
+                group: None,
             }),
             &simple_schema(),
         );
@@ -2064,10 +2085,46 @@ mod tests {
             &one_view(ViewKind::LineChart {
                 x: "estimate".into(),
                 y: "effort".into(),
+                group: None,
             }),
             &simple_schema(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn line_chart_group_accepts_choice_string_link_and_links() {
+        for field in ["status", "title", "parent", "depends_on"] {
+            let diagnostics = evaluate(
+                &one_view(ViewKind::LineChart {
+                    x: "estimate".into(),
+                    y: "effort".into(),
+                    group: Some(field.into()),
+                }),
+                &simple_schema(),
+            );
+            assert!(
+                diagnostics.is_empty(),
+                "field '{field}' should be accepted as line chart group, got: {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn line_chart_group_rejects_non_value_field_types() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::LineChart {
+                x: "estimate".into(),
+                y: "effort".into(),
+                group: Some("effort".into()), // integer
+            }),
+            &simple_schema(),
+        );
+        assert!(matches!(
+            &diagnostics[0].kind,
+            DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+                if *slot == "group" && *actual_type == FieldType::Integer
+        ));
     }
 
     // ── Metric: count-with-value ───────────────────────────────

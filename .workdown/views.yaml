@@ -75,6 +75,15 @@ views:
     where:
       - "status!=removed"
 
+  - id: duration-over-time
+    type: line_chart
+    x: start_date
+    y: duration
+    group: type
+    title: title
+    where:
+      - "status!=removed"
+
   - id: project-stats
     type: metric
     where:

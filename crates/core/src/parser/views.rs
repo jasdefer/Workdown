@@ -250,6 +250,7 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
         ViewType::LineChart => ViewKind::LineChart {
             x: require(raw.x, &id, view_type, "x")?,
             y: require(raw.y, &id, view_type, "y")?,
+            group: raw.group,
         },
         ViewType::Workload => ViewKind::Workload {
             start: require(raw.start, &id, view_type, "start")?,
@@ -672,7 +673,25 @@ mod tests {
         let view = parse_single(
             "views:\n  - id: eva\n    type: line_chart\n    x: estimate\n    y: actual_effort\n",
         );
-        assert!(matches!(view.kind, ViewKind::LineChart { .. }));
+        match view.kind {
+            ViewKind::LineChart { x, y, group } => {
+                assert_eq!(x, "estimate");
+                assert_eq!(y, "actual_effort");
+                assert_eq!(group, None);
+            }
+            other => panic!("expected LineChart, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_line_chart_with_group() {
+        let view = parse_single(
+            "views:\n  - id: eva\n    type: line_chart\n    x: estimate\n    y: actual_effort\n    group: assignee\n",
+        );
+        match view.kind {
+            ViewKind::LineChart { group, .. } => assert_eq!(group.as_deref(), Some("assignee")),
+            other => panic!("expected LineChart, got {other:?}"),
+        }
     }
 
     #[test]

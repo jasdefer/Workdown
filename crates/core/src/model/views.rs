@@ -119,6 +119,12 @@ pub enum ViewKind {
     LineChart {
         x: String,
         y: String,
+        /// Optional categorical or link field that splits points into
+        /// multiple series. Items missing the value plot in a synthetic
+        /// `(no <field>)` series. Field type must be `choice`,
+        /// `multichoice`, `string`, `list`, `link`, or `links`,
+        /// validated in `views_check`.
+        group: Option<String>,
     },
     Workload {
         start: String,

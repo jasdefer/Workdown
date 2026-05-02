@@ -200,10 +200,12 @@ fn render_view_data(view_data: &ViewData, link_base: &str, description: &str) ->
             link_base,
             description,
         )),
-        ViewData::BarChart(_)
-        | ViewData::Heatmap(_)
-        | ViewData::LineChart(_)
-        | ViewData::Workload(_) => None,
+        ViewData::LineChart(data) => Some(render::line_chart::render_line_chart(
+            data,
+            link_base,
+            description,
+        )),
+        ViewData::BarChart(_) | ViewData::Heatmap(_) | ViewData::Workload(_) => None,
     }
 }
 
@@ -220,6 +222,7 @@ fn emit_unplaced_warnings(view: &View, view_data: &ViewData) {
         ViewData::GanttByInitiative(data) => data.unplaced.len(),
         ViewData::Metric(data) => data.rows.iter().map(|row| row.unplaced.len()).sum(),
         ViewData::Treemap(data) => data.unplaced.len(),
+        ViewData::LineChart(data) => data.unplaced.len(),
         _ => 0,
     };
     if count > 0 {
