@@ -73,7 +73,12 @@
       "Bash(sed -n '442p' crates/core/src/parser/schema.rs)",
       "Bash(xargs -I {} sh -c 'echo \"=== {} ===\" && head -10 {}')",
       "Bash(MSYS_NO_PATHCONV=1 docker exec -w //workspaces/Workdown thirsty_thompson cargo test --workspace)",
-      "Bash(grep -nE '\\\\\\)\\\\\\)\\\\;$' crates/cli/src/render/gantt.rs crates/cli/src/render/gantt_by_depth.rs crates/cli/src/render/gantt_by_initiative.rs)"
+      "Bash(grep -nE '\\\\\\)\\\\\\)\\\\;$' crates/cli/src/render/gantt.rs crates/cli/src/render/gantt_by_depth.rs crates/cli/src/render/gantt_by_initiative.rs)",
+      "Bash(xargs -I{} grep -l \"^duration:\" {})",
+      "Bash(awk '/^<text/,/^<\\\\/text>/{print}' views/items-by-status.md)",
+      "Bash(awk '/^<text/{getline; if\\(NF>0\\) print}' views/items-by-type-and-status.md)",
+      "Bash(awk '/^<text/{getline; if\\(NF>0\\) printf \"y=%s | text=%s\\\\n\", prev_y, $0}/y=\"/{match\\($0, /y=\"[0-9]+\"/\\); prev_y = substr\\($0, RSTART+3, RLENGTH-4\\)}' views/items-by-type-and-status.md)",
+      "Bash(awk '/<svg/{in_svg=1} in_svg{n++; if\\($0 ~ /^$/\\) print \"BLANK LINE at SVG-relative line \" n} /<\\\\/svg/{in_svg=0}' views/items-by-status.md)"
     ]
   }
 }

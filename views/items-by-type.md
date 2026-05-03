@@ -129,7 +129,6 @@ milestone
 </text>
 <polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="164,61 169,61 "/>
 <text x="160" y="34" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="9.67741935483871" opacity="1" fill="#000000">
-
 </text>
 <polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="164,34 169,34 "/>
 <polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="170,130 779,130 "/>

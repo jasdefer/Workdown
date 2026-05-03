@@ -28,7 +28,7 @@ use workdown_core::view_data::{AxisValue, LineChartData, LinePoint, SizeValue, U
 
 use crate::render::chart_common::{
     axis_label, date_to_f64, format_axis_tick, hex_to_rgb, numeric_extent, pad_extent,
-    pick_duration_unit, AxisKind, OKABE_ITO,
+    pick_duration_unit, strip_svg_blank_lines, AxisKind, OKABE_ITO,
 };
 use crate::render::common::{card_link, emit_description};
 
@@ -161,7 +161,7 @@ fn render_svg(data: &LineChartData) -> String {
 
         root.present().expect("present svg");
     }
-    buf
+    strip_svg_blank_lines(&buf)
 }
 
 /// Pick the f64 axis encoding from the first point's variant. Every

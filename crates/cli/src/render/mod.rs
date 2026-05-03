@@ -16,6 +16,7 @@ pub mod gantt_by_depth;
 pub mod gantt_by_initiative;
 pub mod gantt_common;
 pub mod graph;
+pub mod heatmap;
 pub mod line_chart;
 pub mod metric;
 pub mod table;

@@ -210,7 +210,12 @@ fn render_view_data(view_data: &ViewData, link_base: &str, description: &str) ->
             link_base,
             description,
         )),
-        ViewData::Heatmap(_) | ViewData::Workload(_) => None,
+        ViewData::Heatmap(data) => Some(render::heatmap::render_heatmap(
+            data,
+            link_base,
+            description,
+        )),
+        ViewData::Workload(_) => None,
     }
 }
 
@@ -229,6 +234,7 @@ fn emit_unplaced_warnings(view: &View, view_data: &ViewData) {
         ViewData::Treemap(data) => data.unplaced.len(),
         ViewData::LineChart(data) => data.unplaced.len(),
         ViewData::BarChart(data) => data.unplaced.len(),
+        ViewData::Heatmap(data) => data.unplaced.len(),
         _ => 0,
     };
     if count > 0 {

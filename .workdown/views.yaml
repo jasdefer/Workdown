@@ -98,6 +98,14 @@ views:
     where:
       - "status!=removed"
 
+  - id: items-by-type-and-status
+    type: heatmap
+    x: type
+    y: status
+    aggregate: count
+    where:
+      - "status!=removed"
+
   - id: project-stats
     type: metric
     where:

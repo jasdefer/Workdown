@@ -7,6 +7,11 @@
 use chrono::{Datelike, NaiveDate};
 use plotters::style::RGBColor;
 
+use workdown_core::model::duration::format_duration_seconds;
+use workdown_core::view_data::AggregateValue;
+
+use super::common::format_number;
+
 /// Color-blind-safe categorical palette by Okabe & Ito (2008).
 ///
 /// Eight distinct hues that remain distinguishable for the most common
@@ -171,6 +176,87 @@ pub fn format_compact_number(value: f64) -> String {
             .trim_end_matches('.')
             .to_owned()
     }
+}
+
+/// Pick the axis kind for a stream of [`AggregateValue`]s.
+///
+/// Variant comes from the first value; for `Duration`, the unit is
+/// chosen so the largest absolute magnitude becomes a small whole
+/// number. Single-pass over the iterator. Panics on an empty stream
+/// — every caller has a non-empty data set by the time it asks.
+pub fn axis_kind_for(values: impl Iterator<Item = AggregateValue>) -> AxisKind {
+    let mut iter = values;
+    let first = iter
+        .next()
+        .expect("axis_kind_for called with no values");
+    match first {
+        AggregateValue::Number(_) => AxisKind::Number,
+        AggregateValue::Date(_) => AxisKind::Date,
+        AggregateValue::Duration(seconds_first) => {
+            let max = std::iter::once(seconds_first)
+                .chain(iter.filter_map(|value| match value {
+                    AggregateValue::Duration(seconds) => Some(seconds),
+                    _ => None,
+                }))
+                .map(|seconds| seconds.unsigned_abs() as i64)
+                .max()
+                .unwrap_or(0);
+            let unit = pick_duration_unit(max);
+            AxisKind::Duration {
+                divisor: unit.divisor_seconds,
+                label: unit.label,
+            }
+        }
+    }
+}
+
+/// Convert an [`AggregateValue`] to the f64 plot-space coordinate that
+/// matches `kind`. Mismatched variant + kind is a programming error
+/// (every caller derives `kind` from the same value stream) and panics.
+pub fn value_to_f64(value: AggregateValue, kind: AxisKind) -> f64 {
+    match (value, kind) {
+        (AggregateValue::Number(n), AxisKind::Number) => n,
+        (AggregateValue::Date(date), AxisKind::Date) => date_to_f64(date),
+        (AggregateValue::Duration(seconds), AxisKind::Duration { divisor, .. }) => {
+            seconds as f64 / divisor as f64
+        }
+        (value, kind) => panic!("mixed aggregate value types: value {value:?} with kind {kind:?}"),
+    }
+}
+
+/// Format an [`AggregateValue`] for display in a Markdown table cell.
+///
+/// Numbers go through [`format_number`] (drops trailing `.0`), dates
+/// render as ISO `YYYY-MM-DD`, durations as the canonical `Wd Xh Ym Zs`
+/// shorthand from [`format_duration_seconds`].
+pub fn format_aggregate_value(value: &AggregateValue) -> String {
+    match value {
+        AggregateValue::Number(n) => format_number(*n),
+        AggregateValue::Date(d) => d.format("%Y-%m-%d").to_string(),
+        AggregateValue::Duration(seconds) => format_duration_seconds(*seconds),
+    }
+}
+
+/// Strip blank lines from a plotters SVG buffer.
+///
+/// Inline `<svg>` in our Markdown output is treated as a CommonMark
+/// HTML block of type 7, which **terminates at the first blank line**.
+/// Plotters emits blank lines inside empty `<text>` elements (e.g.
+/// ticks whose label formatter returned `""` for the segmented coord's
+/// `Last` slot, or for any tick beyond the data range). Without this
+/// scrub, the markdown parser would close the HTML block early and
+/// re-render the rest of the SVG's text content — axis labels, tick
+/// numbers, colorbar ticks — as plain text *below* the figure.
+pub fn strip_svg_blank_lines(svg: &str) -> String {
+    let mut out = String::with_capacity(svg.len());
+    for line in svg.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
 }
 
 /// Convert a `#RRGGBB` palette entry into the plotters `RGBColor` form.

@@ -24,15 +24,14 @@ use std::fmt::Write as _;
 use plotters::coord::ranged1d::SegmentValue;
 use plotters::prelude::*;
 
-use workdown_core::model::duration::format_duration_seconds;
 use workdown_core::model::views::Aggregate;
-use workdown_core::view_data::{AggregateValue, BarChartBar, BarChartData, UnplacedReason};
+use workdown_core::view_data::{BarChartData, UnplacedReason};
 
 use crate::render::chart_common::{
-    axis_label, date_to_f64, format_axis_tick, hex_to_rgb, numeric_extent, pad_extent,
-    pick_duration_unit, AxisKind, OKABE_ITO,
+    axis_kind_for, axis_label, format_aggregate_value, format_axis_tick, hex_to_rgb,
+    numeric_extent, pad_extent, strip_svg_blank_lines, value_to_f64, AxisKind, OKABE_ITO,
 };
-use crate::render::common::{card_link, emit_description, format_number};
+use crate::render::common::{card_link, emit_description};
 
 const SVG_WIDTH: u32 = 800;
 const SVG_MIN_HEIGHT: u32 = 200;
@@ -119,14 +118,6 @@ fn value_column_header(data: &BarChartData) -> String {
     }
 }
 
-fn format_aggregate_value(value: &AggregateValue) -> String {
-    match value {
-        AggregateValue::Number(n) => format_number(*n),
-        AggregateValue::Date(d) => d.format("%Y-%m-%d").to_string(),
-        AggregateValue::Duration(seconds) => format_duration_seconds(*seconds),
-    }
-}
-
 /// Neutralize `|` (would end the cell) and newlines (would end the row)
 /// inside a Markdown table cell. Mirrors the metric renderer's escape.
 fn escape_cell(text: &str) -> String {
@@ -145,7 +136,7 @@ fn escape_cell(text: &str) -> String {
 // ── SVG rendering ───────────────────────────────────────────────────
 
 fn render_svg(data: &BarChartData) -> String {
-    let kind = axis_kind_for(&data.bars);
+    let kind = axis_kind_for(data.bars.iter().map(|b| b.value));
     let encoded: Vec<f64> = data
         .bars
         .iter()
@@ -215,50 +206,7 @@ fn render_svg(data: &BarChartData) -> String {
 
         root.present().expect("present svg");
     }
-    buf
-}
-
-/// Pick the f64 axis encoding from the first bar's variant. Every other
-/// bar must agree — extractor invariant since each bar comes from the
-/// same aggregate over the same field — and we panic on mismatch so a
-/// future regression doesn't silently mis-render.
-fn axis_kind_for(bars: &[BarChartBar]) -> AxisKind {
-    match bars
-        .first()
-        .map(|b| b.value)
-        .expect("axis_kind_for called with empty bars")
-    {
-        AggregateValue::Number(_) => AxisKind::Number,
-        AggregateValue::Date(_) => AxisKind::Date,
-        AggregateValue::Duration(_) => {
-            let max = bars
-                .iter()
-                .filter_map(|b| match b.value {
-                    AggregateValue::Duration(seconds) => Some(seconds.unsigned_abs() as i64),
-                    _ => None,
-                })
-                .max()
-                .unwrap_or(0);
-            let unit = pick_duration_unit(max);
-            AxisKind::Duration {
-                divisor: unit.divisor_seconds,
-                label: unit.label,
-            }
-        }
-    }
-}
-
-/// Convert an `AggregateValue` to its plot-space f64 using the chosen
-/// axis kind.
-fn value_to_f64(value: AggregateValue, kind: AxisKind) -> f64 {
-    match (value, kind) {
-        (AggregateValue::Number(n), AxisKind::Number) => n,
-        (AggregateValue::Date(date), AxisKind::Date) => date_to_f64(date),
-        (AggregateValue::Duration(seconds), AxisKind::Duration { divisor, .. }) => {
-            seconds as f64 / divisor as f64
-        }
-        (value, kind) => panic!("mixed bar value types: value {value:?} with kind {kind:?}"),
-    }
+    strip_svg_blank_lines(&buf)
 }
 
 /// Compose the value-axis title: aggregate function over the value field,
