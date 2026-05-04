@@ -213,8 +213,7 @@ fn render_svg(data: &HeatmapData) -> String {
     // smaller share of the plot).
     let chart_w = (((n_x as u32 + 1) * CELL_PX) + Y_LABEL_AREA + RIGHT_PADDING).min(SVG_MAX_DIM);
     let total_w = (chart_w + COLORBAR_AREA).min(SVG_MAX_DIM);
-    let total_h =
-        (((n_y as u32 + 1) * CELL_PX) + TOP_MARGIN + X_LABEL_AREA).min(SVG_MAX_DIM);
+    let total_h = (((n_y as u32 + 1) * CELL_PX) + TOP_MARGIN + X_LABEL_AREA).min(SVG_MAX_DIM);
 
     let mut buf = String::new();
     {
@@ -623,8 +622,9 @@ mod tests {
             "../workdown-items",
             "Items per status × team.",
         );
-        assert!(output
-            .contains("# Heatmap: count by status × team\n\nItems per status × team.\n\n"));
+        assert!(
+            output.contains("# Heatmap: count by status × team\n\nItems per status × team.\n\n")
+        );
     }
 
     // ── SVG color schemes ───────────────────────────────────────────
@@ -936,8 +936,9 @@ mod tests {
         assert!(
             output.contains("[Missing](../workdown-items/missing-status.md) — missing `status`")
         );
-        assert!(output
-            .contains("[missing-other](../workdown-items/missing-other.md) — missing `team`"));
+        assert!(
+            output.contains("[missing-other](../workdown-items/missing-other.md) — missing `team`")
+        );
     }
 
     #[test]

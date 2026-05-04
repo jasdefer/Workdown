@@ -112,6 +112,7 @@ pub(crate) fn render_unplaced_footer(unplaced: &[UnplacedCard], out: &mut String
 
     let mut missing: BTreeMap<&str, Vec<&UnplacedCard>> = BTreeMap::new();
     let mut invalid_range: Vec<&UnplacedCard> = Vec::new();
+    let mut no_working_days: Vec<&UnplacedCard> = Vec::new();
     let mut non_numeric: BTreeMap<&str, Vec<&UnplacedCard>> = BTreeMap::new();
     let mut no_anchor: Vec<&UnplacedCard> = Vec::new();
     let mut predecessor_unresolved: BTreeMap<&str, Vec<&UnplacedCard>> = BTreeMap::new();
@@ -127,6 +128,13 @@ pub(crate) fn render_unplaced_footer(unplaced: &[UnplacedCard], out: &mut String
             }
             UnplacedReason::InvalidRange { .. } => {
                 invalid_range.push(unplaced_card);
+            }
+            // Defense in depth: gantt extractors don't emit this today —
+            // it's a workload-only reason. Bucket and surface it anyway
+            // so the footer stays exhaustive if a future gantt extractor
+            // ever needs to drop items by working-calendar.
+            UnplacedReason::NoWorkingDays { .. } => {
+                no_working_days.push(unplaced_card);
             }
             UnplacedReason::NonNumericValue { field, .. } => {
                 non_numeric
@@ -159,6 +167,13 @@ pub(crate) fn render_unplaced_footer(unplaced: &[UnplacedCard], out: &mut String
             out,
             "> _- invalid range: {}_",
             format_titles(&invalid_range)
+        );
+    }
+    if !no_working_days.is_empty() {
+        let _ = writeln!(
+            out,
+            "> _- no working days: {}_",
+            format_titles(&no_working_days)
         );
     }
     for (field, cards) in &non_numeric {

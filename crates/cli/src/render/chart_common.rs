@@ -186,9 +186,7 @@ pub fn format_compact_number(value: f64) -> String {
 /// — every caller has a non-empty data set by the time it asks.
 pub fn axis_kind_for(values: impl Iterator<Item = AggregateValue>) -> AxisKind {
     let mut iter = values;
-    let first = iter
-        .next()
-        .expect("axis_kind_for called with no values");
+    let first = iter.next().expect("axis_kind_for called with no values");
     match first {
         AggregateValue::Number(_) => AxisKind::Number,
         AggregateValue::Date(_) => AxisKind::Date,

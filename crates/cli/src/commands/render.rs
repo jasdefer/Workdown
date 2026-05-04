@@ -16,6 +16,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use workdown_core::model::calendar::WorkingCalendar;
 use workdown_core::model::config::Config;
 use workdown_core::model::diagnostic::{Diagnostic, DiagnosticKind};
 use workdown_core::model::views::{View, Views};
@@ -70,6 +71,7 @@ pub fn run_render(
         config.paths.work_items.display()
     );
     let output_dir = project_root.join(&views.output_dir);
+    let calendar = config.working_calendar();
 
     match view_id {
         Some(id) => render_single(
@@ -78,6 +80,7 @@ pub fn run_render(
             &invalid_view_ids,
             &store,
             &schema,
+            &calendar,
             &output_dir,
             &link_base,
         ),
@@ -86,18 +89,21 @@ pub fn run_render(
             &invalid_view_ids,
             &store,
             &schema,
+            &calendar,
             &output_dir,
             &link_base,
         ),
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_single(
     views: &Views,
     view_id: &str,
     invalid_view_ids: &HashSet<String>,
     store: &Store,
     schema: &workdown_core::model::schema::Schema,
+    calendar: &WorkingCalendar,
     output_dir: &Path,
     link_base: &str,
 ) -> anyhow::Result<ExitCode> {
@@ -111,7 +117,7 @@ fn render_single(
         anyhow::bail!("view '{}' failed validation — see warnings above", view.id);
     }
 
-    let view_data = view_data::extract(view, store, schema);
+    let view_data = view_data::extract(view, store, schema, calendar);
     emit_unplaced_warnings(view, &view_data);
     let description = render::description::description_for(view);
     let markdown = render_view_data(&view_data, link_base, &description).ok_or_else(|| {
@@ -132,6 +138,7 @@ fn render_all(
     invalid_view_ids: &HashSet<String>,
     store: &Store,
     schema: &workdown_core::model::schema::Schema,
+    calendar: &WorkingCalendar,
     output_dir: &Path,
     link_base: &str,
 ) -> anyhow::Result<ExitCode> {
@@ -153,7 +160,7 @@ fn render_all(
     ensure_output_dir(output_dir)?;
 
     for view in renderable {
-        let view_data = view_data::extract(view, store, schema);
+        let view_data = view_data::extract(view, store, schema, calendar);
         emit_unplaced_warnings(view, &view_data);
         let description = render::description::description_for(view);
         match render_view_data(&view_data, link_base, &description) {
@@ -215,7 +222,11 @@ fn render_view_data(view_data: &ViewData, link_base: &str, description: &str) ->
             link_base,
             description,
         )),
-        ViewData::Workload(_) => None,
+        ViewData::Workload(data) => Some(render::workload::render_workload(
+            data,
+            link_base,
+            description,
+        )),
     }
 }
 
@@ -235,6 +246,7 @@ fn emit_unplaced_warnings(view: &View, view_data: &ViewData) {
         ViewData::LineChart(data) => data.unplaced.len(),
         ViewData::BarChart(data) => data.unplaced.len(),
         ViewData::Heatmap(data) => data.unplaced.len(),
+        ViewData::Workload(data) => data.unplaced.len(),
         _ => 0,
     };
     if count > 0 {

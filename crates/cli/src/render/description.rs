@@ -101,9 +101,16 @@ pub fn description_for(view: &View) -> String {
             }
             (agg, None) => format!("Bars showing {agg} by `{group_by}`."),
         },
+        ViewKind::Workload {
+            start, end, effort, ..
+        } => {
+            format!(
+                "Daily workload: `{effort}` distributed uniformly across each item's working days in `{start}`–`{end}`, summed per day."
+            )
+        }
         // Renderers below are not yet implemented; descriptions land when
         // their renderers do.
-        ViewKind::Workload { .. } | ViewKind::Heatmap { .. } => String::new(),
+        ViewKind::Heatmap { .. } => String::new(),
     }
 }
 
@@ -351,6 +358,20 @@ mod tests {
         assert_eq!(
             description_for(&v),
             "Bars showing sum of `points` by `status`."
+        );
+    }
+
+    #[test]
+    fn workload_describes_effort_and_date_window() {
+        let v = view(ViewKind::Workload {
+            start: "start_date".into(),
+            end: "end_date".into(),
+            effort: "effort".into(),
+            working_days: None,
+        });
+        assert_eq!(
+            description_for(&v),
+            "Daily workload: `effort` distributed uniformly across each item's working days in `start_date`–`end_date`, summed per day."
         );
     }
 }
