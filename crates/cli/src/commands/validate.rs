@@ -161,18 +161,12 @@ fn file_for_diagnostic(
         | DiagnosticKind::ViewBucketWithoutDateAxis { .. }
         | DiagnosticKind::ViewCountAggregateWithValue { .. }
         | DiagnosticKind::ViewAggregateTypeMismatch { .. }
-        | DiagnosticKind::ViewGroupByCyclic { .. }
-        | DiagnosticKind::ViewGroupByInverseNotAllowed { .. }
+        | DiagnosticKind::ViewSlotCyclic { .. }
+        | DiagnosticKind::ViewSlotInverseNotAllowed { .. }
         | DiagnosticKind::ViewGanttEndOrDurationRequired { .. }
         | DiagnosticKind::ViewGanttEndAndDurationConflict { .. }
         | DiagnosticKind::ViewGanttAfterRequiresDuration { .. }
         | DiagnosticKind::ViewGanttAfterWithEndConflict { .. }
-        | DiagnosticKind::ViewGanttAfterCyclic { .. }
-        | DiagnosticKind::ViewGanttAfterInverseNotAllowed { .. }
-        | DiagnosticKind::ViewGanttRootLinkCyclic { .. }
-        | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { .. }
-        | DiagnosticKind::ViewGanttDepthLinkCyclic { .. }
-        | DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { .. }
         | DiagnosticKind::ViewMetricRowUnknownField { .. }
         | DiagnosticKind::ViewMetricRowAggregateTypeMismatch { .. }
         | DiagnosticKind::ViewMetricRowCountWithValue { .. }

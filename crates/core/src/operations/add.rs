@@ -352,18 +352,12 @@ fn is_diagnostic_for_item(diagnostic: &Diagnostic, item_id: &WorkItemId) -> bool
         | DiagnosticKind::ViewBucketWithoutDateAxis { .. }
         | DiagnosticKind::ViewCountAggregateWithValue { .. }
         | DiagnosticKind::ViewAggregateTypeMismatch { .. }
-        | DiagnosticKind::ViewGroupByCyclic { .. }
-        | DiagnosticKind::ViewGroupByInverseNotAllowed { .. }
+        | DiagnosticKind::ViewSlotCyclic { .. }
+        | DiagnosticKind::ViewSlotInverseNotAllowed { .. }
         | DiagnosticKind::ViewGanttEndOrDurationRequired { .. }
         | DiagnosticKind::ViewGanttEndAndDurationConflict { .. }
         | DiagnosticKind::ViewGanttAfterRequiresDuration { .. }
         | DiagnosticKind::ViewGanttAfterWithEndConflict { .. }
-        | DiagnosticKind::ViewGanttAfterCyclic { .. }
-        | DiagnosticKind::ViewGanttAfterInverseNotAllowed { .. }
-        | DiagnosticKind::ViewGanttRootLinkCyclic { .. }
-        | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { .. }
-        | DiagnosticKind::ViewGanttDepthLinkCyclic { .. }
-        | DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { .. }
         | DiagnosticKind::ViewMetricRowUnknownField { .. }
         | DiagnosticKind::ViewMetricRowAggregateTypeMismatch { .. }
         | DiagnosticKind::ViewMetricRowCountWithValue { .. }

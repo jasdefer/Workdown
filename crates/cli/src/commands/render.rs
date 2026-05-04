@@ -238,18 +238,12 @@ fn invalid_view_ids(diagnostics: &[Diagnostic]) -> HashSet<String> {
             | DiagnosticKind::ViewBucketWithoutDateAxis { view_id }
             | DiagnosticKind::ViewCountAggregateWithValue { view_id }
             | DiagnosticKind::ViewAggregateTypeMismatch { view_id, .. }
-            | DiagnosticKind::ViewGroupByCyclic { view_id, .. }
-            | DiagnosticKind::ViewGroupByInverseNotAllowed { view_id, .. }
+            | DiagnosticKind::ViewSlotCyclic { view_id, .. }
+            | DiagnosticKind::ViewSlotInverseNotAllowed { view_id, .. }
             | DiagnosticKind::ViewGanttEndOrDurationRequired { view_id }
             | DiagnosticKind::ViewGanttEndAndDurationConflict { view_id }
             | DiagnosticKind::ViewGanttAfterRequiresDuration { view_id }
             | DiagnosticKind::ViewGanttAfterWithEndConflict { view_id }
-            | DiagnosticKind::ViewGanttAfterCyclic { view_id, .. }
-            | DiagnosticKind::ViewGanttAfterInverseNotAllowed { view_id, .. }
-            | DiagnosticKind::ViewGanttRootLinkCyclic { view_id, .. }
-            | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { view_id, .. }
-            | DiagnosticKind::ViewGanttDepthLinkCyclic { view_id, .. }
-            | DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { view_id, .. }
             | DiagnosticKind::ViewMetricRowUnknownField { view_id, .. }
             | DiagnosticKind::ViewMetricRowAggregateTypeMismatch { view_id, .. }
             | DiagnosticKind::ViewMetricRowCountWithValue { view_id, .. }

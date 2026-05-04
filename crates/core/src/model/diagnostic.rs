@@ -154,15 +154,24 @@ pub enum DiagnosticKind {
         actual_type: FieldType,
     },
 
-    /// A graph view's `group_by` field allows cycles (or leaves it unset).
-    /// Subgraph nesting requires the chain to be a forest — `allow_cycles`
-    /// must be explicitly `false`.
-    ViewGroupByCyclic { view_id: String, field_name: String },
+    /// A view slot that requires a non-cyclic link/links field (`group_by`,
+    /// `after`, `root_link`, `depth_link`) points at a field whose
+    /// `allow_cycles` isn't explicitly `false`. The chain walk these slots
+    /// drive requires a DAG.
+    ViewSlotCyclic {
+        view_id: String,
+        slot: &'static str,
+        field_name: String,
+    },
 
-    /// A graph view's `group_by` references an inverse relation name. Only
-    /// the original Link field (parent direction) is accepted, since the
-    /// inverse direction is one-to-many and can't form unique nesting.
-    ViewGroupByInverseNotAllowed { view_id: String, field_name: String },
+    /// A view slot that requires a link/links field references an inverse
+    /// relation name instead. Only the original link/links field is
+    /// accepted; inverses can't drive these chain walks.
+    ViewSlotInverseNotAllowed {
+        view_id: String,
+        slot: &'static str,
+        field_name: String,
+    },
 
     /// A gantt view sets neither `end` nor `duration`. Exactly one is
     /// required: bars need a way to determine where they finish.
@@ -180,36 +189,6 @@ pub enum DiagnosticKind {
     /// A gantt view sets both `after` and `end`. After-mode derives end
     /// from `start + duration`; an explicit `end` field has no role.
     ViewGanttAfterWithEndConflict { view_id: String },
-
-    /// A gantt view's `after` slot points at a link/links field that
-    /// allows cycles. Predecessor resolution requires a DAG — `allow_cycles`
-    /// must be explicitly `false`.
-    ViewGanttAfterCyclic { view_id: String, field_name: String },
-
-    /// A gantt view's `after` slot references an inverse relation name.
-    /// After-mode reads predecessors directly off each item; only the
-    /// original link/links field is accepted.
-    ViewGanttAfterInverseNotAllowed { view_id: String, field_name: String },
-
-    /// A `gantt_by_initiative` view's `root_link` slot points at a link
-    /// field that allows cycles. Walking the chain to a root requires a
-    /// DAG — `allow_cycles` must be explicitly `false`.
-    ViewGanttRootLinkCyclic { view_id: String, field_name: String },
-
-    /// A `gantt_by_initiative` view's `root_link` slot references an
-    /// inverse relation name. The chain walk reads the link directly off
-    /// each item; only the original link field is accepted.
-    ViewGanttRootLinkInverseNotAllowed { view_id: String, field_name: String },
-
-    /// A `gantt_by_depth` view's `depth_link` slot points at a link field
-    /// that allows cycles. Walking the chain to determine depth requires
-    /// a DAG — `allow_cycles` must be explicitly `false`.
-    ViewGanttDepthLinkCyclic { view_id: String, field_name: String },
-
-    /// A `gantt_by_depth` view's `depth_link` slot references an inverse
-    /// relation name. The chain walk reads the link directly off each
-    /// item; only the original link field is accepted.
-    ViewGanttDepthLinkInverseNotAllowed { view_id: String, field_name: String },
 
     /// A metric row references a schema field that doesn't exist.
     /// `slot` is `"value"` or `"where"`.
@@ -442,22 +421,24 @@ impl std::fmt::Display for Diagnostic {
                     "view '{view_id}', slot '{slot}': aggregate '{aggregate}' not allowed on {actual_type} field"
                 )
             }
-            DiagnosticKind::ViewGroupByCyclic {
+            DiagnosticKind::ViewSlotCyclic {
                 view_id,
+                slot,
                 field_name,
             } => {
                 write!(
                     f,
-                    "view '{view_id}', slot 'group_by': field '{field_name}' must set `allow_cycles: false` to be used for subgraph nesting"
+                    "view '{view_id}', slot '{slot}': field '{field_name}' must set `allow_cycles: false`"
                 )
             }
-            DiagnosticKind::ViewGroupByInverseNotAllowed {
+            DiagnosticKind::ViewSlotInverseNotAllowed {
                 view_id,
+                slot,
                 field_name,
             } => {
                 write!(
                     f,
-                    "view '{view_id}', slot 'group_by': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
+                    "view '{view_id}', slot '{slot}': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
                 )
             }
             DiagnosticKind::ViewGanttEndOrDurationRequired { view_id } => {
@@ -482,60 +463,6 @@ impl std::fmt::Display for Diagnostic {
                 write!(
                     f,
                     "view '{view_id}': gantt 'after' is incompatible with 'end' (use 'duration' instead)"
-                )
-            }
-            DiagnosticKind::ViewGanttAfterCyclic {
-                view_id,
-                field_name,
-            } => {
-                write!(
-                    f,
-                    "view '{view_id}', slot 'after': field '{field_name}' must set `allow_cycles: false`"
-                )
-            }
-            DiagnosticKind::ViewGanttAfterInverseNotAllowed {
-                view_id,
-                field_name,
-            } => {
-                write!(
-                    f,
-                    "view '{view_id}', slot 'after': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
-                )
-            }
-            DiagnosticKind::ViewGanttRootLinkCyclic {
-                view_id,
-                field_name,
-            } => {
-                write!(
-                    f,
-                    "view '{view_id}', slot 'root_link': field '{field_name}' must set `allow_cycles: false`"
-                )
-            }
-            DiagnosticKind::ViewGanttRootLinkInverseNotAllowed {
-                view_id,
-                field_name,
-            } => {
-                write!(
-                    f,
-                    "view '{view_id}', slot 'root_link': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
-                )
-            }
-            DiagnosticKind::ViewGanttDepthLinkCyclic {
-                view_id,
-                field_name,
-            } => {
-                write!(
-                    f,
-                    "view '{view_id}', slot 'depth_link': field '{field_name}' must set `allow_cycles: false`"
-                )
-            }
-            DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed {
-                view_id,
-                field_name,
-            } => {
-                write!(
-                    f,
-                    "view '{view_id}', slot 'depth_link': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
                 )
             }
             DiagnosticKind::ViewMetricRowUnknownField {

@@ -126,7 +126,14 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
         ViewKind::Graph { field, group_by } => {
             check_graph_field(schema, view_id, field, out);
             if let Some(group_by) = group_by {
-                check_graph_group_by(schema, view_id, group_by, out);
+                check_link_slot(
+                    schema,
+                    view_id,
+                    "group_by",
+                    group_by,
+                    LinkArity::Single,
+                    out,
+                );
             }
         }
         ViewKind::Table { columns } => {
@@ -185,7 +192,14 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 after.as_deref(),
                 out,
             );
-            check_root_link_slot(schema, view_id, root_link, out);
+            check_link_slot(
+                schema,
+                view_id,
+                "root_link",
+                root_link,
+                LinkArity::Single,
+                out,
+            );
         }
         ViewKind::GanttByDepth {
             start,
@@ -203,7 +217,14 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 after.as_deref(),
                 out,
             );
-            check_depth_link_slot(schema, view_id, depth_link, out);
+            check_link_slot(
+                schema,
+                view_id,
+                "depth_link",
+                depth_link,
+                LinkArity::Single,
+                out,
+            );
         }
         ViewKind::BarChart {
             group_by,
@@ -427,58 +448,76 @@ fn check_graph_field(schema: &Schema, view_id: &str, field_name: &str, out: &mut
     }));
 }
 
-// ── Graph group_by helper ────────────────────────────────────────────
+// ── Link-slot helper ─────────────────────────────────────────────────
 
-/// Validates the `group_by` slot on a graph view.
+/// Whether a link-style slot accepts `Links` in addition to `Link`.
+#[derive(Clone, Copy)]
+enum LinkArity {
+    /// Single-target only: `group_by`, `root_link`, `depth_link`.
+    Single,
+    /// Single or multiple targets: `after`.
+    SingleOrMulti,
+}
+
+/// Validates a slot that drives an upward chain walk (`group_by`, `after`,
+/// `root_link`, `depth_link`).
 ///
-/// Subgraph nesting requires:
+/// All four require:
 /// - the field exists in the schema (not an inverse name);
-/// - the field is a single-target `Link` (not `Links`, since each item must
-///   belong to exactly one parent box);
+/// - the field is a `Link` (or `Links` when `arity == SingleOrMulti`);
 /// - cycles are explicitly disabled (`allow_cycles: false`).
 ///
 /// Each rule has its own diagnostic so the error message points at the
-/// actual constraint that was violated.
-fn check_graph_group_by(
+/// actual constraint violated.
+fn check_link_slot(
     schema: &Schema,
     view_id: &str,
+    slot: &'static str,
     field_name: &str,
+    arity: LinkArity,
     out: &mut Vec<Diagnostic>,
 ) {
     let Some(def) = schema.fields.get(field_name) else {
         if schema.inverse_table.contains_key(field_name) {
-            out.push(error(DiagnosticKind::ViewGroupByInverseNotAllowed {
+            out.push(error(DiagnosticKind::ViewSlotInverseNotAllowed {
                 view_id: view_id.to_owned(),
+                slot,
                 field_name: field_name.to_owned(),
             }));
         } else {
             out.push(error(DiagnosticKind::ViewUnknownField {
                 view_id: view_id.to_owned(),
-                slot: "group_by",
+                slot,
                 field_name: field_name.to_owned(),
             }));
         }
         return;
     };
 
-    match &def.type_config {
-        FieldTypeConfig::Link { allow_cycles, .. } => {
-            if *allow_cycles != Some(false) {
-                out.push(error(DiagnosticKind::ViewGroupByCyclic {
-                    view_id: view_id.to_owned(),
-                    field_name: field_name.to_owned(),
-                }));
-            }
-        }
+    let allow_cycles = match (&def.type_config, arity) {
+        (FieldTypeConfig::Link { allow_cycles, .. }, _) => *allow_cycles,
+        (FieldTypeConfig::Links { allow_cycles, .. }, LinkArity::SingleOrMulti) => *allow_cycles,
         _ => {
             out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
                 view_id: view_id.to_owned(),
-                slot: "group_by",
+                slot,
                 field_name: field_name.to_owned(),
                 actual_type: def.field_type(),
-                expected: "link".to_owned(),
+                expected: match arity {
+                    LinkArity::Single => "link".to_owned(),
+                    LinkArity::SingleOrMulti => "link or links".to_owned(),
+                },
             }));
+            return;
         }
+    };
+
+    if allow_cycles != Some(false) {
+        out.push(error(DiagnosticKind::ViewSlotCyclic {
+            view_id: view_id.to_owned(),
+            slot,
+            field_name: field_name.to_owned(),
+        }));
     }
 }
 
@@ -523,7 +562,14 @@ fn check_gantt_input_modes(
                 view_id: view_id.to_owned(),
             }));
         }
-        check_after_slot(schema, view_id, after_field, out);
+        check_link_slot(
+            schema,
+            view_id,
+            "after",
+            after_field,
+            LinkArity::SingleOrMulti,
+            out,
+        );
         if let Some(duration) = duration {
             check_slot(
                 schema,
@@ -559,164 +605,6 @@ fn check_gantt_input_modes(
                     out,
                 );
             }
-        }
-    }
-}
-
-// ── Gantt root_link slot helper ──────────────────────────────────────
-
-/// Validate the `root_link` slot on a `gantt_by_initiative` view.
-///
-/// Initiative partitioning walks the chain upward to find each item's
-/// root, so the slot requires:
-/// - the field exists in the schema (not an inverse name);
-/// - the field is a single-target `Link` (not `Links`, since each item
-///   must belong to exactly one initiative);
-/// - cycles are explicitly disabled (`allow_cycles: false`).
-///
-/// Each rule has its own diagnostic so the error message points at the
-/// actual constraint violated. Mirrors `check_after_slot`'s structure
-/// but Link-only and with root_link-specific diagnostic kinds.
-fn check_root_link_slot(
-    schema: &Schema,
-    view_id: &str,
-    field_name: &str,
-    out: &mut Vec<Diagnostic>,
-) {
-    let Some(def) = schema.fields.get(field_name) else {
-        if schema.inverse_table.contains_key(field_name) {
-            out.push(error(DiagnosticKind::ViewGanttRootLinkInverseNotAllowed {
-                view_id: view_id.to_owned(),
-                field_name: field_name.to_owned(),
-            }));
-        } else {
-            out.push(error(DiagnosticKind::ViewUnknownField {
-                view_id: view_id.to_owned(),
-                slot: "root_link",
-                field_name: field_name.to_owned(),
-            }));
-        }
-        return;
-    };
-
-    match &def.type_config {
-        FieldTypeConfig::Link { allow_cycles, .. } => {
-            if *allow_cycles != Some(false) {
-                out.push(error(DiagnosticKind::ViewGanttRootLinkCyclic {
-                    view_id: view_id.to_owned(),
-                    field_name: field_name.to_owned(),
-                }));
-            }
-        }
-        _ => {
-            out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
-                view_id: view_id.to_owned(),
-                slot: "root_link",
-                field_name: field_name.to_owned(),
-                actual_type: def.field_type(),
-                expected: "link".to_owned(),
-            }));
-        }
-    }
-}
-
-// ── Gantt depth_link slot helper ─────────────────────────────────────
-
-/// Validates the `depth_link` slot on a `gantt_by_depth` view.
-///
-/// Mirrors `check_root_link_slot`: must be a single-target `Link` with
-/// `allow_cycles: false`, not an inverse name. Each rule has its own
-/// diagnostic kind so the error points at the actual violation.
-fn check_depth_link_slot(
-    schema: &Schema,
-    view_id: &str,
-    field_name: &str,
-    out: &mut Vec<Diagnostic>,
-) {
-    let Some(def) = schema.fields.get(field_name) else {
-        if schema.inverse_table.contains_key(field_name) {
-            out.push(error(DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed {
-                view_id: view_id.to_owned(),
-                field_name: field_name.to_owned(),
-            }));
-        } else {
-            out.push(error(DiagnosticKind::ViewUnknownField {
-                view_id: view_id.to_owned(),
-                slot: "depth_link",
-                field_name: field_name.to_owned(),
-            }));
-        }
-        return;
-    };
-
-    match &def.type_config {
-        FieldTypeConfig::Link { allow_cycles, .. } => {
-            if *allow_cycles != Some(false) {
-                out.push(error(DiagnosticKind::ViewGanttDepthLinkCyclic {
-                    view_id: view_id.to_owned(),
-                    field_name: field_name.to_owned(),
-                }));
-            }
-        }
-        _ => {
-            out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
-                view_id: view_id.to_owned(),
-                slot: "depth_link",
-                field_name: field_name.to_owned(),
-                actual_type: def.field_type(),
-                expected: "link".to_owned(),
-            }));
-        }
-    }
-}
-
-// ── Gantt after slot helper ──────────────────────────────────────────
-
-/// Validates the `after` slot on a gantt view (predecessor mode).
-///
-/// Predecessor resolution requires:
-/// - the field exists in the schema (not an inverse name);
-/// - the field is `Link` or `Links` (single or multiple predecessors);
-/// - cycles are explicitly disabled (`allow_cycles: false`).
-///
-/// Each rule has its own diagnostic so the error message points at the
-/// actual constraint that was violated. Mirrors `check_graph_group_by`
-/// but with after-specific diagnostic kinds.
-fn check_after_slot(schema: &Schema, view_id: &str, field_name: &str, out: &mut Vec<Diagnostic>) {
-    let Some(def) = schema.fields.get(field_name) else {
-        if schema.inverse_table.contains_key(field_name) {
-            out.push(error(DiagnosticKind::ViewGanttAfterInverseNotAllowed {
-                view_id: view_id.to_owned(),
-                field_name: field_name.to_owned(),
-            }));
-        } else {
-            out.push(error(DiagnosticKind::ViewUnknownField {
-                view_id: view_id.to_owned(),
-                slot: "after",
-                field_name: field_name.to_owned(),
-            }));
-        }
-        return;
-    };
-
-    match &def.type_config {
-        FieldTypeConfig::Link { allow_cycles, .. }
-        | FieldTypeConfig::Links { allow_cycles, .. } => {
-            if *allow_cycles != Some(false) {
-                out.push(error(DiagnosticKind::ViewGanttAfterCyclic {
-                    view_id: view_id.to_owned(),
-                    field_name: field_name.to_owned(),
-                }));
-            }
-        }
-        _ => {
-            out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
-                view_id: view_id.to_owned(),
-                slot: "after",
-                field_name: field_name.to_owned(),
-                actual_type: def.field_type(),
-                expected: "link or links".to_owned(),
-            }));
         }
     }
 }
@@ -1287,7 +1175,7 @@ mod tests {
         );
         assert!(matches!(
             &diagnostics[0].kind,
-            DiagnosticKind::ViewGroupByInverseNotAllowed { field_name, .. }
+            DiagnosticKind::ViewSlotInverseNotAllowed { slot: "group_by", field_name, .. }
                 if field_name == "children"
         ));
     }
@@ -1319,7 +1207,7 @@ mod tests {
         );
         assert!(matches!(
             &diagnostics[0].kind,
-            DiagnosticKind::ViewGroupByCyclic { field_name, .. }
+            DiagnosticKind::ViewSlotCyclic { slot: "group_by", field_name, .. }
                 if field_name == "topic"
         ));
     }
@@ -1582,7 +1470,7 @@ mod tests {
         );
         assert!(matches!(
             &diagnostics[0].kind,
-            DiagnosticKind::ViewGanttAfterInverseNotAllowed { field_name, .. }
+            DiagnosticKind::ViewSlotInverseNotAllowed { slot: "after", field_name, .. }
                 if field_name == "dependents"
         ));
     }
@@ -1618,7 +1506,7 @@ mod tests {
         );
         assert!(matches!(
             &diagnostics[0].kind,
-            DiagnosticKind::ViewGanttAfterCyclic { field_name, .. }
+            DiagnosticKind::ViewSlotCyclic { slot: "after", field_name, .. }
                 if field_name == "blocks"
         ));
     }
@@ -1693,7 +1581,7 @@ mod tests {
         );
         assert!(diagnostics.iter().any(|d| matches!(
             &d.kind,
-            DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { field_name, .. }
+            DiagnosticKind::ViewSlotInverseNotAllowed { slot: "root_link", field_name, .. }
                 if field_name == "children"
         )));
     }
@@ -1723,7 +1611,7 @@ mod tests {
         );
         assert!(diagnostics.iter().any(|d| matches!(
             &d.kind,
-            DiagnosticKind::ViewGanttRootLinkCyclic { field_name, .. }
+            DiagnosticKind::ViewSlotCyclic { slot: "root_link", field_name, .. }
                 if field_name == "topic"
         )));
     }
@@ -1817,7 +1705,7 @@ mod tests {
         );
         assert!(diagnostics.iter().any(|d| matches!(
             &d.kind,
-            DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { field_name, .. }
+            DiagnosticKind::ViewSlotInverseNotAllowed { slot: "depth_link", field_name, .. }
                 if field_name == "children"
         )));
     }
@@ -1847,7 +1735,7 @@ mod tests {
         );
         assert!(diagnostics.iter().any(|d| matches!(
             &d.kind,
-            DiagnosticKind::ViewGanttDepthLinkCyclic { field_name, .. }
+            DiagnosticKind::ViewSlotCyclic { slot: "depth_link", field_name, .. }
                 if field_name == "topic"
         )));
     }

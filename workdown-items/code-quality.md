@@ -1,7 +1,7 @@
 ---
 id: code-quality
 type: milestone
-status: to_do
+status: in_progress
 title: Code-quality cleanup
 parent: phase-04-visualization
 ---

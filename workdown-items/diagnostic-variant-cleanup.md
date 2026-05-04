@@ -1,7 +1,7 @@
 ---
 id: diagnostic-variant-cleanup
 type: issue
-status: to_do
+status: done
 title: Collapse parallel View* slot variants and unify their validation helpers
 parent: code-quality
 ---
