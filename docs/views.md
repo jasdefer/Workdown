@@ -24,7 +24,7 @@ Unknown top-level fields are rejected. Unknown per-view slots are rejected.
 
 Every view type also accepts the cross-cutting optional slots `where:` and `title:` on top of what the table below lists.
 
-`workdown render` writes one Markdown file per view (`<directory>/<id>.md`); the table lists what each renderer emits today. View kinds whose renderer is not yet implemented are listed for completeness; running `workdown render` skips them with a warning until their renderer lands.
+`workdown render` writes one Markdown file per view (`<directory>/<id>.md`); the table lists what each renderer emits today.
 
 | Type | Required slots | Optional slots | Renderer status | Output |
 |---|---|---|---|---|
@@ -35,12 +35,12 @@ Every view type also accepts the cross-cutting optional slots `where:` and `titl
 | `gantt` | `start` + one of (`end`, `duration`, `after`+`duration`) | `group` | shipped | Mermaid `gantt` block |
 | `gantt_by_initiative` | `start` + one input mode, `root_link` | — | shipped | One Mermaid `gantt` block per initiative |
 | `gantt_by_depth` | `start` + one input mode, `depth_link` | — | shipped | One Mermaid `gantt` block per non-empty depth level |
-| `bar_chart` | `group_by`, `aggregate` | `value` | not implemented | — |
-| `line_chart` | `x`, `y` | — | not implemented | — |
-| `workload` | `start`, `end`, `effort` | — | not implemented | — |
+| `bar_chart` | `group_by`, `aggregate` | `value` | shipped | Inline SVG (horizontal bars) + `## Values` table |
+| `line_chart` | `x`, `y` | `group` | shipped | Inline SVG (multi-series points + lines) |
+| `workload` | `start`, `end`, `effort` | `working_days` | shipped | Inline SVG (vertical bars, one per working day) + `## Values` table |
 | `metric` | `metrics` (list of rows; each row needs `aggregate`, optionally `value`, `label`, `where`) | — | shipped | GFM table, one row per metric |
 | `treemap` | `group`, `size` | — | shipped | Nested bullet list with size + share-of-parent annotations |
-| `heatmap` | `x`, `y`, `aggregate` | `value`, `bucket` | not implemented | — |
+| `heatmap` | `x`, `y`, `aggregate` | `value`, `bucket` | shipped | Inline SVG (color grid + colorbar) + pivoted `## Values` table |
 
 Slot semantics:
 - **`field`** — a single schema field name. Type per view: `choice`/`multichoice`/`string` for board, `link` for tree, `links` for graph.
@@ -52,6 +52,7 @@ Slot semantics:
 - **`x` / `y`** — field names for axis values (numeric or date for line chart; categorical or date for heatmap).
 - **`bucket`** — date bucketing for a heatmap axis bound to a date field: `day`, `week`, or `month`.
 - **`metrics`** — list of stat rows for a metric view. Each row sets its own `aggregate` (required), `value` (numeric, date, or duration field — required for non-count aggregates), optional `label` (auto-derived from aggregate + field when omitted), and optional per-row `where` AND-combined with the view-level filter.
+- **`working_days`** — list of weekday names (`monday`, `tuesday`, …, `sunday`; full lowercase, no abbreviations) that count as work days for a `workload` view. Effort spreads only across listed days inside `[start..=end]`; days outside the list never produce buckets, and items whose interval falls entirely outside them drop into the `## Unplaced` footer. Optional — when omitted, falls back to the project-level `working_days` from `config.yaml`, which itself defaults to `[monday, tuesday, wednesday, thursday, friday]` when not set there either.
 
 Type compatibility between a slot and a schema field (e.g. `board.field` must resolve to a `choice` field) is checked in `workdown validate`. See the "Cross-file validation" section below for the full list of checks.
 
@@ -184,7 +185,7 @@ views:
 `workdown validate` runs a set of checks that compare `views.yaml` against `schema.yaml`. All findings are errors in v1 (no warnings):
 
 - **Reference resolution** — every field name referenced by a view slot must exist in `schema.fields` (the virtual `id` field is always accepted).
-- **Type compatibility** — the slot dictates the allowed field type(s). For example: `board.field` must be `choice`, `multichoice`, or `string`; `tree.field` must be `link`; `graph.field` must be `links`; `gantt.start`/`gantt.end` must be `date`, `gantt.duration` must be `duration`; numeric slots accept `integer` or `float`, plus `duration` where the renderer can format it (`treemap.size`, `line_chart.x`/`y`, and aggregation slots `bar_chart.value`, `heatmap.value`, `metric.value`); `workload.effort` is currently `integer` or `float` only; `title:` must be `string` or `choice`. `table.columns[*]` is existence-only — any type is accepted as a column.
+- **Type compatibility** — the slot dictates the allowed field type(s). For example: `board.field` must be `choice`, `multichoice`, or `string`; `tree.field` must be `link`; `graph.field` must be `links`; `gantt.start`/`gantt.end` must be `date`, `gantt.duration` must be `duration`; numeric slots accept `integer` or `float`, plus `duration` where the renderer can format it (`treemap.size`, `line_chart.x`/`y`, `workload.effort`, and aggregation slots `bar_chart.value`, `heatmap.value`, `metric.value`); `title:` must be `string` or `choice`. `table.columns[*]` is existence-only — any type is accepted as a column.
 - **Gantt input modes** — every gantt-family view (`gantt`, `gantt_by_initiative`, `gantt_by_depth`) must declare `start` plus exactly one of: `end`, `duration`, or `after`+`duration`. `end` and `duration` together is rejected; `after` requires `duration` and forbids `end`.
 - **Predecessor / partition link slots** — `gantt.after`, `gantt_by_initiative.root_link`, and `gantt_by_depth.depth_link` must point at a `link`/`links` field (single-target only for `root_link`/`depth_link`) with `allow_cycles: false`, and not at an inverse relation name (e.g. `children` when `parent.inverse: children`).
 - **Heatmap bucket coupling** — if `bucket:` is set, at least one of `x` or `y` must resolve to a `date` field.
