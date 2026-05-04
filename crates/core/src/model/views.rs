@@ -8,6 +8,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use super::weekday::Weekday;
+
 /// A parsed and validated `views.yaml` file.
 ///
 /// Produced by [`crate::parser::views::parse_views`]. Invalid shapes
@@ -130,6 +132,10 @@ pub enum ViewKind {
         start: String,
         end: String,
         effort: String,
+        /// Per-view override of the project's working calendar. When
+        /// `None`, the extractor uses the project-level calendar from
+        /// `config.yaml` (or its Monday–Friday default).
+        working_days: Option<Vec<Weekday>>,
     },
     /// One file per metric view, containing a stat-row table. Each
     /// [`MetricRow`] is one labelled aggregate. Per-row `where` clauses

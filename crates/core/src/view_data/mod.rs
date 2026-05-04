@@ -39,6 +39,7 @@ mod test_support;
 
 use serde::Serialize;
 
+use crate::model::calendar::WorkingCalendar;
 use crate::model::schema::Schema;
 use crate::model::views::{View, ViewKind};
 use crate::store::Store;
@@ -59,7 +60,7 @@ pub use metric::{MetricData, MetricRowData};
 pub use table::{TableData, TableRow};
 pub use tree::{TreeData, TreeNode};
 pub use treemap::{TreemapData, TreemapNode};
-pub use workload::{WorkloadBucket, WorkloadData};
+pub use workload::{WorkloadBucket, WorkloadData, WorkloadUnit};
 
 /// Extracted, fully-resolved data for a single view.
 #[derive(Debug, Clone, Serialize)]
@@ -86,7 +87,16 @@ pub enum ViewData {
 /// reference, malformed `where` clause) are caught by `views_check`;
 /// data-level problems (missing dates, invalid ranges, non-numeric
 /// aggregate inputs) live in each variant's `unplaced` list.
-pub fn extract(view: &View, store: &Store, schema: &Schema) -> ViewData {
+///
+/// `config_calendar` is the project-wide working calendar from
+/// `config.yaml`. Workload views fall back to it when they don't set
+/// their own `working_days:` override; other view kinds ignore it.
+pub fn extract(
+    view: &View,
+    store: &Store,
+    schema: &Schema,
+    config_calendar: &WorkingCalendar,
+) -> ViewData {
     match &view.kind {
         ViewKind::BarChart { .. } => {
             ViewData::BarChart(bar_chart::extract_bar_chart(view, store, schema))
@@ -112,8 +122,11 @@ pub fn extract(view: &View, store: &Store, schema: &Schema) -> ViewData {
         ViewKind::Treemap { .. } => {
             ViewData::Treemap(treemap::extract_treemap(view, store, schema))
         }
-        ViewKind::Workload { .. } => {
-            ViewData::Workload(workload::extract_workload(view, store, schema))
-        }
+        ViewKind::Workload { .. } => ViewData::Workload(workload::extract_workload(
+            view,
+            store,
+            schema,
+            config_calendar,
+        )),
     }
 }

@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::model::views::{Aggregate, Bucket, MetricRow, View, ViewKind, ViewType, Views};
+use crate::model::weekday::Weekday;
 
 /// Default output directory written by `workdown render` when
 /// `views.yaml` does not set a `directory:` key.
@@ -186,6 +187,10 @@ struct RawView {
     // Heatmap
     #[serde(default)]
     bucket: Option<Bucket>,
+
+    // Workload
+    #[serde(default)]
+    working_days: Option<Vec<Weekday>>,
 }
 
 /// One row inside a metric view's `metrics:` list.
@@ -256,6 +261,7 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
             start: require(raw.start, &id, view_type, "start")?,
             end: require(raw.end, &id, view_type, "end")?,
             effort: require(raw.effort, &id, view_type, "effort")?,
+            working_days: raw.working_days,
         },
         ViewType::Metric => ViewKind::Metric {
             metrics: require(raw.metrics, &id, view_type, "metrics")?
@@ -699,7 +705,36 @@ mod tests {
         let view = parse_single(
             "views:\n  - id: cap\n    type: workload\n    start: start_date\n    end: end_date\n    effort: effort\n",
         );
-        assert!(matches!(view.kind, ViewKind::Workload { .. }));
+        match view.kind {
+            ViewKind::Workload { working_days, .. } => {
+                assert!(working_days.is_none(), "no override means inherit config")
+            }
+            other => panic!("expected Workload, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_workload_with_working_days_override() {
+        let view = parse_single(
+            "views:\n  - id: cap\n    type: workload\n    start: start_date\n    end: end_date\n    effort: effort\n    working_days: [monday, wednesday, friday]\n",
+        );
+        match view.kind {
+            ViewKind::Workload { working_days, .. } => {
+                let days = working_days.expect("working_days override should parse");
+                assert_eq!(
+                    days,
+                    vec![Weekday::Monday, Weekday::Wednesday, Weekday::Friday]
+                );
+            }
+            other => panic!("expected Workload, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_workload_rejects_abbreviated_day() {
+        // Memory rule: full day names only.
+        let yaml = "views:\n  - id: cap\n    type: workload\n    start: s\n    end: e\n    effort: f\n    working_days: [mon]\n";
+        assert!(parse_views(yaml).is_err());
     }
 
     #[test]

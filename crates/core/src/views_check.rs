@@ -258,7 +258,12 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 );
             }
         }
-        ViewKind::Workload { start, end, effort } => {
+        ViewKind::Workload {
+            start,
+            end,
+            effort,
+            working_days: _,
+        } => {
             check_slot(
                 schema,
                 view_id,
@@ -274,8 +279,8 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 view_id,
                 "effort",
                 effort,
-                &[FieldType::Integer, FieldType::Float],
-                "integer or float",
+                &[FieldType::Integer, FieldType::Float, FieldType::Duration],
+                "integer, float, or duration",
                 out,
             );
         }
@@ -1848,12 +1853,13 @@ mod tests {
     }
 
     #[test]
-    fn workload_effort_must_be_numeric() {
+    fn workload_effort_must_be_numeric_or_duration() {
         let diagnostics = evaluate(
             &one_view(ViewKind::Workload {
                 start: "start_date".into(),
                 end: "end_date".into(),
                 effort: "title".into(), // string
+                working_days: None,
             }),
             &simple_schema(),
         );
@@ -1861,6 +1867,20 @@ mod tests {
             &diagnostics[0].kind,
             DiagnosticKind::ViewFieldTypeMismatch { slot, .. } if *slot == "effort"
         ));
+    }
+
+    #[test]
+    fn workload_effort_accepts_duration() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Workload {
+                start: "start_date".into(),
+                end: "end_date".into(),
+                effort: "estimate".into(), // duration
+                working_days: None,
+            }),
+            &simple_schema(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
 
     #[test]

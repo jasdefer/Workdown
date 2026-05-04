@@ -49,6 +49,7 @@ pub enum ConfigLoadError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::weekday::Weekday;
 
     #[test]
     fn parse_default_config() {
@@ -63,6 +64,8 @@ mod tests {
             std::path::PathBuf::from(".workdown/schema.yaml")
         );
         assert_eq!(config.defaults.board_field, "status");
+        // working_days commented out → calendar falls back to Mon–Fri.
+        assert!(config.working_days.is_none());
     }
 
     #[test]
@@ -109,6 +112,103 @@ defaults:
     #[test]
     fn parse_rejects_missing_required_sections() {
         let yaml = "project:\n  name: Test\n";
+        assert!(parse_config(yaml).is_err());
+    }
+
+    #[test]
+    fn parse_working_days_explicit() {
+        let yaml = r#"
+project:
+  name: Test
+paths:
+  work_items: items
+  templates: .workdown/templates
+  resources: .workdown/resources.yaml
+  views: .workdown/views.yaml
+schema: .workdown/schema.yaml
+defaults:
+  board_field: status
+  tree_field: parent
+  graph_field: depends_on
+working_days: [monday, tuesday, friday]
+"#;
+        let config = parse_config(yaml).unwrap();
+        assert_eq!(
+            config.working_days,
+            Some(vec![Weekday::Monday, Weekday::Tuesday, Weekday::Friday])
+        );
+    }
+
+    #[test]
+    fn working_calendar_falls_back_to_business_week_when_unset() {
+        let yaml = r#"
+project:
+  name: Test
+paths:
+  work_items: items
+  templates: .workdown/templates
+  resources: .workdown/resources.yaml
+  views: .workdown/views.yaml
+schema: .workdown/schema.yaml
+defaults:
+  board_field: status
+  tree_field: parent
+  graph_field: depends_on
+"#;
+        let config = parse_config(yaml).unwrap();
+        let calendar = config.working_calendar();
+        // Mon Jan 5 2026 is a working day; Sat Jan 10 is not.
+        let monday = chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+        let saturday = chrono::NaiveDate::from_ymd_opt(2026, 1, 10).unwrap();
+        assert!(calendar.is_working(monday));
+        assert!(!calendar.is_working(saturday));
+    }
+
+    #[test]
+    fn working_calendar_uses_explicit_days() {
+        let yaml = r#"
+project:
+  name: Test
+paths:
+  work_items: items
+  templates: .workdown/templates
+  resources: .workdown/resources.yaml
+  views: .workdown/views.yaml
+schema: .workdown/schema.yaml
+defaults:
+  board_field: status
+  tree_field: parent
+  graph_field: depends_on
+working_days: [saturday, sunday]
+"#;
+        let config = parse_config(yaml).unwrap();
+        let calendar = config.working_calendar();
+        let saturday = chrono::NaiveDate::from_ymd_opt(2026, 1, 10).unwrap();
+        let sunday = chrono::NaiveDate::from_ymd_opt(2026, 1, 11).unwrap();
+        let monday = chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+        assert!(calendar.is_working(saturday));
+        assert!(calendar.is_working(sunday));
+        assert!(!calendar.is_working(monday));
+    }
+
+    #[test]
+    fn parse_rejects_abbreviated_working_day() {
+        // Memory rule: full day names only.
+        let yaml = r#"
+project:
+  name: Test
+paths:
+  work_items: items
+  templates: .workdown/templates
+  resources: .workdown/resources.yaml
+  views: .workdown/views.yaml
+schema: .workdown/schema.yaml
+defaults:
+  board_field: status
+  tree_field: parent
+  graph_field: depends_on
+working_days: [mon, tue]
+"#;
         assert!(parse_config(yaml).is_err());
     }
 }

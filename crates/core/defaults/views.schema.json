@@ -51,6 +51,20 @@
       "enum": ["day", "week", "month"]
     },
 
+    "weekday": {
+      "type": "string",
+      "description": "Day of the week, full lowercase name.",
+      "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    },
+
+    "working_days": {
+      "type": "array",
+      "description": "Days of the week that count as workload-bearing. Per-view override of the project-level config.yaml setting.",
+      "items": { "$ref": "#/$defs/weekday" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+
     "view": {
       "description": "A single view entry. The `type` field discriminates which slots are required.",
       "oneOf": [
@@ -238,15 +252,16 @@
 
     "workload": {
       "type": "object",
-      "description": "Capacity/workload view summing effort over a start/end window.",
+      "description": "Capacity/workload view summing effort over a start/end window. Effort is spread uniformly across each item's working days within [start..end] and totals stack across items.",
       "properties": {
-        "id":     { "$ref": "#/$defs/view_id" },
-        "type":   { "const": "workload" },
-        "where":  { "$ref": "#/$defs/where_clauses" },
-        "title":  { "$ref": "#/$defs/field_name" },
-        "start":  { "$ref": "#/$defs/field_name" },
-        "end":    { "$ref": "#/$defs/field_name" },
-        "effort": { "$ref": "#/$defs/field_name" }
+        "id":           { "$ref": "#/$defs/view_id" },
+        "type":         { "const": "workload" },
+        "where":        { "$ref": "#/$defs/where_clauses" },
+        "title":        { "$ref": "#/$defs/field_name" },
+        "start":        { "$ref": "#/$defs/field_name" },
+        "end":          { "$ref": "#/$defs/field_name" },
+        "effort":       { "$ref": "#/$defs/field_name" },
+        "working_days": { "$ref": "#/$defs/working_days" }
       },
       "required": ["id", "type", "start", "end", "effort"],
       "additionalProperties": false

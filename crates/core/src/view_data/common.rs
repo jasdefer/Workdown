@@ -90,6 +90,14 @@ pub enum UnplacedReason {
         start_field: String,
         end_field: String,
     },
+    /// Workload: an item's `[start..=end]` interval is non-empty but
+    /// every day inside it falls on a non-working day per the active
+    /// calendar. The effort has nowhere to land. Authoring problem worth
+    /// surfacing rather than silently dropping or relaxing the calendar.
+    NoWorkingDays {
+        start_field: String,
+        end_field: String,
+    },
     NonNumericValue {
         field: String,
         got: FieldType,

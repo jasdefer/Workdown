@@ -11,6 +11,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use tempfile::TempDir;
+use workdown_core::model::calendar::WorkingCalendar;
 use workdown_core::parser::schema::load_schema;
 use workdown_core::parser::views::load_views;
 use workdown_core::store::Store;
@@ -174,8 +175,9 @@ fn extract_exercises_every_variant() {
 
     assert_eq!(store.len(), 4);
 
+    let calendar = WorkingCalendar::default_business_week();
     for view in &views.views {
-        let data = extract(view, &store, &schema);
+        let data = extract(view, &store, &schema, &calendar);
         match (view.id.as_str(), &data) {
             ("status-board", ViewData::Board(board)) => {
                 assert_eq!(board.field, "status");
