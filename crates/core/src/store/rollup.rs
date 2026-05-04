@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::{Datelike, NaiveDate};
 
-use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
+use crate::model::diagnostic::{Diagnostic, ItemDiagnosticKind};
 use crate::model::schema::{AggregateFunction, Schema, Severity};
 use crate::model::{FieldValue, WorkItem, WorkItemId};
 
@@ -71,13 +71,18 @@ pub(crate) fn run(
             .collect();
         missing.sort_by(|a, b| a.as_str().cmp(b.as_str()));
         for item_id in missing {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Error,
-                kind: DiagnosticKind::MissingRequired {
-                    item_id,
+            let source_path = items
+                .get(&item_id)
+                .map(|item| item.source_path.clone())
+                .unwrap_or_default();
+            diagnostics.push(Diagnostic::item(
+                Severity::Error,
+                source_path,
+                item_id,
+                ItemDiagnosticKind::MissingRequired {
                     field: field_name.clone(),
                 },
-            });
+            ));
         }
     }
 
@@ -129,14 +134,19 @@ fn run_for_field(
                 break;
             }
             if manual_set.contains(&ancestor_id) {
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Error,
-                    kind: DiagnosticKind::AggregateChainConflict {
+                let source_path = items
+                    .get(manual_id)
+                    .map(|item| item.source_path.clone())
+                    .unwrap_or_default();
+                diagnostics.push(Diagnostic::item(
+                    Severity::Error,
+                    source_path,
+                    manual_id.clone(),
+                    ItemDiagnosticKind::AggregateChainConflict {
                         field: spec.name.clone(),
-                        item_id: manual_id.clone(),
                         conflicting_ancestor_id: ancestor_id,
                     },
-                });
+                ));
                 break;
             }
             accumulators
@@ -168,13 +178,18 @@ fn run_for_field(
         leaves.sort_by(|a, b| a.as_str().cmp(b.as_str()));
         for leaf_id in leaves {
             if !covered(items, &leaf_id, &spec.over, &manual_set) {
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Error,
-                    kind: DiagnosticKind::AggregateMissingValue {
+                let source_path = items
+                    .get(&leaf_id)
+                    .map(|item| item.source_path.clone())
+                    .unwrap_or_default();
+                diagnostics.push(Diagnostic::item(
+                    Severity::Error,
+                    source_path,
+                    leaf_id,
+                    ItemDiagnosticKind::AggregateMissingValue {
                         field: spec.name.clone(),
-                        leaf_id,
                     },
-                });
+                ));
             }
         }
     }
@@ -440,6 +455,7 @@ fn as_bool(value: &FieldValue) -> Option<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::diagnostic::DiagnosticBody;
     use crate::model::schema::{
         AggregateConfig, AggregateFunction, FieldDefinition, FieldTypeConfig,
     };
@@ -883,17 +899,20 @@ mod tests {
         let diagnostics = run(&mut items, &reverse_links, &schema);
 
         assert_eq!(diagnostics.len(), 1);
-        let kind = &diagnostics[0].kind;
+        let body = &diagnostics[0].body;
         assert!(
             matches!(
-                kind,
-                DiagnosticKind::AggregateChainConflict {
-                    field, item_id, conflicting_ancestor_id
-                } if field == "effort"
-                    && item_id.as_str() == "leaf"
-                    && conflicting_ancestor_id.as_str() == "root"
+                body,
+                DiagnosticBody::Item(item)
+                    if item.item_id.as_str() == "leaf"
+                        && matches!(
+                            &item.kind,
+                            ItemDiagnosticKind::AggregateChainConflict {
+                                field, conflicting_ancestor_id
+                            } if field == "effort" && conflicting_ancestor_id.as_str() == "root"
+                        )
             ),
-            "unexpected diagnostic: {kind:#?}"
+            "unexpected diagnostic body: {body:#?}"
         );
         // Both keep their manual values (root not overwritten by aggregation).
         assert_eq!(items["root"].fields.get("effort"), Some(&int(10)));
@@ -946,8 +965,12 @@ mod tests {
         // b is missing; a is covered by its own manual; root isn't a leaf.
         let missing: Vec<_> = diagnostics
             .iter()
-            .filter_map(|d| match &d.kind {
-                DiagnosticKind::AggregateMissingValue { leaf_id, .. } => Some(leaf_id.as_str()),
+            .filter_map(|d| match &d.body {
+                DiagnosticBody::Item(item)
+                    if matches!(item.kind, ItemDiagnosticKind::AggregateMissingValue { .. }) =>
+                {
+                    Some(item.item_id.as_str())
+                }
                 _ => None,
             })
             .collect();
@@ -1031,9 +1054,11 @@ mod tests {
 
         let missing_ids: Vec<&str> = diagnostics
             .iter()
-            .filter_map(|d| match &d.kind {
-                DiagnosticKind::MissingRequired { item_id, field } if field == "effort" => {
-                    Some(item_id.as_str())
+            .filter_map(|d| match &d.body {
+                DiagnosticBody::Item(item)
+                    if matches!(&item.kind, ItemDiagnosticKind::MissingRequired { field } if field == "effort") =>
+                {
+                    Some(item.item_id.as_str())
                 }
                 _ => None,
             })
@@ -1067,7 +1092,11 @@ mod tests {
 
         let missing: Vec<_> = diagnostics
             .iter()
-            .filter(|d| matches!(d.kind, DiagnosticKind::MissingRequired { .. }))
+            .filter(|d| matches!(
+                &d.body,
+                DiagnosticBody::Item(item)
+                    if matches!(item.kind, ItemDiagnosticKind::MissingRequired { .. })
+            ))
             .collect();
         assert!(missing.is_empty(), "{missing:#?}");
         assert_eq!(items["root"].fields.get("effort"), Some(&int(5)));

@@ -7,7 +7,9 @@
 use std::fs;
 
 use tempfile::TempDir;
-use workdown_core::model::diagnostic::DiagnosticKind;
+use workdown_core::model::diagnostic::{
+    CollectionDiagnosticKind, Diagnostic, DiagnosticBody, ItemDiagnosticKind,
+};
 use workdown_core::model::schema::Severity;
 use workdown_core::parser::schema::parse_schema;
 use workdown_core::rules::evaluate;
@@ -21,6 +23,50 @@ fn setup(items: Vec<(&str, &str)>) -> (TempDir, std::path::PathBuf) {
         fs::write(path.join(name), content).unwrap();
     }
     (dir, path)
+}
+
+// ── Test helpers for scope-typed Diagnostic ─────────────────────────
+
+fn is_rule_violation(diagnostic: &Diagnostic) -> bool {
+    matches!(
+        &diagnostic.body,
+        DiagnosticBody::Item(item)
+            if matches!(item.kind, ItemDiagnosticKind::RuleViolation { .. })
+    )
+}
+
+fn is_count_violation(diagnostic: &Diagnostic) -> bool {
+    matches!(
+        &diagnostic.body,
+        DiagnosticBody::Collection(c)
+            if matches!(c.kind, CollectionDiagnosticKind::CountViolation { .. })
+    )
+}
+
+/// Extract `(item_id, rule, detail)` from a `RuleViolation`, panicking otherwise.
+fn unwrap_rule_violation(diagnostic: &Diagnostic) -> (&str, &str, &str) {
+    if let DiagnosticBody::Item(item) = &diagnostic.body {
+        if let ItemDiagnosticKind::RuleViolation { rule, detail } = &item.kind {
+            return (item.item_id.as_str(), rule.as_str(), detail.as_str());
+        }
+    }
+    panic!("expected RuleViolation, got {:?}", diagnostic.body);
+}
+
+/// Extract `(rule, count, max, min)` from a `CountViolation`, panicking otherwise.
+fn unwrap_count_violation(diagnostic: &Diagnostic) -> (&str, usize, Option<u32>, Option<u32>) {
+    if let DiagnosticBody::Collection(c) = &diagnostic.body {
+        if let CollectionDiagnosticKind::CountViolation {
+            rule,
+            count,
+            max,
+            min,
+        } = &c.kind
+        {
+            return (rule.as_str(), *count, *max, *min);
+        }
+    }
+    panic!("expected CountViolation, got {:?}", diagnostic.body);
 }
 
 // ── L2: Cross-field rules ───────────────────────────────────────────
@@ -62,24 +108,15 @@ rules:
     // Only task-a should violate (in_progress + no assignee).
     let violations: Vec<_> = diags
         .iter()
-        .filter(|d| matches!(&d.kind, DiagnosticKind::RuleViolation { .. }))
+        .filter(|d| is_rule_violation(d))
         .collect();
     assert_eq!(violations.len(), 1);
 
-    match &violations[0].kind {
-        DiagnosticKind::RuleViolation {
-            item_id,
-            rule,
-            detail,
-            ..
-        } => {
-            assert_eq!(item_id, "task-a");
-            assert_eq!(rule, "in-progress-needs-assignee");
-            assert!(detail.contains("assignee"));
-            assert!(detail.contains("required"));
-        }
-        _ => unreachable!(),
-    }
+    let (item_id, rule, detail) = unwrap_rule_violation(violations[0]);
+    assert_eq!(item_id, "task-a");
+    assert_eq!(rule, "in-progress-needs-assignee");
+    assert!(detail.contains("assignee"));
+    assert!(detail.contains("required"));
     assert_eq!(violations[0].severity, Severity::Error);
 }
 
@@ -122,16 +159,12 @@ rules:
 
     let violations: Vec<_> = diags
         .iter()
-        .filter(|d| matches!(&d.kind, DiagnosticKind::RuleViolation { .. }))
+        .filter(|d| is_rule_violation(d))
         .collect();
     assert_eq!(violations.len(), 1);
 
-    match &violations[0].kind {
-        DiagnosticKind::RuleViolation { item_id, .. } => {
-            assert_eq!(item_id, "bug-a");
-        }
-        _ => unreachable!(),
-    }
+    let (item_id, _, _) = unwrap_rule_violation(violations[0]);
+    assert_eq!(item_id, "bug-a");
 }
 
 #[test]
@@ -205,17 +238,13 @@ rules:
 
     let violations: Vec<_> = diags
         .iter()
-        .filter(|d| matches!(&d.kind, DiagnosticKind::RuleViolation { .. }))
+        .filter(|d| is_rule_violation(d))
         .collect();
     assert_eq!(violations.len(), 1);
 
-    match &violations[0].kind {
-        DiagnosticKind::RuleViolation { item_id, rule, .. } => {
-            assert_eq!(item_id, "task-a");
-            assert_eq!(rule, "parent-not-backlog-when-child-active");
-        }
-        _ => unreachable!(),
-    }
+    let (item_id, rule, _) = unwrap_rule_violation(violations[0]);
+    assert_eq!(item_id, "task-a");
+    assert_eq!(rule, "parent-not-backlog-when-child-active");
 }
 
 #[test]
@@ -292,17 +321,13 @@ rules:
     // epic has all children done but is itself "open" — warning violation.
     let violations: Vec<_> = diags
         .iter()
-        .filter(|d| matches!(&d.kind, DiagnosticKind::RuleViolation { .. }))
+        .filter(|d| is_rule_violation(d))
         .collect();
     assert_eq!(violations.len(), 1);
     assert_eq!(violations[0].severity, Severity::Warning);
 
-    match &violations[0].kind {
-        DiagnosticKind::RuleViolation { item_id, .. } => {
-            assert_eq!(item_id, "epic");
-        }
-        _ => unreachable!(),
-    }
+    let (item_id, _, _) = unwrap_rule_violation(violations[0]);
+    assert_eq!(item_id, "epic");
 }
 
 #[test]
@@ -349,16 +374,12 @@ rules:
 
     let violations: Vec<_> = diags
         .iter()
-        .filter(|d| matches!(&d.kind, DiagnosticKind::RuleViolation { .. }))
+        .filter(|d| is_rule_violation(d))
         .collect();
     assert_eq!(violations.len(), 1);
 
-    match &violations[0].kind {
-        DiagnosticKind::RuleViolation { item_id, .. } => {
-            assert_eq!(item_id, "lonely-epic");
-        }
-        _ => unreachable!(),
-    }
+    let (item_id, _, _) = unwrap_rule_violation(violations[0]);
+    assert_eq!(item_id, "lonely-epic");
 }
 
 // ── L4: Collection-wide count constraints ───────────────────────────
@@ -392,11 +413,13 @@ rules:
     let store = Store::load(&path, &schema).unwrap();
     let diags = evaluate(&store, &schema);
 
-    assert!(diags.iter().any(|d| matches!(
-        &d.kind,
-        DiagnosticKind::CountViolation { rule, count, max, .. }
-        if rule == "wip-limit" && *count == 3 && *max == Some(2)
-    )));
+    assert!(diags.iter().any(|d| {
+        if !is_count_violation(d) {
+            return false;
+        }
+        let (rule, count, max, _) = unwrap_count_violation(d);
+        rule == "wip-limit" && count == 3 && max == Some(2)
+    }));
 }
 
 #[test]
@@ -428,7 +451,7 @@ rules:
 
     assert!(!diags
         .iter()
-        .any(|d| matches!(&d.kind, DiagnosticKind::CountViolation { .. })));
+        .any(|d| is_count_violation(d)));
 }
 
 // ── Combined require + count ────────────────────────────────────────
@@ -466,15 +489,18 @@ rules:
     let diags = evaluate(&store, &schema);
 
     // a has no assignee -> RuleViolation
-    assert!(diags.iter().any(|d| matches!(
-        &d.kind,
-        DiagnosticKind::RuleViolation { item_id, .. } if item_id == "a"
-    )));
+    assert!(diags.iter().any(|d| {
+        if !is_rule_violation(d) {
+            return false;
+        }
+        let (item_id, _, _) = unwrap_rule_violation(d);
+        item_id == "a"
+    }));
 
     // 3 items in_progress, max 2 -> CountViolation
     assert!(diags
         .iter()
-        .any(|d| matches!(&d.kind, DiagnosticKind::CountViolation { .. })));
+        .any(|d| is_count_violation(d)));
 }
 
 // ── Warning severity ────────────────────────────────────────────────
@@ -546,7 +572,7 @@ rules:
 
     let violations: Vec<_> = diags
         .iter()
-        .filter(|d| matches!(&d.kind, DiagnosticKind::RuleViolation { .. }))
+        .filter(|d| is_rule_violation(d))
         .collect();
     // b and c have no title
     assert_eq!(violations.len(), 2);
@@ -629,16 +655,12 @@ rules:
 
     let violations: Vec<_> = diags
         .iter()
-        .filter(|d| matches!(&d.kind, DiagnosticKind::RuleViolation { .. }))
+        .filter(|d| is_rule_violation(d))
         .collect();
     assert_eq!(violations.len(), 1);
 
-    match &violations[0].kind {
-        DiagnosticKind::RuleViolation { item_id, .. } => {
-            assert_eq!(item_id, "epic");
-        }
-        _ => unreachable!(),
-    }
+    let (item_id, _, _) = unwrap_rule_violation(violations[0]);
+    assert_eq!(item_id, "epic");
 }
 
 #[test]
@@ -679,7 +701,7 @@ rules:
 
     let violations: Vec<_> = diags
         .iter()
-        .filter(|d| matches!(&d.kind, DiagnosticKind::RuleViolation { .. }))
+        .filter(|d| is_rule_violation(d))
         .collect();
     assert!(
         violations.is_empty(),

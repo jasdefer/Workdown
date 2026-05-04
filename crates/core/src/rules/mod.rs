@@ -6,7 +6,9 @@
 pub(crate) mod assertion;
 pub mod condition;
 
-use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
+use crate::model::diagnostic::{
+    CollectionDiagnosticKind, Diagnostic, ItemDiagnosticKind,
+};
 use crate::model::schema::{Condition, ConditionOperator, Schema};
 use crate::model::{FieldValue, WorkItem};
 use crate::resolve::{resolve_field_ref, ResolvedValues};
@@ -39,14 +41,15 @@ pub fn evaluate(store: &Store, schema: &Schema) -> Vec<Diagnostic> {
                         Some(description) => format!("{description} — {detail}"),
                         None => detail,
                     };
-                    diagnostics.push(Diagnostic {
-                        severity: rule.severity,
-                        kind: DiagnosticKind::RuleViolation {
-                            item_id: item.id.clone(),
+                    diagnostics.push(Diagnostic::item(
+                        rule.severity,
+                        item.source_path.clone(),
+                        item.id.clone(),
+                        ItemDiagnosticKind::RuleViolation {
                             rule: rule.name.clone(),
                             detail,
                         },
-                    });
+                    ));
                 }
             }
         }
@@ -57,15 +60,15 @@ pub fn evaluate(store: &Store, schema: &Schema) -> Vec<Diagnostic> {
             let violated = count.min.is_some_and(|min| matching_count < min as usize)
                 || count.max.is_some_and(|max| matching_count > max as usize);
             if violated {
-                diagnostics.push(Diagnostic {
-                    severity: rule.severity,
-                    kind: DiagnosticKind::CountViolation {
+                diagnostics.push(Diagnostic::collection(
+                    rule.severity,
+                    CollectionDiagnosticKind::CountViolation {
                         rule: rule.name.clone(),
                         count: matching_count,
                         min: count.min,
                         max: count.max,
                     },
-                });
+                ));
             }
         }
     }
@@ -197,6 +200,7 @@ fn eval_quantifiers_on_many(values: &[Option<&FieldValue>], operator: &Condition
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::diagnostic::DiagnosticBody;
     use crate::model::schema::{
         Assertion, ConditionValue, CountConstraint, FieldDefinition, FieldTypeConfig,
         NegationValue, Rule, Severity,
@@ -204,6 +208,15 @@ mod tests {
     use indexmap::IndexMap;
     use std::fs;
     use std::path::PathBuf;
+
+    /// Predicate over an item-scoped diagnostic's inner kind.
+    fn is_rule_violation(diagnostic: &Diagnostic) -> bool {
+        matches!(
+            &diagnostic.body,
+            DiagnosticBody::Item(item)
+                if matches!(item.kind, ItemDiagnosticKind::RuleViolation { .. })
+        )
+    }
 
     fn test_schema_with_rules(rules: Vec<Rule>) -> Schema {
         let mut fields = IndexMap::new();
@@ -313,7 +326,7 @@ mod tests {
 
         let rule_violations: Vec<_> = diagnostics
             .iter()
-            .filter(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::RuleViolation { .. }))
+            .filter(|diagnostic| is_rule_violation(diagnostic))
             .collect();
         assert_eq!(rule_violations.len(), 1);
         assert_eq!(rule_violations[0].severity, Severity::Error);
@@ -348,7 +361,7 @@ mod tests {
 
         assert!(diagnostics
             .iter()
-            .all(|diagnostic| !matches!(&diagnostic.kind, DiagnosticKind::RuleViolation { .. })));
+            .all(|diagnostic| !is_rule_violation(diagnostic)));
     }
 
     #[test]
@@ -383,7 +396,7 @@ mod tests {
 
         assert!(diagnostics
             .iter()
-            .all(|diagnostic| !matches!(&diagnostic.kind, DiagnosticKind::RuleViolation { .. })));
+            .all(|diagnostic| !is_rule_violation(diagnostic)));
     }
 
     #[test]
@@ -411,7 +424,7 @@ mod tests {
 
         let violations: Vec<_> = diagnostics
             .iter()
-            .filter(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::RuleViolation { .. }))
+            .filter(|diagnostic| is_rule_violation(diagnostic))
             .collect();
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].severity, Severity::Warning);
@@ -449,9 +462,13 @@ mod tests {
         let diagnostics = evaluate(&store, &schema);
 
         assert!(diagnostics.iter().any(|diagnostic| matches!(
-            &diagnostic.kind,
-            DiagnosticKind::CountViolation { rule, count, max, .. }
-            if rule == "wip-limit" && *count == 2 && *max == Some(1)
+            &diagnostic.body,
+            DiagnosticBody::Collection(c)
+                if matches!(
+                    &c.kind,
+                    CollectionDiagnosticKind::CountViolation { rule, count, max, .. }
+                    if rule == "wip-limit" && *count == 2 && *max == Some(1)
+                )
         )));
     }
 
@@ -481,9 +498,11 @@ mod tests {
         let store = Store::load(&path, &schema).unwrap();
         let diagnostics = evaluate(&store, &schema);
 
-        assert!(!diagnostics
-            .iter()
-            .any(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::CountViolation { .. })));
+        assert!(!diagnostics.iter().any(|diagnostic| matches!(
+            &diagnostic.body,
+            DiagnosticBody::Collection(c)
+                if matches!(c.kind, CollectionDiagnosticKind::CountViolation { .. })
+        )));
     }
 
     // ── L3: Relationship-based ──────────────────────────────────
@@ -536,8 +555,13 @@ mod tests {
         let diagnostics = evaluate(&store, &schema);
 
         assert!(diagnostics.iter().any(|diagnostic| matches!(
-            &diagnostic.kind,
-            DiagnosticKind::RuleViolation { rule, .. } if rule == "parent-not-backlog"
+            &diagnostic.body,
+            DiagnosticBody::Item(item)
+                if matches!(
+                    &item.kind,
+                    ItemDiagnosticKind::RuleViolation { rule, .. }
+                    if rule == "parent-not-backlog"
+                )
         )));
     }
 
@@ -599,9 +623,13 @@ mod tests {
 
         // Epic matches (all children done) but its status is "open" not "done"
         assert!(diagnostics.iter().any(|diagnostic| matches!(
-            &diagnostic.kind,
-            DiagnosticKind::RuleViolation { rule, item_id, .. }
-            if rule == "close-parent" && item_id == "epic"
+            &diagnostic.body,
+            DiagnosticBody::Item(item)
+                if item.item_id == "epic" && matches!(
+                    &item.kind,
+                    ItemDiagnosticKind::RuleViolation { rule, .. }
+                    if rule == "close-parent"
+                )
         )));
     }
 
@@ -661,8 +689,10 @@ mod tests {
 
         // The leaf matches the rule (vacuously) so the require should fire
         assert!(diagnostics.iter().any(|diagnostic| matches!(
-            &diagnostic.kind,
-            DiagnosticKind::RuleViolation { item_id, .. } if item_id == "leaf"
+            &diagnostic.body,
+            DiagnosticBody::Item(item)
+                if item.item_id == "leaf"
+                    && matches!(item.kind, ItemDiagnosticKind::RuleViolation { .. })
         )));
     }
 
@@ -690,7 +720,7 @@ mod tests {
 
         let violations: Vec<_> = diagnostics
             .iter()
-            .filter(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::RuleViolation { .. }))
+            .filter(|diagnostic| is_rule_violation(diagnostic))
             .collect();
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].severity, Severity::Warning);

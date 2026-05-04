@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
+use crate::model::diagnostic::{CollectionDiagnosticKind, Diagnostic};
 use crate::model::schema::{FieldTypeConfig, Schema, Severity};
 use crate::model::{FieldValue, WorkItemId};
 
@@ -87,13 +87,13 @@ fn dfs<'store>(
             Some(Color::Gray) => {
                 let start = path.iter().position(|id| id == target).unwrap();
                 let chain = canonicalize_cycle(&path[start..]);
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Error,
-                    kind: DiagnosticKind::Cycle {
+                diagnostics.push(Diagnostic::collection(
+                    Severity::Error,
+                    CollectionDiagnosticKind::Cycle {
                         field: field_name.to_owned(),
                         chain,
                     },
-                });
+                ));
             }
             Some(Color::Black) | None => {}
         }
@@ -144,10 +144,21 @@ fn canonicalize_cycle(cycle_body: &[WorkItemId]) -> Vec<WorkItemId> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::diagnostic::DiagnosticBody;
     use crate::model::schema::{FieldDefinition, FieldTypeConfig};
     use indexmap::IndexMap;
     use std::fs;
     use std::path::PathBuf;
+
+    /// Extract the field name and chain from a Cycle diagnostic, panicking otherwise.
+    fn unwrap_cycle(diagnostic: &Diagnostic) -> (&str, &[WorkItemId]) {
+        if let DiagnosticBody::Collection(c) = &diagnostic.body {
+            if let CollectionDiagnosticKind::Cycle { field, chain } = &c.kind {
+                return (field.as_str(), chain.as_slice());
+            }
+        }
+        panic!("expected Cycle, got {:?}", diagnostic.body);
+    }
 
     // ── Test helpers (mirrored from store/mod.rs tests) ─────────────
 
@@ -237,13 +248,9 @@ mod tests {
         let diagnostics = detect_cycles(&store, &schema);
 
         assert_eq!(diagnostics.len(), 1);
-        match &diagnostics[0].kind {
-            DiagnosticKind::Cycle { field, chain } => {
-                assert_eq!(field, "parent");
-                assert_eq!(*chain, ids(&["a", "b", "a"]));
-            }
-            other => panic!("expected Cycle, got {other:?}"),
-        }
+        let (field, chain) = unwrap_cycle(&diagnostics[0]);
+        assert_eq!(field, "parent");
+        assert_eq!(chain, ids(&["a", "b", "a"]).as_slice());
     }
 
     #[test]
@@ -254,13 +261,9 @@ mod tests {
         let diagnostics = detect_cycles(&store, &schema);
 
         assert_eq!(diagnostics.len(), 1);
-        match &diagnostics[0].kind {
-            DiagnosticKind::Cycle { field, chain } => {
-                assert_eq!(field, "parent");
-                assert_eq!(*chain, ids(&["a", "a"]));
-            }
-            other => panic!("expected Cycle, got {other:?}"),
-        }
+        let (field, chain) = unwrap_cycle(&diagnostics[0]);
+        assert_eq!(field, "parent");
+        assert_eq!(chain, ids(&["a", "a"]).as_slice());
     }
 
     #[test]
@@ -275,12 +278,8 @@ mod tests {
         let diagnostics = detect_cycles(&store, &schema);
 
         assert_eq!(diagnostics.len(), 1);
-        match &diagnostics[0].kind {
-            DiagnosticKind::Cycle { chain, .. } => {
-                assert_eq!(*chain, ids(&["a", "c", "b", "a"]));
-            }
-            other => panic!("expected Cycle, got {other:?}"),
-        }
+        let (_, chain) = unwrap_cycle(&diagnostics[0]);
+        assert_eq!(chain, ids(&["a", "c", "b", "a"]).as_slice());
     }
 
     #[test]
@@ -295,13 +294,9 @@ mod tests {
         let diagnostics = detect_cycles(&store, &schema);
 
         assert_eq!(diagnostics.len(), 1);
-        match &diagnostics[0].kind {
-            DiagnosticKind::Cycle { field, chain } => {
-                assert_eq!(field, "depends_on");
-                assert_eq!(*chain, ids(&["a", "b", "c", "a"]));
-            }
-            other => panic!("expected Cycle, got {other:?}"),
-        }
+        let (field, chain) = unwrap_cycle(&diagnostics[0]);
+        assert_eq!(field, "depends_on");
+        assert_eq!(chain, ids(&["a", "b", "c", "a"]).as_slice());
     }
 
     #[test]
@@ -319,9 +314,9 @@ mod tests {
         assert_eq!(diagnostics.len(), 2);
         let mut chains: Vec<Vec<WorkItemId>> = diagnostics
             .iter()
-            .map(|diagnostic| match &diagnostic.kind {
-                DiagnosticKind::Cycle { chain, .. } => chain.clone(),
-                other => panic!("expected Cycle, got {other:?}"),
+            .map(|diagnostic| {
+                let (_, chain) = unwrap_cycle(diagnostic);
+                chain.to_vec()
             })
             .collect();
         chains.sort_by(|a, b| a[0].as_str().cmp(b[0].as_str()));
@@ -339,7 +334,11 @@ mod tests {
         let store = Store::load(&path, &schema).unwrap();
         let cycle_diags: Vec<_> = detect_cycles(&store, &schema)
             .into_iter()
-            .filter(|diagnostic| matches!(diagnostic.kind, DiagnosticKind::Cycle { .. }))
+            .filter(|diagnostic| matches!(
+                &diagnostic.body,
+                DiagnosticBody::Collection(c)
+                    if matches!(c.kind, CollectionDiagnosticKind::Cycle { .. })
+            ))
             .collect();
         assert!(cycle_diags.is_empty());
     }
@@ -397,10 +396,8 @@ mod tests {
         let diagnostics = detect_cycles(&store, &schema);
 
         assert_eq!(diagnostics.len(), 1);
-        match &diagnostics[0].kind {
-            DiagnosticKind::Cycle { field, .. } => assert_eq!(field, "parent"),
-            other => panic!("expected Cycle, got {other:?}"),
-        }
+        let (field, _) = unwrap_cycle(&diagnostics[0]);
+        assert_eq!(field, "parent");
     }
 
     #[test]
@@ -415,13 +412,9 @@ mod tests {
         let diagnostics = detect_cycles(&store, &schema);
 
         assert_eq!(diagnostics.len(), 1);
-        match &diagnostics[0].kind {
-            DiagnosticKind::Cycle { field, chain } => {
-                assert_eq!(field, "depends_on");
-                assert_eq!(*chain, ids(&["a", "b", "a"]));
-            }
-            other => panic!("expected Cycle, got {other:?}"),
-        }
+        let (field, chain) = unwrap_cycle(&diagnostics[0]);
+        assert_eq!(field, "depends_on");
+        assert_eq!(chain, ids(&["a", "b", "a"]).as_slice());
     }
 
     #[test]

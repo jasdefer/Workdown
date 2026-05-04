@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::generators::{resolve_default, resolve_template_tokens};
 use crate::model::config::Config;
-use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
+use crate::model::diagnostic::{Diagnostic, DiagnosticBody, FilesDiagnosticKind};
 use crate::model::schema::{Schema, Severity};
 use crate::model::template::TemplateError;
 use crate::model::WorkItemId;
@@ -312,56 +312,15 @@ fn build_frontmatter_yaml(
 
 /// Check whether a diagnostic refers to a specific work item.
 fn is_diagnostic_for_item(diagnostic: &Diagnostic, item_id: &WorkItemId) -> bool {
-    match &diagnostic.kind {
-        DiagnosticKind::InvalidFieldValue {
-            item_id: diagnostic_item_id,
-            ..
-        }
-        | DiagnosticKind::MissingRequired {
-            item_id: diagnostic_item_id,
-            ..
-        }
-        | DiagnosticKind::UnknownField {
-            item_id: diagnostic_item_id,
-            ..
-        }
-        | DiagnosticKind::BrokenLink {
-            item_id: diagnostic_item_id,
-            ..
-        }
-        | DiagnosticKind::RuleViolation {
-            item_id: diagnostic_item_id,
-            ..
-        }
-        | DiagnosticKind::AggregateChainConflict {
-            item_id: diagnostic_item_id,
-            ..
-        } => diagnostic_item_id == item_id,
-        DiagnosticKind::AggregateMissingValue { leaf_id, .. } => leaf_id == item_id,
-        DiagnosticKind::DuplicateId { id, .. } => id == item_id,
-        // File errors, count violations, and view-level diagnostics don't
-        // attach to an individual item.
-        DiagnosticKind::FileError { .. }
-        | DiagnosticKind::Cycle { .. }
-        | DiagnosticKind::CountViolation { .. }
-        | DiagnosticKind::ViewDuplicateId { .. }
-        | DiagnosticKind::ViewMissingSlot { .. }
-        | DiagnosticKind::ViewUnknownField { .. }
-        | DiagnosticKind::ViewFieldTypeMismatch { .. }
-        | DiagnosticKind::ViewWhereParseError { .. }
-        | DiagnosticKind::ViewBucketWithoutDateAxis { .. }
-        | DiagnosticKind::ViewCountAggregateWithValue { .. }
-        | DiagnosticKind::ViewAggregateTypeMismatch { .. }
-        | DiagnosticKind::ViewSlotCyclic { .. }
-        | DiagnosticKind::ViewSlotInverseNotAllowed { .. }
-        | DiagnosticKind::ViewGanttEndOrDurationRequired { .. }
-        | DiagnosticKind::ViewGanttEndAndDurationConflict { .. }
-        | DiagnosticKind::ViewGanttAfterRequiresDuration { .. }
-        | DiagnosticKind::ViewGanttAfterWithEndConflict { .. }
-        | DiagnosticKind::ViewMetricRowUnknownField { .. }
-        | DiagnosticKind::ViewMetricRowAggregateTypeMismatch { .. }
-        | DiagnosticKind::ViewMetricRowCountWithValue { .. }
-        | DiagnosticKind::ViewMetricRowWhereParseError { .. } => false,
+    match &diagnostic.body {
+        DiagnosticBody::Item(item) => item.item_id == *item_id,
+        DiagnosticBody::Files(files) => matches!(
+            &files.kind,
+            FilesDiagnosticKind::DuplicateId { id } if id == item_id
+        ),
+        DiagnosticBody::File(_)
+        | DiagnosticBody::Collection(_)
+        | DiagnosticBody::Config(_) => false,
     }
 }
 

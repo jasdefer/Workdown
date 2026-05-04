@@ -16,7 +16,7 @@ use std::process::ExitCode;
 
 use workdown_core::model::calendar::WorkingCalendar;
 use workdown_core::model::config::Config;
-use workdown_core::model::diagnostic::{Diagnostic, DiagnosticKind};
+use workdown_core::model::diagnostic::Diagnostic;
 use workdown_core::model::views::{View, Views};
 use workdown_core::parser;
 use workdown_core::store::Store;
@@ -52,7 +52,7 @@ pub fn run_render(
     let views = parser::views::load_views(&views_path)
         .map_err(|e| anyhow::anyhow!("failed to load views: {e}"))?;
 
-    let views_check_diagnostics = views_check::evaluate(&views, &schema);
+    let views_check_diagnostics = views_check::evaluate(&views, &schema, &views_path);
     let invalid_view_ids = invalid_view_ids(&views_check_diagnostics);
     for diagnostic in &views_check_diagnostics {
         output::warning(&diagnostic.to_string());
@@ -224,32 +224,13 @@ fn emit_unplaced_warnings(view: &View, view_data: &ViewData) {
 
 /// Extract the set of view ids that failed `views_check` validation.
 ///
-/// Every view-level `DiagnosticKind` variant carries a `view_id` field;
-/// we union them so callers can filter `views.views` in one pass.
+/// `Diagnostic::view_id()` returns `Some(_)` for every Config-scope
+/// diagnostic that names a view; we union them so callers can filter
+/// `views.views` in one pass.
 fn invalid_view_ids(diagnostics: &[Diagnostic]) -> HashSet<String> {
     diagnostics
         .iter()
-        .filter_map(|diagnostic| match &diagnostic.kind {
-            DiagnosticKind::ViewDuplicateId { view_id }
-            | DiagnosticKind::ViewMissingSlot { view_id, .. }
-            | DiagnosticKind::ViewUnknownField { view_id, .. }
-            | DiagnosticKind::ViewFieldTypeMismatch { view_id, .. }
-            | DiagnosticKind::ViewWhereParseError { view_id, .. }
-            | DiagnosticKind::ViewBucketWithoutDateAxis { view_id }
-            | DiagnosticKind::ViewCountAggregateWithValue { view_id }
-            | DiagnosticKind::ViewAggregateTypeMismatch { view_id, .. }
-            | DiagnosticKind::ViewSlotCyclic { view_id, .. }
-            | DiagnosticKind::ViewSlotInverseNotAllowed { view_id, .. }
-            | DiagnosticKind::ViewGanttEndOrDurationRequired { view_id }
-            | DiagnosticKind::ViewGanttEndAndDurationConflict { view_id }
-            | DiagnosticKind::ViewGanttAfterRequiresDuration { view_id }
-            | DiagnosticKind::ViewGanttAfterWithEndConflict { view_id }
-            | DiagnosticKind::ViewMetricRowUnknownField { view_id, .. }
-            | DiagnosticKind::ViewMetricRowAggregateTypeMismatch { view_id, .. }
-            | DiagnosticKind::ViewMetricRowCountWithValue { view_id, .. }
-            | DiagnosticKind::ViewMetricRowWhereParseError { view_id, .. } => Some(view_id.clone()),
-            _ => None,
-        })
+        .filter_map(|diagnostic| diagnostic.view_id().map(str::to_owned))
         .collect()
 }
 
