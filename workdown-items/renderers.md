@@ -1,7 +1,7 @@
 ---
 id: renderers
 type: milestone
-status: to_do
+status: done
 title: Renderers
 parent: phase-04-visualization
 depends_on: [foundation]

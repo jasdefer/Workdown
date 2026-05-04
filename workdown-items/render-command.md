@@ -1,7 +1,7 @@
 ---
 id: render-command
 type: issue
-status: to_do
+status: done
 title: workdown render command
 parent: renderers
 depends_on:

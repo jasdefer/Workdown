@@ -75,6 +75,15 @@ views:
     where:
       - "status!=removed"
 
+  - id: milestone-workload
+    type: workload
+    start: start_date
+    end: end_date
+    effort: duration
+    title: title
+    where:
+      - "type=milestone"
+
   - id: duration-over-time
     type: line_chart
     x: start_date

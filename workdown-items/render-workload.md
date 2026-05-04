@@ -1,7 +1,7 @@
 ---
 id: render-workload
 type: issue
-status: to_do
+status: done
 title: Workload renderer
 parent: renderers
 depends_on: [view-data-intermediate]
