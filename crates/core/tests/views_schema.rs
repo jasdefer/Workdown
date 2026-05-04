@@ -40,6 +40,11 @@ views:
     start: start_date
     end: end_date
     group: parent
+  - id: roadmap-by-initiative
+    type: gantt_by_initiative
+    start: start_date
+    end: end_date
+    root_link: parent
   - id: effort-by-status
     type: bar_chart
     group_by: status
@@ -56,8 +61,9 @@ views:
     effort: effort
   - id: open-count
     type: metric
-    aggregate: count
-    label: Open items
+    metrics:
+      - aggregate: count
+        label: Open items
     where: ["status=to_do,in_progress"]
   - id: effort-by-milestone
     type: treemap
@@ -118,7 +124,7 @@ fn default_views_yaml_validates() {
 }
 
 #[test]
-fn full_example_with_all_eleven_view_types_validates() {
+fn full_example_with_all_view_types_validates() {
     let schema = compile_schema();
     assert_valid(&schema, FULL_EXAMPLE_YAML);
 }
@@ -145,15 +151,29 @@ views:
 }
 
 #[test]
-fn metric_without_aggregate_rejected() {
+fn metric_without_metrics_slot_rejected() {
     let schema = compile_schema();
     assert_invalid(
         &schema,
         "\
 views:
-  - id: missing-aggregate
+  - id: missing-metrics
     type: metric
-    label: oops
+",
+    );
+}
+
+#[test]
+fn metric_row_without_aggregate_rejected() {
+    let schema = compile_schema();
+    assert_invalid(
+        &schema,
+        "\
+views:
+  - id: bad-row
+    type: metric
+    metrics:
+      - label: oops
 ",
     );
 }
@@ -242,8 +262,9 @@ fn metric_count_with_value_rejected() {
 views:
   - id: bad-count
     type: metric
-    aggregate: count
-    value: effort
+    metrics:
+      - aggregate: count
+        value: effort
 ",
     );
 }
@@ -257,8 +278,45 @@ fn metric_sum_with_value_validates() {
 views:
   - id: total-effort
     type: metric
-    aggregate: sum
-    value: effort
+    metrics:
+      - aggregate: sum
+        value: effort
+",
+    );
+}
+
+#[test]
+fn metric_empty_metrics_array_validates() {
+    let schema = compile_schema();
+    assert_valid(
+        &schema,
+        "\
+views:
+  - id: empty
+    type: metric
+    metrics: []
+",
+    );
+}
+
+#[test]
+fn metric_multiple_rows_validates() {
+    let schema = compile_schema();
+    assert_valid(
+        &schema,
+        "\
+views:
+  - id: stats
+    type: metric
+    metrics:
+      - label: Total
+        aggregate: count
+      - label: In progress
+        aggregate: count
+        where: [\"status=in_progress\"]
+      - label: Story points
+        aggregate: sum
+        value: points
 ",
     );
 }
@@ -286,7 +344,8 @@ fn bad_aggregate_value_rejected() {
 views:
   - id: bad-aggregate
     type: metric
-    aggregate: median
+    metrics:
+      - aggregate: median
 ",
     );
 }
@@ -313,6 +372,95 @@ fn unknown_top_level_key_rejected() {
         "\
 views: []
 extra: nope
+",
+    );
+}
+
+// ── Title slot (cross-cutting) ───────────────────────────────────────────
+
+#[test]
+fn title_slot_on_every_view_type_validates() {
+    // Same fixture as `full_example_with_all_view_types_validates` but
+    // every entry carries `title: title`. Ensures each per-type branch
+    // accepts the shared slot.
+    let schema = compile_schema();
+    let yaml = r#"
+views:
+  - id: status-board
+    type: board
+    field: status
+    title: title
+  - id: hierarchy
+    type: tree
+    field: parent
+    title: title
+  - id: deps
+    type: graph
+    field: depends_on
+    title: title
+  - id: all-items
+    type: table
+    columns: [id, title]
+    title: title
+  - id: roadmap
+    type: gantt
+    start: start_date
+    end: end_date
+    title: title
+  - id: roadmap-by-initiative
+    type: gantt_by_initiative
+    start: start_date
+    end: end_date
+    root_link: parent
+    title: title
+  - id: effort-by-status
+    type: bar_chart
+    group_by: status
+    aggregate: count
+    title: title
+  - id: estimate-vs-actual
+    type: line_chart
+    x: estimate
+    y: actual_effort
+    title: title
+  - id: capacity
+    type: workload
+    start: start_date
+    end: end_date
+    effort: effort
+    title: title
+  - id: open-count
+    type: metric
+    metrics:
+      - aggregate: count
+    title: title
+  - id: effort-by-milestone
+    type: treemap
+    group: parent
+    size: effort
+    title: title
+  - id: activity
+    type: heatmap
+    x: end_date
+    y: assignee
+    aggregate: count
+    title: title
+"#;
+    assert_valid(&schema, yaml);
+}
+
+#[test]
+fn title_with_wrong_yaml_type_rejected() {
+    // `title` must be a field-name string. A number is not a valid identifier.
+    let schema = compile_schema();
+    assert_invalid(
+        &schema,
+        "\
+views:
+  - id: bad-title
+    type: board
+    field: status
+    title: 42
 ",
     );
 }

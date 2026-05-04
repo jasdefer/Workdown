@@ -5,6 +5,11 @@
   "description": "Validates the structure of a project's views.yaml file. Declares persisted views rendered by `workdown render` (board, tree, graph, table, gantt, charts, etc.).",
   "type": "object",
   "properties": {
+    "directory": {
+      "type": "string",
+      "description": "Output directory where `workdown render` writes view files, relative to the project root. Defaults to 'views'.",
+      "default": "views"
+    },
     "views": {
       "type": "array",
       "description": "Ordered list of view definitions. Each entry has a unique id used as the output filename.",
@@ -46,6 +51,20 @@
       "enum": ["day", "week", "month"]
     },
 
+    "weekday": {
+      "type": "string",
+      "description": "Day of the week, full lowercase name.",
+      "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    },
+
+    "working_days": {
+      "type": "array",
+      "description": "Days of the week that count as workload-bearing. Per-view override of the project-level config.yaml setting.",
+      "items": { "$ref": "#/$defs/weekday" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+
     "view": {
       "description": "A single view entry. The `type` field discriminates which slots are required.",
       "oneOf": [
@@ -54,6 +73,8 @@
         { "$ref": "#/$defs/graph" },
         { "$ref": "#/$defs/table" },
         { "$ref": "#/$defs/gantt" },
+        { "$ref": "#/$defs/gantt_by_initiative" },
+        { "$ref": "#/$defs/gantt_by_depth" },
         { "$ref": "#/$defs/bar_chart" },
         { "$ref": "#/$defs/line_chart" },
         { "$ref": "#/$defs/workload" },
@@ -70,6 +91,7 @@
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "board" },
         "where": { "$ref": "#/$defs/where_clauses" },
+        "title": { "$ref": "#/$defs/field_name" },
         "field": { "$ref": "#/$defs/field_name" }
       },
       "required": ["id", "type", "field"],
@@ -83,6 +105,7 @@
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "tree" },
         "where": { "$ref": "#/$defs/where_clauses" },
+        "title": { "$ref": "#/$defs/field_name" },
         "field": { "$ref": "#/$defs/field_name" }
       },
       "required": ["id", "type", "field"],
@@ -91,12 +114,14 @@
 
     "graph": {
       "type": "object",
-      "description": "Directed graph following a links field (e.g. depends_on).",
+      "description": "Directed graph following a links field (e.g. depends_on). Optionally nests nodes inside Mermaid subgraphs by walking a single-target Link field (e.g. parent).",
       "properties": {
-        "id":    { "$ref": "#/$defs/view_id" },
-        "type":  { "const": "graph" },
-        "where": { "$ref": "#/$defs/where_clauses" },
-        "field": { "$ref": "#/$defs/field_name" }
+        "id":       { "$ref": "#/$defs/view_id" },
+        "type":     { "const": "graph" },
+        "where":    { "$ref": "#/$defs/where_clauses" },
+        "title":    { "$ref": "#/$defs/field_name" },
+        "field":    { "$ref": "#/$defs/field_name" },
+        "group_by": { "$ref": "#/$defs/field_name" }
       },
       "required": ["id", "type", "field"],
       "additionalProperties": false
@@ -109,6 +134,7 @@
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "table" },
         "where": { "$ref": "#/$defs/where_clauses" },
+        "title": { "$ref": "#/$defs/field_name" },
         "columns": {
           "type": "array",
           "description": "Ordered field names to render as columns.",
@@ -122,16 +148,70 @@
 
     "gantt": {
       "type": "object",
-      "description": "Gantt timeline using start/end date fields, optionally grouped by a link field.",
+      "description": "Gantt timeline anchored at a start date. Each bar's end is determined by one of three input modes: (1) explicit end-date field (`end`); (2) computed as `start + duration` from a duration field (`duration`); (3) predecessor mode (`after` + `duration`), where each item's start is `max(start_field?, max(predecessor.end))` over a links field naming predecessors. Exactly one of (`end`), (`duration`), or (`after` + `duration`) must be configured. Cross-checked by `workdown validate`. Optionally grouped by a categorical or link field.",
       "properties": {
-        "id":    { "$ref": "#/$defs/view_id" },
-        "type":  { "const": "gantt" },
-        "where": { "$ref": "#/$defs/where_clauses" },
-        "start": { "$ref": "#/$defs/field_name" },
-        "end":   { "$ref": "#/$defs/field_name" },
-        "group": { "$ref": "#/$defs/field_name" }
+        "id":       { "$ref": "#/$defs/view_id" },
+        "type":     { "const": "gantt" },
+        "where":    { "$ref": "#/$defs/where_clauses" },
+        "title":    { "$ref": "#/$defs/field_name" },
+        "start":    { "$ref": "#/$defs/field_name" },
+        "end":      { "$ref": "#/$defs/field_name" },
+        "duration": { "$ref": "#/$defs/field_name" },
+        "after":    {
+          "$ref": "#/$defs/field_name",
+          "description": "Predecessor-mode link/links field (e.g. depends_on) whose values name items each bar comes after. Requires `duration`, forbids `end`. The link field must have `allow_cycles: false` and not be an inverse name."
+        },
+        "group":    { "$ref": "#/$defs/field_name" }
       },
-      "required": ["id", "type", "start", "end"],
+      "required": ["id", "type", "start"],
+      "additionalProperties": false
+    },
+
+    "gantt_by_initiative": {
+      "type": "object",
+      "description": "Gantt timeline partitioned by initiative — emits one Mermaid `gantt` block per top-level ancestor of `root_link`. Per-bar resolution mirrors `gantt`: exactly one of (`end`), (`duration`), or (`after` + `duration`) configures the input mode. Items are bucketed by walking `root_link` upward against the full store, so chains span filter boundaries.",
+      "properties": {
+        "id":        { "$ref": "#/$defs/view_id" },
+        "type":      { "const": "gantt_by_initiative" },
+        "where":     { "$ref": "#/$defs/where_clauses" },
+        "title":     { "$ref": "#/$defs/field_name" },
+        "start":     { "$ref": "#/$defs/field_name" },
+        "end":       { "$ref": "#/$defs/field_name" },
+        "duration":  { "$ref": "#/$defs/field_name" },
+        "after":     {
+          "$ref": "#/$defs/field_name",
+          "description": "Predecessor-mode link/links field. Requires `duration`, forbids `end`. Must have `allow_cycles: false`."
+        },
+        "root_link": {
+          "$ref": "#/$defs/field_name",
+          "description": "Single-target link field whose chain is walked upward to find each item's initiative root. Must have `allow_cycles: false` and not be an inverse name."
+        }
+      },
+      "required": ["id", "type", "start", "root_link"],
+      "additionalProperties": false
+    },
+
+    "gantt_by_depth": {
+      "type": "object",
+      "description": "Gantt timeline partitioned by depth — emits one Mermaid `gantt` block per non-empty depth level of `depth_link` (level 0 = roots, level 1 = direct children, etc.). Per-bar resolution mirrors `gantt`: exactly one of (`end`), (`duration`), or (`after` + `duration`) configures the input mode. Each item's depth is computed by walking `depth_link` upward against the full store, so depth is invariant under filtering.",
+      "properties": {
+        "id":         { "$ref": "#/$defs/view_id" },
+        "type":       { "const": "gantt_by_depth" },
+        "where":      { "$ref": "#/$defs/where_clauses" },
+        "title":      { "$ref": "#/$defs/field_name" },
+        "start":      { "$ref": "#/$defs/field_name" },
+        "end":        { "$ref": "#/$defs/field_name" },
+        "duration":   { "$ref": "#/$defs/field_name" },
+        "after":      {
+          "$ref": "#/$defs/field_name",
+          "description": "Predecessor-mode link/links field. Requires `duration`, forbids `end`. Must have `allow_cycles: false`."
+        },
+        "depth_link": {
+          "$ref": "#/$defs/field_name",
+          "description": "Single-target link field whose chain is walked upward to determine each item's depth. Must have `allow_cycles: false` and not be an inverse name."
+        }
+      },
+      "required": ["id", "type", "start", "depth_link"],
       "additionalProperties": false
     },
 
@@ -142,6 +222,7 @@
         "id":        { "$ref": "#/$defs/view_id" },
         "type":      { "const": "bar_chart" },
         "where":     { "$ref": "#/$defs/where_clauses" },
+        "title":     { "$ref": "#/$defs/field_name" },
         "group_by":  { "$ref": "#/$defs/field_name" },
         "value":     { "$ref": "#/$defs/field_name" },
         "aggregate": { "$ref": "#/$defs/aggregate" }
@@ -152,13 +233,18 @@
 
     "line_chart": {
       "type": "object",
-      "description": "Line chart with x/y fields (numeric or date).",
+      "description": "Line chart with x/y fields (numeric, date, or duration). Optionally split into multiple series by a categorical or link `group` field.",
       "properties": {
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "line_chart" },
         "where": { "$ref": "#/$defs/where_clauses" },
+        "title": { "$ref": "#/$defs/field_name" },
         "x":     { "$ref": "#/$defs/field_name" },
-        "y":     { "$ref": "#/$defs/field_name" }
+        "y":     { "$ref": "#/$defs/field_name" },
+        "group": {
+          "$ref": "#/$defs/field_name",
+          "description": "Optional choice/string/link field that splits points into multiple series. Items missing the value plot in a synthetic `(no <field>)` series."
+        }
       },
       "required": ["id", "type", "x", "y"],
       "additionalProperties": false
@@ -166,14 +252,16 @@
 
     "workload": {
       "type": "object",
-      "description": "Capacity/workload view summing effort over a start/end window.",
+      "description": "Capacity/workload view summing effort over a start/end window. Effort is spread uniformly across each item's working days within [start..end] and totals stack across items.",
       "properties": {
-        "id":     { "$ref": "#/$defs/view_id" },
-        "type":   { "const": "workload" },
-        "where":  { "$ref": "#/$defs/where_clauses" },
-        "start":  { "$ref": "#/$defs/field_name" },
-        "end":    { "$ref": "#/$defs/field_name" },
-        "effort": { "$ref": "#/$defs/field_name" }
+        "id":           { "$ref": "#/$defs/view_id" },
+        "type":         { "const": "workload" },
+        "where":        { "$ref": "#/$defs/where_clauses" },
+        "title":        { "$ref": "#/$defs/field_name" },
+        "start":        { "$ref": "#/$defs/field_name" },
+        "end":          { "$ref": "#/$defs/field_name" },
+        "effort":       { "$ref": "#/$defs/field_name" },
+        "working_days": { "$ref": "#/$defs/working_days" }
       },
       "required": ["id", "type", "start", "end", "effort"],
       "additionalProperties": false
@@ -181,16 +269,32 @@
 
     "metric": {
       "type": "object",
-      "description": "Single-number metric. `aggregate: count` requires no value field; other aggregates aggregate a numeric `value` field.",
+      "description": "Stat-row table: one labelled aggregate per row. The view-level `where` filters the underlying item set; each row's optional `where` narrows further (AND-combined). Renders as a single GFM table to `views/<id>.md`.",
       "properties": {
-        "id":        { "$ref": "#/$defs/view_id" },
-        "type":      { "const": "metric" },
-        "where":     { "$ref": "#/$defs/where_clauses" },
+        "id":      { "$ref": "#/$defs/view_id" },
+        "type":    { "const": "metric" },
+        "where":   { "$ref": "#/$defs/where_clauses" },
+        "title":   { "$ref": "#/$defs/field_name" },
+        "metrics": {
+          "type": "array",
+          "description": "Ordered list of stat rows. Empty arrays are allowed (renders heading-only).",
+          "items": { "$ref": "#/$defs/metric_row" }
+        }
+      },
+      "required": ["id", "type", "metrics"],
+      "additionalProperties": false
+    },
+
+    "metric_row": {
+      "type": "object",
+      "description": "One stat row inside a metric view. `aggregate: count` takes no value field; other aggregates aggregate a numeric, date, or duration `value` field.",
+      "properties": {
+        "label":     { "type": "string", "description": "Display label. When omitted, derived from the aggregate and value field (e.g. 'Sum of points')." },
         "aggregate": { "$ref": "#/$defs/aggregate" },
         "value":     { "$ref": "#/$defs/field_name" },
-        "label":     { "type": "string", "description": "Display label." }
+        "where":     { "$ref": "#/$defs/where_clauses" }
       },
-      "required": ["id", "type", "aggregate"],
+      "required": ["aggregate"],
       "additionalProperties": false,
       "allOf": [
         {
@@ -212,6 +316,7 @@
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "treemap" },
         "where": { "$ref": "#/$defs/where_clauses" },
+        "title": { "$ref": "#/$defs/field_name" },
         "group": { "$ref": "#/$defs/field_name" },
         "size":  { "$ref": "#/$defs/field_name" }
       },
@@ -226,6 +331,7 @@
         "id":        { "$ref": "#/$defs/view_id" },
         "type":      { "const": "heatmap" },
         "where":     { "$ref": "#/$defs/where_clauses" },
+        "title":     { "$ref": "#/$defs/field_name" },
         "x":         { "$ref": "#/$defs/field_name" },
         "y":         { "$ref": "#/$defs/field_name" },
         "value":     { "$ref": "#/$defs/field_name" },

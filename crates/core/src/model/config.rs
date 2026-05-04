@@ -4,6 +4,9 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
+use super::calendar::WorkingCalendar;
+use super::weekday::Weekday;
+
 /// A parsed project configuration.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -16,6 +19,25 @@ pub struct Config {
     pub schema: PathBuf,
     /// CLI default settings (which fields to use for views).
     pub defaults: ViewDefaults,
+    /// Project-wide working calendar — the days of the week that count
+    /// as work days for views like workload. `None` means inherit the
+    /// built-in Monday–Friday default; consume via [`Self::working_calendar`].
+    #[serde(default)]
+    pub working_days: Option<Vec<Weekday>>,
+}
+
+impl Config {
+    /// Build the [`WorkingCalendar`] this project's views should use.
+    ///
+    /// Falls back to [`WorkingCalendar::default_business_week`] when
+    /// `working_days` is omitted from `config.yaml`. Per-view overrides
+    /// on `Workload` are applied later, by the extractor.
+    pub fn working_calendar(&self) -> WorkingCalendar {
+        match &self.working_days {
+            Some(days) => WorkingCalendar::from_days(days.iter().copied()),
+            None => WorkingCalendar::default_business_week(),
+        }
+    }
 }
 
 /// Project-level metadata.

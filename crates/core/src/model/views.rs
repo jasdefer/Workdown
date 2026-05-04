@@ -4,7 +4,11 @@
 //! `workdown render` produces static files for, and that `workdown serve`
 //! exposes as live bookmarks. See `docs/views.md` for the design note.
 
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
+
+use super::weekday::Weekday;
 
 /// A parsed and validated `views.yaml` file.
 ///
@@ -12,6 +16,10 @@ use serde::{Deserialize, Serialize};
 /// (missing required slots, duplicate ids) are rejected at parse time.
 #[derive(Debug, Clone)]
 pub struct Views {
+    /// Directory (relative to project root) where `workdown render`
+    /// writes the rendered view files. Sourced from the optional
+    /// `directory:` key in `views.yaml`; defaults to `"views"`.
+    pub output_dir: PathBuf,
     pub views: Vec<View>,
 }
 
@@ -24,6 +32,11 @@ pub struct View {
     /// `workdown query --where` grammar, parsed by
     /// [`crate::query::parse::parse_where`].
     pub where_clauses: Vec<String>,
+
+    /// Schema field name whose value is used as each item's display title
+    /// on cards, rows, nodes, and bars. When `None`, renderers fall back to
+    /// the item id. Cross-cutting: applies uniformly to every view type.
+    pub title: Option<String>,
 
     pub kind: ViewKind,
 }
@@ -40,14 +53,65 @@ pub enum ViewKind {
     },
     Graph {
         field: String,
+        /// Optional `Link` field whose chain becomes Mermaid `subgraph`
+        /// nesting when the renderer emits the view. Cardinality must be
+        /// single-target (one parent per item) so each item lives in
+        /// exactly one box. Inverse names are rejected by `views_check`.
+        group_by: Option<String>,
     },
     Table {
         columns: Vec<String>,
     },
     Gantt {
         start: String,
-        end: String,
+        /// Date field naming the bar's end. Mutually exclusive with
+        /// `duration`: exactly one is set per view, enforced by
+        /// `views_check`.
+        end: Option<String>,
+        /// Duration field used to compute the bar's end as
+        /// `start + duration`. Mutually exclusive with `end`.
+        duration: Option<String>,
+        /// Optional links-typed field naming each item's predecessors.
+        /// When set, the view runs in after-mode: each item's start is
+        /// `max(start_field?, max(pred.end))`. Requires `duration`,
+        /// forbids `end`. Field must be `Link` or `Links` with
+        /// `allow_cycles: false`. Cross-checked in `views_check`.
+        after: Option<String>,
         group: Option<String>,
+    },
+    /// Gantt partitioned by initiative: one chart per top-level ancestor
+    /// of `root_link`. Per-bar resolution mirrors `Gantt` (same three
+    /// input recipes); items are bucketed by walking `root_link` upward
+    /// against the full store, so chains span filter boundaries. No
+    /// per-chart `group` slot — each chart is already scoped to one
+    /// initiative.
+    GanttByInitiative {
+        start: String,
+        end: Option<String>,
+        duration: Option<String>,
+        after: Option<String>,
+        /// Single-target `Link` field whose chain is walked upward to
+        /// find each item's initiative root. Must have
+        /// `allow_cycles: false` and not be an inverse name. Validated
+        /// in `views_check`.
+        root_link: String,
+    },
+    /// Gantt partitioned by depth: one chart per non-empty depth level
+    /// of `depth_link` (level 0 = roots, level 1 = direct children, etc.).
+    /// Per-bar resolution mirrors `Gantt` (same three input recipes);
+    /// each item's depth is computed by walking `depth_link` upward
+    /// against the full store, so chains span filter boundaries. No
+    /// per-chart `group` slot — each chart is already scoped to one
+    /// level.
+    GanttByDepth {
+        start: String,
+        end: Option<String>,
+        duration: Option<String>,
+        after: Option<String>,
+        /// Single-target `Link` field whose chain is walked upward to
+        /// determine each item's depth. Must have `allow_cycles: false`
+        /// and not be an inverse name. Validated in `views_check`.
+        depth_link: String,
     },
     BarChart {
         group_by: String,
@@ -57,16 +121,28 @@ pub enum ViewKind {
     LineChart {
         x: String,
         y: String,
+        /// Optional categorical or link field that splits points into
+        /// multiple series. Items missing the value plot in a synthetic
+        /// `(no <field>)` series. Field type must be `choice`,
+        /// `multichoice`, `string`, `list`, `link`, or `links`,
+        /// validated in `views_check`.
+        group: Option<String>,
     },
     Workload {
         start: String,
         end: String,
         effort: String,
+        /// Per-view override of the project's working calendar. When
+        /// `None`, the extractor uses the project-level calendar from
+        /// `config.yaml` (or its Monday–Friday default).
+        working_days: Option<Vec<Weekday>>,
     },
+    /// One file per metric view, containing a stat-row table. Each
+    /// [`MetricRow`] is one labelled aggregate. Per-row `where` clauses
+    /// AND-combine with the view-level filter so different rows can
+    /// scope to different item subsets.
     Metric {
-        label: Option<String>,
-        value: Option<String>,
-        aggregate: Aggregate,
+        metrics: Vec<MetricRow>,
     },
     Treemap {
         group: String,
@@ -81,6 +157,23 @@ pub enum ViewKind {
     },
 }
 
+/// One row within a metric view: a labelled aggregate over a (possibly
+/// further-filtered) subset of the view's items.
+#[derive(Debug, Clone)]
+pub struct MetricRow {
+    /// Display label for the row. When `None`, the extractor generates
+    /// one from the aggregate and value field (e.g. `"Sum of points"`,
+    /// or `"Count"` when there's no value field).
+    pub label: Option<String>,
+    pub aggregate: Aggregate,
+    /// Field whose values are aggregated. Required for sum/avg/min/max,
+    /// forbidden for count (cross-checked in `views_check`).
+    pub value: Option<String>,
+    /// Per-row filter expressions, AND-combined with the view-level
+    /// `where_clauses` before aggregation.
+    pub where_clauses: Vec<String>,
+}
+
 impl ViewKind {
     /// The [`ViewType`] discriminant for this view configuration.
     pub fn view_type(&self) -> ViewType {
@@ -90,6 +183,8 @@ impl ViewKind {
             Self::Graph { .. } => ViewType::Graph,
             Self::Table { .. } => ViewType::Table,
             Self::Gantt { .. } => ViewType::Gantt,
+            Self::GanttByInitiative { .. } => ViewType::GanttByInitiative,
+            Self::GanttByDepth { .. } => ViewType::GanttByDepth,
             Self::BarChart { .. } => ViewType::BarChart,
             Self::LineChart { .. } => ViewType::LineChart,
             Self::Workload { .. } => ViewType::Workload,
@@ -109,6 +204,8 @@ pub enum ViewType {
     Graph,
     Table,
     Gantt,
+    GanttByInitiative,
+    GanttByDepth,
     BarChart,
     LineChart,
     Workload,
@@ -125,6 +222,8 @@ impl std::fmt::Display for ViewType {
             Self::Graph => "graph",
             Self::Table => "table",
             Self::Gantt => "gantt",
+            Self::GanttByInitiative => "gantt_by_initiative",
+            Self::GanttByDepth => "gantt_by_depth",
             Self::BarChart => "bar_chart",
             Self::LineChart => "line_chart",
             Self::Workload => "workload",

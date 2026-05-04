@@ -17,3 +17,9 @@ defaults:
   board_field: status
   tree_field: parent
   graph_field: depends_on
+
+# Working calendar — days of the week that count as workload-bearing.
+# Optional; defaults to monday..friday when omitted. Used by workload
+# views to spread effort across the right days. Individual workload
+# views can override this with their own `working_days:` key.
+# working_days: [monday, tuesday, wednesday, thursday, friday]

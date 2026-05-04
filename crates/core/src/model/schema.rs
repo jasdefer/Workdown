@@ -68,7 +68,7 @@ pub(crate) struct RawSchema {
 /// A validated field definition with type-specific configuration
 /// encoded in [`FieldTypeConfig`].
 ///
-/// Produced by converting a [`RawFieldDefinition`] after schema validation.
+/// Produced by converting a `RawFieldDefinition` after schema validation.
 /// Invalid states (e.g., a Boolean with `values`) are unrepresentable.
 #[derive(Debug, Clone)]
 pub struct FieldDefinition {
@@ -114,6 +114,7 @@ impl FieldDefinition {
             FieldTypeConfig::Integer { .. } => FieldType::Integer,
             FieldTypeConfig::Float { .. } => FieldType::Float,
             FieldTypeConfig::Date => FieldType::Date,
+            FieldTypeConfig::Duration { .. } => FieldType::Duration,
             FieldTypeConfig::Boolean => FieldType::Boolean,
             FieldTypeConfig::List => FieldType::List,
             FieldTypeConfig::Link { .. } => FieldType::Link,
@@ -156,6 +157,14 @@ pub enum FieldTypeConfig {
         max: Option<f64>,
     },
     Date,
+    /// A duration field. `min` / `max` are pre-parsed canonical i64
+    /// seconds; the schema parser converts the suffix-shorthand string
+    /// (`"0s"`, `"4w"`) at load time so coerce-time bounds checks are a
+    /// plain integer comparison.
+    Duration {
+        min: Option<i64>,
+        max: Option<i64>,
+    },
     Boolean,
     List,
     Link {
@@ -199,13 +208,15 @@ pub(crate) struct RawFieldDefinition {
     #[serde(default)]
     pub pattern: Option<String>,
 
-    /// Minimum allowed value. Only valid for `integer` and `float` types.
+    /// Minimum allowed value. Numeric for `integer`/`float`, suffix-shorthand
+    /// duration string for `duration` (parsed type-aware in the validation pass).
     #[serde(default)]
-    pub min: Option<f64>,
+    pub min: Option<serde_yaml::Value>,
 
-    /// Maximum allowed value. Only valid for `integer` and `float` types.
+    /// Maximum allowed value. Numeric for `integer`/`float`, suffix-shorthand
+    /// duration string for `duration` (parsed type-aware in the validation pass).
     #[serde(default)]
-    pub max: Option<f64>,
+    pub max: Option<serde_yaml::Value>,
 
     /// Whether circular references are allowed. Only valid for `link`/`links`.
     #[serde(default)]
@@ -224,7 +235,7 @@ pub(crate) struct RawFieldDefinition {
     pub aggregate: Option<AggregateConfig>,
 }
 
-/// The 10 built-in field types.
+/// The 11 built-in field types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FieldType {
@@ -234,6 +245,7 @@ pub enum FieldType {
     Integer,
     Float,
     Date,
+    Duration,
     Boolean,
     List,
     Link,
@@ -249,6 +261,7 @@ impl std::fmt::Display for FieldType {
             Self::Integer => "integer",
             Self::Float => "float",
             Self::Date => "date",
+            Self::Duration => "duration",
             Self::Boolean => "boolean",
             Self::List => "list",
             Self::Link => "link",
@@ -334,6 +347,13 @@ pub struct AggregateConfig {
     /// Whether to report an error if a leaf item is missing this field.
     #[serde(default)]
     pub error_on_missing: bool,
+
+    /// Name of the link field to walk upward for the rollup. Must reference
+    /// a `link` (single-valued) field in the schema. `None` defaults to
+    /// `"parent"` at use sites; the parser still requires that target field
+    /// to exist.
+    #[serde(default)]
+    pub over: Option<String>,
 }
 
 /// Available aggregation functions.

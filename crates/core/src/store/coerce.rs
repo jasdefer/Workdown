@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 
+use chrono::NaiveDate;
 use regex::Regex;
 
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind, FieldValueError};
@@ -48,8 +49,11 @@ pub(crate) fn coerce_fields(
                 }
             },
             _ => {
-                // Value is absent or null.
-                if def.required {
+                // Value is absent or null. Required-field check is deferred
+                // for aggregate fields — those can be filled in by the
+                // rollup pass, so the post-compute pass in `rollup::run`
+                // emits `MissingRequired` only for items that remain blank.
+                if def.required && def.aggregate.is_none() {
                     diagnostics.push(Diagnostic {
                         severity: Severity::Error,
                         kind: DiagnosticKind::MissingRequired {
@@ -90,6 +94,7 @@ fn coerce_value(
         FieldTypeConfig::Integer { min, max } => coerce_integer(value, *min, *max),
         FieldTypeConfig::Float { min, max } => coerce_float(value, *min, *max),
         FieldTypeConfig::Date => coerce_date(value),
+        FieldTypeConfig::Duration { min, max } => coerce_duration(value, *min, *max),
         FieldTypeConfig::Boolean => coerce_boolean(value),
         FieldTypeConfig::List => coerce_list(value),
         FieldTypeConfig::Link { .. } => coerce_link(value),
@@ -250,6 +255,47 @@ fn coerce_float(
     Ok(FieldValue::Float(n))
 }
 
+fn coerce_duration(
+    value: &serde_yaml::Value,
+    min: Option<i64>,
+    max: Option<i64>,
+) -> Result<FieldValue, FieldValueError> {
+    use crate::model::duration::{format_duration_seconds, parse_duration};
+
+    let s = value
+        .as_str()
+        .ok_or_else(|| FieldValueError::TypeMismatch {
+            expected: FieldType::Duration,
+            got: yaml_type_name(value).into(),
+        })?;
+
+    let seconds = parse_duration(s).map_err(|err| FieldValueError::InvalidDuration {
+        value: s.to_owned(),
+        reason: err.to_string(),
+    })?;
+
+    if let Some(min) = min {
+        if seconds < min {
+            return Err(FieldValueError::OutOfRangeDuration {
+                value: format_duration_seconds(seconds),
+                min: Some(format_duration_seconds(min)),
+                max: max.map(format_duration_seconds),
+            });
+        }
+    }
+    if let Some(max) = max {
+        if seconds > max {
+            return Err(FieldValueError::OutOfRangeDuration {
+                value: format_duration_seconds(seconds),
+                min: min.map(format_duration_seconds),
+                max: Some(format_duration_seconds(max)),
+            });
+        }
+    }
+
+    Ok(FieldValue::Duration(seconds))
+}
+
 fn coerce_date(value: &serde_yaml::Value) -> Result<FieldValue, FieldValueError> {
     let s = value
         .as_str()
@@ -258,13 +304,12 @@ fn coerce_date(value: &serde_yaml::Value) -> Result<FieldValue, FieldValueError>
             got: yaml_type_name(value).into(),
         })?;
 
-    if !is_valid_date(s) {
-        return Err(FieldValueError::InvalidDate {
+    let date =
+        NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| FieldValueError::InvalidDate {
             value: s.to_owned(),
-        });
-    }
+        })?;
 
-    Ok(FieldValue::Date(s.to_owned()))
+    Ok(FieldValue::Date(date))
 }
 
 fn coerce_boolean(value: &serde_yaml::Value) -> Result<FieldValue, FieldValueError> {
@@ -342,50 +387,6 @@ fn yaml_type_name(value: &serde_yaml::Value) -> &'static str {
         serde_yaml::Value::Mapping(_) => "mapping",
         serde_yaml::Value::Tagged(_) => "tagged",
     }
-}
-
-/// Validate a date string matches `YYYY-MM-DD` and represents a plausible date.
-fn is_valid_date(s: &str) -> bool {
-    if s.len() != 10 {
-        return false;
-    }
-
-    let bytes = s.as_bytes();
-    if bytes[4] != b'-' || bytes[7] != b'-' {
-        return false;
-    }
-
-    let year: u32 = match s[0..4].parse() {
-        Ok(y) => y,
-        Err(_) => return false,
-    };
-    let month: u32 = match s[5..7].parse() {
-        Ok(m) => m,
-        Err(_) => return false,
-    };
-    let day: u32 = match s[8..10].parse() {
-        Ok(d) => d,
-        Err(_) => return false,
-    };
-
-    if year == 0 || month == 0 || month > 12 || day == 0 {
-        return false;
-    }
-
-    let max_day = match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 => {
-            if (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400) {
-                29
-            } else {
-                28
-            }
-        }
-        _ => return false,
-    };
-
-    day <= max_day
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -718,7 +719,10 @@ mod tests {
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
-        assert_eq!(fields["created"], FieldValue::Date("2026-01-15".into()));
+        assert_eq!(
+            fields["created"],
+            FieldValue::Date(NaiveDate::from_ymd_opt(2026, 1, 15).unwrap())
+        );
     }
 
     #[test]
@@ -759,11 +763,153 @@ mod tests {
         let raw = raw_item("t", vec![("created", yaml_str("2024-02-29"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
         assert!(diagnostics.is_empty());
-        assert_eq!(fields["created"], FieldValue::Date("2024-02-29".into()));
+        assert_eq!(
+            fields["created"],
+            FieldValue::Date(NaiveDate::from_ymd_opt(2024, 2, 29).unwrap())
+        );
 
         let raw = raw_item("t", vec![("created", yaml_str("2023-02-29"))]);
         let (_, diagnostics) = coerce_fields(&raw, &s);
         assert!(!diagnostics.is_empty());
+    }
+
+    // ── Duration coercion ────────────────────────────────────────────
+
+    #[test]
+    fn coerce_duration_simple_days() {
+        let s = schema(vec![(
+            "estimate",
+            FieldDefinition::new(FieldTypeConfig::Duration {
+                min: None,
+                max: None,
+            }),
+        )]);
+        let raw = raw_item("t", vec![("estimate", yaml_str("5d"))]);
+        let (fields, diagnostics) = coerce_fields(&raw, &s);
+
+        assert!(diagnostics.is_empty(), "got diagnostics: {diagnostics:?}");
+        assert_eq!(fields["estimate"], FieldValue::Duration(432_000));
+    }
+
+    #[test]
+    fn coerce_duration_compound() {
+        let s = schema(vec![(
+            "estimate",
+            FieldDefinition::new(FieldTypeConfig::Duration {
+                min: None,
+                max: None,
+            }),
+        )]);
+        let raw = raw_item("t", vec![("estimate", yaml_str("1w 2d 3h"))]);
+        let (fields, diagnostics) = coerce_fields(&raw, &s);
+
+        assert!(diagnostics.is_empty());
+        // 1w + 2d + 3h = 604_800 + 172_800 + 10_800 = 788_400
+        assert_eq!(fields["estimate"], FieldValue::Duration(788_400));
+    }
+
+    #[test]
+    fn coerce_duration_negative() {
+        let s = schema(vec![(
+            "estimate",
+            FieldDefinition::new(FieldTypeConfig::Duration {
+                min: None,
+                max: None,
+            }),
+        )]);
+        let raw = raw_item("t", vec![("estimate", yaml_str("-2d"))]);
+        let (fields, diagnostics) = coerce_fields(&raw, &s);
+
+        assert!(diagnostics.is_empty());
+        assert_eq!(fields["estimate"], FieldValue::Duration(-172_800));
+    }
+
+    #[test]
+    fn coerce_duration_below_min_rejected() {
+        let s = schema(vec![(
+            "estimate",
+            FieldDefinition::new(FieldTypeConfig::Duration {
+                min: Some(0),
+                max: None,
+            }),
+        )]);
+        let raw = raw_item("t", vec![("estimate", yaml_str("-2d"))]);
+        let (_, diagnostics) = coerce_fields(&raw, &s);
+
+        assert_field_error(&diagnostics, |e| {
+            matches!(e, FieldValueError::OutOfRangeDuration { .. })
+        });
+    }
+
+    #[test]
+    fn coerce_duration_above_max_rejected() {
+        let s = schema(vec![(
+            "estimate",
+            FieldDefinition::new(FieldTypeConfig::Duration {
+                min: None,
+                max: Some(86_400),
+            }),
+        )]);
+        let raw = raw_item("t", vec![("estimate", yaml_str("2d"))]);
+        let (_, diagnostics) = coerce_fields(&raw, &s);
+
+        assert_field_error(&diagnostics, |e| {
+            matches!(e, FieldValueError::OutOfRangeDuration { .. })
+        });
+    }
+
+    #[test]
+    fn coerce_duration_bare_integer_rejected() {
+        // Bare numeric YAML value rejects with TypeMismatch — design says
+        // strings only, no magic interpretation of ints.
+        let s = schema(vec![(
+            "estimate",
+            FieldDefinition::new(FieldTypeConfig::Duration {
+                min: None,
+                max: None,
+            }),
+        )]);
+        let raw = raw_item("t", vec![("estimate", yaml_int(5))]);
+        let (_, diagnostics) = coerce_fields(&raw, &s);
+
+        assert_field_error(&diagnostics, |e| {
+            matches!(e, FieldValueError::TypeMismatch { .. })
+        });
+    }
+
+    #[test]
+    fn coerce_duration_invalid_string_rejected() {
+        let s = schema(vec![(
+            "estimate",
+            FieldDefinition::new(FieldTypeConfig::Duration {
+                min: None,
+                max: None,
+            }),
+        )]);
+        let raw = raw_item("t", vec![("estimate", yaml_str("garbage"))]);
+        let (_, diagnostics) = coerce_fields(&raw, &s);
+
+        assert_field_error(&diagnostics, |e| {
+            matches!(e, FieldValueError::InvalidDuration { .. })
+        });
+    }
+
+    #[test]
+    fn coerce_duration_unknown_unit_rejected() {
+        // `5y` (years) — explicitly out of scope.
+        let s = schema(vec![(
+            "estimate",
+            FieldDefinition::new(FieldTypeConfig::Duration {
+                min: None,
+                max: None,
+            }),
+        )]);
+        let raw = raw_item("t", vec![("estimate", yaml_str("5y"))]);
+        let (_, diagnostics) = coerce_fields(&raw, &s);
+
+        assert_field_error(&diagnostics, |e| {
+            matches!(e, FieldValueError::InvalidDuration { .. })
+        });
     }
 
     // ── Boolean coercion ─────────────────────────────────────────────
@@ -998,21 +1144,5 @@ mod tests {
 
         assert!(fields.is_empty());
         assert_eq!(diagnostics.len(), 2);
-    }
-
-    // ── Date validation helpers ──────────────────────────────────────
-
-    #[test]
-    fn date_validation() {
-        assert!(is_valid_date("2026-01-01"));
-        assert!(is_valid_date("2026-12-31"));
-        assert!(is_valid_date("2024-02-29")); // leap year
-        assert!(!is_valid_date("2023-02-29")); // not a leap year
-        assert!(!is_valid_date("2026-13-01")); // invalid month
-        assert!(!is_valid_date("2026-00-01")); // zero month
-        assert!(!is_valid_date("2026-01-32")); // invalid day
-        assert!(!is_valid_date("2026-1-1")); // wrong format
-        assert!(!is_valid_date("not-a-date"));
-        assert!(!is_valid_date(""));
     }
 }

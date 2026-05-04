@@ -1,7 +1,7 @@
 ---
 id: render-line-chart
 type: issue
-status: to_do
+status: done
 title: Line chart renderer
 parent: renderers
 depends_on: [view-data-intermediate]

@@ -10,6 +10,7 @@
 
 mod coerce;
 mod cycles;
+mod rollup;
 
 pub(crate) use coerce::coerce_fields;
 
@@ -142,6 +143,12 @@ impl Store {
                 }
             }
         }
+
+        // 5. Aggregate rollup: fill computed values into non-leaf items
+        // and emit chain-conflict / missing-value diagnostics. Mutates
+        // `items` in place so downstream consumers see manual + computed
+        // values indistinguishably.
+        diagnostics.extend(rollup::run(&mut items, &reverse_links, schema));
 
         Ok(Store {
             items,
@@ -552,6 +559,69 @@ mod tests {
             .filter(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::FileError { .. }))
             .collect();
         assert_eq!(parse_errors.len(), 2);
+    }
+
+    // ── Aggregate rollup integration ────────────────────────────────
+
+    /// Schema with `parent: link` and an `effort: integer` field that
+    /// aggregates as `sum` up the parent chain.
+    fn schema_with_effort_sum() -> Schema {
+        use crate::model::schema::{AggregateConfig, AggregateFunction};
+
+        let mut fields = IndexMap::new();
+        fields.insert(
+            "title".to_owned(),
+            FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
+        );
+        fields.insert(
+            "parent".to_owned(),
+            FieldDefinition::new(FieldTypeConfig::Link {
+                allow_cycles: Some(false),
+                inverse: Some("children".into()),
+            }),
+        );
+        let mut effort = FieldDefinition::new(FieldTypeConfig::Integer {
+            min: None,
+            max: None,
+        });
+        effort.aggregate = Some(AggregateConfig {
+            function: AggregateFunction::Sum,
+            error_on_missing: false,
+            over: None,
+        });
+        fields.insert("effort".to_owned(), effort);
+
+        let inverse_table = Schema::build_inverse_table(&fields);
+        Schema {
+            fields,
+            rules: vec![],
+            inverse_table,
+        }
+    }
+
+    #[test]
+    fn rollup_fills_parent_with_aggregated_value_after_load() {
+        let (_dir, path) = setup_items_dir(vec![
+            ("epic.md", "---\ntitle: Epic\n---\n"),
+            (
+                "task-a.md",
+                "---\ntitle: Task A\nparent: epic\neffort: 2\n---\n",
+            ),
+            (
+                "task-b.md",
+                "---\ntitle: Task B\nparent: epic\neffort: 3\n---\n",
+            ),
+        ]);
+        let store = Store::load(&path, &schema_with_effort_sum()).unwrap();
+
+        let epic = store.get("epic").unwrap();
+        assert_eq!(epic.fields.get("effort"), Some(&FieldValue::Integer(5)));
+        // Leaves keep their manual values.
+        assert_eq!(
+            store.get("task-a").unwrap().fields.get("effort"),
+            Some(&FieldValue::Integer(2))
+        );
+        assert!(!store.has_diagnostics(), "{:#?}", store.diagnostics());
     }
 
     // ── all_items ────────────────────────────────────────────────────

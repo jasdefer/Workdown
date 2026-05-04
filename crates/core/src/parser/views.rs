@@ -12,11 +12,16 @@
 //! and `views-validate-integration` issues.
 
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::model::views::{Aggregate, Bucket, View, ViewKind, ViewType, Views};
+use crate::model::views::{Aggregate, Bucket, MetricRow, View, ViewKind, ViewType, Views};
+use crate::model::weekday::Weekday;
+
+/// Default output directory written by `workdown render` when
+/// `views.yaml` does not set a `directory:` key.
+const DEFAULT_OUTPUT_DIR: &str = "views";
 
 // ── Public API ────────────────────────────────────────────────────────
 
@@ -49,7 +54,12 @@ pub fn parse_views(yaml: &str) -> Result<Views, ViewsLoadError> {
         return Err(ViewsLoadError::Validation(errors));
     }
 
-    Ok(Views { views })
+    let output_dir = raw
+        .directory
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_OUTPUT_DIR));
+
+    Ok(Views { output_dir, views })
 }
 
 /// Load a views file from disk.
@@ -100,6 +110,10 @@ fn format_errors(errors: &[ViewsValidationError]) -> String {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawViewsFile {
+    /// Output directory for rendered view files, relative to project
+    /// root. Optional; defaults to [`DEFAULT_OUTPUT_DIR`].
+    #[serde(default)]
+    directory: Option<String>,
     views: Vec<RawView>,
 }
 
@@ -117,6 +131,11 @@ struct RawView {
     #[serde(default, rename = "where")]
     where_clauses: Vec<String>,
 
+    // Cross-cutting: the schema field whose value each rendered item
+    // uses as its display title. Allowed on every view type.
+    #[serde(default)]
+    title: Option<String>,
+
     // Single-field views (board / tree / graph)
     #[serde(default)]
     field: Option<String>,
@@ -131,19 +150,29 @@ struct RawView {
     #[serde(default)]
     end: Option<String>,
     #[serde(default)]
+    duration: Option<String>,
+    #[serde(default)]
+    after: Option<String>,
+    #[serde(default)]
+    root_link: Option<String>,
+    #[serde(default)]
+    depth_link: Option<String>,
+    #[serde(default)]
     effort: Option<String>,
     #[serde(default)]
     group: Option<String>,
 
-    // Bar chart / Metric / Heatmap
+    // Bar chart / Heatmap
     #[serde(default)]
     group_by: Option<String>,
     #[serde(default)]
     value: Option<String>,
     #[serde(default)]
     aggregate: Option<Aggregate>,
+
+    // Metric
     #[serde(default)]
-    label: Option<String>,
+    metrics: Option<Vec<RawMetricRow>>,
 
     // Line chart / Heatmap
     #[serde(default)]
@@ -158,6 +187,23 @@ struct RawView {
     // Heatmap
     #[serde(default)]
     bucket: Option<Bucket>,
+
+    // Workload
+    #[serde(default)]
+    working_days: Option<Vec<Weekday>>,
+}
+
+/// One row inside a metric view's `metrics:` list.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawMetricRow {
+    #[serde(default)]
+    label: Option<String>,
+    aggregate: Aggregate,
+    #[serde(default)]
+    value: Option<String>,
+    #[serde(default, rename = "where")]
+    where_clauses: Vec<String>,
 }
 
 // ── Conversion: raw → validated ───────────────────────────────────────
@@ -175,14 +221,31 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
         },
         ViewType::Graph => ViewKind::Graph {
             field: require(raw.field, &id, view_type, "field")?,
+            group_by: raw.group_by,
         },
         ViewType::Table => ViewKind::Table {
             columns: require(raw.columns, &id, view_type, "columns")?,
         },
         ViewType::Gantt => ViewKind::Gantt {
             start: require(raw.start, &id, view_type, "start")?,
-            end: require(raw.end, &id, view_type, "end")?,
+            end: raw.end,
+            duration: raw.duration,
+            after: raw.after,
             group: raw.group,
+        },
+        ViewType::GanttByInitiative => ViewKind::GanttByInitiative {
+            start: require(raw.start, &id, view_type, "start")?,
+            end: raw.end,
+            duration: raw.duration,
+            after: raw.after,
+            root_link: require(raw.root_link, &id, view_type, "root_link")?,
+        },
+        ViewType::GanttByDepth => ViewKind::GanttByDepth {
+            start: require(raw.start, &id, view_type, "start")?,
+            end: raw.end,
+            duration: raw.duration,
+            after: raw.after,
+            depth_link: require(raw.depth_link, &id, view_type, "depth_link")?,
         },
         ViewType::BarChart => ViewKind::BarChart {
             group_by: require(raw.group_by, &id, view_type, "group_by")?,
@@ -192,16 +255,24 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
         ViewType::LineChart => ViewKind::LineChart {
             x: require(raw.x, &id, view_type, "x")?,
             y: require(raw.y, &id, view_type, "y")?,
+            group: raw.group,
         },
         ViewType::Workload => ViewKind::Workload {
             start: require(raw.start, &id, view_type, "start")?,
             end: require(raw.end, &id, view_type, "end")?,
             effort: require(raw.effort, &id, view_type, "effort")?,
+            working_days: raw.working_days,
         },
         ViewType::Metric => ViewKind::Metric {
-            aggregate: require(raw.aggregate, &id, view_type, "aggregate")?,
-            label: raw.label,
-            value: raw.value,
+            metrics: require(raw.metrics, &id, view_type, "metrics")?
+                .into_iter()
+                .map(|row| MetricRow {
+                    label: row.label,
+                    aggregate: row.aggregate,
+                    value: row.value,
+                    where_clauses: row.where_clauses,
+                })
+                .collect(),
         },
         ViewType::Treemap => ViewKind::Treemap {
             group: require(raw.group, &id, view_type, "group")?,
@@ -219,6 +290,7 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
     Ok(View {
         id: raw.id,
         where_clauses: raw.where_clauses,
+        title: raw.title,
         kind,
     })
 }
@@ -256,6 +328,20 @@ mod tests {
     }
 
     #[test]
+    fn directory_defaults_when_omitted() {
+        let yaml = "views: []\n";
+        let parsed = parse_views(yaml).unwrap();
+        assert_eq!(parsed.output_dir, PathBuf::from("views"));
+    }
+
+    #[test]
+    fn directory_overrides_default() {
+        let yaml = "directory: rendered/views\nviews: []\n";
+        let parsed = parse_views(yaml).unwrap();
+        assert_eq!(parsed.output_dir, PathBuf::from("rendered/views"));
+    }
+
+    #[test]
     fn empty_object_rejected() {
         // `{}` has no `views` key. The schema requires it; the parser does too.
         let err = parse_views("{}").unwrap_err();
@@ -275,6 +361,7 @@ mod tests {
             parse_single("views:\n  - id: status-board\n    type: board\n    field: status\n");
         assert_eq!(view.id, "status-board");
         assert!(view.where_clauses.is_empty());
+        assert!(view.title.is_none());
         match view.kind {
             ViewKind::Board { field } => assert_eq!(field, "status"),
             other => panic!("expected Board, got {other:?}"),
@@ -298,7 +385,27 @@ mod tests {
     #[test]
     fn parse_graph() {
         let view = parse_single("views:\n  - id: d\n    type: graph\n    field: depends_on\n");
-        assert!(matches!(view.kind, ViewKind::Graph { .. }));
+        match view.kind {
+            ViewKind::Graph { field, group_by } => {
+                assert_eq!(field, "depends_on");
+                assert!(group_by.is_none());
+            }
+            other => panic!("expected Graph, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_graph_with_group_by() {
+        let view = parse_single(
+            "views:\n  - id: d\n    type: graph\n    field: depends_on\n    group_by: parent\n",
+        );
+        match view.kind {
+            ViewKind::Graph { field, group_by } => {
+                assert_eq!(field, "depends_on");
+                assert_eq!(group_by.as_deref(), Some("parent"));
+            }
+            other => panic!("expected Graph, got {other:?}"),
+        }
     }
 
     #[test]
@@ -318,12 +425,233 @@ mod tests {
             "views:\n  - id: roadmap\n    type: gantt\n    start: start_date\n    end: end_date\n    group: parent\n",
         );
         match view.kind {
-            ViewKind::Gantt { start, end, group } => {
+            ViewKind::Gantt {
+                start,
+                end,
+                duration,
+                after,
+                group,
+            } => {
                 assert_eq!(start, "start_date");
-                assert_eq!(end, "end_date");
+                assert_eq!(end.as_deref(), Some("end_date"));
+                assert_eq!(duration, None);
+                assert_eq!(after, None);
                 assert_eq!(group.as_deref(), Some("parent"));
             }
             other => panic!("expected Gantt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_with_duration() {
+        let view = parse_single(
+            "views:\n  - id: roadmap\n    type: gantt\n    start: start_date\n    duration: estimate\n",
+        );
+        match view.kind {
+            ViewKind::Gantt {
+                start,
+                end,
+                duration,
+                after,
+                group,
+            } => {
+                assert_eq!(start, "start_date");
+                assert_eq!(end, None);
+                assert_eq!(duration.as_deref(), Some("estimate"));
+                assert_eq!(after, None);
+                assert_eq!(group, None);
+            }
+            other => panic!("expected Gantt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_with_after() {
+        let view = parse_single(
+            "views:\n  - id: roadmap\n    type: gantt\n    start: start_date\n    duration: estimate\n    after: depends_on\n",
+        );
+        match view.kind {
+            ViewKind::Gantt {
+                start,
+                end,
+                duration,
+                after,
+                group,
+            } => {
+                assert_eq!(start, "start_date");
+                assert_eq!(end, None);
+                assert_eq!(duration.as_deref(), Some("estimate"));
+                assert_eq!(after.as_deref(), Some("depends_on"));
+                assert_eq!(group, None);
+            }
+            other => panic!("expected Gantt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_after_omitted_leaves_none() {
+        let view = parse_single(
+            "views:\n  - id: roadmap\n    type: gantt\n    start: start_date\n    end: end_date\n",
+        );
+        match view.kind {
+            ViewKind::Gantt { after, .. } => assert_eq!(after, None),
+            other => panic!("expected Gantt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_initiative_with_end() {
+        let view = parse_single(
+            "views:\n  - id: r\n    type: gantt_by_initiative\n    start: start_date\n    end: end_date\n    root_link: parent\n",
+        );
+        match view.kind {
+            ViewKind::GanttByInitiative {
+                start,
+                end,
+                duration,
+                after,
+                root_link,
+            } => {
+                assert_eq!(start, "start_date");
+                assert_eq!(end.as_deref(), Some("end_date"));
+                assert_eq!(duration, None);
+                assert_eq!(after, None);
+                assert_eq!(root_link, "parent");
+            }
+            other => panic!("expected GanttByInitiative, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_initiative_with_duration() {
+        let view = parse_single(
+            "views:\n  - id: r\n    type: gantt_by_initiative\n    start: start_date\n    duration: estimate\n    root_link: parent\n",
+        );
+        match view.kind {
+            ViewKind::GanttByInitiative {
+                duration,
+                root_link,
+                ..
+            } => {
+                assert_eq!(duration.as_deref(), Some("estimate"));
+                assert_eq!(root_link, "parent");
+            }
+            other => panic!("expected GanttByInitiative, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_initiative_with_after() {
+        let view = parse_single(
+            "views:\n  - id: r\n    type: gantt_by_initiative\n    start: start_date\n    duration: estimate\n    after: depends_on\n    root_link: parent\n",
+        );
+        match view.kind {
+            ViewKind::GanttByInitiative { after, .. } => {
+                assert_eq!(after.as_deref(), Some("depends_on"));
+            }
+            other => panic!("expected GanttByInitiative, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_initiative_missing_root_link_rejected() {
+        let yaml = "views:\n  - id: r\n    type: gantt_by_initiative\n    start: start_date\n    end: end_date\n";
+        let err = parse_views(yaml).unwrap_err();
+        match err {
+            ViewsLoadError::Validation(errors) => {
+                assert!(matches!(
+                    errors.as_slice(),
+                    [ViewsValidationError::MissingSlot { id, slot, .. }]
+                        if id == "r" && *slot == "root_link"
+                ));
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_depth_with_end() {
+        let view = parse_single(
+            "views:\n  - id: r\n    type: gantt_by_depth\n    start: start_date\n    end: end_date\n    depth_link: parent\n",
+        );
+        match view.kind {
+            ViewKind::GanttByDepth {
+                start,
+                end,
+                duration,
+                after,
+                depth_link,
+            } => {
+                assert_eq!(start, "start_date");
+                assert_eq!(end.as_deref(), Some("end_date"));
+                assert_eq!(duration, None);
+                assert_eq!(after, None);
+                assert_eq!(depth_link, "parent");
+            }
+            other => panic!("expected GanttByDepth, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_depth_with_duration() {
+        let view = parse_single(
+            "views:\n  - id: r\n    type: gantt_by_depth\n    start: start_date\n    duration: estimate\n    depth_link: parent\n",
+        );
+        match view.kind {
+            ViewKind::GanttByDepth {
+                duration,
+                depth_link,
+                ..
+            } => {
+                assert_eq!(duration.as_deref(), Some("estimate"));
+                assert_eq!(depth_link, "parent");
+            }
+            other => panic!("expected GanttByDepth, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_depth_with_after() {
+        let view = parse_single(
+            "views:\n  - id: r\n    type: gantt_by_depth\n    start: start_date\n    duration: estimate\n    after: depends_on\n    depth_link: parent\n",
+        );
+        match view.kind {
+            ViewKind::GanttByDepth { after, .. } => {
+                assert_eq!(after.as_deref(), Some("depends_on"));
+            }
+            other => panic!("expected GanttByDepth, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_depth_missing_depth_link_rejected() {
+        let yaml = "views:\n  - id: r\n    type: gantt_by_depth\n    start: start_date\n    end: end_date\n";
+        let err = parse_views(yaml).unwrap_err();
+        match err {
+            ViewsLoadError::Validation(errors) => {
+                assert!(matches!(
+                    errors.as_slice(),
+                    [ViewsValidationError::MissingSlot { id, slot, .. }]
+                        if id == "r" && *slot == "depth_link"
+                ));
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_gantt_by_initiative_missing_start_rejected() {
+        let yaml = "views:\n  - id: r\n    type: gantt_by_initiative\n    end: end_date\n    root_link: parent\n";
+        let err = parse_views(yaml).unwrap_err();
+        match err {
+            ViewsLoadError::Validation(errors) => {
+                assert!(matches!(
+                    errors.as_slice(),
+                    [ViewsValidationError::MissingSlot { id, slot, .. }]
+                        if id == "r" && *slot == "start"
+                ));
+            }
+            other => panic!("expected Validation, got {other:?}"),
         }
     }
 
@@ -351,7 +679,25 @@ mod tests {
         let view = parse_single(
             "views:\n  - id: eva\n    type: line_chart\n    x: estimate\n    y: actual_effort\n",
         );
-        assert!(matches!(view.kind, ViewKind::LineChart { .. }));
+        match view.kind {
+            ViewKind::LineChart { x, y, group } => {
+                assert_eq!(x, "estimate");
+                assert_eq!(y, "actual_effort");
+                assert_eq!(group, None);
+            }
+            other => panic!("expected LineChart, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_line_chart_with_group() {
+        let view = parse_single(
+            "views:\n  - id: eva\n    type: line_chart\n    x: estimate\n    y: actual_effort\n    group: assignee\n",
+        );
+        match view.kind {
+            ViewKind::LineChart { group, .. } => assert_eq!(group.as_deref(), Some("assignee")),
+            other => panic!("expected LineChart, got {other:?}"),
+        }
     }
 
     #[test]
@@ -359,26 +705,121 @@ mod tests {
         let view = parse_single(
             "views:\n  - id: cap\n    type: workload\n    start: start_date\n    end: end_date\n    effort: effort\n",
         );
-        assert!(matches!(view.kind, ViewKind::Workload { .. }));
+        match view.kind {
+            ViewKind::Workload { working_days, .. } => {
+                assert!(working_days.is_none(), "no override means inherit config")
+            }
+            other => panic!("expected Workload, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_workload_with_working_days_override() {
+        let view = parse_single(
+            "views:\n  - id: cap\n    type: workload\n    start: start_date\n    end: end_date\n    effort: effort\n    working_days: [monday, wednesday, friday]\n",
+        );
+        match view.kind {
+            ViewKind::Workload { working_days, .. } => {
+                let days = working_days.expect("working_days override should parse");
+                assert_eq!(
+                    days,
+                    vec![Weekday::Monday, Weekday::Wednesday, Weekday::Friday]
+                );
+            }
+            other => panic!("expected Workload, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_workload_rejects_abbreviated_day() {
+        // Memory rule: full day names only.
+        let yaml = "views:\n  - id: cap\n    type: workload\n    start: s\n    end: e\n    effort: f\n    working_days: [mon]\n";
+        assert!(parse_views(yaml).is_err());
     }
 
     #[test]
     fn parse_metric_count() {
         let view = parse_single(
-            "views:\n  - id: open\n    type: metric\n    aggregate: count\n    label: Open items\n",
+            "views:\n  - id: open\n    type: metric\n    metrics:\n      - aggregate: count\n        label: Open items\n",
         );
         match view.kind {
-            ViewKind::Metric {
-                aggregate,
-                label,
-                value,
-            } => {
-                assert_eq!(aggregate, Aggregate::Count);
-                assert_eq!(label.as_deref(), Some("Open items"));
-                assert!(value.is_none());
+            ViewKind::Metric { metrics } => {
+                assert_eq!(metrics.len(), 1);
+                assert_eq!(metrics[0].aggregate, Aggregate::Count);
+                assert_eq!(metrics[0].label.as_deref(), Some("Open items"));
+                assert!(metrics[0].value.is_none());
+                assert!(metrics[0].where_clauses.is_empty());
             }
             other => panic!("expected Metric, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_metric_multiple_rows() {
+        let yaml = r#"
+views:
+  - id: stats
+    type: metric
+    metrics:
+      - label: Total
+        aggregate: count
+      - label: In progress
+        aggregate: count
+        where: ["status=in_progress"]
+      - label: Sum points
+        aggregate: sum
+        value: points
+"#;
+        let view = parse_single(yaml);
+        match view.kind {
+            ViewKind::Metric { metrics } => {
+                assert_eq!(metrics.len(), 3);
+                assert_eq!(metrics[0].label.as_deref(), Some("Total"));
+                assert_eq!(metrics[0].aggregate, Aggregate::Count);
+                assert!(metrics[0].where_clauses.is_empty());
+
+                assert_eq!(metrics[1].label.as_deref(), Some("In progress"));
+                assert_eq!(metrics[1].where_clauses, vec!["status=in_progress"]);
+
+                assert_eq!(metrics[2].aggregate, Aggregate::Sum);
+                assert_eq!(metrics[2].value.as_deref(), Some("points"));
+            }
+            other => panic!("expected Metric, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_metric_empty_metrics_allowed() {
+        let view = parse_single("views:\n  - id: empty\n    type: metric\n    metrics: []\n");
+        match view.kind {
+            ViewKind::Metric { metrics } => assert!(metrics.is_empty()),
+            other => panic!("expected Metric, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_metric_missing_metrics_rejected() {
+        let yaml = "views:\n  - id: m\n    type: metric\n";
+        let err = parse_views(yaml).unwrap_err();
+        match err {
+            ViewsLoadError::Validation(errors) => {
+                assert!(matches!(
+                    errors.as_slice(),
+                    [ViewsValidationError::MissingSlot { id, slot, .. }]
+                        if id == "m" && *slot == "metrics"
+                ));
+            }
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_metric_row_missing_aggregate_rejected() {
+        // `aggregate` is required on each row — serde catches this as a
+        // missing required field on `RawMetricRow`.
+        let yaml = "views:\n  - id: m\n    type: metric\n    metrics:\n      - label: oops\n";
+        let err = parse_views(yaml).unwrap_err();
+        assert!(matches!(err, ViewsLoadError::InvalidYaml(_)), "got {err:?}");
     }
 
     #[test]
@@ -398,6 +839,100 @@ mod tests {
             ViewKind::Heatmap { bucket, .. } => assert_eq!(bucket, Some(Bucket::Week)),
             other => panic!("expected Heatmap, got {other:?}"),
         }
+    }
+
+    // ── Title slot (cross-cutting) ─────────────────────────────────
+
+    #[test]
+    fn parse_title_on_board() {
+        let view = parse_single(
+            "views:\n  - id: b\n    type: board\n    field: status\n    title: title\n",
+        );
+        assert_eq!(view.title.as_deref(), Some("title"));
+    }
+
+    #[test]
+    fn parse_title_accepted_on_every_view_type() {
+        // One entry per view type, each with `title: title`. Confirms the
+        // slot is flat at the view level — every variant picks it up.
+        let yaml = r#"
+views:
+  - id: v-board
+    type: board
+    field: status
+    title: title
+  - id: v-tree
+    type: tree
+    field: parent
+    title: title
+  - id: v-graph
+    type: graph
+    field: depends_on
+    title: title
+  - id: v-table
+    type: table
+    columns: [id, title]
+    title: title
+  - id: v-gantt
+    type: gantt
+    start: start_date
+    end: end_date
+    title: title
+  - id: v-gantt-by-initiative
+    type: gantt_by_initiative
+    start: start_date
+    end: end_date
+    root_link: parent
+    title: title
+  - id: v-bar
+    type: bar_chart
+    group_by: status
+    aggregate: count
+    title: title
+  - id: v-line
+    type: line_chart
+    x: estimate
+    y: actual_effort
+    title: title
+  - id: v-workload
+    type: workload
+    start: start_date
+    end: end_date
+    effort: effort
+    title: title
+  - id: v-metric
+    type: metric
+    metrics:
+      - aggregate: count
+    title: title
+  - id: v-treemap
+    type: treemap
+    group: parent
+    size: effort
+    title: title
+  - id: v-heatmap
+    type: heatmap
+    x: end_date
+    y: assignee
+    aggregate: count
+    title: title
+"#;
+        let parsed = parse_views(yaml).unwrap();
+        assert_eq!(parsed.views.len(), 12);
+        for view in &parsed.views {
+            assert_eq!(
+                view.title.as_deref(),
+                Some("title"),
+                "view {} did not carry the title slot",
+                view.id
+            );
+        }
+    }
+
+    #[test]
+    fn title_omitted_leaves_none() {
+        let view = parse_single("views:\n  - id: v\n    type: board\n    field: status\n");
+        assert!(view.title.is_none());
     }
 
     // ── Validation errors ──────────────────────────────────────────
@@ -443,7 +978,9 @@ mod tests {
 
     #[test]
     fn multiple_errors_reported_together() {
-        let yaml = "views:\n  - id: x\n    type: gantt\n    start: start_date\n  - id: y\n    type: bar_chart\n    group_by: status\n";
+        // tree missing `field`, bar_chart missing `aggregate` — both
+        // produce parse-stage MissingSlot errors that stack.
+        let yaml = "views:\n  - id: x\n    type: tree\n  - id: y\n    type: bar_chart\n    group_by: status\n";
         let err = parse_views(yaml).unwrap_err();
         match err {
             ViewsLoadError::Validation(errors) => assert_eq!(errors.len(), 2),
@@ -477,6 +1014,11 @@ views:
     start: start_date
     end: end_date
     group: parent
+  - id: roadmap-by-initiative
+    type: gantt_by_initiative
+    start: start_date
+    end: end_date
+    root_link: parent
   - id: effort-by-status
     type: bar_chart
     group_by: status
@@ -493,8 +1035,9 @@ views:
     effort: effort
   - id: open-count
     type: metric
-    aggregate: count
-    label: Open items
+    metrics:
+      - aggregate: count
+        label: Open items
     where: ["status=to_do,in_progress"]
   - id: effort-by-milestone
     type: treemap
@@ -508,6 +1051,6 @@ views:
     bucket: week
 "#;
         let parsed = parse_views(yaml).unwrap();
-        assert_eq!(parsed.views.len(), 11);
+        assert_eq!(parsed.views.len(), 12);
     }
 }

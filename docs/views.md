@@ -5,6 +5,7 @@
 ## Top-level shape
 
 ```yaml
+directory: views    # optional, defaults to "views"
 views:
   - { id: <unique>, type: <view-type>, ... }
   - { id: <unique>, type: <view-type>, ... }
@@ -13,39 +14,51 @@ views:
 - `views:` is a list. Order is preserved.
 - Each entry has a unique `id` (used as the output filename and the web-app bookmark URL).
 - Each entry has a `type` that discriminates the type-specific slots.
+- `directory:` (optional) — output directory where `workdown render` writes view files, relative to project root. Defaults to `"views"`. See [Output paths](#output-paths).
 
-Every view entry also accepts an optional `where:` list (see below).
+Every view entry also accepts two optional cross-cutting slots: `where:` (filters) and `title:` (display-title field). Both are described below.
 
 Unknown top-level fields are rejected. Unknown per-view slots are rejected.
 
 ## View types (v1)
 
-| Type | Required slots | Optional slots | Output formats |
-|---|---|---|---|
-| `board` | `field` (choice) | — | html, md |
-| `tree` | `field` (link) | — | html, md, mermaid |
-| `graph` | `field` (links) | — | html, mermaid (md = mermaid fenced block) |
-| `table` | `columns` | — | html, md |
-| `gantt` | `start`, `end` | `group` | mermaid, html (md = mermaid fenced block) |
-| `bar_chart` | `group_by`, `aggregate` | `value` | html, mermaid (md = mermaid fenced block) |
-| `line_chart` | `x`, `y` | — | html |
-| `workload` | `start`, `end`, `effort` | — | html |
-| `metric` | `aggregate` | `value`, `label` | html, md |
-| `treemap` | `group`, `size` | — | html |
-| `heatmap` | `x`, `y`, `aggregate` | `value`, `bucket` | html |
+Every view type also accepts the cross-cutting optional slots `where:` and `title:` on top of what the table below lists.
+
+`workdown render` writes one Markdown file per view (`<directory>/<id>.md`); the table lists what each renderer emits today.
+
+| Type | Required slots | Optional slots | Renderer status | Output |
+|---|---|---|---|---|
+| `board` | `field` | — | shipped | Sectioned bullet list |
+| `tree` | `field` | — | shipped | Nested bullet list |
+| `graph` | `field` | `group_by` | shipped | Mermaid `flowchart TD` |
+| `table` | `columns` | — | shipped | GFM table |
+| `gantt` | `start` + one of (`end`, `duration`, `after`+`duration`) | `group` | shipped | Mermaid `gantt` block |
+| `gantt_by_initiative` | `start` + one input mode, `root_link` | — | shipped | One Mermaid `gantt` block per initiative |
+| `gantt_by_depth` | `start` + one input mode, `depth_link` | — | shipped | One Mermaid `gantt` block per non-empty depth level |
+| `bar_chart` | `group_by`, `aggregate` | `value` | shipped | Inline SVG (horizontal bars) + `## Values` table |
+| `line_chart` | `x`, `y` | `group` | shipped | Inline SVG (multi-series points + lines) |
+| `workload` | `start`, `end`, `effort` | `working_days` | shipped | Inline SVG (vertical bars, one per working day) + `## Values` table |
+| `metric` | `metrics` (list of rows; each row needs `aggregate`, optionally `value`, `label`, `where`) | — | shipped | GFM table, one row per metric |
+| `treemap` | `group`, `size` | — | shipped | Nested bullet list with size + share-of-parent annotations |
+| `heatmap` | `x`, `y`, `aggregate` | `value`, `bucket` | shipped | Inline SVG (color grid + colorbar) + pivoted `## Values` table |
 
 Slot semantics:
-- **`field`** — a single schema field name (referenced by type: `choice` for board, `link` for tree, `links` for graph).
-- **`columns`** — ordered list of field names.
-- **`start` / `end`** — `date` fields. `effort` is numeric.
-- **`group_by` / `group`** — field name used for grouping (`choice` for bar chart; `link` for gantt / treemap).
+- **`field`** — a single schema field name. Type per view: `choice`/`multichoice`/`string` for board, `link` for tree, `links` for graph.
+- **`columns`** — ordered list of field names. Any field type accepted.
+- **`start` / `end`** — `date` fields. **`duration`** — `duration` field; mutually exclusive with `end`. **`after`** — `link`/`links` field naming each item's predecessors (predecessor mode); requires `duration`, forbids `end`. Predecessor fields must have `allow_cycles: false` and not be inverse names.
+- **`group_by`** — categorical field for bar chart grouping; `link` field for graph subgraph nesting. **`group`** — field for in-chart sectioning (gantt only). **`root_link`** — single `link` field whose chain identifies each item's top-level ancestor (`gantt_by_initiative`). **`depth_link`** — single `link` field whose chain depth places each item in a level (`gantt_by_depth`). Both must have `allow_cycles: false` and not be inverse names.
 - **`value`** — numeric field to aggregate. Omitted when `aggregate: count`.
 - **`aggregate`** — one of `count`, `sum`, `avg`, `min`, `max`.
 - **`x` / `y`** — field names for axis values (numeric or date for line chart; categorical or date for heatmap).
 - **`bucket`** — date bucketing for a heatmap axis bound to a date field: `day`, `week`, or `month`.
-- **`label`** — display label for a metric.
+- **`metrics`** — list of stat rows for a metric view. Each row sets its own `aggregate` (required), `value` (numeric, date, or duration field — required for non-count aggregates), optional `label` (auto-derived from aggregate + field when omitted), and optional per-row `where` AND-combined with the view-level filter.
+- **`working_days`** — list of weekday names (`monday`, `tuesday`, …, `sunday`; full lowercase, no abbreviations) that count as work days for a `workload` view. Effort spreads only across listed days inside `[start..=end]`; days outside the list never produce buckets, and items whose interval falls entirely outside them drop into the `## Unplaced` footer. Optional — when omitted, falls back to the project-level `working_days` from `config.yaml`, which itself defaults to `[monday, tuesday, wednesday, thursday, friday]` when not set there either.
 
 Type compatibility between a slot and a schema field (e.g. `board.field` must resolve to a `choice` field) is checked in `workdown validate`. See the "Cross-file validation" section below for the full list of checks.
+
+### Description line below the heading
+
+Every shipped renderer emits a one-sentence caption between the `# Heading` and the chart/list/table content. The sentence is built from the view config and includes the schema field names it draws from, so a reader opening a rendered file in GitHub knows what they're looking at without flipping back to `views.yaml`. Renaming a field in the schema is reflected on the next render.
 
 ## Filters — `where:`
 
@@ -66,17 +79,32 @@ When the view renders, items are filtered by the combined predicate before any a
 
 OR nesting is not supported in v1 (the CLI's inline `status=open,in_progress` form covers the common case). A structured `or:` branch can be added later without breaking existing configs.
 
+## Display titles — `title:`
+
+A single schema field name that each rendered item (card, row, node, gantt bar) uses as its display title.
+
+```yaml
+views:
+  - id: status-board
+    type: board
+    field: status
+    title: title
+```
+
+- Optional on every view type. When omitted, renderers fall back to the item `id`.
+- The referenced field must resolve in `schema.yaml` and must be typed as `string` or `choice`. Pointing at `id` is accepted though redundant; other types (`multichoice`, `integer`, `float`, `date`, `boolean`, `list`, `link`, `links`) are rejected because they can't cleanly express a one-liner display title.
+- Declared per-view rather than project-wide because `title` in the default schema is only a convention — users can rename or remove the field. A per-view slot lets each view declare its own title source explicitly. A top-level `default_title:` shared across views is not supported in v1; it may be added if repeating `title: title` on every entry becomes boilerplate.
+- View types that don't render item-level labels (`metric`, `bar_chart`, `workload`, `heatmap`) accept the slot uniformly but ignore it at render time.
+
 ## Output paths
 
-Every view writes static files to fixed paths derived from its `id` and type:
+Every view writes a single Markdown file. Filenames are `<id>.md`, written into the directory named by the top-level `directory:` key (default `"views"`):
 
 ```
-views/<id>.html
-views/<id>.md         # where the type supports markdown
-views/<id>.mermaid    # where the type supports mermaid
+<directory>/<id>.md
 ```
 
-Paths are not customizable in v1. `workdown render` creates the `views/` directory if it does not exist. Re-running without item changes produces identical files (CI-diff clean).
+Filenames are not customizable — they always derive from `id`. The directory is. `workdown render` creates the directory if it does not exist. Re-running without item changes produces identical files (CI-diff clean).
 
 The live server does not consume these files — it re-runs the renderers against the current working tree. Static files are for committed, shareable snapshots (READMEs, GitHub previews, CI artifacts).
 
@@ -104,6 +132,16 @@ views:
     start: start_date
     end: end_date
     group: parent
+  - id: roadmap-by-initiative
+    type: gantt_by_initiative
+    start: start_date
+    end: end_date
+    root_link: parent
+  - id: roadmap-by-depth
+    type: gantt_by_depth
+    start: start_date
+    end: end_date
+    depth_link: parent
   - id: effort-by-status
     type: bar_chart
     group_by: status
@@ -118,11 +156,18 @@ views:
     start: start_date
     end: end_date
     effort: effort
-  - id: open-count
+  - id: project-stats
     type: metric
-    aggregate: count
-    label: Open items
-    where: ["status=to_do,in_progress"]
+    where: ["status!=removed"]
+    metrics:
+      - label: Total
+        aggregate: count
+      - label: In progress
+        aggregate: count
+        where: ["status=in_progress"]
+      - label: Sum points
+        aggregate: sum
+        value: points
   - id: effort-by-milestone
     type: treemap
     group: parent
@@ -140,9 +185,11 @@ views:
 `workdown validate` runs a set of checks that compare `views.yaml` against `schema.yaml`. All findings are errors in v1 (no warnings):
 
 - **Reference resolution** — every field name referenced by a view slot must exist in `schema.fields` (the virtual `id` field is always accepted).
-- **Type compatibility** — the slot dictates the allowed field type(s). For example: `board.field` must be `choice`, `multichoice`, or `string`; `tree.field` must be `link`; `graph.field` must be `links`; `gantt.start`/`gantt.end` must be `date`; numeric aggregation slots (`workload.effort`, `treemap.size`, `bar_chart.value`, `heatmap.value`, `metric.value`) must be `integer` or `float`. `table.columns[*]` is existence-only — any type is accepted as a column.
+- **Type compatibility** — the slot dictates the allowed field type(s). For example: `board.field` must be `choice`, `multichoice`, or `string`; `tree.field` must be `link`; `graph.field` must be `links`; `gantt.start`/`gantt.end` must be `date`, `gantt.duration` must be `duration`; numeric slots accept `integer` or `float`, plus `duration` where the renderer can format it (`treemap.size`, `line_chart.x`/`y`, `workload.effort`, and aggregation slots `bar_chart.value`, `heatmap.value`, `metric.value`); `title:` must be `string` or `choice`. `table.columns[*]` is existence-only — any type is accepted as a column.
+- **Gantt input modes** — every gantt-family view (`gantt`, `gantt_by_initiative`, `gantt_by_depth`) must declare `start` plus exactly one of: `end`, `duration`, or `after`+`duration`. `end` and `duration` together is rejected; `after` requires `duration` and forbids `end`.
+- **Predecessor / partition link slots** — `gantt.after`, `gantt_by_initiative.root_link`, and `gantt_by_depth.depth_link` must point at a `link`/`links` field (single-target only for `root_link`/`depth_link`) with `allow_cycles: false`, and not at an inverse relation name (e.g. `children` when `parent.inverse: children`).
 - **Heatmap bucket coupling** — if `bucket:` is set, at least one of `x` or `y` must resolve to a `date` field.
-- **Metric count + value** — `aggregate: count` combined with `value:` is an error (count takes no value field).
+- **Metric row count + value** — within a metric row, `aggregate: count` combined with `value:` is an error (count takes no value field). Diagnostics carry the row index so messages pinpoint which row failed.
 - **Where-clause parsing** — each string in a view's `where:` list must parse as a valid `--where` expression.
 - **Where-clause field references** — local field names must exist in `schema.fields` (or be `id`); relation names (left side of a dot) must resolve to a `link`/`links` field or a known inverse name.
 
@@ -155,10 +202,11 @@ Load-time failures surface through the same diagnostic stream: read/YAML errors 
 Adding a new view type:
 
 1. Add a variant to `ViewType` and `ViewKind` in `crates/core/src/model/views.rs`.
-2. Add the type-specific slot handling in `crates/core/src/parser/views.rs::convert_view`.
-3. Add a variant to `ViewData` and an extractor (`view-data-intermediate` issue).
-4. Add a per-view-type render issue producing the applicable output formats.
-5. Update `crates/core/defaults/views.schema.json` (added in `views-json-schema`) with the new discriminator branch.
+2. Add `RawView` field(s) and a `convert_view` arm in `crates/core/src/parser/views.rs`.
+3. Add a `views_check` arm in `crates/core/src/views_check.rs` (slot-type checks; cross-slot rules; new diagnostic kinds in `crates/core/src/model/diagnostic.rs` if needed, plus their entries in the three exhaustive `DiagnosticKind` matches in `validate.rs`, `commands/render.rs`, and `operations/add.rs`).
+4. Add a `ViewData::Foo` variant + extractor module under `crates/core/src/view_data/`, then export and dispatch from `view_data/mod.rs`.
+5. Add a renderer module under `crates/cli/src/render/`, an arm in `render::description::description_for`, and a dispatch arm in `commands/render.rs`.
+6. Add a `oneOf` ref + definition in `crates/core/defaults/views.schema.json` for editor autocomplete.
 
 Existing configurations are unaffected — the change is purely additive.
 

@@ -80,12 +80,11 @@ pub enum Command {
         #[arg(long = "no-header")]
         no_header: bool,
     },
-    /// Show Kanban board view
-    Board,
-    /// Show parent-child tree view
-    Tree,
-    /// Show dependency graph
-    Graph,
+    /// Render views to Markdown files under `views/`
+    Render {
+        /// Render only this view id (default: render all views)
+        view_id: Option<String>,
+    },
     /// List or show work item templates
     Templates {
         #[command(subcommand)]

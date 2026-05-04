@@ -75,13 +75,16 @@ fields:
     allow_cycles: true
     inverse: duplicated_by
 
-  # Computed fields — uncomment and adjust as needed:
+  # Computed fields — set manually on leaf items, computed automatically
+  # up the link chain named in `over` (defaults to `parent`). Uncomment
+  # and adjust as needed:
   #
   # start_date:
   #   type: date
   #   required: false
   #   aggregate:
   #     function: min
+  #     over: parent
   #     error_on_missing: false
   #
   # end_date:
@@ -89,6 +92,7 @@ fields:
   #   required: false
   #   aggregate:
   #     function: max
+  #     over: parent
   #     error_on_missing: false
 
 # ── Rules ──────────────────────────────────────────────────

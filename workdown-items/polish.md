@@ -5,6 +5,9 @@ status: to_do
 title: Polish & dogfood
 parent: phase-04-visualization
 depends_on: [frontend]
+start_date: 2026-06-26
+end_date: 2026-07-02
+duration: "1w"
 ---
 
 Docs, automation, and release readiness. Decomposition deferred — scope depends on what actually shipped.

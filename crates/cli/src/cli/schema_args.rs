@@ -97,7 +97,10 @@ fn build_field_arg(name: &str, type_config: &FieldTypeConfig, description: Optio
     let mut arg = Arg::new(leaked_name).long(leaked_name).help(help);
 
     match type_config {
-        FieldTypeConfig::String { .. } | FieldTypeConfig::Date | FieldTypeConfig::Link { .. } => {
+        FieldTypeConfig::String { .. }
+        | FieldTypeConfig::Date
+        | FieldTypeConfig::Duration { .. }
+        | FieldTypeConfig::Link { .. } => {
             arg = arg
                 .action(ArgAction::Set)
                 .value_parser(StringValueParser::new());
@@ -156,6 +159,7 @@ fn default_help_for_type(type_config: &FieldTypeConfig) -> String {
     match type_config {
         FieldTypeConfig::String { .. } => "string".to_owned(),
         FieldTypeConfig::Date => "date (YYYY-MM-DD)".to_owned(),
+        FieldTypeConfig::Duration { .. } => "duration (e.g. 5d, 1w 2d 3h, 30min)".to_owned(),
         FieldTypeConfig::Integer { .. } => "integer".to_owned(),
         FieldTypeConfig::Float { .. } => "float".to_owned(),
         FieldTypeConfig::Boolean => "boolean".to_owned(),
@@ -181,6 +185,7 @@ fn extract_field_value(
     match type_config {
         FieldTypeConfig::String { .. }
         | FieldTypeConfig::Date
+        | FieldTypeConfig::Duration { .. }
         | FieldTypeConfig::Link { .. }
         | FieldTypeConfig::Choice { .. } => matches
             .get_one::<String>(name)

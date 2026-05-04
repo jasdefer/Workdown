@@ -1,7 +1,7 @@
 //! Parse a template file's content into a [`Template`].
 //!
 //! Templates share the frontmatter + body file shape with work items, so
-//! parsing reuses [`crate::parser::split_frontmatter`]. Unlike work items,
+//! parsing reuses `crate::parser::split_frontmatter`. Unlike work items,
 //! the `id` field is preserved in the map — generator tokens such as
 //! `$uuid` get resolved at add-time instead of being rejected here.
 

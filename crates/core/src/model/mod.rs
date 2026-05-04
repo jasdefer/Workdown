@@ -1,19 +1,22 @@
 //! Core data types: work items, schema definitions, and project configuration.
 
 pub mod assertion;
+pub mod calendar;
 pub mod condition;
 pub mod config;
 pub mod diagnostic;
+pub mod duration;
 pub mod rule;
 pub mod schema;
 pub mod template;
 pub mod views;
+pub mod weekday;
 
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 
 // ── WorkItemId ──────────────────────────────────────────────────────
 
@@ -71,7 +74,7 @@ impl PartialEq<&str> for WorkItemId {
 // ── WorkItem ────────────────────────────────────────────────────────
 
 /// A work item with typed field values, ready for use by commands.
-/// Produced by coercing a [`crate::parser::RawWorkItem`]'s fields against the project schema.
+/// Produced by coercing a `crate::parser::RawWorkItem`'s fields against the project schema.
 #[derive(Debug)]
 pub struct WorkItem {
     /// Resolved ID: from frontmatter `id` field if present, otherwise filename without `.md`.
@@ -85,7 +88,15 @@ pub struct WorkItem {
 }
 
 /// A typed field value, coerced from raw YAML according to the schema's field type.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// Serialized untagged: consumers see bare JSON scalars/arrays
+/// (`"open"`, `42`, `["a","b"]`, `"2026-04-23"`) and consult the schema
+/// separately to interpret the type. Duration uses a custom serializer
+/// that emits the formatted string (`"5d"`) — same convention `Date`
+/// follows for human-readable output. Deserialize is not derived —
+/// values are produced by the coercion layer, not parsed from JSON.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
 pub enum FieldValue {
     /// A free-form string.
     String(String),
@@ -97,8 +108,11 @@ pub enum FieldValue {
     Integer(i64),
     /// A floating-point number.
     Float(f64),
-    /// A date in `YYYY-MM-DD` format (stored as string, validated at coercion time).
-    Date(String),
+    /// A calendar date. On disk `YYYY-MM-DD`; in memory a native `NaiveDate`.
+    Date(chrono::NaiveDate),
+    /// A signed duration in canonical seconds. Formatted as suffix
+    /// shorthand (`"5d"`, `"1w 2d 3h"`) for human-readable output.
+    Duration(#[serde(serialize_with = "serialize_duration_seconds")] i64),
     /// A boolean flag.
     Boolean(bool),
     /// A list of free-form strings.
@@ -107,4 +121,14 @@ pub enum FieldValue {
     Link(WorkItemId),
     /// References to multiple work items by ID.
     Links(Vec<WorkItemId>),
+}
+
+/// Serializer for `FieldValue::Duration`: emits the formatted string
+/// (`"5d"`) rather than the raw i64, matching how `Date` emits
+/// `"YYYY-MM-DD"` rather than its internal representation.
+fn serialize_duration_seconds<S>(seconds: &i64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&duration::format_duration_seconds(*seconds))
 }

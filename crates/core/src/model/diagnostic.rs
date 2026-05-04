@@ -65,6 +65,20 @@ pub enum DiagnosticKind {
         chain: Vec<WorkItemId>,
     },
 
+    // ── Aggregate rollup ──────────────────────────────────────────
+    /// An aggregate-configured field is set manually on two items in the
+    /// same parent chain. The rollup must have a single source per chain.
+    AggregateChainConflict {
+        field: String,
+        item_id: WorkItemId,
+        conflicting_ancestor_id: WorkItemId,
+    },
+
+    /// An aggregate-configured field with `error_on_missing: true` has a
+    /// tree-leaf in the rollup hierarchy that neither sets the value
+    /// manually nor inherits one from a covering ancestor.
+    AggregateMissingValue { field: String, leaf_id: WorkItemId },
+
     // ── Rule-level ────────────────────────────────────────────────
     /// A schema rule was violated by a specific item.
     RuleViolation {
@@ -129,6 +143,106 @@ pub enum DiagnosticKind {
     /// A metric view with `aggregate: count` also sets `value`, which is
     /// meaningless (count takes no value field).
     ViewCountAggregateWithValue { view_id: String },
+
+    /// An aggregate view's `value` slot points at a field whose type is
+    /// incompatible with the chosen aggregate (e.g. `sum` on a date field
+    /// or `avg` on a string field).
+    ViewAggregateTypeMismatch {
+        view_id: String,
+        slot: &'static str,
+        aggregate: super::views::Aggregate,
+        actual_type: FieldType,
+    },
+
+    /// A graph view's `group_by` field allows cycles (or leaves it unset).
+    /// Subgraph nesting requires the chain to be a forest — `allow_cycles`
+    /// must be explicitly `false`.
+    ViewGroupByCyclic { view_id: String, field_name: String },
+
+    /// A graph view's `group_by` references an inverse relation name. Only
+    /// the original Link field (parent direction) is accepted, since the
+    /// inverse direction is one-to-many and can't form unique nesting.
+    ViewGroupByInverseNotAllowed { view_id: String, field_name: String },
+
+    /// A gantt view sets neither `end` nor `duration`. Exactly one is
+    /// required: bars need a way to determine where they finish.
+    ViewGanttEndOrDurationRequired { view_id: String },
+
+    /// A gantt view sets both `end` and `duration`. They are alternative
+    /// ways to specify when the bar ends; pick one.
+    ViewGanttEndAndDurationConflict { view_id: String },
+
+    /// A gantt view sets `after` without `duration`. Predecessor mode
+    /// computes each bar's window as `start + duration`, so duration is
+    /// required.
+    ViewGanttAfterRequiresDuration { view_id: String },
+
+    /// A gantt view sets both `after` and `end`. After-mode derives end
+    /// from `start + duration`; an explicit `end` field has no role.
+    ViewGanttAfterWithEndConflict { view_id: String },
+
+    /// A gantt view's `after` slot points at a link/links field that
+    /// allows cycles. Predecessor resolution requires a DAG — `allow_cycles`
+    /// must be explicitly `false`.
+    ViewGanttAfterCyclic { view_id: String, field_name: String },
+
+    /// A gantt view's `after` slot references an inverse relation name.
+    /// After-mode reads predecessors directly off each item; only the
+    /// original link/links field is accepted.
+    ViewGanttAfterInverseNotAllowed { view_id: String, field_name: String },
+
+    /// A `gantt_by_initiative` view's `root_link` slot points at a link
+    /// field that allows cycles. Walking the chain to a root requires a
+    /// DAG — `allow_cycles` must be explicitly `false`.
+    ViewGanttRootLinkCyclic { view_id: String, field_name: String },
+
+    /// A `gantt_by_initiative` view's `root_link` slot references an
+    /// inverse relation name. The chain walk reads the link directly off
+    /// each item; only the original link field is accepted.
+    ViewGanttRootLinkInverseNotAllowed { view_id: String, field_name: String },
+
+    /// A `gantt_by_depth` view's `depth_link` slot points at a link field
+    /// that allows cycles. Walking the chain to determine depth requires
+    /// a DAG — `allow_cycles` must be explicitly `false`.
+    ViewGanttDepthLinkCyclic { view_id: String, field_name: String },
+
+    /// A `gantt_by_depth` view's `depth_link` slot references an inverse
+    /// relation name. The chain walk reads the link directly off each
+    /// item; only the original link field is accepted.
+    ViewGanttDepthLinkInverseNotAllowed { view_id: String, field_name: String },
+
+    /// A metric row references a schema field that doesn't exist.
+    /// `slot` is `"value"` or `"where"`.
+    ViewMetricRowUnknownField {
+        view_id: String,
+        metric_index: usize,
+        slot: &'static str,
+        field_name: String,
+    },
+
+    /// A metric row's `value` field's type isn't compatible with the
+    /// chosen aggregate.
+    ViewMetricRowAggregateTypeMismatch {
+        view_id: String,
+        metric_index: usize,
+        aggregate: super::views::Aggregate,
+        actual_type: FieldType,
+    },
+
+    /// A metric row uses `aggregate: count` together with `value`.
+    /// `count` takes no value field.
+    ViewMetricRowCountWithValue {
+        view_id: String,
+        metric_index: usize,
+    },
+
+    /// A metric row's per-row `where:` expression failed to parse.
+    ViewMetricRowWhereParseError {
+        view_id: String,
+        metric_index: usize,
+        raw: String,
+        detail: String,
+    },
 }
 
 // ── Field value errors ───────────────────────────────────────────────
@@ -158,6 +272,18 @@ pub enum FieldValueError {
         min: Option<f64>,
         max: Option<f64>,
     },
+
+    /// Duration value is outside the allowed range. Strings are
+    /// pre-formatted via `format_duration_seconds` so the message
+    /// reads in the same suffix-shorthand grammar as the input.
+    OutOfRangeDuration {
+        value: String,
+        min: Option<String>,
+        max: Option<String>,
+    },
+
+    /// Duration string failed to parse.
+    InvalidDuration { value: String, reason: String },
 
     /// Date string is not valid YYYY-MM-DD.
     InvalidDate { value: String },
@@ -210,6 +336,22 @@ impl std::fmt::Display for Diagnostic {
             DiagnosticKind::Cycle { field, chain } => {
                 let ids: Vec<&str> = chain.iter().map(|id| id.as_str()).collect();
                 write!(f, "cycle in '{field}': {}", ids.join(" \u{2192} "))
+            }
+            DiagnosticKind::AggregateChainConflict {
+                field,
+                item_id,
+                conflicting_ancestor_id,
+            } => {
+                write!(
+                    f,
+                    "item '{item_id}', field '{field}': aggregate conflict — ancestor '{conflicting_ancestor_id}' also sets this field manually"
+                )
+            }
+            DiagnosticKind::AggregateMissingValue { field, leaf_id } => {
+                write!(
+                    f,
+                    "item '{leaf_id}': aggregate field '{field}' is missing (no value here or in any ancestor)"
+                )
             }
             DiagnosticKind::RuleViolation {
                 item_id,
@@ -289,6 +431,155 @@ impl std::fmt::Display for Diagnostic {
                     "view '{view_id}': aggregate 'count' takes no 'value' slot"
                 )
             }
+            DiagnosticKind::ViewAggregateTypeMismatch {
+                view_id,
+                slot,
+                aggregate,
+                actual_type,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot '{slot}': aggregate '{aggregate}' not allowed on {actual_type} field"
+                )
+            }
+            DiagnosticKind::ViewGroupByCyclic {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'group_by': field '{field_name}' must set `allow_cycles: false` to be used for subgraph nesting"
+                )
+            }
+            DiagnosticKind::ViewGroupByInverseNotAllowed {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'group_by': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
+                )
+            }
+            DiagnosticKind::ViewGanttEndOrDurationRequired { view_id } => {
+                write!(
+                    f,
+                    "view '{view_id}': gantt requires exactly one of 'end' or 'duration'"
+                )
+            }
+            DiagnosticKind::ViewGanttEndAndDurationConflict { view_id } => {
+                write!(
+                    f,
+                    "view '{view_id}': gantt has both 'end' and 'duration' set; pick one"
+                )
+            }
+            DiagnosticKind::ViewGanttAfterRequiresDuration { view_id } => {
+                write!(
+                    f,
+                    "view '{view_id}': gantt 'after' requires 'duration' (predecessor mode computes end as start + duration)"
+                )
+            }
+            DiagnosticKind::ViewGanttAfterWithEndConflict { view_id } => {
+                write!(
+                    f,
+                    "view '{view_id}': gantt 'after' is incompatible with 'end' (use 'duration' instead)"
+                )
+            }
+            DiagnosticKind::ViewGanttAfterCyclic {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'after': field '{field_name}' must set `allow_cycles: false`"
+                )
+            }
+            DiagnosticKind::ViewGanttAfterInverseNotAllowed {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'after': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
+                )
+            }
+            DiagnosticKind::ViewGanttRootLinkCyclic {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'root_link': field '{field_name}' must set `allow_cycles: false`"
+                )
+            }
+            DiagnosticKind::ViewGanttRootLinkInverseNotAllowed {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'root_link': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
+                )
+            }
+            DiagnosticKind::ViewGanttDepthLinkCyclic {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'depth_link': field '{field_name}' must set `allow_cycles: false`"
+                )
+            }
+            DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed {
+                view_id,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', slot 'depth_link': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
+                )
+            }
+            DiagnosticKind::ViewMetricRowUnknownField {
+                view_id,
+                metric_index,
+                slot,
+                field_name,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', metrics[{metric_index}].{slot}: unknown field '{field_name}'"
+                )
+            }
+            DiagnosticKind::ViewMetricRowAggregateTypeMismatch {
+                view_id,
+                metric_index,
+                aggregate,
+                actual_type,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', metrics[{metric_index}].value: aggregate '{aggregate}' not allowed on {actual_type} field"
+                )
+            }
+            DiagnosticKind::ViewMetricRowCountWithValue {
+                view_id,
+                metric_index,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', metrics[{metric_index}]: aggregate 'count' takes no 'value' slot"
+                )
+            }
+            DiagnosticKind::ViewMetricRowWhereParseError {
+                view_id,
+                metric_index,
+                raw,
+                detail,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}', metrics[{metric_index}].where clause '{raw}': {detail}"
+                )
+            }
         }
     }
 }
@@ -307,6 +598,15 @@ impl std::fmt::Display for FieldValueError {
             }
             Self::OutOfRange { value, min, max } => {
                 write!(f, "{value} is out of range (min: {min:?}, max: {max:?})")
+            }
+            Self::OutOfRangeDuration { value, min, max } => {
+                write!(
+                    f,
+                    "duration '{value}' is out of range (min: {min:?}, max: {max:?})"
+                )
+            }
+            Self::InvalidDuration { value, reason } => {
+                write!(f, "'{value}' is not a valid duration: {reason}")
             }
             Self::InvalidDate { value } => {
                 write!(f, "'{value}' is not a valid date (expected YYYY-MM-DD)")

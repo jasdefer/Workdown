@@ -8,7 +8,7 @@ use crate::model::config::Config;
 use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::model::schema::{Schema, Severity};
 use crate::model::template::TemplateError;
-use crate::model::{WorkItem, WorkItemId};
+use crate::model::WorkItemId;
 use crate::operations::templates::load_template_by_name;
 use crate::parser;
 use crate::parser::schema::SchemaLoadError;
@@ -82,7 +82,7 @@ pub fn run_add(
     let schema = parser::schema::load_schema(&schema_path)?;
 
     tracing::debug!(items = %items_path.display(), "loading work items");
-    let mut store = crate::store::Store::load(&items_path, &schema)?;
+    let store = crate::store::Store::load(&items_path, &schema)?;
 
     // Load template if requested; start the merged map from template
     // frontmatter, then overlay CLI values (shallow replace).
@@ -148,9 +148,8 @@ pub fn run_add(
         source_path: file_path.clone(),
     };
 
-    // Coerce fields — block on errors.
-    let (coerced_fields, coercion_diagnostics) =
-        crate::store::coerce_fields(&raw_work_item, &schema);
+    // Coerce fields — block on errors *before* writing the file.
+    let (_, coercion_diagnostics) = crate::store::coerce_fields(&raw_work_item, &schema);
     let coercion_errors: Vec<Diagnostic> = coercion_diagnostics
         .iter()
         .filter(|diagnostic| diagnostic.severity == Severity::Error)
@@ -173,24 +172,32 @@ pub fn run_add(
         source,
     })?;
 
-    // Insert into store and run rules for post-write warnings.
-    let work_item = WorkItem {
-        id: work_item_id.clone(),
-        fields: coerced_fields,
-        body,
-        source_path: file_path.clone(),
-    };
-    store.insert(work_item);
+    // Reload the store from disk: the new file is now part of the items
+    // directory, so a fresh `Store::load` resolves aggregates and reverse
+    // links correctly. Avoids in-memory `insert` which can't recompute
+    // aggregates without per-field provenance.
+    let reloaded = crate::store::Store::load(&items_path, &schema)?;
 
-    let rule_diagnostics = crate::rules::evaluate(&store, &schema);
-    let warnings: Vec<Diagnostic> = rule_diagnostics
-        .into_iter()
+    // Surface diagnostics produced by the reload that concern this new
+    // item (broken links, chain conflicts, missing requireds, etc.) plus
+    // any rule violations against the post-write store.
+    let mut item_warnings: Vec<Diagnostic> = reloaded
+        .diagnostics()
+        .iter()
         .filter(|diagnostic| is_diagnostic_for_item(diagnostic, &work_item_id))
+        .cloned()
         .collect();
+
+    let rule_diagnostics = crate::rules::evaluate(&reloaded, &schema);
+    item_warnings.extend(
+        rule_diagnostics
+            .into_iter()
+            .filter(|diagnostic| is_diagnostic_for_item(diagnostic, &work_item_id)),
+    );
 
     Ok(AddOutcome {
         path: file_path,
-        warnings,
+        warnings: item_warnings,
     })
 }
 
@@ -325,7 +332,12 @@ fn is_diagnostic_for_item(diagnostic: &Diagnostic, item_id: &WorkItemId) -> bool
         | DiagnosticKind::RuleViolation {
             item_id: diagnostic_item_id,
             ..
+        }
+        | DiagnosticKind::AggregateChainConflict {
+            item_id: diagnostic_item_id,
+            ..
         } => diagnostic_item_id == item_id,
+        DiagnosticKind::AggregateMissingValue { leaf_id, .. } => leaf_id == item_id,
         DiagnosticKind::DuplicateId { id, .. } => id == item_id,
         // File errors, count violations, and view-level diagnostics don't
         // attach to an individual item.
@@ -338,7 +350,24 @@ fn is_diagnostic_for_item(diagnostic: &Diagnostic, item_id: &WorkItemId) -> bool
         | DiagnosticKind::ViewFieldTypeMismatch { .. }
         | DiagnosticKind::ViewWhereParseError { .. }
         | DiagnosticKind::ViewBucketWithoutDateAxis { .. }
-        | DiagnosticKind::ViewCountAggregateWithValue { .. } => false,
+        | DiagnosticKind::ViewCountAggregateWithValue { .. }
+        | DiagnosticKind::ViewAggregateTypeMismatch { .. }
+        | DiagnosticKind::ViewGroupByCyclic { .. }
+        | DiagnosticKind::ViewGroupByInverseNotAllowed { .. }
+        | DiagnosticKind::ViewGanttEndOrDurationRequired { .. }
+        | DiagnosticKind::ViewGanttEndAndDurationConflict { .. }
+        | DiagnosticKind::ViewGanttAfterRequiresDuration { .. }
+        | DiagnosticKind::ViewGanttAfterWithEndConflict { .. }
+        | DiagnosticKind::ViewGanttAfterCyclic { .. }
+        | DiagnosticKind::ViewGanttAfterInverseNotAllowed { .. }
+        | DiagnosticKind::ViewGanttRootLinkCyclic { .. }
+        | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { .. }
+        | DiagnosticKind::ViewGanttDepthLinkCyclic { .. }
+        | DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { .. }
+        | DiagnosticKind::ViewMetricRowUnknownField { .. }
+        | DiagnosticKind::ViewMetricRowAggregateTypeMismatch { .. }
+        | DiagnosticKind::ViewMetricRowCountWithValue { .. }
+        | DiagnosticKind::ViewMetricRowWhereParseError { .. } => false,
     }
 }
 

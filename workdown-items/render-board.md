@@ -1,7 +1,7 @@
 ---
 id: render-board
 type: issue
-status: to_do
+status: done
 title: Board renderer
 parent: renderers
 depends_on: [view-data-intermediate]

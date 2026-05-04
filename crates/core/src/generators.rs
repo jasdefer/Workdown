@@ -3,7 +3,7 @@
 //! A [`Generator`] token like `$today` or `$uuid` produces a concrete value
 //! at `workdown add` time. Schema defaults use these (field-level), and
 //! templates embed them inside frontmatter values. Both call through
-//! [`resolve_generator`] so semantics stay identical.
+//! `resolve_generator` so semantics stay identical.
 
 use std::collections::HashMap;
 

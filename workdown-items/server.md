@@ -4,7 +4,10 @@ type: milestone
 status: to_do
 title: Interactive server
 parent: phase-04-visualization
-depends_on: [foundation, renderers, item-mutations]
+depends_on: [foundation, item-mutations]
+start_date: 2026-05-07
+end_date: 2026-05-26
+duration: "20d"
 ---
 
 Local web server powering the interactive UI. Lives in `crates/server/`, invoked via `workdown serve`. Thin HTTP layer over `core` — every handler calls core functions directly, no shell-out.

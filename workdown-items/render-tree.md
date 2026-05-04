@@ -1,7 +1,7 @@
 ---
 id: render-tree
 type: issue
-status: to_do
+status: done
 title: Tree renderer
 parent: renderers
 depends_on: [view-data-intermediate]

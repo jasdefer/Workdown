@@ -1,7 +1,7 @@
 ---
 id: render-treemap
 type: issue
-status: to_do
+status: done
 title: Treemap renderer
 parent: renderers
 depends_on: [view-data-intermediate]
