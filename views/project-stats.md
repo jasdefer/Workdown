@@ -3,9 +3,9 @@
 | Label | Value |
 | --- | --- |
 | Total items | 50 |
-| To do | 22 |
+| To do | 18 |
 | In progress | 1 |
-| Done | 27 |
+| Done | 31 |
 | Sum of scheduled duration | 20w |
 | Earliest start | 2026-04-24 |
 | Latest end | 2026-07-02 |
