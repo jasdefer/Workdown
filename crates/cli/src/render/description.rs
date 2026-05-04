@@ -108,9 +108,21 @@ pub fn description_for(view: &View) -> String {
                 "Daily workload: `{effort}` distributed uniformly across each item's working days in `{start}`–`{end}`, summed per day."
             )
         }
-        // Renderers below are not yet implemented; descriptions land when
-        // their renderers do.
-        ViewKind::Heatmap { .. } => String::new(),
+        ViewKind::Heatmap {
+            x,
+            y,
+            value,
+            aggregate,
+            ..
+        } => match (aggregate, value) {
+            (Aggregate::Count, _) => {
+                format!("Cell intensity is the count of items grouped by `{x}` × `{y}`.")
+            }
+            (agg, Some(value)) => {
+                format!("Cell intensity is the {agg} of `{value}` grouped by `{x}` × `{y}`.")
+            }
+            (agg, None) => format!("Cell intensity is the {agg} grouped by `{x}` × `{y}`."),
+        },
     }
 }
 
@@ -372,6 +384,36 @@ mod tests {
         assert_eq!(
             description_for(&v),
             "Daily workload: `effort` distributed uniformly across each item's working days in `start_date`–`end_date`, summed per day."
+        );
+    }
+
+    #[test]
+    fn heatmap_count_form() {
+        let v = view(ViewKind::Heatmap {
+            x: "status".into(),
+            y: "team".into(),
+            value: None,
+            aggregate: Aggregate::Count,
+            bucket: None,
+        });
+        assert_eq!(
+            description_for(&v),
+            "Cell intensity is the count of items grouped by `status` × `team`."
+        );
+    }
+
+    #[test]
+    fn heatmap_aggregate_with_value_form() {
+        let v = view(ViewKind::Heatmap {
+            x: "status".into(),
+            y: "team".into(),
+            value: Some("points".into()),
+            aggregate: Aggregate::Sum,
+            bucket: None,
+        });
+        assert_eq!(
+            description_for(&v),
+            "Cell intensity is the sum of `points` grouped by `status` × `team`."
         );
     }
 }

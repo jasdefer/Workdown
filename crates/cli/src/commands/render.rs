@@ -8,8 +8,6 @@
 //! - Missing `views.yaml` → info log, exit 0.
 //! - Per-item load errors → warn, continue with what loaded.
 //! - Per-view `views_check` failures → warn, skip that view.
-//! - Unimplemented renderer, bulk mode → warn, skip.
-//! - Unimplemented renderer, single-view mode → hard error.
 //! - Unknown view id (single-view mode) → hard error.
 
 use std::collections::HashSet;
@@ -120,12 +118,7 @@ fn render_single(
     let view_data = view_data::extract(view, store, schema, calendar);
     emit_unplaced_warnings(view, &view_data);
     let description = render::description::description_for(view);
-    let markdown = render_view_data(&view_data, link_base, &description).ok_or_else(|| {
-        anyhow::anyhow!(
-            "renderer for view type '{}' not yet implemented",
-            view.kind.view_type()
-        )
-    })?;
+    let markdown = render_view_data(&view_data, link_base, &description);
 
     ensure_output_dir(output_dir)?;
     let path = write_view_file(output_dir, &view.id, &markdown)?;
@@ -163,70 +156,42 @@ fn render_all(
         let view_data = view_data::extract(view, store, schema, calendar);
         emit_unplaced_warnings(view, &view_data);
         let description = render::description::description_for(view);
-        match render_view_data(&view_data, link_base, &description) {
-            Some(markdown) => {
-                let path = write_view_file(output_dir, &view.id, &markdown)?;
-                output::success(&format!("Wrote {}", path.display()));
-            }
-            None => {
-                output::warning(&format!(
-                    "view '{}': renderer for type '{}' not yet implemented — skipped",
-                    view.id,
-                    view.kind.view_type()
-                ));
-            }
-        }
+        let markdown = render_view_data(&view_data, link_base, &description);
+        let path = write_view_file(output_dir, &view.id, &markdown)?;
+        output::success(&format!("Wrote {}", path.display()));
     }
 
     Ok(ExitCode::SUCCESS)
 }
 
-/// Dispatch a `ViewData` to the matching renderer.
-///
-/// Returns `None` for view types whose renderer is not yet implemented;
-/// callers decide whether that's fatal (single-view mode) or skippable
-/// (bulk mode). Each new renderer moves one arm from the fallthrough
-/// into the match.
-fn render_view_data(view_data: &ViewData, link_base: &str, description: &str) -> Option<String> {
+/// Dispatch a `ViewData` to the matching renderer. Each renderer that
+/// shows item-level marks takes `link_base` to build relative links
+/// from the rendered file back to `workdown-items/<id>.md`; renderers
+/// that only emit aggregates or use Mermaid bar labels (`gantt`,
+/// `gantt_by_*`, `graph`, `metric`) ignore it.
+fn render_view_data(view_data: &ViewData, link_base: &str, description: &str) -> String {
     match view_data {
-        ViewData::Board(data) => Some(render::board::render_board(data, link_base, description)),
-        ViewData::Tree(data) => Some(render::tree::render_tree(data, link_base, description)),
-        ViewData::Graph(data) => Some(render::graph::render_graph(data, description)),
-        ViewData::Table(data) => Some(render::table::render_table(data, link_base, description)),
-        ViewData::Gantt(data) => Some(render::gantt::render_gantt(data, description)),
-        ViewData::GanttByDepth(data) => Some(render::gantt_by_depth::render_gantt_by_depth(
-            data,
-            description,
-        )),
-        ViewData::GanttByInitiative(data) => Some(
-            render::gantt_by_initiative::render_gantt_by_initiative(data, description),
-        ),
-        ViewData::Metric(data) => Some(render::metric::render_metric(data, description)),
-        ViewData::Treemap(data) => Some(render::treemap::render_treemap(
-            data,
-            link_base,
-            description,
-        )),
-        ViewData::LineChart(data) => Some(render::line_chart::render_line_chart(
-            data,
-            link_base,
-            description,
-        )),
-        ViewData::BarChart(data) => Some(render::bar_chart::render_bar_chart(
-            data,
-            link_base,
-            description,
-        )),
-        ViewData::Heatmap(data) => Some(render::heatmap::render_heatmap(
-            data,
-            link_base,
-            description,
-        )),
-        ViewData::Workload(data) => Some(render::workload::render_workload(
-            data,
-            link_base,
-            description,
-        )),
+        ViewData::Board(data) => render::board::render_board(data, link_base, description),
+        ViewData::Tree(data) => render::tree::render_tree(data, link_base, description),
+        ViewData::Graph(data) => render::graph::render_graph(data, description),
+        ViewData::Table(data) => render::table::render_table(data, link_base, description),
+        ViewData::Gantt(data) => render::gantt::render_gantt(data, description),
+        ViewData::GanttByDepth(data) => {
+            render::gantt_by_depth::render_gantt_by_depth(data, description)
+        }
+        ViewData::GanttByInitiative(data) => {
+            render::gantt_by_initiative::render_gantt_by_initiative(data, description)
+        }
+        ViewData::Metric(data) => render::metric::render_metric(data, description),
+        ViewData::Treemap(data) => render::treemap::render_treemap(data, link_base, description),
+        ViewData::LineChart(data) => {
+            render::line_chart::render_line_chart(data, link_base, description)
+        }
+        ViewData::BarChart(data) => {
+            render::bar_chart::render_bar_chart(data, link_base, description)
+        }
+        ViewData::Heatmap(data) => render::heatmap::render_heatmap(data, link_base, description),
+        ViewData::Workload(data) => render::workload::render_workload(data, link_base, description),
     }
 }
 

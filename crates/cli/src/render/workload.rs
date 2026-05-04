@@ -58,8 +58,7 @@ const MAX_TICK_LABELS: usize = 12;
 /// `description` is the one-line caption emitted below the heading.
 pub fn render_workload(data: &WorkloadData, item_link_base: &str, description: &str) -> String {
     let mut out = String::new();
-    let _ = writeln!(out, "{}", heading(data));
-    out.push('\n');
+    out.push_str(&format!("{}\n\n", heading(data)));
     emit_description(description, &mut out);
 
     if data.buckets.is_empty() && data.unplaced.is_empty() {
@@ -105,10 +104,14 @@ pub fn render_workload(data: &WorkloadData, item_link_base: &str, description: &
                         "- {link} — interval `{start_field}..{end_field}` falls entirely on non-working days",
                     );
                 }
-                _ => {
-                    // Workload extractor only emits the three reasons above;
-                    // skip anything else as defense-in-depth.
-                }
+                // The workload extractor doesn't emit these — listing them
+                // explicitly so adding a new `UnplacedReason` variant fails
+                // compilation here, prompting an audit of whether workload
+                // should surface it.
+                UnplacedReason::NonNumericValue { .. }
+                | UnplacedReason::NoAnchor
+                | UnplacedReason::PredecessorUnresolved { .. }
+                | UnplacedReason::Cycle { .. } => {}
             }
         }
     }

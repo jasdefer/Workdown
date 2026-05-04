@@ -25,13 +25,11 @@ use crate::render::common::{card_link, emit_description, format_number, id_link}
 /// `description` is the one-line caption emitted below the heading.
 pub fn render_treemap(data: &TreemapData, item_link_base: &str, description: &str) -> String {
     let mut out = String::new();
-    let _ = writeln!(
-        out,
-        "# Treemap: {size} by {group}",
+    out.push_str(&format!(
+        "# Treemap: {size} by {group}\n\n",
         size = data.size_field,
         group = data.group_field,
-    );
-    out.push('\n');
+    ));
     emit_description(description, &mut out);
 
     if data.root.children.is_empty() && data.unplaced.is_empty() {

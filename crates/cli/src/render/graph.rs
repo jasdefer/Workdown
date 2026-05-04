@@ -24,8 +24,7 @@ use crate::render::common::emit_description;
 /// `description` is the one-line caption emitted below the heading.
 pub fn render_graph(data: &GraphData, description: &str) -> String {
     let mut out = String::new();
-    let _ = writeln!(out, "# Graph: {}", data.field);
-    out.push('\n');
+    out.push_str(&format!("# Graph: {}\n\n", data.field));
     emit_description(description, &mut out);
 
     if data.nodes.is_empty() {

@@ -42,13 +42,11 @@ const SVG_HEIGHT: u32 = 400;
 /// `description` is the one-line caption emitted below the heading.
 pub fn render_line_chart(data: &LineChartData, item_link_base: &str, description: &str) -> String {
     let mut out = String::new();
-    let _ = writeln!(
-        out,
-        "# Line chart: {y} over {x}",
+    out.push_str(&format!(
+        "# Line chart: {y} over {x}\n\n",
         y = data.y_field,
         x = data.x_field,
-    );
-    out.push('\n');
+    ));
     emit_description(description, &mut out);
 
     if data.points.is_empty() && data.unplaced.is_empty() {
@@ -68,15 +66,21 @@ pub fn render_line_chart(data: &LineChartData, item_link_base: &str, description
     if !data.unplaced.is_empty() {
         out.push_str("## Unplaced\n");
         for unplaced in &data.unplaced {
-            let UnplacedReason::MissingValue { field } = &unplaced.reason else {
-                // Extractor only ever emits MissingValue; defense in depth.
-                continue;
-            };
-            let _ = writeln!(
-                out,
-                "- {link} — missing `{field}`",
-                link = card_link(&unplaced.card, item_link_base),
-            );
+            let link = card_link(&unplaced.card, item_link_base);
+            match &unplaced.reason {
+                UnplacedReason::MissingValue { field } => {
+                    let _ = writeln!(out, "- {link} — missing `{field}`");
+                }
+                // The line chart extractor only emits MissingValue today;
+                // listing the rest explicitly so adding a new variant
+                // fails compilation here and prompts an audit.
+                UnplacedReason::InvalidRange { .. }
+                | UnplacedReason::NoWorkingDays { .. }
+                | UnplacedReason::NonNumericValue { .. }
+                | UnplacedReason::NoAnchor
+                | UnplacedReason::PredecessorUnresolved { .. }
+                | UnplacedReason::Cycle { .. } => {}
+            }
         }
     }
 
