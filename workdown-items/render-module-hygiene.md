@@ -1,7 +1,7 @@
 ---
 id: render-module-hygiene
 type: issue
-status: to_do
+status: done
 title: Render module hygiene — escape helpers, test fixtures, common.rs naming
 parent: code-quality
 ---

@@ -8,18 +8,21 @@
 
 pub mod bar_chart;
 pub mod board;
-pub mod chart_common;
-pub mod common;
 pub mod description;
 pub mod gantt;
 pub mod gantt_by_depth;
 pub mod gantt_by_initiative;
-pub mod gantt_common;
 pub mod graph;
 pub mod heatmap;
 pub mod line_chart;
+pub mod markdown;
+pub mod mermaid_gantt;
 pub mod metric;
+pub mod svg_chart;
 pub mod table;
 pub mod tree;
 pub mod treemap;
 pub mod workload;
+
+#[cfg(test)]
+mod test_fixtures;

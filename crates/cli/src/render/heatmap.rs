@@ -54,11 +54,11 @@ use plotters::prelude::*;
 use workdown_core::model::views::Aggregate;
 use workdown_core::view_data::{AggregateValue, HeatmapData, UnplacedReason};
 
-use crate::render::chart_common::{
+use crate::render::markdown::{card_link, emit_description, escape_cell};
+use crate::render::svg_chart::{
     axis_kind_for, format_aggregate_value, format_axis_tick, hex_to_rgb, strip_svg_blank_lines,
     value_to_f64, AxisKind,
 };
-use crate::render::common::{card_link, emit_description};
 
 const CELL_PX: u32 = 40;
 const Y_LABEL_AREA: u32 = 120;
@@ -183,21 +183,6 @@ fn emit_values_table(data: &HeatmapData, out: &mut String) {
         }
         out.push('\n');
     }
-}
-
-/// Neutralize `|` (would end the cell) and newlines (would end the row)
-/// inside a Markdown table cell. Mirrors the bar chart renderer's escape.
-fn escape_cell(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        match c {
-            '|' => out.push_str(r"\|"),
-            '\n' => out.push_str("<br>"),
-            '\r' => {}
-            other => out.push(other),
-        }
-    }
-    out
 }
 
 // ── SVG rendering ───────────────────────────────────────────────────
@@ -474,37 +459,17 @@ fn draw_colorbar(area: &DrawingArea<SVGBackend, Shift>, scheme: ColorScheme, kin
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_fixtures::unplaced_missing;
     use super::*;
 
     use workdown_core::model::views::{Aggregate, Bucket};
-    use workdown_core::model::WorkItemId;
-    use workdown_core::view_data::{
-        AggregateValue, Card, HeatmapCell, HeatmapData, UnplacedCard, UnplacedReason,
-    };
-
-    fn card(id: &str, title: Option<&str>) -> Card {
-        Card {
-            id: WorkItemId::from(id.to_owned()),
-            title: title.map(str::to_owned),
-            fields: vec![],
-            body: String::new(),
-        }
-    }
+    use workdown_core::view_data::{AggregateValue, HeatmapCell, HeatmapData, UnplacedCard};
 
     fn cell(x: &str, y: &str, value: AggregateValue) -> HeatmapCell {
         HeatmapCell {
             x: x.to_owned(),
             y: y.to_owned(),
             value,
-        }
-    }
-
-    fn unplaced(id: &str, title: Option<&str>, field: &str) -> UnplacedCard {
-        UnplacedCard {
-            card: card(id, title),
-            reason: UnplacedReason::MissingValue {
-                field: field.to_owned(),
-            },
         }
     }
 
@@ -829,7 +794,7 @@ mod tests {
 
     #[test]
     fn values_table_formats_durations_as_shorthand() {
-        use crate::render::chart_common::{SECONDS_PER_DAY, SECONDS_PER_HOUR};
+        use crate::render::svg_chart::{SECONDS_PER_DAY, SECONDS_PER_HOUR};
         let cells = vec![cell(
             "open",
             "eng",
@@ -930,8 +895,8 @@ mod tests {
                 vec!["eng"],
                 cells,
                 vec![
-                    unplaced("missing-status", Some("Missing"), "status"),
-                    unplaced("missing-other", None, "team"),
+                    unplaced_missing("missing-status", Some("Missing"), "status"),
+                    unplaced_missing("missing-other", None, "team"),
                 ],
             ),
             "../workdown-items",
@@ -979,7 +944,7 @@ mod tests {
                 vec![],
                 vec![],
                 vec![],
-                vec![unplaced("orphan", Some("Orphan"), "status")],
+                vec![unplaced_missing("orphan", Some("Orphan"), "status")],
             ),
             "../workdown-items",
             "",

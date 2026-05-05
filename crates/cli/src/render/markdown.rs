@@ -1,6 +1,8 @@
-//! Shared helpers used across Markdown renderers.
+//! Shared Markdown primitives used across every renderer.
 //!
-//! Kept deliberately small: only primitives that more than one renderer
+//! Link emission, structural escapes (link text, table cell, blockquote
+//! italic), description emission, and numeric formatting. Kept
+//! deliberately small: only primitives that more than one renderer
 //! needs. Renderer-specific formatting stays in its own module.
 
 use workdown_core::view_data::Card;
@@ -70,4 +72,28 @@ pub fn escape_link_text(text: &str) -> String {
         }
     }
     out
+}
+
+/// Neutralize the characters that would break a GFM table cell:
+/// `|` ends the cell early, and a literal newline ends the row. Pipes
+/// become `\|` (GFM-recognized) and newlines become `<br>`. Lone `\r`
+/// is dropped so `\r\n` collapses to one `<br>`.
+pub fn escape_cell(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '|' => out.push_str(r"\|"),
+            '\n' => out.push_str("<br>"),
+            '\r' => {}
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Escape `_` so a label or title doesn't accidentally close the
+/// surrounding italic markers in a blockquote line. Used by renderers
+/// that emit `> _… "<title>" …_` footers (gantt, metric, workload).
+pub fn escape_blockquote_italic(text: &str) -> String {
+    text.replace('_', r"\_")
 }

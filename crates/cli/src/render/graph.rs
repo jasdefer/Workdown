@@ -13,7 +13,7 @@ use std::fmt::Write as _;
 
 use workdown_core::view_data::{Card, GraphData, TreeNode};
 
-use crate::render::common::emit_description;
+use crate::render::markdown::emit_description;
 
 /// Render a `GraphData` as a Markdown string.
 ///
@@ -125,18 +125,10 @@ fn sanitize(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_fixtures::card;
     use super::*;
     use workdown_core::model::WorkItemId;
     use workdown_core::view_data::{Card, Edge, GraphData, TreeData, TreeNode};
-
-    fn card(id: &str, title: Option<&str>) -> Card {
-        Card {
-            id: WorkItemId::from(id.to_owned()),
-            title: title.map(str::to_owned),
-            fields: vec![],
-            body: String::new(),
-        }
-    }
 
     fn graph(field: &str, nodes: Vec<Card>, edges: Vec<Edge>) -> GraphData {
         GraphData {

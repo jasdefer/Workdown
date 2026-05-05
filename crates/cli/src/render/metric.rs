@@ -15,7 +15,9 @@ use workdown_core::view_data::{
     AggregateValue, MetricData, MetricRowData, UnplacedCard, UnplacedReason,
 };
 
-use crate::render::common::{emit_description, format_number};
+use crate::render::markdown::{
+    emit_description, escape_blockquote_italic, escape_cell, format_number,
+};
 
 /// Render a `MetricData` as a Markdown string.
 ///
@@ -55,21 +57,6 @@ fn format_value(value: &Option<AggregateValue>) -> String {
         Some(AggregateValue::Date(d)) => d.format("%Y-%m-%d").to_string(),
         Some(AggregateValue::Duration(seconds)) => format_duration_seconds(*seconds),
     }
-}
-
-/// Neutralize `|` (would end the cell) and newlines (would end the row)
-/// inside a Markdown table cell. Mirrors the table renderer's escape.
-fn escape_cell(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        match c {
-            '|' => out.push_str(r"\|"),
-            '\n' => out.push_str("<br>"),
-            '\r' => {}
-            other => out.push(other),
-        }
-    }
-    out
 }
 
 /// Emit a blockquote footer summarizing items that filter-matched but
@@ -128,22 +115,15 @@ fn format_titles(cards: &[&UnplacedCard]) -> String {
         .join(", ")
 }
 
-/// Escape `_` so a label or title doesn't accidentally close the
-/// surrounding italic markers in a blockquote line. Mirrors the gantt
-/// renderer's footer convention.
-fn escape_blockquote_italic(text: &str) -> String {
-    text.replace('_', r"\_")
-}
-
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_fixtures::unplaced_missing;
     use super::*;
     use chrono::NaiveDate;
     use workdown_core::model::views::Aggregate;
-    use workdown_core::model::WorkItemId;
-    use workdown_core::view_data::{Card, MetricData, MetricRowData, UnplacedCard, UnplacedReason};
+    use workdown_core::view_data::{MetricData, MetricRowData};
 
     fn ymd(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).unwrap()
@@ -161,20 +141,6 @@ mod tests {
 
     fn data(rows: Vec<MetricRowData>) -> MetricData {
         MetricData { rows }
-    }
-
-    fn unplaced_card(id: &str, title: Option<&str>, field: &str) -> UnplacedCard {
-        UnplacedCard {
-            card: Card {
-                id: WorkItemId::from(id.to_owned()),
-                title: title.map(str::to_owned),
-                fields: vec![],
-                body: String::new(),
-            },
-            reason: UnplacedReason::MissingValue {
-                field: field.to_owned(),
-            },
-        }
     }
 
     #[test]
@@ -312,8 +278,8 @@ mod tests {
             Some(AggregateValue::Number(3.0)),
         );
         total.unplaced = vec![
-            unplaced_card("foo", Some("Foo task"), "points"),
-            unplaced_card("bar", None, "points"),
+            unplaced_missing("foo", Some("Foo task"), "points"),
+            unplaced_missing("bar", None, "points"),
         ];
         let output = render_metric(&data(vec![total]), "");
         assert!(output.contains("> _2 items dropped:_"));
@@ -369,7 +335,7 @@ mod tests {
             Aggregate::Sum,
             Some(AggregateValue::Number(7.0)),
         );
-        sum_row.unplaced = vec![unplaced_card("missing", Some("Missing item"), "points")];
+        sum_row.unplaced = vec![unplaced_missing("missing", Some("Missing item"), "points")];
         let rows = vec![
             row("Total", Aggregate::Count, Some(AggregateValue::Number(3.0))),
             sum_row,

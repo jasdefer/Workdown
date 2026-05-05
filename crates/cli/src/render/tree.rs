@@ -8,7 +8,7 @@
 
 use workdown_core::view_data::{TreeData, TreeNode};
 
-use crate::render::common::{card_link, emit_description};
+use crate::render::markdown::{card_link, emit_description};
 
 /// Render a `TreeData` as a Markdown string.
 ///

@@ -26,11 +26,11 @@ use plotters::prelude::*;
 
 use workdown_core::view_data::{AxisValue, LineChartData, LinePoint, SizeValue, UnplacedReason};
 
-use crate::render::chart_common::{
+use crate::render::markdown::{card_link, emit_description};
+use crate::render::svg_chart::{
     axis_label, date_to_f64, format_axis_tick, hex_to_rgb, numeric_extent, pad_extent,
     pick_duration_unit, strip_svg_blank_lines, AxisKind, OKABE_ITO,
 };
-use crate::render::common::{card_link, emit_description};
 
 const SVG_WIDTH: u32 = 800;
 const SVG_HEIGHT: u32 = 400;
@@ -313,23 +313,15 @@ fn build_series(
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_fixtures::unplaced_missing;
     use super::*;
 
-    use crate::render::chart_common::{SECONDS_PER_DAY, SECONDS_PER_HOUR};
+    use crate::render::svg_chart::{SECONDS_PER_DAY, SECONDS_PER_HOUR};
     use chrono::NaiveDate;
     use workdown_core::model::WorkItemId;
-    use workdown_core::view_data::{Card, LineChartData, LinePoint, UnplacedCard, UnplacedReason};
+    use workdown_core::view_data::{LineChartData, LinePoint, UnplacedCard};
 
     // ── Render fixtures ─────────────────────────────────────────────
-
-    fn card(id: &str, title: Option<&str>) -> Card {
-        Card {
-            id: WorkItemId::from(id.to_owned()),
-            title: title.map(str::to_owned),
-            fields: vec![],
-            body: String::new(),
-        }
-    }
 
     fn point(id: &str, x: AxisValue, y: SizeValue, group: Option<&str>) -> LinePoint {
         LinePoint {
@@ -353,15 +345,6 @@ mod tests {
             group_field: group_field.map(str::to_owned),
             points,
             unplaced,
-        }
-    }
-
-    fn unplaced(id: &str, title: Option<&str>, field: &str) -> UnplacedCard {
-        UnplacedCard {
-            card: card(id, title),
-            reason: UnplacedReason::MissingValue {
-                field: field.to_owned(),
-            },
         }
     }
 
@@ -660,8 +643,8 @@ mod tests {
                 None,
                 points,
                 vec![
-                    unplaced("missing-x", Some("Missing X"), "x"),
-                    unplaced("missing-y", Some("Missing Y"), "y"),
+                    unplaced_missing("missing-x", Some("Missing X"), "x"),
+                    unplaced_missing("missing-y", Some("Missing Y"), "y"),
                 ],
             ),
             "../workdown-items",
@@ -694,7 +677,7 @@ mod tests {
                 "y",
                 None,
                 vec![],
-                vec![unplaced("orphan", Some("Orphan"), "x")],
+                vec![unplaced_missing("orphan", Some("Orphan"), "x")],
             ),
             "../workdown-items",
             "",

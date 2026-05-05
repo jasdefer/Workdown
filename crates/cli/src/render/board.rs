@@ -7,7 +7,7 @@
 
 use workdown_core::view_data::{BoardColumn, BoardData, Card};
 
-use crate::render::common::{card_link, emit_description};
+use crate::render::markdown::{card_link, emit_description};
 
 /// Render a `BoardData` as a Markdown string.
 ///
@@ -54,18 +54,9 @@ fn render_card(card: &Card, item_link_base: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_fixtures::card;
     use super::*;
-    use workdown_core::model::WorkItemId;
     use workdown_core::view_data::{BoardColumn, BoardData, Card};
-
-    fn card(id: &str, title: Option<&str>) -> Card {
-        Card {
-            id: WorkItemId::from(id.to_owned()),
-            title: title.map(str::to_owned),
-            fields: vec![],
-            body: String::new(),
-        }
-    }
 
     fn board(field: &str, columns: Vec<BoardColumn>) -> BoardData {
         BoardData {

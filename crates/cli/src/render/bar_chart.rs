@@ -12,7 +12,7 @@
 //! y-axis, so per-bar coloring would be decorative noise. SVG height
 //! scales with bar count so 3-bar and 30-bar charts both stay readable.
 //!
-//! Value-axis kinds reuse [`crate::render::chart_common::AxisKind`].
+//! Value-axis kinds reuse [`crate::render::svg_chart::AxisKind`].
 //! Number/Duration bars start from 0 (chart x-range force-includes 0
 //! before padding). Date bars start from the chart's left edge — the
 //! padded minimum date — so each bar's length encodes "days since the
@@ -27,11 +27,11 @@ use plotters::prelude::*;
 use workdown_core::model::views::Aggregate;
 use workdown_core::view_data::{BarChartData, UnplacedReason};
 
-use crate::render::chart_common::{
+use crate::render::markdown::{card_link, emit_description, escape_cell};
+use crate::render::svg_chart::{
     axis_kind_for, axis_label, format_aggregate_value, format_axis_tick, hex_to_rgb,
     numeric_extent, pad_extent, strip_svg_blank_lines, value_to_f64, AxisKind, OKABE_ITO,
 };
-use crate::render::common::{card_link, emit_description};
 
 const SVG_WIDTH: u32 = 800;
 const SVG_MIN_HEIGHT: u32 = 200;
@@ -121,21 +121,6 @@ fn value_column_header(data: &BarChartData) -> String {
             None => format!("{agg}"),
         },
     }
-}
-
-/// Neutralize `|` (would end the cell) and newlines (would end the row)
-/// inside a Markdown table cell. Mirrors the metric renderer's escape.
-fn escape_cell(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        match c {
-            '|' => out.push_str(r"\|"),
-            '\n' => out.push_str("<br>"),
-            '\r' => {}
-            other => out.push(other),
-        }
-    }
-    out
 }
 
 // ── SVG rendering ───────────────────────────────────────────────────
@@ -231,25 +216,14 @@ fn bar_value_axis_label(data: &BarChartData, kind: AxisKind) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_fixtures::unplaced_missing;
     use super::*;
 
     use chrono::NaiveDate;
 
-    use crate::render::chart_common::{SECONDS_PER_DAY, SECONDS_PER_HOUR};
+    use crate::render::svg_chart::{SECONDS_PER_DAY, SECONDS_PER_HOUR};
     use workdown_core::model::views::Aggregate;
-    use workdown_core::model::WorkItemId;
-    use workdown_core::view_data::{
-        AggregateValue, BarChartBar, BarChartData, Card, UnplacedCard, UnplacedReason,
-    };
-
-    fn card(id: &str, title: Option<&str>) -> Card {
-        Card {
-            id: WorkItemId::from(id.to_owned()),
-            title: title.map(str::to_owned),
-            fields: vec![],
-            body: String::new(),
-        }
-    }
+    use workdown_core::view_data::{AggregateValue, BarChartBar, BarChartData, UnplacedCard};
 
     fn bar(group: &str, value: AggregateValue) -> BarChartBar {
         BarChartBar {
@@ -271,15 +245,6 @@ mod tests {
             aggregate,
             bars,
             unplaced,
-        }
-    }
-
-    fn unplaced(id: &str, title: Option<&str>, field: &str) -> UnplacedCard {
-        UnplacedCard {
-            card: card(id, title),
-            reason: UnplacedReason::MissingValue {
-                field: field.to_owned(),
-            },
         }
     }
 
@@ -535,8 +500,8 @@ mod tests {
                 Aggregate::Count,
                 bars,
                 vec![
-                    unplaced("missing-status", Some("Missing"), "status"),
-                    unplaced("missing-other", None, "status"),
+                    unplaced_missing("missing-status", Some("Missing"), "status"),
+                    unplaced_missing("missing-other", None, "status"),
                 ],
             ),
             "../workdown-items",
@@ -569,7 +534,7 @@ mod tests {
                 None,
                 Aggregate::Count,
                 vec![],
-                vec![unplaced("orphan", Some("Orphan"), "status")],
+                vec![unplaced_missing("orphan", Some("Orphan"), "status")],
             ),
             "../workdown-items",
             "",
