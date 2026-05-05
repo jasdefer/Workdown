@@ -106,10 +106,7 @@ rules:
     let diags = evaluate(&store, &schema);
 
     // Only task-a should violate (in_progress + no assignee).
-    let violations: Vec<_> = diags
-        .iter()
-        .filter(|d| is_rule_violation(d))
-        .collect();
+    let violations: Vec<_> = diags.iter().filter(|d| is_rule_violation(d)).collect();
     assert_eq!(violations.len(), 1);
 
     let (item_id, rule, detail) = unwrap_rule_violation(violations[0]);
@@ -157,10 +154,7 @@ rules:
     let store = Store::load(&path, &schema).unwrap();
     let diags = evaluate(&store, &schema);
 
-    let violations: Vec<_> = diags
-        .iter()
-        .filter(|d| is_rule_violation(d))
-        .collect();
+    let violations: Vec<_> = diags.iter().filter(|d| is_rule_violation(d)).collect();
     assert_eq!(violations.len(), 1);
 
     let (item_id, _, _) = unwrap_rule_violation(violations[0]);
@@ -236,10 +230,7 @@ rules:
     let store = Store::load(&path, &schema).unwrap();
     let diags = evaluate(&store, &schema);
 
-    let violations: Vec<_> = diags
-        .iter()
-        .filter(|d| is_rule_violation(d))
-        .collect();
+    let violations: Vec<_> = diags.iter().filter(|d| is_rule_violation(d)).collect();
     assert_eq!(violations.len(), 1);
 
     let (item_id, rule, _) = unwrap_rule_violation(violations[0]);
@@ -319,10 +310,7 @@ rules:
     let diags = evaluate(&store, &schema);
 
     // epic has all children done but is itself "open" — warning violation.
-    let violations: Vec<_> = diags
-        .iter()
-        .filter(|d| is_rule_violation(d))
-        .collect();
+    let violations: Vec<_> = diags.iter().filter(|d| is_rule_violation(d)).collect();
     assert_eq!(violations.len(), 1);
     assert_eq!(violations[0].severity, Severity::Warning);
 
@@ -372,10 +360,7 @@ rules:
     let store = Store::load(&path, &schema).unwrap();
     let diags = evaluate(&store, &schema);
 
-    let violations: Vec<_> = diags
-        .iter()
-        .filter(|d| is_rule_violation(d))
-        .collect();
+    let violations: Vec<_> = diags.iter().filter(|d| is_rule_violation(d)).collect();
     assert_eq!(violations.len(), 1);
 
     let (item_id, _, _) = unwrap_rule_violation(violations[0]);
@@ -449,9 +434,7 @@ rules:
     let store = Store::load(&path, &schema).unwrap();
     let diags = evaluate(&store, &schema);
 
-    assert!(!diags
-        .iter()
-        .any(|d| is_count_violation(d)));
+    assert!(!diags.iter().any(|d| is_count_violation(d)));
 }
 
 // ── Combined require + count ────────────────────────────────────────
@@ -498,9 +481,7 @@ rules:
     }));
 
     // 3 items in_progress, max 2 -> CountViolation
-    assert!(diags
-        .iter()
-        .any(|d| is_count_violation(d)));
+    assert!(diags.iter().any(|d| is_count_violation(d)));
 }
 
 // ── Warning severity ────────────────────────────────────────────────
@@ -570,10 +551,7 @@ rules:
     let store = Store::load(&path, &schema).unwrap();
     let diags = evaluate(&store, &schema);
 
-    let violations: Vec<_> = diags
-        .iter()
-        .filter(|d| is_rule_violation(d))
-        .collect();
+    let violations: Vec<_> = diags.iter().filter(|d| is_rule_violation(d)).collect();
     // b and c have no title
     assert_eq!(violations.len(), 2);
 }
@@ -653,10 +631,7 @@ rules:
     let store = Store::load(&path, &schema).unwrap();
     let diags = evaluate(&store, &schema);
 
-    let violations: Vec<_> = diags
-        .iter()
-        .filter(|d| is_rule_violation(d))
-        .collect();
+    let violations: Vec<_> = diags.iter().filter(|d| is_rule_violation(d)).collect();
     assert_eq!(violations.len(), 1);
 
     let (item_id, _, _) = unwrap_rule_violation(violations[0]);
@@ -699,10 +674,7 @@ rules:
     let store = Store::load(&path, &schema).unwrap();
     let diags = evaluate(&store, &schema);
 
-    let violations: Vec<_> = diags
-        .iter()
-        .filter(|d| is_rule_violation(d))
-        .collect();
+    let violations: Vec<_> = diags.iter().filter(|d| is_rule_violation(d)).collect();
     assert!(
         violations.is_empty(),
         "got unexpected violations: {violations:?}"

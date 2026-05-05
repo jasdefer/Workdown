@@ -17,9 +17,7 @@
 
 use std::path::Path;
 
-use crate::model::diagnostic::{
-    ConfigDiagnosticKind, Diagnostic, FileDiagnosticKind,
-};
+use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic, FileDiagnosticKind};
 use crate::model::schema::{FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity};
 use crate::model::views::{Aggregate, MetricRow, View, ViewKind, Views};
 use crate::parser::schema::is_relation_anchor;
@@ -576,14 +574,18 @@ fn check_gantt_input_modes(
     );
     if let Some(after_field) = after {
         if end.is_some() {
-            out.push(ctx.error(ConfigDiagnosticKind::ViewGanttAfterWithEndConflict {
-                view_id: view_id.to_owned(),
-            }));
+            out.push(
+                ctx.error(ConfigDiagnosticKind::ViewGanttAfterWithEndConflict {
+                    view_id: view_id.to_owned(),
+                }),
+            );
         }
         if duration.is_none() {
-            out.push(ctx.error(ConfigDiagnosticKind::ViewGanttAfterRequiresDuration {
-                view_id: view_id.to_owned(),
-            }));
+            out.push(
+                ctx.error(ConfigDiagnosticKind::ViewGanttAfterRequiresDuration {
+                    view_id: view_id.to_owned(),
+                }),
+            );
         }
         check_link_slot(
             ctx,
@@ -606,14 +608,16 @@ fn check_gantt_input_modes(
         }
     } else {
         match (end, duration) {
-            (Some(_), Some(_)) => {
-                out.push(ctx.error(ConfigDiagnosticKind::ViewGanttEndAndDurationConflict {
+            (Some(_), Some(_)) => out.push(ctx.error(
+                ConfigDiagnosticKind::ViewGanttEndAndDurationConflict {
                     view_id: view_id.to_owned(),
-                }))
-            }
-            (None, None) => out.push(ctx.error(ConfigDiagnosticKind::ViewGanttEndOrDurationRequired {
-                view_id: view_id.to_owned(),
-            })),
+                },
+            )),
+            (None, None) => out.push(ctx.error(
+                ConfigDiagnosticKind::ViewGanttEndOrDurationRequired {
+                    view_id: view_id.to_owned(),
+                },
+            )),
             (Some(end), None) => {
                 check_slot(ctx, view_id, "end", end, &[FieldType::Date], "date", out);
             }
@@ -701,22 +705,24 @@ fn check_metric_row(
         check_metric_row_value_slot(ctx, view_id, metric_index, value, row.aggregate, out);
     }
     if row.aggregate == Aggregate::Count && row.value.is_some() {
-        out.push(ctx.error(ConfigDiagnosticKind::ViewMetricRowCountWithValue {
-            view_id: view_id.to_owned(),
-            metric_index,
-        }));
+        out.push(
+            ctx.error(ConfigDiagnosticKind::ViewMetricRowCountWithValue {
+                view_id: view_id.to_owned(),
+                metric_index,
+            }),
+        );
     }
     for raw in &row.where_clauses {
         match parse_where(raw) {
-            Ok(predicate) => {
-                walk_metric_row_predicate(&predicate, view_id, metric_index, ctx, out)
-            }
-            Err(err) => out.push(ctx.error(ConfigDiagnosticKind::ViewMetricRowWhereParseError {
-                view_id: view_id.to_owned(),
-                metric_index,
-                raw: raw.clone(),
-                detail: err.to_string(),
-            })),
+            Ok(predicate) => walk_metric_row_predicate(&predicate, view_id, metric_index, ctx, out),
+            Err(err) => out.push(
+                ctx.error(ConfigDiagnosticKind::ViewMetricRowWhereParseError {
+                    view_id: view_id.to_owned(),
+                    metric_index,
+                    raw: raw.clone(),
+                    detail: err.to_string(),
+                }),
+            ),
         }
     }
 }
@@ -753,12 +759,14 @@ fn check_metric_row_value_slot(
         ],
     };
     if !allowed.contains(&actual) {
-        out.push(ctx.error(ConfigDiagnosticKind::ViewMetricRowAggregateTypeMismatch {
-            view_id: view_id.to_owned(),
-            metric_index,
-            aggregate,
-            actual_type: actual,
-        }));
+        out.push(
+            ctx.error(ConfigDiagnosticKind::ViewMetricRowAggregateTypeMismatch {
+                view_id: view_id.to_owned(),
+                metric_index,
+                aggregate,
+                actual_type: actual,
+            }),
+        );
     }
 }
 
@@ -778,9 +786,7 @@ fn walk_metric_row_predicate(
                 walk_metric_row_predicate(p, view_id, metric_index, ctx, out);
             }
         }
-        Predicate::Not(inner) => {
-            walk_metric_row_predicate(inner, view_id, metric_index, ctx, out)
-        }
+        Predicate::Not(inner) => walk_metric_row_predicate(inner, view_id, metric_index, ctx, out),
     }
 }
 
@@ -1287,6 +1293,7 @@ mod tests {
                     group: Some(field.into()),
                 }),
                 &simple_schema(),
+                test_views_path(),
             );
             assert!(
                 diagnostics.is_empty(),
@@ -1985,9 +1992,10 @@ mod tests {
             &simple_schema(),
             test_views_path(),
         );
-        assert!(diagnostics
-            .iter()
-            .any(|d| matches!(view_kind(d), ConfigDiagnosticKind::ViewBucketWithoutDateAxis { .. })));
+        assert!(diagnostics.iter().any(|d| matches!(
+            view_kind(d),
+            ConfigDiagnosticKind::ViewBucketWithoutDateAxis { .. }
+        )));
     }
 
     #[test]
@@ -2004,9 +2012,10 @@ mod tests {
             test_views_path(),
         );
         assert!(
-            !diagnostics
-                .iter()
-                .any(|d| matches!(view_kind(d), ConfigDiagnosticKind::ViewBucketWithoutDateAxis { .. })),
+            !diagnostics.iter().any(|d| matches!(
+                view_kind(d),
+                ConfigDiagnosticKind::ViewBucketWithoutDateAxis { .. }
+            )),
             "got: {diagnostics:?}"
         );
     }
@@ -2094,6 +2103,7 @@ mod tests {
                     group: Some(field.into()),
                 }),
                 &simple_schema(),
+                test_views_path(),
             );
             assert!(
                 diagnostics.is_empty(),
@@ -2164,9 +2174,10 @@ mod tests {
             ConfigDiagnosticKind::ViewMetricRowUnknownField { slot, field_name, .. }
                 if *slot == "value" && field_name == "nonexistent"
         )));
-        assert!(diagnostics
-            .iter()
-            .any(|d| matches!(view_kind(d), ConfigDiagnosticKind::ViewMetricRowCountWithValue { .. })));
+        assert!(diagnostics.iter().any(|d| matches!(
+            view_kind(d),
+            ConfigDiagnosticKind::ViewMetricRowCountWithValue { .. }
+        )));
     }
 
     #[test]

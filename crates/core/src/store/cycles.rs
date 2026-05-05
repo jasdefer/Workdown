@@ -334,11 +334,13 @@ mod tests {
         let store = Store::load(&path, &schema).unwrap();
         let cycle_diags: Vec<_> = detect_cycles(&store, &schema)
             .into_iter()
-            .filter(|diagnostic| matches!(
-                &diagnostic.body,
-                DiagnosticBody::Collection(c)
-                    if matches!(c.kind, CollectionDiagnosticKind::Cycle { .. })
-            ))
+            .filter(|diagnostic| {
+                matches!(
+                    &diagnostic.body,
+                    DiagnosticBody::Collection(c)
+                        if matches!(c.kind, CollectionDiagnosticKind::Cycle { .. })
+                )
+            })
             .collect();
         assert!(cycle_diags.is_empty());
     }

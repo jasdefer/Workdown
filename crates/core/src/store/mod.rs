@@ -89,9 +89,7 @@ impl Store {
                 diagnostics.push(Diagnostic::files(
                     Severity::Error,
                     vec![first_path.clone(), path.clone()],
-                    FilesDiagnosticKind::DuplicateId {
-                        id: raw.id.clone(),
-                    },
+                    FilesDiagnosticKind::DuplicateId { id: raw.id.clone() },
                 ));
                 continue;
             }
@@ -466,11 +464,13 @@ mod tests {
         let broken: Vec<_> = store
             .diagnostics()
             .iter()
-            .filter(|diagnostic| matches!(
-                &diagnostic.body,
-                DiagnosticBody::Item(item)
-                    if matches!(&item.kind, ItemDiagnosticKind::BrokenLink { .. })
-            ))
+            .filter(|diagnostic| {
+                matches!(
+                    &diagnostic.body,
+                    DiagnosticBody::Item(item)
+                        if matches!(&item.kind, ItemDiagnosticKind::BrokenLink { .. })
+                )
+            })
             .collect();
         assert_eq!(broken.len(), 2);
     }

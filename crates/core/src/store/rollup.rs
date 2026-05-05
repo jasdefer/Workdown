@@ -1092,11 +1092,13 @@ mod tests {
 
         let missing: Vec<_> = diagnostics
             .iter()
-            .filter(|d| matches!(
-                &d.body,
-                DiagnosticBody::Item(item)
-                    if matches!(item.kind, ItemDiagnosticKind::MissingRequired { .. })
-            ))
+            .filter(|d| {
+                matches!(
+                    &d.body,
+                    DiagnosticBody::Item(item)
+                        if matches!(item.kind, ItemDiagnosticKind::MissingRequired { .. })
+                )
+            })
             .collect();
         assert!(missing.is_empty(), "{missing:#?}");
         assert_eq!(items["root"].fields.get("effort"), Some(&int(5)));

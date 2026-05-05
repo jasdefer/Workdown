@@ -6,9 +6,7 @@
 pub(crate) mod assertion;
 pub mod condition;
 
-use crate::model::diagnostic::{
-    CollectionDiagnosticKind, Diagnostic, ItemDiagnosticKind,
-};
+use crate::model::diagnostic::{CollectionDiagnosticKind, Diagnostic, ItemDiagnosticKind};
 use crate::model::schema::{Condition, ConditionOperator, Schema};
 use crate::model::{FieldValue, WorkItem};
 use crate::resolve::{resolve_field_ref, ResolvedValues};

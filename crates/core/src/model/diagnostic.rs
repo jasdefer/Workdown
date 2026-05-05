@@ -87,7 +87,10 @@ pub struct ItemDiagnostic {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ItemDiagnosticKind {
     /// A field value doesn't match the schema's type or constraints.
-    InvalidFieldValue { field: String, detail: FieldValueError },
+    InvalidFieldValue {
+        field: String,
+        detail: FieldValueError,
+    },
 
     /// A required field is missing from the frontmatter.
     MissingRequired { field: String },
@@ -96,7 +99,10 @@ pub enum ItemDiagnosticKind {
     UnknownField { field: String },
 
     /// A link/links field references an ID that doesn't exist.
-    BrokenLink { field: String, target_id: WorkItemId },
+    BrokenLink {
+        field: String,
+        target_id: WorkItemId,
+    },
 
     /// A schema rule was violated by this item.
     RuleViolation { rule: String, detail: String },

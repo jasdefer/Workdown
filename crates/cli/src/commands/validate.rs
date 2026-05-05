@@ -100,7 +100,10 @@ fn group_by_file(
 
     for diagnostic in diagnostics {
         match diagnostic.source_path() {
-            Some(path) => grouped.entry(path.to_path_buf()).or_default().push(diagnostic),
+            Some(path) => grouped
+                .entry(path.to_path_buf())
+                .or_default()
+                .push(diagnostic),
             None => ungrouped.push(diagnostic),
         }
     }

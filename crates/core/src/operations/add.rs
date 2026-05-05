@@ -318,9 +318,9 @@ fn is_diagnostic_for_item(diagnostic: &Diagnostic, item_id: &WorkItemId) -> bool
             &files.kind,
             FilesDiagnosticKind::DuplicateId { id } if id == item_id
         ),
-        DiagnosticBody::File(_)
-        | DiagnosticBody::Collection(_)
-        | DiagnosticBody::Config(_) => false,
+        DiagnosticBody::File(_) | DiagnosticBody::Collection(_) | DiagnosticBody::Config(_) => {
+            false
+        }
     }
 }
 
