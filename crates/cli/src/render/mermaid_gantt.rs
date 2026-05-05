@@ -211,4 +211,3 @@ fn format_titles(cards: &[&UnplacedCard]) -> String {
         .collect::<Vec<_>>()
         .join(", ")
 }
-

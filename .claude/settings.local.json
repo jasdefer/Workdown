@@ -78,7 +78,12 @@
       "Bash(awk '/^<text/,/^<\\\\/text>/{print}' views/items-by-status.md)",
       "Bash(awk '/^<text/{getline; if\\(NF>0\\) print}' views/items-by-type-and-status.md)",
       "Bash(awk '/^<text/{getline; if\\(NF>0\\) printf \"y=%s | text=%s\\\\n\", prev_y, $0}/y=\"/{match\\($0, /y=\"[0-9]+\"/\\); prev_y = substr\\($0, RSTART+3, RLENGTH-4\\)}' views/items-by-type-and-status.md)",
-      "Bash(awk '/<svg/{in_svg=1} in_svg{n++; if\\($0 ~ /^$/\\) print \"BLANK LINE at SVG-relative line \" n} /<\\\\/svg/{in_svg=0}' views/items-by-status.md)"
+      "Bash(awk '/<svg/{in_svg=1} in_svg{n++; if\\($0 ~ /^$/\\) print \"BLANK LINE at SVG-relative line \" n} /<\\\\/svg/{in_svg=0}' views/items-by-status.md)",
+      "Bash(grep *)",
+      "Bash(xargs wc *)",
+      "Bash(awk '{print $1}')",
+      "Bash(awk 'BEGIN{c=0;cli=0;s=0} /core\\\\/src/{c+=$1} /cli/{cli+=$1} /server/{s+=$1} END{print \"core src:\", c; print \"cli:\", cli; print \"server:\", s}')",
+      "Bash(xargs -I {} find {} -name \"*.rs\")"
     ]
   }
 }
