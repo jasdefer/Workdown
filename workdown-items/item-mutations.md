@@ -1,7 +1,7 @@
 ---
 id: item-mutations
 type: milestone
-status: to_do
+status: in_progress
 title: Item mutations
 parent: phase-04-visualization
 depends_on: [foundation]

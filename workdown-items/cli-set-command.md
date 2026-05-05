@@ -1,7 +1,7 @@
 ---
 id: cli-set-command
 type: issue
-status: to_do
+status: in_progress
 title: workdown set — generic field mutation
 parent: item-mutations
 ---

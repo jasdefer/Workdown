@@ -6,8 +6,11 @@ Directed graph of items connected through `depends_on`, nested by `parent`.
 flowchart TD
     subgraph phase-04-visualization ["Phase 04: Visualization"]
         subgraph code-quality ["Code-quality cleanup"]
+            cross-cutting-helpers["Relocate cross-cutting helpers out of feature modules"]
             diagnostic-scope-routing["Make diagnostic source-routing structural, not enumerative"]
             diagnostic-variant-cleanup["Collapse parallel View* slot variants and unify their validation helpers"]
+            render-module-hygiene["Render module hygiene — escape helpers, test fixtures, common.rs naming"]
+            walker-primitives["Unify the upward chain walks and link-target reads"]
         end
         subgraph foundation ["Foundation"]
             adr-phase-04-architecture["ADR — visualization architecture"]

@@ -296,6 +296,7 @@ milestone
 - [workdown move — shortcut for the board field](../workdown-items/cli-move-command.md) — missing `start_date`
 - [workdown set — generic field mutation](../workdown-items/cli-set-command.md) — missing `start_date`
 - [Code-quality cleanup](../workdown-items/code-quality.md) — missing `start_date`
+- [Relocate cross-cutting helpers out of feature modules](../workdown-items/cross-cutting-helpers.md) — missing `start_date`
 - [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md) — missing `start_date`
 - [Collapse parallel View* slot variants and unify their validation helpers](../workdown-items/diagnostic-variant-cleanup.md) — missing `start_date`
 - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md) — missing `start_date`
@@ -316,6 +317,7 @@ milestone
 - [Heatmap renderer](../workdown-items/render-heatmap.md) — missing `start_date`
 - [Line chart renderer](../workdown-items/render-line-chart.md) — missing `start_date`
 - [Metric renderer](../workdown-items/render-metric.md) — missing `start_date`
+- [Render module hygiene — escape helpers, test fixtures, common.rs naming](../workdown-items/render-module-hygiene.md) — missing `start_date`
 - [Table renderer](../workdown-items/render-table.md) — missing `start_date`
 - [Tree renderer](../workdown-items/render-tree.md) — missing `start_date`
 - [Treemap renderer](../workdown-items/render-treemap.md) — missing `start_date`
@@ -333,4 +335,5 @@ milestone
 - [Add per-view `title:` slot to views.yaml](../workdown-items/views-title-slot.md) — missing `start_date`
 - [Wire views validation into workdown validate](../workdown-items/views-validate-integration.md) — missing `start_date`
 - [Design views.yaml shape](../workdown-items/views-yaml-design.md) — missing `start_date`
+- [Unify the upward chain walks and link-target reads](../workdown-items/walker-primitives.md) — missing `start_date`
 - [Split into core / cli / server workspace](../workdown-items/workspace-refactor.md) — missing `start_date`

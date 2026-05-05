@@ -4,8 +4,11 @@ Hierarchical outline following `parent` upward to roots.
 
 - [phase-04-visualization](../workdown-items/phase-04-visualization.md)
   - [code-quality](../workdown-items/code-quality.md)
+    - [cross-cutting-helpers](../workdown-items/cross-cutting-helpers.md)
     - [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md)
     - [diagnostic-variant-cleanup](../workdown-items/diagnostic-variant-cleanup.md)
+    - [render-module-hygiene](../workdown-items/render-module-hygiene.md)
+    - [walker-primitives](../workdown-items/walker-primitives.md)
   - [foundation](../workdown-items/foundation.md)
     - [adr-phase-04-architecture](../workdown-items/adr-phase-04-architecture.md)
     - [foundation-cleanup](../workdown-items/foundation-cleanup.md)
