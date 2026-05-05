@@ -15,14 +15,14 @@
 //! and ordering on top.
 
 use std::collections::HashMap;
-use std::collections::HashSet;
 
 use serde::Serialize;
 
 use crate::model::schema::Schema;
 use crate::model::views::{View, ViewKind};
-use crate::model::{FieldValue, WorkItem};
+use crate::model::WorkItem;
 use crate::store::Store;
+use crate::walker::walk_up;
 
 use super::common::{build_card, Card, UnplacedCard};
 use super::gantt::{resolve_bars, GanttBar, GanttResolution};
@@ -109,34 +109,14 @@ pub fn extract_gantt_by_initiative(
 
 /// Walk `root_link` upward from `start` to find the initiative root.
 ///
-/// Termination cases:
-/// - Item has no `root_link` value → it is its own root.
-/// - Link target id isn't in the store → current item is the root
-///   (broken-link diagnostic surfaces from the store layer).
-/// - Cycle defense: a revisit (which `views_check + allow_cycles: false`
-///   should already prevent) returns the current item as the effective
-///   root rather than looping forever.
+/// Returns the last reachable ancestor — or `start` itself when the chain
+/// is empty (no `root_link` value, target outside the store, or a cycle).
 fn walk_to_root<'store>(
     start: &'store WorkItem,
-    root_link: &str,
+    root_link: &'store str,
     store: &'store Store,
 ) -> &'store WorkItem {
-    let mut visited: HashSet<&str> = HashSet::new();
-    visited.insert(start.id.as_str());
-    let mut current = start;
-    loop {
-        let next_id = match current.fields.get(root_link) {
-            Some(FieldValue::Link(id)) => id.as_str(),
-            _ => return current,
-        };
-        let Some(parent) = store.get(next_id) else {
-            return current;
-        };
-        if !visited.insert(parent.id.as_str()) {
-            return current;
-        }
-        current = parent;
-    }
+    walk_up(start, root_link, store).last().unwrap_or(start)
 }
 
 // ── Tests ───────────────────────────────────────────────────────────

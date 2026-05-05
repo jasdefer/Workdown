@@ -1,14 +1,17 @@
-//! Shared formatting for Gantt-shaped Markdown renderers.
+//! Shared Mermaid `gantt` block formatting for Gantt-shaped renderers.
 //!
-//! `render_gantt` (basic) and `render_gantt_by_initiative` (and any future
-//! Gantt variants) build the same Mermaid `gantt` block shape and the same
-//! unplaced footer. The block builder lives here so each variant only owns
-//! its outer document structure (heading, sub-headings, partition logic).
+//! `render_gantt`, `render_gantt_by_initiative`, `render_gantt_by_depth`
+//! (and any future Gantt variants) build the same Mermaid `gantt` block
+//! shape and the same unplaced footer. The block builder lives here so
+//! each variant only owns its outer document structure (heading,
+//! sub-headings, partition logic).
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use workdown_core::view_data::{Card, GanttBar, UnplacedCard, UnplacedReason};
+
+use super::markdown::escape_blockquote_italic;
 
 /// Render a Mermaid `gantt` block (fenced code block included) for a list
 /// of bars, optionally split into `section <value>` blocks.
@@ -207,10 +210,4 @@ fn format_titles(cards: &[&UnplacedCard]) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
-}
-
-/// Escape `_` so a title doesn't accidentally close the surrounding
-/// italic markers in a blockquote line.
-fn escape_blockquote_italic(text: &str) -> String {
-    text.replace('_', r"\_")
 }

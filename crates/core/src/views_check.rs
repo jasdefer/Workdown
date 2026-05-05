@@ -17,27 +17,45 @@
 
 use std::path::Path;
 
-use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
-use crate::model::schema::{FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity};
+use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic, FileDiagnosticKind};
+use crate::model::schema::{
+    is_relation_anchor, FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity,
+};
 use crate::model::views::{Aggregate, MetricRow, View, ViewKind, Views};
-use crate::parser::schema::is_relation_anchor;
 use crate::parser::views::{ViewsLoadError, ViewsValidationError};
 use crate::query::parse::parse_where;
 use crate::query::types::{FieldReference, Predicate};
 
 // ── Public API ──────────────────────────────────────────────────────
 
+/// Shared validation state threaded through every helper.
+///
+/// Carries the schema (referenced by all field-type checks) and the
+/// `views.yaml` path (set as `source_path` on every emitted diagnostic).
+struct ViewCheckContext<'a> {
+    schema: &'a Schema,
+    views_path: &'a Path,
+}
+
+impl ViewCheckContext<'_> {
+    /// Construct a Config-scope diagnostic using this context's `views_path`.
+    fn error(&self, kind: ConfigDiagnosticKind) -> Diagnostic {
+        Diagnostic::config(Severity::Error, self.views_path.to_path_buf(), kind)
+    }
+}
+
 /// Run all cross-file checks on a parsed `views.yaml` against a schema.
 ///
 /// Returns one [`Diagnostic`] per problem found; does not stop at the first.
 /// All diagnostics produced here have [`Severity::Error`] — there are no
 /// warnings in v1.
-pub fn evaluate(views: &Views, schema: &Schema) -> Vec<Diagnostic> {
+pub fn evaluate(views: &Views, schema: &Schema, views_path: &Path) -> Vec<Diagnostic> {
+    let ctx = ViewCheckContext { schema, views_path };
     let mut out = Vec::new();
     for view in &views.views {
-        check_view(view, schema, &mut out);
-        check_title(view, schema, &mut out);
-        check_where_clauses(view, schema, &mut out);
+        check_view(view, &ctx, &mut out);
+        check_title(view, &ctx, &mut out);
+        check_where_clauses(view, &ctx, &mut out);
     }
     out
 }
@@ -53,7 +71,7 @@ pub fn load_and_check(views_path: &Path, schema: &Schema) -> Vec<Diagnostic> {
         return Vec::new();
     }
     match crate::parser::views::load_views(views_path) {
-        Ok(views) => evaluate(&views, schema),
+        Ok(views) => evaluate(&views, schema, views_path),
         Err(err) => parse_errors_to_diagnostics(err, views_path),
     }
 }
@@ -61,37 +79,50 @@ pub fn load_and_check(views_path: &Path, schema: &Schema) -> Vec<Diagnostic> {
 /// Convert a [`ViewsLoadError`] from the views parser into a list of
 /// diagnostics pointed at `views_path`.
 ///
-/// `ReadFailed` and `InvalidYaml` become a single [`DiagnosticKind::FileError`]
+/// `ReadFailed` and `InvalidYaml` become a single file-scope diagnostic
 /// (the detail carries the serde line/column or I/O message). `Validation`
-/// expands into one structured diagnostic per semantic error:
-/// [`DiagnosticKind::ViewDuplicateId`] or [`DiagnosticKind::ViewMissingSlot`].
+/// expands into one config-scope diagnostic per semantic error.
 pub fn parse_errors_to_diagnostics(err: ViewsLoadError, views_path: &Path) -> Vec<Diagnostic> {
     match err {
-        ViewsLoadError::ReadFailed(io) => vec![error(DiagnosticKind::FileError {
-            path: views_path.to_path_buf(),
-            detail: io.to_string(),
-        })],
-        ViewsLoadError::InvalidYaml(yaml) => vec![error(DiagnosticKind::FileError {
-            path: views_path.to_path_buf(),
-            detail: yaml.to_string(),
-        })],
+        ViewsLoadError::ReadFailed(io) => vec![Diagnostic::file(
+            Severity::Error,
+            views_path.to_path_buf(),
+            FileDiagnosticKind::ReadError {
+                detail: io.to_string(),
+            },
+        )],
+        ViewsLoadError::InvalidYaml(yaml) => vec![Diagnostic::file(
+            Severity::Error,
+            views_path.to_path_buf(),
+            FileDiagnosticKind::ReadError {
+                detail: yaml.to_string(),
+            },
+        )],
         ViewsLoadError::Validation(errors) => errors
             .into_iter()
-            .map(|err| error(validation_error_to_kind(err)))
+            .map(|err| {
+                Diagnostic::config(
+                    Severity::Error,
+                    views_path.to_path_buf(),
+                    validation_error_to_kind(err),
+                )
+            })
             .collect(),
     }
 }
 
-// ── Validation-error → DiagnosticKind ────────────────────────────────
+// ── Validation-error → ConfigDiagnosticKind ──────────────────────────
 
-fn validation_error_to_kind(err: ViewsValidationError) -> DiagnosticKind {
+fn validation_error_to_kind(err: ViewsValidationError) -> ConfigDiagnosticKind {
     match err {
-        ViewsValidationError::DuplicateId { id } => DiagnosticKind::ViewDuplicateId { view_id: id },
+        ViewsValidationError::DuplicateId { id } => {
+            ConfigDiagnosticKind::ViewDuplicateId { view_id: id }
+        }
         ViewsValidationError::MissingSlot {
             id,
             view_type,
             slot,
-        } => DiagnosticKind::ViewMissingSlot {
+        } => ConfigDiagnosticKind::ViewMissingSlot {
             view_id: id,
             view_type,
             slot,
@@ -101,12 +132,12 @@ fn validation_error_to_kind(err: ViewsValidationError) -> DiagnosticKind {
 
 // ── Per-view checks ──────────────────────────────────────────────────
 
-fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
+fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
     let view_id = view.id.as_str();
 
     match &view.kind {
         ViewKind::Board { field } => check_slot(
-            schema,
+            ctx,
             view_id,
             "field",
             field,
@@ -115,7 +146,7 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             out,
         ),
         ViewKind::Tree { field } => check_slot(
-            schema,
+            ctx,
             view_id,
             "field",
             field,
@@ -124,14 +155,14 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             out,
         ),
         ViewKind::Graph { field, group_by } => {
-            check_graph_field(schema, view_id, field, out);
+            check_graph_field(ctx, view_id, field, out);
             if let Some(group_by) = group_by {
-                check_graph_group_by(schema, view_id, group_by, out);
+                check_link_slot(ctx, view_id, "group_by", group_by, LinkArity::Single, out);
             }
         }
         ViewKind::Table { columns } => {
             for column in columns {
-                check_slot(schema, view_id, "columns", column, &[], "", out);
+                check_slot(ctx, view_id, "columns", column, &[], "", out);
             }
         }
         ViewKind::Gantt {
@@ -142,7 +173,7 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             group,
         } => {
             check_gantt_input_modes(
-                schema,
+                ctx,
                 view_id,
                 start,
                 end.as_deref(),
@@ -152,7 +183,7 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             );
             if let Some(group) = group {
                 check_slot(
-                    schema,
+                    ctx,
                     view_id,
                     "group",
                     group,
@@ -177,7 +208,7 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             root_link,
         } => {
             check_gantt_input_modes(
-                schema,
+                ctx,
                 view_id,
                 start,
                 end.as_deref(),
@@ -185,7 +216,7 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 after.as_deref(),
                 out,
             );
-            check_root_link_slot(schema, view_id, root_link, out);
+            check_link_slot(ctx, view_id, "root_link", root_link, LinkArity::Single, out);
         }
         ViewKind::GanttByDepth {
             start,
@@ -195,7 +226,7 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             depth_link,
         } => {
             check_gantt_input_modes(
-                schema,
+                ctx,
                 view_id,
                 start,
                 end.as_deref(),
@@ -203,21 +234,28 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 after.as_deref(),
                 out,
             );
-            check_depth_link_slot(schema, view_id, depth_link, out);
+            check_link_slot(
+                ctx,
+                view_id,
+                "depth_link",
+                depth_link,
+                LinkArity::Single,
+                out,
+            );
         }
         ViewKind::BarChart {
             group_by,
             value,
             aggregate,
         } => {
-            check_slot(schema, view_id, "group_by", group_by, &[], "", out);
+            check_slot(ctx, view_id, "group_by", group_by, &[], "", out);
             if let Some(value) = value {
-                check_aggregate_value_slot(schema, view_id, value, *aggregate, out);
+                check_aggregate_value_slot(ctx, view_id, value, *aggregate, out);
             }
         }
         ViewKind::LineChart { x, y, group } => {
             check_slot(
-                schema,
+                ctx,
                 view_id,
                 "x",
                 x,
@@ -231,7 +269,7 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 out,
             );
             check_slot(
-                schema,
+                ctx,
                 view_id,
                 "y",
                 y,
@@ -241,7 +279,7 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             );
             if let Some(group) = group {
                 check_slot(
-                    schema,
+                    ctx,
                     view_id,
                     "group",
                     group,
@@ -265,7 +303,7 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             working_days: _,
         } => {
             check_slot(
-                schema,
+                ctx,
                 view_id,
                 "start",
                 start,
@@ -273,9 +311,9 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 "date",
                 out,
             );
-            check_slot(schema, view_id, "end", end, &[FieldType::Date], "date", out);
+            check_slot(ctx, view_id, "end", end, &[FieldType::Date], "date", out);
             check_slot(
-                schema,
+                ctx,
                 view_id,
                 "effort",
                 effort,
@@ -286,12 +324,12 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
         }
         ViewKind::Metric { metrics } => {
             for (idx, row) in metrics.iter().enumerate() {
-                check_metric_row(schema, view_id, idx, row, out);
+                check_metric_row(ctx, view_id, idx, row, out);
             }
         }
         ViewKind::Treemap { group, size } => {
             check_slot(
-                schema,
+                ctx,
                 view_id,
                 "group",
                 group,
@@ -300,7 +338,7 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
                 out,
             );
             check_slot(
-                schema,
+                ctx,
                 view_id,
                 "size",
                 size,
@@ -316,13 +354,13 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
             aggregate,
             bucket,
         } => {
-            check_slot(schema, view_id, "x", x, &[], "", out);
-            check_slot(schema, view_id, "y", y, &[], "", out);
+            check_slot(ctx, view_id, "x", x, &[], "", out);
+            check_slot(ctx, view_id, "y", y, &[], "", out);
             if let Some(value) = value {
-                check_aggregate_value_slot(schema, view_id, value, *aggregate, out);
+                check_aggregate_value_slot(ctx, view_id, value, *aggregate, out);
             }
-            if bucket.is_some() && !has_date_axis(schema, x, y) {
-                out.push(error(DiagnosticKind::ViewBucketWithoutDateAxis {
+            if bucket.is_some() && !has_date_axis(ctx.schema, x, y) {
+                out.push(ctx.error(ConfigDiagnosticKind::ViewBucketWithoutDateAxis {
                     view_id: view_id.to_owned(),
                 }));
             }
@@ -332,12 +370,12 @@ fn check_view(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
 
 // ── Title slot (cross-cutting) ───────────────────────────────────────
 
-fn check_title(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
+fn check_title(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
     let Some(field_name) = view.title.as_deref() else {
         return;
     };
     check_slot(
-        schema,
+        ctx,
         view.id.as_str(),
         "title",
         field_name,
@@ -350,15 +388,15 @@ fn check_title(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
 // ── Slot helper ──────────────────────────────────────────────────────
 
 /// Check one slot's field reference. Emits:
-/// - [`DiagnosticKind::ViewUnknownField`] if `field_name` isn't defined in
+/// - [`ConfigDiagnosticKind::ViewUnknownField`] if `field_name` isn't defined in
 ///   `schema.fields` and isn't the virtual `"id"`,
-/// - [`DiagnosticKind::ViewFieldTypeMismatch`] if `allowed` is non-empty and
+/// - [`ConfigDiagnosticKind::ViewFieldTypeMismatch`] if `allowed` is non-empty and
 ///   the field's type isn't in the list.
 ///
 /// Passing an empty `allowed` performs an existence-only check (used by
 /// `table.columns[*]`).
 fn check_slot(
-    schema: &Schema,
+    ctx: &ViewCheckContext,
     view_id: &str,
     slot: &'static str,
     field_name: &str,
@@ -370,8 +408,8 @@ fn check_slot(
         return;
     }
 
-    let Some(def) = schema.fields.get(field_name) else {
-        out.push(error(DiagnosticKind::ViewUnknownField {
+    let Some(def) = ctx.schema.fields.get(field_name) else {
+        out.push(ctx.error(ConfigDiagnosticKind::ViewUnknownField {
             view_id: view_id.to_owned(),
             slot,
             field_name: field_name.to_owned(),
@@ -385,7 +423,7 @@ fn check_slot(
 
     let actual = def.field_type();
     if !allowed.contains(&actual) {
-        out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
+        out.push(ctx.error(ConfigDiagnosticKind::ViewFieldTypeMismatch {
             view_id: view_id.to_owned(),
             slot,
             field_name: field_name.to_owned(),
@@ -401,11 +439,16 @@ fn check_slot(
 /// inverse name (declared via `inverse:` on a link/links field and thus
 /// present in `schema.inverse_table`). Inverse names resolve to their
 /// original field at extraction time; the underlying data is the same.
-fn check_graph_field(schema: &Schema, view_id: &str, field_name: &str, out: &mut Vec<Diagnostic>) {
-    if let Some(def) = schema.fields.get(field_name) {
+fn check_graph_field(
+    ctx: &ViewCheckContext,
+    view_id: &str,
+    field_name: &str,
+    out: &mut Vec<Diagnostic>,
+) {
+    if let Some(def) = ctx.schema.fields.get(field_name) {
         match def.field_type() {
             FieldType::Link | FieldType::Links => {}
-            actual => out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
+            actual => out.push(ctx.error(ConfigDiagnosticKind::ViewFieldTypeMismatch {
                 view_id: view_id.to_owned(),
                 slot: "field",
                 field_name: field_name.to_owned(),
@@ -416,69 +459,87 @@ fn check_graph_field(schema: &Schema, view_id: &str, field_name: &str, out: &mut
         return;
     }
 
-    if schema.inverse_table.contains_key(field_name) {
+    if ctx.schema.inverse_table.contains_key(field_name) {
         return;
     }
 
-    out.push(error(DiagnosticKind::ViewUnknownField {
+    out.push(ctx.error(ConfigDiagnosticKind::ViewUnknownField {
         view_id: view_id.to_owned(),
         slot: "field",
         field_name: field_name.to_owned(),
     }));
 }
 
-// ── Graph group_by helper ────────────────────────────────────────────
+// ── Link-slot helper ─────────────────────────────────────────────────
 
-/// Validates the `group_by` slot on a graph view.
+/// Whether a link-style slot accepts `Links` in addition to `Link`.
+#[derive(Clone, Copy)]
+enum LinkArity {
+    /// Single-target only: `group_by`, `root_link`, `depth_link`.
+    Single,
+    /// Single or multiple targets: `after`.
+    SingleOrMulti,
+}
+
+/// Validates a slot that drives an upward chain walk (`group_by`, `after`,
+/// `root_link`, `depth_link`).
 ///
-/// Subgraph nesting requires:
+/// All four require:
 /// - the field exists in the schema (not an inverse name);
-/// - the field is a single-target `Link` (not `Links`, since each item must
-///   belong to exactly one parent box);
+/// - the field is a `Link` (or `Links` when `arity == SingleOrMulti`);
 /// - cycles are explicitly disabled (`allow_cycles: false`).
 ///
 /// Each rule has its own diagnostic so the error message points at the
-/// actual constraint that was violated.
-fn check_graph_group_by(
-    schema: &Schema,
+/// actual constraint violated.
+fn check_link_slot(
+    ctx: &ViewCheckContext,
     view_id: &str,
+    slot: &'static str,
     field_name: &str,
+    arity: LinkArity,
     out: &mut Vec<Diagnostic>,
 ) {
-    let Some(def) = schema.fields.get(field_name) else {
-        if schema.inverse_table.contains_key(field_name) {
-            out.push(error(DiagnosticKind::ViewGroupByInverseNotAllowed {
+    let Some(def) = ctx.schema.fields.get(field_name) else {
+        if ctx.schema.inverse_table.contains_key(field_name) {
+            out.push(ctx.error(ConfigDiagnosticKind::ViewSlotInverseNotAllowed {
                 view_id: view_id.to_owned(),
+                slot,
                 field_name: field_name.to_owned(),
             }));
         } else {
-            out.push(error(DiagnosticKind::ViewUnknownField {
+            out.push(ctx.error(ConfigDiagnosticKind::ViewUnknownField {
                 view_id: view_id.to_owned(),
-                slot: "group_by",
+                slot,
                 field_name: field_name.to_owned(),
             }));
         }
         return;
     };
 
-    match &def.type_config {
-        FieldTypeConfig::Link { allow_cycles, .. } => {
-            if *allow_cycles != Some(false) {
-                out.push(error(DiagnosticKind::ViewGroupByCyclic {
-                    view_id: view_id.to_owned(),
-                    field_name: field_name.to_owned(),
-                }));
-            }
-        }
+    let allow_cycles = match (&def.type_config, arity) {
+        (FieldTypeConfig::Link { allow_cycles, .. }, _) => *allow_cycles,
+        (FieldTypeConfig::Links { allow_cycles, .. }, LinkArity::SingleOrMulti) => *allow_cycles,
         _ => {
-            out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
+            out.push(ctx.error(ConfigDiagnosticKind::ViewFieldTypeMismatch {
                 view_id: view_id.to_owned(),
-                slot: "group_by",
+                slot,
                 field_name: field_name.to_owned(),
                 actual_type: def.field_type(),
-                expected: "link".to_owned(),
+                expected: match arity {
+                    LinkArity::Single => "link".to_owned(),
+                    LinkArity::SingleOrMulti => "link or links".to_owned(),
+                },
             }));
+            return;
         }
+    };
+
+    if allow_cycles != Some(false) {
+        out.push(ctx.error(ConfigDiagnosticKind::ViewSlotCyclic {
+            view_id: view_id.to_owned(),
+            slot,
+            field_name: field_name.to_owned(),
+        }));
     }
 }
 
@@ -495,7 +556,7 @@ fn check_graph_group_by(
 /// type-check whatever fields are present so the user gets all the
 /// actionable feedback in one pass.
 fn check_gantt_input_modes(
-    schema: &Schema,
+    ctx: &ViewCheckContext,
     view_id: &str,
     start: &str,
     end: Option<&str>,
@@ -504,7 +565,7 @@ fn check_gantt_input_modes(
     out: &mut Vec<Diagnostic>,
 ) {
     check_slot(
-        schema,
+        ctx,
         view_id,
         "start",
         start,
@@ -514,19 +575,30 @@ fn check_gantt_input_modes(
     );
     if let Some(after_field) = after {
         if end.is_some() {
-            out.push(error(DiagnosticKind::ViewGanttAfterWithEndConflict {
-                view_id: view_id.to_owned(),
-            }));
+            out.push(
+                ctx.error(ConfigDiagnosticKind::ViewGanttAfterWithEndConflict {
+                    view_id: view_id.to_owned(),
+                }),
+            );
         }
         if duration.is_none() {
-            out.push(error(DiagnosticKind::ViewGanttAfterRequiresDuration {
-                view_id: view_id.to_owned(),
-            }));
+            out.push(
+                ctx.error(ConfigDiagnosticKind::ViewGanttAfterRequiresDuration {
+                    view_id: view_id.to_owned(),
+                }),
+            );
         }
-        check_after_slot(schema, view_id, after_field, out);
+        check_link_slot(
+            ctx,
+            view_id,
+            "after",
+            after_field,
+            LinkArity::SingleOrMulti,
+            out,
+        );
         if let Some(duration) = duration {
             check_slot(
-                schema,
+                ctx,
                 view_id,
                 "duration",
                 duration,
@@ -537,20 +609,22 @@ fn check_gantt_input_modes(
         }
     } else {
         match (end, duration) {
-            (Some(_), Some(_)) => {
-                out.push(error(DiagnosticKind::ViewGanttEndAndDurationConflict {
+            (Some(_), Some(_)) => out.push(ctx.error(
+                ConfigDiagnosticKind::ViewGanttEndAndDurationConflict {
                     view_id: view_id.to_owned(),
-                }))
-            }
-            (None, None) => out.push(error(DiagnosticKind::ViewGanttEndOrDurationRequired {
-                view_id: view_id.to_owned(),
-            })),
+                },
+            )),
+            (None, None) => out.push(ctx.error(
+                ConfigDiagnosticKind::ViewGanttEndOrDurationRequired {
+                    view_id: view_id.to_owned(),
+                },
+            )),
             (Some(end), None) => {
-                check_slot(schema, view_id, "end", end, &[FieldType::Date], "date", out);
+                check_slot(ctx, view_id, "end", end, &[FieldType::Date], "date", out);
             }
             (None, Some(duration)) => {
                 check_slot(
-                    schema,
+                    ctx,
                     view_id,
                     "duration",
                     duration,
@@ -559,164 +633,6 @@ fn check_gantt_input_modes(
                     out,
                 );
             }
-        }
-    }
-}
-
-// ── Gantt root_link slot helper ──────────────────────────────────────
-
-/// Validate the `root_link` slot on a `gantt_by_initiative` view.
-///
-/// Initiative partitioning walks the chain upward to find each item's
-/// root, so the slot requires:
-/// - the field exists in the schema (not an inverse name);
-/// - the field is a single-target `Link` (not `Links`, since each item
-///   must belong to exactly one initiative);
-/// - cycles are explicitly disabled (`allow_cycles: false`).
-///
-/// Each rule has its own diagnostic so the error message points at the
-/// actual constraint violated. Mirrors `check_after_slot`'s structure
-/// but Link-only and with root_link-specific diagnostic kinds.
-fn check_root_link_slot(
-    schema: &Schema,
-    view_id: &str,
-    field_name: &str,
-    out: &mut Vec<Diagnostic>,
-) {
-    let Some(def) = schema.fields.get(field_name) else {
-        if schema.inverse_table.contains_key(field_name) {
-            out.push(error(DiagnosticKind::ViewGanttRootLinkInverseNotAllowed {
-                view_id: view_id.to_owned(),
-                field_name: field_name.to_owned(),
-            }));
-        } else {
-            out.push(error(DiagnosticKind::ViewUnknownField {
-                view_id: view_id.to_owned(),
-                slot: "root_link",
-                field_name: field_name.to_owned(),
-            }));
-        }
-        return;
-    };
-
-    match &def.type_config {
-        FieldTypeConfig::Link { allow_cycles, .. } => {
-            if *allow_cycles != Some(false) {
-                out.push(error(DiagnosticKind::ViewGanttRootLinkCyclic {
-                    view_id: view_id.to_owned(),
-                    field_name: field_name.to_owned(),
-                }));
-            }
-        }
-        _ => {
-            out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
-                view_id: view_id.to_owned(),
-                slot: "root_link",
-                field_name: field_name.to_owned(),
-                actual_type: def.field_type(),
-                expected: "link".to_owned(),
-            }));
-        }
-    }
-}
-
-// ── Gantt depth_link slot helper ─────────────────────────────────────
-
-/// Validates the `depth_link` slot on a `gantt_by_depth` view.
-///
-/// Mirrors `check_root_link_slot`: must be a single-target `Link` with
-/// `allow_cycles: false`, not an inverse name. Each rule has its own
-/// diagnostic kind so the error points at the actual violation.
-fn check_depth_link_slot(
-    schema: &Schema,
-    view_id: &str,
-    field_name: &str,
-    out: &mut Vec<Diagnostic>,
-) {
-    let Some(def) = schema.fields.get(field_name) else {
-        if schema.inverse_table.contains_key(field_name) {
-            out.push(error(DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed {
-                view_id: view_id.to_owned(),
-                field_name: field_name.to_owned(),
-            }));
-        } else {
-            out.push(error(DiagnosticKind::ViewUnknownField {
-                view_id: view_id.to_owned(),
-                slot: "depth_link",
-                field_name: field_name.to_owned(),
-            }));
-        }
-        return;
-    };
-
-    match &def.type_config {
-        FieldTypeConfig::Link { allow_cycles, .. } => {
-            if *allow_cycles != Some(false) {
-                out.push(error(DiagnosticKind::ViewGanttDepthLinkCyclic {
-                    view_id: view_id.to_owned(),
-                    field_name: field_name.to_owned(),
-                }));
-            }
-        }
-        _ => {
-            out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
-                view_id: view_id.to_owned(),
-                slot: "depth_link",
-                field_name: field_name.to_owned(),
-                actual_type: def.field_type(),
-                expected: "link".to_owned(),
-            }));
-        }
-    }
-}
-
-// ── Gantt after slot helper ──────────────────────────────────────────
-
-/// Validates the `after` slot on a gantt view (predecessor mode).
-///
-/// Predecessor resolution requires:
-/// - the field exists in the schema (not an inverse name);
-/// - the field is `Link` or `Links` (single or multiple predecessors);
-/// - cycles are explicitly disabled (`allow_cycles: false`).
-///
-/// Each rule has its own diagnostic so the error message points at the
-/// actual constraint that was violated. Mirrors `check_graph_group_by`
-/// but with after-specific diagnostic kinds.
-fn check_after_slot(schema: &Schema, view_id: &str, field_name: &str, out: &mut Vec<Diagnostic>) {
-    let Some(def) = schema.fields.get(field_name) else {
-        if schema.inverse_table.contains_key(field_name) {
-            out.push(error(DiagnosticKind::ViewGanttAfterInverseNotAllowed {
-                view_id: view_id.to_owned(),
-                field_name: field_name.to_owned(),
-            }));
-        } else {
-            out.push(error(DiagnosticKind::ViewUnknownField {
-                view_id: view_id.to_owned(),
-                slot: "after",
-                field_name: field_name.to_owned(),
-            }));
-        }
-        return;
-    };
-
-    match &def.type_config {
-        FieldTypeConfig::Link { allow_cycles, .. }
-        | FieldTypeConfig::Links { allow_cycles, .. } => {
-            if *allow_cycles != Some(false) {
-                out.push(error(DiagnosticKind::ViewGanttAfterCyclic {
-                    view_id: view_id.to_owned(),
-                    field_name: field_name.to_owned(),
-                }));
-            }
-        }
-        _ => {
-            out.push(error(DiagnosticKind::ViewFieldTypeMismatch {
-                view_id: view_id.to_owned(),
-                slot: "after",
-                field_name: field_name.to_owned(),
-                actual_type: def.field_type(),
-                expected: "link or links".to_owned(),
-            }));
         }
     }
 }
@@ -732,10 +648,10 @@ fn check_after_slot(schema: &Schema, view_id: &str, field_name: &str, out: &mut 
 /// | `sum`           | integer, float               |
 /// | `avg`/`min`/`max` | integer, float, date       |
 ///
-/// Incompatibility produces [`DiagnosticKind::ViewAggregateTypeMismatch`].
-/// Missing-field is [`DiagnosticKind::ViewUnknownField`] as elsewhere.
+/// Incompatibility produces [`ConfigDiagnosticKind::ViewAggregateTypeMismatch`].
+/// Missing-field is [`ConfigDiagnosticKind::ViewUnknownField`] as elsewhere.
 fn check_aggregate_value_slot(
-    schema: &Schema,
+    ctx: &ViewCheckContext,
     view_id: &str,
     field_name: &str,
     aggregate: Aggregate,
@@ -744,8 +660,8 @@ fn check_aggregate_value_slot(
     if field_name == "id" {
         return;
     }
-    let Some(def) = schema.fields.get(field_name) else {
-        out.push(error(DiagnosticKind::ViewUnknownField {
+    let Some(def) = ctx.schema.fields.get(field_name) else {
+        out.push(ctx.error(ConfigDiagnosticKind::ViewUnknownField {
             view_id: view_id.to_owned(),
             slot: "value",
             field_name: field_name.to_owned(),
@@ -764,7 +680,7 @@ fn check_aggregate_value_slot(
         ],
     };
     if !allowed.contains(&actual) {
-        out.push(error(DiagnosticKind::ViewAggregateTypeMismatch {
+        out.push(ctx.error(ConfigDiagnosticKind::ViewAggregateTypeMismatch {
             view_id: view_id.to_owned(),
             slot: "value",
             aggregate,
@@ -780,38 +696,40 @@ fn check_aggregate_value_slot(
 /// field references. Diagnostics carry `metric_index` so messages
 /// pinpoint which row failed.
 fn check_metric_row(
-    schema: &Schema,
+    ctx: &ViewCheckContext,
     view_id: &str,
     metric_index: usize,
     row: &MetricRow,
     out: &mut Vec<Diagnostic>,
 ) {
     if let Some(value) = &row.value {
-        check_metric_row_value_slot(schema, view_id, metric_index, value, row.aggregate, out);
+        check_metric_row_value_slot(ctx, view_id, metric_index, value, row.aggregate, out);
     }
     if row.aggregate == Aggregate::Count && row.value.is_some() {
-        out.push(error(DiagnosticKind::ViewMetricRowCountWithValue {
-            view_id: view_id.to_owned(),
-            metric_index,
-        }));
+        out.push(
+            ctx.error(ConfigDiagnosticKind::ViewMetricRowCountWithValue {
+                view_id: view_id.to_owned(),
+                metric_index,
+            }),
+        );
     }
     for raw in &row.where_clauses {
         match parse_where(raw) {
-            Ok(predicate) => {
-                walk_metric_row_predicate(&predicate, view_id, metric_index, schema, out)
-            }
-            Err(err) => out.push(error(DiagnosticKind::ViewMetricRowWhereParseError {
-                view_id: view_id.to_owned(),
-                metric_index,
-                raw: raw.clone(),
-                detail: err.to_string(),
-            })),
+            Ok(predicate) => walk_metric_row_predicate(&predicate, view_id, metric_index, ctx, out),
+            Err(err) => out.push(
+                ctx.error(ConfigDiagnosticKind::ViewMetricRowWhereParseError {
+                    view_id: view_id.to_owned(),
+                    metric_index,
+                    raw: raw.clone(),
+                    detail: err.to_string(),
+                }),
+            ),
         }
     }
 }
 
 fn check_metric_row_value_slot(
-    schema: &Schema,
+    ctx: &ViewCheckContext,
     view_id: &str,
     metric_index: usize,
     field_name: &str,
@@ -821,8 +739,8 @@ fn check_metric_row_value_slot(
     if field_name == "id" {
         return;
     }
-    let Some(def) = schema.fields.get(field_name) else {
-        out.push(error(DiagnosticKind::ViewMetricRowUnknownField {
+    let Some(def) = ctx.schema.fields.get(field_name) else {
+        out.push(ctx.error(ConfigDiagnosticKind::ViewMetricRowUnknownField {
             view_id: view_id.to_owned(),
             metric_index,
             slot: "value",
@@ -842,12 +760,14 @@ fn check_metric_row_value_slot(
         ],
     };
     if !allowed.contains(&actual) {
-        out.push(error(DiagnosticKind::ViewMetricRowAggregateTypeMismatch {
-            view_id: view_id.to_owned(),
-            metric_index,
-            aggregate,
-            actual_type: actual,
-        }));
+        out.push(
+            ctx.error(ConfigDiagnosticKind::ViewMetricRowAggregateTypeMismatch {
+                view_id: view_id.to_owned(),
+                metric_index,
+                aggregate,
+                actual_type: actual,
+            }),
+        );
     }
 }
 
@@ -855,21 +775,19 @@ fn walk_metric_row_predicate(
     predicate: &Predicate,
     view_id: &str,
     metric_index: usize,
-    schema: &Schema,
+    ctx: &ViewCheckContext,
     out: &mut Vec<Diagnostic>,
 ) {
     match predicate {
         Predicate::Comparison(comparison) => {
-            check_metric_row_where_field_ref(&comparison.field, view_id, metric_index, schema, out)
+            check_metric_row_where_field_ref(&comparison.field, view_id, metric_index, ctx, out)
         }
         Predicate::And(inner) | Predicate::Or(inner) => {
             for p in inner {
-                walk_metric_row_predicate(p, view_id, metric_index, schema, out);
+                walk_metric_row_predicate(p, view_id, metric_index, ctx, out);
             }
         }
-        Predicate::Not(inner) => {
-            walk_metric_row_predicate(inner, view_id, metric_index, schema, out)
-        }
+        Predicate::Not(inner) => walk_metric_row_predicate(inner, view_id, metric_index, ctx, out),
     }
 }
 
@@ -877,7 +795,7 @@ fn check_metric_row_where_field_ref(
     field_ref: &FieldReference,
     view_id: &str,
     metric_index: usize,
-    schema: &Schema,
+    ctx: &ViewCheckContext,
     out: &mut Vec<Diagnostic>,
 ) {
     match field_ref {
@@ -885,8 +803,8 @@ fn check_metric_row_where_field_ref(
             if name == "id" {
                 return;
             }
-            if !schema.fields.contains_key(name) {
-                out.push(error(DiagnosticKind::ViewMetricRowUnknownField {
+            if !ctx.schema.fields.contains_key(name) {
+                out.push(ctx.error(ConfigDiagnosticKind::ViewMetricRowUnknownField {
                     view_id: view_id.to_owned(),
                     metric_index,
                     slot: "where",
@@ -895,10 +813,10 @@ fn check_metric_row_where_field_ref(
             }
         }
         FieldReference::Related { relation, .. } => {
-            if is_relation_anchor(relation, &schema.fields) {
+            if is_relation_anchor(relation, &ctx.schema.fields) {
                 return;
             }
-            out.push(error(DiagnosticKind::ViewMetricRowUnknownField {
+            out.push(ctx.error(ConfigDiagnosticKind::ViewMetricRowUnknownField {
                 view_id: view_id.to_owned(),
                 metric_index,
                 slot: "where",
@@ -921,12 +839,12 @@ fn is_date_field(def: Option<&FieldDefinition>) -> bool {
 
 // ── Where-clause checks ──────────────────────────────────────────────
 
-fn check_where_clauses(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) {
+fn check_where_clauses(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
     let view_id = view.id.as_str();
     for raw in &view.where_clauses {
         match parse_where(raw) {
-            Ok(predicate) => walk_predicate(&predicate, view_id, schema, out),
-            Err(err) => out.push(error(DiagnosticKind::ViewWhereParseError {
+            Ok(predicate) => walk_predicate(&predicate, view_id, ctx, out),
+            Err(err) => out.push(ctx.error(ConfigDiagnosticKind::ViewWhereParseError {
                 view_id: view_id.to_owned(),
                 raw: raw.clone(),
                 detail: err.to_string(),
@@ -938,26 +856,26 @@ fn check_where_clauses(view: &View, schema: &Schema, out: &mut Vec<Diagnostic>) 
 fn walk_predicate(
     predicate: &Predicate,
     view_id: &str,
-    schema: &Schema,
+    ctx: &ViewCheckContext,
     out: &mut Vec<Diagnostic>,
 ) {
     match predicate {
         Predicate::Comparison(comparison) => {
-            check_where_field_ref(&comparison.field, view_id, schema, out)
+            check_where_field_ref(&comparison.field, view_id, ctx, out)
         }
         Predicate::And(inner) | Predicate::Or(inner) => {
             for p in inner {
-                walk_predicate(p, view_id, schema, out);
+                walk_predicate(p, view_id, ctx, out);
             }
         }
-        Predicate::Not(inner) => walk_predicate(inner, view_id, schema, out),
+        Predicate::Not(inner) => walk_predicate(inner, view_id, ctx, out),
     }
 }
 
 fn check_where_field_ref(
     field_ref: &FieldReference,
     view_id: &str,
-    schema: &Schema,
+    ctx: &ViewCheckContext,
     out: &mut Vec<Diagnostic>,
 ) {
     match field_ref {
@@ -965,8 +883,8 @@ fn check_where_field_ref(
             if name == "id" {
                 return;
             }
-            if !schema.fields.contains_key(name) {
-                out.push(error(DiagnosticKind::ViewUnknownField {
+            if !ctx.schema.fields.contains_key(name) {
+                out.push(ctx.error(ConfigDiagnosticKind::ViewUnknownField {
                     view_id: view_id.to_owned(),
                     slot: "where",
                     field_name: name.clone(),
@@ -974,10 +892,10 @@ fn check_where_field_ref(
             }
         }
         FieldReference::Related { relation, .. } => {
-            if is_relation_anchor(relation, &schema.fields) {
+            if is_relation_anchor(relation, &ctx.schema.fields) {
                 return;
             }
-            out.push(error(DiagnosticKind::ViewUnknownField {
+            out.push(ctx.error(ConfigDiagnosticKind::ViewUnknownField {
                 view_id: view_id.to_owned(),
                 slot: "where",
                 field_name: relation.clone(),
@@ -986,25 +904,31 @@ fn check_where_field_ref(
     }
 }
 
-// ── Tiny helper: every diagnostic this module emits is an error in v1. ──
-
-fn error(kind: DiagnosticKind) -> Diagnostic {
-    Diagnostic {
-        severity: Severity::Error,
-        kind,
-    }
-}
-
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::diagnostic::DiagnosticBody;
     use crate::model::schema::{FieldDefinition, FieldTypeConfig, Schema};
     use crate::model::views::{Aggregate, Bucket, MetricRow, View, ViewKind, Views};
     use crate::parser::views::parse_views;
     use indexmap::IndexMap;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
+
+    /// Standard `views.yaml` path used across tests.
+    fn test_views_path() -> &'static Path {
+        Path::new("views.yaml")
+    }
+
+    /// Extract the inner `ConfigDiagnosticKind` from a Config-scope diagnostic,
+    /// panicking otherwise. All view diagnostics are Config-scope.
+    fn view_kind(diagnostic: &Diagnostic) -> &ConfigDiagnosticKind {
+        match &diagnostic.body {
+            DiagnosticBody::Config(c) => &c.kind,
+            other => panic!("expected Config body, got {other:?}"),
+        }
+    }
 
     // ── Fixture helpers ────────────────────────────────────────
 
@@ -1111,12 +1035,13 @@ mod tests {
                 field: "nonexistent".into(),
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
             diagnostics.as_slice(),
             [d] if matches!(
-                &d.kind,
-                DiagnosticKind::ViewUnknownField { slot, field_name, .. }
+                view_kind(d),
+                ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
                 if *slot == "field" && field_name == "nonexistent"
             )
         ));
@@ -1129,11 +1054,12 @@ mod tests {
                 columns: vec!["status".into(), "nonexistent".into()],
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert_eq!(diagnostics.len(), 1);
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewUnknownField { slot, field_name, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
                 if *slot == "columns" && field_name == "nonexistent"
         ));
     }
@@ -1153,6 +1079,7 @@ mod tests {
                 columns: vec!["id".into(), "status".into()],
             }),
             &schema,
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -1166,10 +1093,11 @@ mod tests {
                 field: "status".into(), // choice, not link
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
                 if *slot == "field" && *actual_type == FieldType::Choice
         ));
     }
@@ -1182,10 +1110,11 @@ mod tests {
                 group_by: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewFieldTypeMismatch { actual_type, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewFieldTypeMismatch { actual_type, .. }
                 if *actual_type == FieldType::Choice
         ));
     }
@@ -1198,6 +1127,7 @@ mod tests {
                 group_by: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty());
     }
@@ -1210,6 +1140,7 @@ mod tests {
                 group_by: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty());
     }
@@ -1222,10 +1153,11 @@ mod tests {
                 group_by: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewUnknownField { field_name, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewUnknownField { field_name, .. }
                 if field_name == "nonexistent"
         ));
     }
@@ -1240,6 +1172,7 @@ mod tests {
                 group_by: Some("parent".into()),
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -1252,10 +1185,11 @@ mod tests {
                 group_by: Some("depends_on".into()), // links, not link
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
                 if *slot == "group_by" && *actual_type == FieldType::Links
         ));
     }
@@ -1268,10 +1202,11 @@ mod tests {
                 group_by: Some("nonexistent".into()),
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewUnknownField { slot, field_name, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
                 if *slot == "group_by" && field_name == "nonexistent"
         ));
     }
@@ -1284,10 +1219,11 @@ mod tests {
                 group_by: Some("children".into()), // inverse of parent
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewGroupByInverseNotAllowed { field_name, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewSlotInverseNotAllowed { slot: "group_by", field_name, .. }
                 if field_name == "children"
         ));
     }
@@ -1316,10 +1252,11 @@ mod tests {
                 group_by: Some("topic".into()),
             }),
             &schema,
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewGroupByCyclic { field_name, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewSlotCyclic { slot: "group_by", field_name, .. }
                 if field_name == "topic"
         ));
     }
@@ -1335,11 +1272,12 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert_eq!(diagnostics.len(), 1);
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
                 if *slot == "start" && *actual_type == FieldType::Integer
         ));
     }
@@ -1356,6 +1294,7 @@ mod tests {
                     group: Some(field.into()),
                 }),
                 &simple_schema(),
+                test_views_path(),
             );
             assert!(
                 diagnostics.is_empty(),
@@ -1375,10 +1314,11 @@ mod tests {
                 group: Some("effort".into()), // integer
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
                 if *slot == "group" && *actual_type == FieldType::Integer
         ));
     }
@@ -1394,10 +1334,11 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewGanttEndOrDurationRequired { .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewGanttEndOrDurationRequired { .. }
         ));
     }
 
@@ -1412,10 +1353,11 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewGanttEndAndDurationConflict { .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewGanttEndAndDurationConflict { .. }
         ));
     }
 
@@ -1430,10 +1372,11 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
                 if *slot == "duration" && *actual_type == FieldType::Date
         ));
     }
@@ -1449,6 +1392,7 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(
             diagnostics.is_empty(),
@@ -1469,6 +1413,7 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(
             diagnostics.is_empty(),
@@ -1487,6 +1432,7 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(
             diagnostics.is_empty(),
@@ -1505,10 +1451,11 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
-            DiagnosticKind::ViewGanttAfterRequiresDuration { .. }
+            view_kind(d),
+            ConfigDiagnosticKind::ViewGanttAfterRequiresDuration { .. }
         )));
     }
 
@@ -1523,10 +1470,11 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
-            DiagnosticKind::ViewGanttAfterWithEndConflict { .. }
+            view_kind(d),
+            ConfigDiagnosticKind::ViewGanttAfterWithEndConflict { .. }
         )));
     }
 
@@ -1541,10 +1489,11 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewFieldTypeMismatch { slot, expected, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, expected, .. }
                 if *slot == "after" && expected == "link or links"
         ));
     }
@@ -1560,10 +1509,11 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewUnknownField { slot, field_name, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
                 if *slot == "after" && field_name == "nonexistent"
         ));
     }
@@ -1579,10 +1529,11 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewGanttAfterInverseNotAllowed { field_name, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewSlotInverseNotAllowed { slot: "after", field_name, .. }
                 if field_name == "dependents"
         ));
     }
@@ -1615,10 +1566,11 @@ mod tests {
                 group: None,
             }),
             &schema,
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewGanttAfterCyclic { field_name, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewSlotCyclic { slot: "after", field_name, .. }
                 if field_name == "blocks"
         ));
     }
@@ -1636,6 +1588,7 @@ mod tests {
                 root_link: "parent".into(),
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got {diagnostics:?}");
     }
@@ -1651,10 +1604,11 @@ mod tests {
                 root_link: "nonexistent".into(),
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
-            DiagnosticKind::ViewUnknownField { slot, field_name, .. }
+            view_kind(d),
+            ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
                 if *slot == "root_link" && field_name == "nonexistent"
         )));
     }
@@ -1671,10 +1625,11 @@ mod tests {
                 root_link: "depends_on".into(), // Links, not Link
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
-            DiagnosticKind::ViewFieldTypeMismatch { slot, expected, .. }
+            view_kind(d),
+            ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, expected, .. }
                 if *slot == "root_link" && expected == "link"
         )));
     }
@@ -1690,10 +1645,11 @@ mod tests {
                 root_link: "children".into(), // inverse of parent
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
-            DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { field_name, .. }
+            view_kind(d),
+            ConfigDiagnosticKind::ViewSlotInverseNotAllowed { slot: "root_link", field_name, .. }
                 if field_name == "children"
         )));
     }
@@ -1720,10 +1676,11 @@ mod tests {
                 root_link: "topic".into(),
             }),
             &schema,
+            test_views_path(),
         );
         assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
-            DiagnosticKind::ViewGanttRootLinkCyclic { field_name, .. }
+            view_kind(d),
+            ConfigDiagnosticKind::ViewSlotCyclic { slot: "root_link", field_name, .. }
                 if field_name == "topic"
         )));
     }
@@ -1740,10 +1697,11 @@ mod tests {
                 root_link: "parent".into(),
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
-            DiagnosticKind::ViewGanttEndAndDurationConflict { .. }
+            view_kind(d),
+            ConfigDiagnosticKind::ViewGanttEndAndDurationConflict { .. }
         )));
     }
 
@@ -1760,6 +1718,7 @@ mod tests {
                 depth_link: "parent".into(),
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got {diagnostics:?}");
     }
@@ -1775,10 +1734,11 @@ mod tests {
                 depth_link: "nonexistent".into(),
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
-            DiagnosticKind::ViewUnknownField { slot, field_name, .. }
+            view_kind(d),
+            ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
                 if *slot == "depth_link" && field_name == "nonexistent"
         )));
     }
@@ -1795,10 +1755,11 @@ mod tests {
                 depth_link: "depends_on".into(), // Links, not Link
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
-            DiagnosticKind::ViewFieldTypeMismatch { slot, expected, .. }
+            view_kind(d),
+            ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, expected, .. }
                 if *slot == "depth_link" && expected == "link"
         )));
     }
@@ -1814,10 +1775,11 @@ mod tests {
                 depth_link: "children".into(), // inverse of parent
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
-            DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { field_name, .. }
+            view_kind(d),
+            ConfigDiagnosticKind::ViewSlotInverseNotAllowed { slot: "depth_link", field_name, .. }
                 if field_name == "children"
         )));
     }
@@ -1844,10 +1806,11 @@ mod tests {
                 depth_link: "topic".into(),
             }),
             &schema,
+            test_views_path(),
         );
         assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
-            DiagnosticKind::ViewGanttDepthLinkCyclic { field_name, .. }
+            view_kind(d),
+            ConfigDiagnosticKind::ViewSlotCyclic { slot: "depth_link", field_name, .. }
                 if field_name == "topic"
         )));
     }
@@ -1862,10 +1825,11 @@ mod tests {
                 working_days: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewFieldTypeMismatch { slot, .. } if *slot == "effort"
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, .. } if *slot == "effort"
         ));
     }
 
@@ -1879,6 +1843,7 @@ mod tests {
                 working_days: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -1892,11 +1857,12 @@ mod tests {
                 aggregate: Aggregate::Sum,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert_eq!(diagnostics.len(), 1);
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewAggregateTypeMismatch { slot, aggregate, actual_type, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewAggregateTypeMismatch { slot, aggregate, actual_type, .. }
                 if *slot == "value" && *aggregate == Aggregate::Sum && *actual_type == FieldType::String
         ));
     }
@@ -1910,10 +1876,11 @@ mod tests {
                 aggregate: Aggregate::Sum,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewAggregateTypeMismatch { aggregate, actual_type, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewAggregateTypeMismatch { aggregate, actual_type, .. }
                 if *aggregate == Aggregate::Sum && *actual_type == FieldType::Date
         ));
     }
@@ -1927,6 +1894,7 @@ mod tests {
                 aggregate: Aggregate::Avg,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -1940,6 +1908,7 @@ mod tests {
                 aggregate: Aggregate::Count,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -1956,6 +1925,7 @@ mod tests {
                 }],
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -1971,6 +1941,7 @@ mod tests {
                 bucket: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -1984,6 +1955,7 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -1997,10 +1969,11 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
                 if *slot == "y" && *actual_type == FieldType::Date
         ));
     }
@@ -2018,10 +1991,12 @@ mod tests {
                 bucket: Some(Bucket::Week),
             }),
             &simple_schema(),
+            test_views_path(),
         );
-        assert!(diagnostics
-            .iter()
-            .any(|d| matches!(&d.kind, DiagnosticKind::ViewBucketWithoutDateAxis { .. })));
+        assert!(diagnostics.iter().any(|d| matches!(
+            view_kind(d),
+            ConfigDiagnosticKind::ViewBucketWithoutDateAxis { .. }
+        )));
     }
 
     #[test]
@@ -2035,11 +2010,13 @@ mod tests {
                 bucket: Some(Bucket::Week),
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(
-            !diagnostics
-                .iter()
-                .any(|d| matches!(&d.kind, DiagnosticKind::ViewBucketWithoutDateAxis { .. })),
+            !diagnostics.iter().any(|d| matches!(
+                view_kind(d),
+                ConfigDiagnosticKind::ViewBucketWithoutDateAxis { .. }
+            )),
             "got: {diagnostics:?}"
         );
     }
@@ -2054,10 +2031,11 @@ mod tests {
                 size: "effort".into(),
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
                 if *slot == "group" && *actual_type == FieldType::Choice
         ));
     }
@@ -2070,6 +2048,7 @@ mod tests {
                 size: "effort".into(),
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -2082,6 +2061,7 @@ mod tests {
                 size: "estimate".into(),
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -2095,6 +2075,7 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -2108,6 +2089,7 @@ mod tests {
                 group: None,
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -2122,6 +2104,7 @@ mod tests {
                     group: Some(field.into()),
                 }),
                 &simple_schema(),
+                test_views_path(),
             );
             assert!(
                 diagnostics.is_empty(),
@@ -2139,10 +2122,11 @@ mod tests {
                 group: Some("effort".into()), // integer
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
                 if *slot == "group" && *actual_type == FieldType::Integer
         ));
     }
@@ -2161,10 +2145,11 @@ mod tests {
                 }],
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
-            DiagnosticKind::ViewMetricRowCountWithValue { metric_index, .. }
+            view_kind(d),
+            ConfigDiagnosticKind::ViewMetricRowCountWithValue { metric_index, .. }
                 if *metric_index == 0
         )));
     }
@@ -2183,15 +2168,17 @@ mod tests {
                 }],
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
-            DiagnosticKind::ViewMetricRowUnknownField { slot, field_name, .. }
+            view_kind(d),
+            ConfigDiagnosticKind::ViewMetricRowUnknownField { slot, field_name, .. }
                 if *slot == "value" && field_name == "nonexistent"
         )));
-        assert!(diagnostics
-            .iter()
-            .any(|d| matches!(&d.kind, DiagnosticKind::ViewMetricRowCountWithValue { .. })));
+        assert!(diagnostics.iter().any(|d| matches!(
+            view_kind(d),
+            ConfigDiagnosticKind::ViewMetricRowCountWithValue { .. }
+        )));
     }
 
     #[test]
@@ -2206,6 +2193,7 @@ mod tests {
                 }],
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -2230,10 +2218,11 @@ mod tests {
                 ],
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
-            DiagnosticKind::ViewMetricRowWhereParseError { metric_index, raw, .. }
+            view_kind(d),
+            ConfigDiagnosticKind::ViewMetricRowWhereParseError { metric_index, raw, .. }
                 if *metric_index == 1 && raw == "justtext"
         )));
     }
@@ -2250,10 +2239,11 @@ mod tests {
                 }],
             }),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.iter().any(|d| matches!(
-            &d.kind,
-            DiagnosticKind::ViewMetricRowUnknownField { slot, field_name, .. }
+            view_kind(d),
+            ConfigDiagnosticKind::ViewMetricRowUnknownField { slot, field_name, .. }
                 if *slot == "where" && field_name == "typo_field"
         )));
     }
@@ -2270,10 +2260,11 @@ mod tests {
                 vec!["justtext".into()],
             ),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewWhereParseError { raw, .. } if raw == "justtext"
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewWhereParseError { raw, .. } if raw == "justtext"
         ));
     }
 
@@ -2287,10 +2278,11 @@ mod tests {
                 vec!["typo_field=x".into()],
             ),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewUnknownField { slot, field_name, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
                 if *slot == "where" && field_name == "typo_field"
         ));
     }
@@ -2305,6 +2297,7 @@ mod tests {
                 vec!["parent.status=open".into()],
             ),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -2319,6 +2312,7 @@ mod tests {
                 vec!["children.status=done".into()],
             ),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -2333,10 +2327,11 @@ mod tests {
                 vec!["typo.status=open".into()],
             ),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewUnknownField { slot, field_name, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
                 if *slot == "where" && field_name == "typo"
         ));
     }
@@ -2352,10 +2347,11 @@ mod tests {
                 vec!["assignee.status=open".into()],
             ),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::ViewUnknownField { field_name, .. }
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewUnknownField { field_name, .. }
                 if field_name == "assignee"
         ));
     }
@@ -2372,6 +2368,7 @@ mod tests {
                 "title",
             ),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -2386,6 +2383,7 @@ mod tests {
                 "status",
             ),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -2402,6 +2400,7 @@ mod tests {
                 "id",
             ),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
@@ -2416,12 +2415,13 @@ mod tests {
                 "nonexistent",
             ),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
             diagnostics.as_slice(),
             [d] if matches!(
-                &d.kind,
-                DiagnosticKind::ViewUnknownField { slot, field_name, .. }
+                view_kind(d),
+                ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
                 if *slot == "title" && field_name == "nonexistent"
             )
         ));
@@ -2438,12 +2438,13 @@ mod tests {
                 "effort",
             ),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
             diagnostics.as_slice(),
             [d] if matches!(
-                &d.kind,
-                DiagnosticKind::ViewFieldTypeMismatch { slot, field_name, actual_type, .. }
+                view_kind(d),
+                ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, field_name, actual_type, .. }
                 if *slot == "title" && field_name == "effort" && *actual_type == FieldType::Integer
             )
         ));
@@ -2460,12 +2461,13 @@ mod tests {
                 "parent",
             ),
             &simple_schema(),
+            test_views_path(),
         );
         assert!(matches!(
             diagnostics.as_slice(),
             [d] if matches!(
-                &d.kind,
-                DiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
+                view_kind(d),
+                ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
                 if *slot == "title" && *actual_type == FieldType::Link
             )
         ));
@@ -2485,8 +2487,10 @@ mod tests {
         let diagnostics = parse_errors_to_diagnostics(err, &view_path());
         assert_eq!(diagnostics.len(), 1);
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::FileError { path, .. } if path == &view_path()
+            &diagnostics[0].body,
+            DiagnosticBody::File(file)
+                if file.source_path == view_path()
+                    && matches!(file.kind, FileDiagnosticKind::ReadError { .. })
         ));
     }
 
@@ -2499,8 +2503,9 @@ mod tests {
         let diagnostics = parse_errors_to_diagnostics(err, &view_path());
         assert_eq!(diagnostics.len(), 1);
         assert!(matches!(
-            &diagnostics[0].kind,
-            DiagnosticKind::FileError { .. }
+            &diagnostics[0].body,
+            DiagnosticBody::File(file)
+                if matches!(file.kind, FileDiagnosticKind::ReadError { .. })
         ));
     }
 
@@ -2511,7 +2516,7 @@ mod tests {
         let diagnostics = parse_errors_to_diagnostics(err, &view_path());
         assert!(matches!(
             diagnostics.as_slice(),
-            [d] if matches!(&d.kind, DiagnosticKind::ViewDuplicateId { view_id } if view_id == "a")
+            [d] if matches!(view_kind(d), ConfigDiagnosticKind::ViewDuplicateId { view_id } if view_id == "a")
         ));
     }
 
@@ -2523,8 +2528,8 @@ mod tests {
         assert!(matches!(
             diagnostics.as_slice(),
             [d] if matches!(
-                &d.kind,
-                DiagnosticKind::ViewMissingSlot { view_id, slot, .. }
+                view_kind(d),
+                ConfigDiagnosticKind::ViewMissingSlot { view_id, slot, .. }
                 if view_id == "b" && *slot == "field"
             )
         ));
@@ -2540,6 +2545,6 @@ mod tests {
         assert_eq!(diagnostics.len(), 2);
         assert!(diagnostics
             .iter()
-            .all(|d| matches!(&d.kind, DiagnosticKind::ViewMissingSlot { .. })));
+            .all(|d| matches!(view_kind(d), ConfigDiagnosticKind::ViewMissingSlot { .. })));
     }
 }

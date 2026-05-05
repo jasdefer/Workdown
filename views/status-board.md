@@ -6,9 +6,6 @@ Cards grouped into columns by `status`.
 - [cli-add-audit](../workdown-items/cli-add-audit.md)
 - [cli-move-command](../workdown-items/cli-move-command.md)
 - [cli-set-command](../workdown-items/cli-set-command.md)
-- [code-quality](../workdown-items/code-quality.md)
-- [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md)
-- [diagnostic-variant-cleanup](../workdown-items/diagnostic-variant-cleanup.md)
 - [duration-comparison-rule](../workdown-items/duration-comparison-rule.md)
 - [frontend](../workdown-items/frontend.md)
 - [git-derived-default-generator](../workdown-items/git-derived-default-generator.md)
@@ -23,11 +20,14 @@ Cards grouped into columns by `status`.
 - [ui-build-integration](../workdown-items/ui-build-integration.md)
 
 ## in_progress
+- [code-quality](../workdown-items/code-quality.md)
+- [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md)
 - [phase-04-visualization](../workdown-items/phase-04-visualization.md)
 
 ## done
 - [adr-phase-04-architecture](../workdown-items/adr-phase-04-architecture.md)
 - [aggregate-rollup](../workdown-items/aggregate-rollup.md)
+- [diagnostic-variant-cleanup](../workdown-items/diagnostic-variant-cleanup.md)
 - [duration-field-type](../workdown-items/duration-field-type.md)
 - [field-value-native-date](../workdown-items/field-value-native-date.md)
 - [foundation](../workdown-items/foundation.md)

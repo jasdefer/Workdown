@@ -16,10 +16,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
+use crate::model::field_value::format_field_value;
 use crate::model::schema::Schema;
 use crate::model::views::{Aggregate, Bucket, View, ViewKind};
 use crate::model::{FieldValue, WorkItem};
-use crate::query::format::format_field_value;
 use crate::store::Store;
 
 use super::aggregate::compute_aggregate;

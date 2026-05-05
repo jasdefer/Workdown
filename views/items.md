@@ -7,9 +7,9 @@
 | [cli-add-audit](../workdown-items/cli-add-audit.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) |  |
 | [cli-move-command](../workdown-items/cli-move-command.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) | [cli-set-command](../workdown-items/cli-set-command.md) |
 | [cli-set-command](../workdown-items/cli-set-command.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) |  |
-| [code-quality](../workdown-items/code-quality.md) | milestone | to_do | [phase-04-visualization](../workdown-items/phase-04-visualization.md) |  |
-| [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md) | issue | to_do | [code-quality](../workdown-items/code-quality.md) |  |
-| [diagnostic-variant-cleanup](../workdown-items/diagnostic-variant-cleanup.md) | issue | to_do | [code-quality](../workdown-items/code-quality.md) |  |
+| [code-quality](../workdown-items/code-quality.md) | milestone | in_progress | [phase-04-visualization](../workdown-items/phase-04-visualization.md) |  |
+| [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md) | issue | in_progress | [code-quality](../workdown-items/code-quality.md) |  |
+| [diagnostic-variant-cleanup](../workdown-items/diagnostic-variant-cleanup.md) | issue | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [duration-comparison-rule](../workdown-items/duration-comparison-rule.md) | issue | to_do | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [duration-field-type](../workdown-items/duration-field-type.md) | issue | done | [renderers](../workdown-items/renderers.md) |  |
 | [field-value-native-date](../workdown-items/field-value-native-date.md) | issue | done | [renderers](../workdown-items/renderers.md) |  |

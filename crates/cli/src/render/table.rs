@@ -12,7 +12,7 @@ use workdown_core::model::duration::format_duration_seconds;
 use workdown_core::model::FieldValue;
 use workdown_core::view_data::{TableData, TableRow};
 
-use crate::render::common::{emit_description, id_link};
+use crate::render::markdown::{emit_description, escape_cell, id_link};
 
 /// Render a `TableData` as a Markdown string.
 ///
@@ -72,10 +72,10 @@ fn format_cell(cell: &Option<FieldValue>, column: &str, item_link_base: &str) ->
     }
 
     match value {
-        FieldValue::String(s) | FieldValue::Choice(s) => escape_cell_text(s),
+        FieldValue::String(s) | FieldValue::Choice(s) => escape_cell(s),
         FieldValue::Multichoice(values) | FieldValue::List(values) => values
             .iter()
-            .map(|v| escape_cell_text(v))
+            .map(|v| escape_cell(v))
             .collect::<Vec<_>>()
             .join(", "),
         FieldValue::Integer(n) => n.to_string(),
@@ -91,23 +91,6 @@ fn format_cell(cell: &Option<FieldValue>, column: &str, item_link_base: &str) ->
             .collect::<Vec<_>>()
             .join(", "),
     }
-}
-
-/// Neutralize the characters that would break a GFM table cell:
-/// `|` ends the cell early, and a literal newline ends the row. We turn
-/// pipes into `\|` (GFM-recognized) and newlines into `<br>`. Lone `\r`
-/// is dropped so `\r\n` collapses to one `<br>`.
-fn escape_cell_text(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        match c {
-            '|' => out.push_str(r"\|"),
-            '\n' => out.push_str("<br>"),
-            '\r' => {}
-            other => out.push(other),
-        }
-    }
-    out
 }
 
 // ── Tests ───────────────────────────────────────────────────────────

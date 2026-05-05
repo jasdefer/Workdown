@@ -18,8 +18,9 @@ use serde::Serialize;
 
 use crate::model::schema::Schema;
 use crate::model::views::{View, ViewKind};
-use crate::model::{FieldValue, WorkItemId};
+use crate::model::WorkItemId;
 use crate::store::Store;
+use crate::walker::targets_of;
 
 use super::common::{build_card, Card};
 use super::filter::filtered_items;
@@ -63,12 +64,7 @@ pub fn extract_graph(view: &View, store: &Store, schema: &Schema) -> GraphData {
     let mut edges: Vec<Edge> = Vec::new();
     let mut seen: HashSet<(WorkItemId, WorkItemId)> = HashSet::new();
     for item in &items {
-        let targets: Vec<&WorkItemId> = match item.fields.get(source_field) {
-            Some(FieldValue::Link(target)) => vec![target],
-            Some(FieldValue::Links(list)) => list.iter().collect(),
-            _ => continue,
-        };
-        for target in targets {
+        for target in targets_of(item, source_field) {
             if !filtered_ids.contains(target.as_str()) {
                 continue;
             }
@@ -118,6 +114,7 @@ mod tests {
     use super::*;
     use crate::model::schema::{FieldTypeConfig, Schema};
     use crate::model::views::{View, ViewKind};
+    use crate::model::FieldValue;
     use crate::view_data::test_support::{
         make_item, make_schema, make_store, make_store_with_files,
     };

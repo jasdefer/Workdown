@@ -1,8 +1,9 @@
-//! Shared SVG-chart helpers used by `line_chart` and `bar_chart`.
+//! Shared plotters/SVG helpers for renderers that emit charts —
+//! `bar_chart`, `line_chart`, `heatmap`, `workload`.
 //!
-//! Color palette, duration-unit picker, range padding, tick number
-//! formatting, and hex-to-RGB conversion. Renderer-specific axis logic
-//! (`AxisKind`, tick formatters, layout) stays in each renderer module.
+//! Color palette, axis kinds, duration-unit picker, range padding, tick
+//! number formatting, and hex-to-RGB conversion. Renderer-specific layout
+//! (chart dimensions, axis placement) stays in each renderer module.
 
 use chrono::{Datelike, NaiveDate};
 use plotters::style::RGBColor;
@@ -10,7 +11,7 @@ use plotters::style::RGBColor;
 use workdown_core::model::duration::format_duration_seconds;
 use workdown_core::view_data::AggregateValue;
 
-use super::common::format_number;
+use super::markdown::format_number;
 
 /// Color-blind-safe categorical palette by Okabe & Ito (2008).
 ///
@@ -165,7 +166,7 @@ pub fn axis_label(field: &str, kind: AxisKind) -> String {
 ///
 /// Plotters generates floating-point tick values that don't always have
 /// clean decimal expansions (`2.6` arrives as `2.5999999999999996`).
-/// `format_number` from `render::common` is for treemap-style sums and
+/// `format_number` from `render::markdown` is for treemap-style sums and
 /// passes those through verbatim — fine there, ugly on a chart axis.
 pub fn format_compact_number(value: f64) -> String {
     if value.fract() == 0.0 && value.abs() < 1e15 {

@@ -17,13 +17,13 @@
 //! unchanged.
 //!
 //! The block-builder, label sanitizer, and unplaced-footer helpers live
-//! in [`super::gantt_common`] and are shared with sibling Gantt-shaped
+//! in [`super::mermaid_gantt`] and are shared with sibling Gantt-shaped
 //! renderers (`render_gantt_by_initiative`, etc.).
 
 use workdown_core::view_data::GanttData;
 
-use super::gantt_common::{render_gantt_block, render_unplaced_footer};
-use crate::render::common::emit_description;
+use super::mermaid_gantt::{render_gantt_block, render_unplaced_footer};
+use crate::render::markdown::emit_description;
 
 /// Render a `GanttData` as a Markdown string.
 ///
@@ -44,22 +44,13 @@ pub fn render_gantt(data: &GanttData, description: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_fixtures::card;
     use super::*;
     use chrono::NaiveDate;
-    use workdown_core::model::WorkItemId;
-    use workdown_core::view_data::{Card, GanttBar, GanttData, UnplacedCard, UnplacedReason};
+    use workdown_core::view_data::{GanttBar, GanttData, UnplacedCard, UnplacedReason};
 
     fn ymd(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).unwrap()
-    }
-
-    fn card(id: &str, title: Option<&str>) -> Card {
-        Card {
-            id: WorkItemId::from(id.to_owned()),
-            title: title.map(str::to_owned),
-            fields: vec![],
-            body: String::new(),
-        }
     }
 
     fn bar(id: &str, title: Option<&str>, start: NaiveDate, end: NaiveDate) -> GanttBar {

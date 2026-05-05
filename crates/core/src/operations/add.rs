@@ -5,9 +5,10 @@ use std::path::{Path, PathBuf};
 
 use crate::generators::{resolve_default, resolve_template_tokens};
 use crate::model::config::Config;
-use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
+use crate::model::diagnostic::{Diagnostic, DiagnosticBody, FilesDiagnosticKind};
 use crate::model::schema::{Schema, Severity};
 use crate::model::template::TemplateError;
+use crate::model::work_item::is_valid_id;
 use crate::model::WorkItemId;
 use crate::operations::templates::load_template_by_name;
 use crate::parser;
@@ -214,7 +215,7 @@ fn derive_slug(field_values: &HashMap<String, serde_yaml::Value>) -> Result<Stri
                 id: format!("{id_value:?}"),
             })?
             .to_owned();
-        if !parser::is_valid_id(&id_string) {
+        if !is_valid_id(&id_string) {
             return Err(AddError::InvalidId { id: id_string });
         }
         return Ok(id_string);
@@ -267,7 +268,7 @@ fn slugify(title: &str) -> Result<String, AddError> {
     // `is_valid_id` now accepts digit-first ids.
     let trimmed = collapsed.trim_start_matches('-').trim_end_matches('-');
 
-    if trimmed.is_empty() || !parser::is_valid_id(trimmed) {
+    if trimmed.is_empty() || !is_valid_id(trimmed) {
         return Err(AddError::InvalidSlug {
             title: title.to_owned(),
             reason: "title must contain at least one alphanumeric character".to_owned(),
@@ -312,62 +313,15 @@ fn build_frontmatter_yaml(
 
 /// Check whether a diagnostic refers to a specific work item.
 fn is_diagnostic_for_item(diagnostic: &Diagnostic, item_id: &WorkItemId) -> bool {
-    match &diagnostic.kind {
-        DiagnosticKind::InvalidFieldValue {
-            item_id: diagnostic_item_id,
-            ..
+    match &diagnostic.body {
+        DiagnosticBody::Item(item) => item.item_id == *item_id,
+        DiagnosticBody::Files(files) => matches!(
+            &files.kind,
+            FilesDiagnosticKind::DuplicateId { id } if id == item_id
+        ),
+        DiagnosticBody::File(_) | DiagnosticBody::Collection(_) | DiagnosticBody::Config(_) => {
+            false
         }
-        | DiagnosticKind::MissingRequired {
-            item_id: diagnostic_item_id,
-            ..
-        }
-        | DiagnosticKind::UnknownField {
-            item_id: diagnostic_item_id,
-            ..
-        }
-        | DiagnosticKind::BrokenLink {
-            item_id: diagnostic_item_id,
-            ..
-        }
-        | DiagnosticKind::RuleViolation {
-            item_id: diagnostic_item_id,
-            ..
-        }
-        | DiagnosticKind::AggregateChainConflict {
-            item_id: diagnostic_item_id,
-            ..
-        } => diagnostic_item_id == item_id,
-        DiagnosticKind::AggregateMissingValue { leaf_id, .. } => leaf_id == item_id,
-        DiagnosticKind::DuplicateId { id, .. } => id == item_id,
-        // File errors, count violations, and view-level diagnostics don't
-        // attach to an individual item.
-        DiagnosticKind::FileError { .. }
-        | DiagnosticKind::Cycle { .. }
-        | DiagnosticKind::CountViolation { .. }
-        | DiagnosticKind::ViewDuplicateId { .. }
-        | DiagnosticKind::ViewMissingSlot { .. }
-        | DiagnosticKind::ViewUnknownField { .. }
-        | DiagnosticKind::ViewFieldTypeMismatch { .. }
-        | DiagnosticKind::ViewWhereParseError { .. }
-        | DiagnosticKind::ViewBucketWithoutDateAxis { .. }
-        | DiagnosticKind::ViewCountAggregateWithValue { .. }
-        | DiagnosticKind::ViewAggregateTypeMismatch { .. }
-        | DiagnosticKind::ViewGroupByCyclic { .. }
-        | DiagnosticKind::ViewGroupByInverseNotAllowed { .. }
-        | DiagnosticKind::ViewGanttEndOrDurationRequired { .. }
-        | DiagnosticKind::ViewGanttEndAndDurationConflict { .. }
-        | DiagnosticKind::ViewGanttAfterRequiresDuration { .. }
-        | DiagnosticKind::ViewGanttAfterWithEndConflict { .. }
-        | DiagnosticKind::ViewGanttAfterCyclic { .. }
-        | DiagnosticKind::ViewGanttAfterInverseNotAllowed { .. }
-        | DiagnosticKind::ViewGanttRootLinkCyclic { .. }
-        | DiagnosticKind::ViewGanttRootLinkInverseNotAllowed { .. }
-        | DiagnosticKind::ViewGanttDepthLinkCyclic { .. }
-        | DiagnosticKind::ViewGanttDepthLinkInverseNotAllowed { .. }
-        | DiagnosticKind::ViewMetricRowUnknownField { .. }
-        | DiagnosticKind::ViewMetricRowAggregateTypeMismatch { .. }
-        | DiagnosticKind::ViewMetricRowCountWithValue { .. }
-        | DiagnosticKind::ViewMetricRowWhereParseError { .. } => false,
     }
 }
 

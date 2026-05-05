@@ -5,6 +5,7 @@
 
 use std::cmp::Ordering;
 
+use crate::model::field_value::format_field_value_bracketed;
 use crate::model::schema::{Assertion, AssertionOperator, ConditionValue, NegationValue};
 use crate::model::{FieldValue, WorkItem};
 
@@ -120,7 +121,7 @@ fn check_operator(
             {
                 return Some(format!(
                     "'{field_ref}' value '{}' is not one of {:?}",
-                    format_field_value(field_value),
+                    format_field_value_bracketed(field_value),
                     format_condition_values(allowed),
                 ));
             }
@@ -141,7 +142,7 @@ fn check_operator(
             if matches {
                 return Some(format!(
                     "'{field_ref}' value '{}' is not allowed",
-                    format_field_value(field_value),
+                    format_field_value_bracketed(field_value),
                 ));
             }
         }
@@ -264,11 +265,17 @@ fn resolve_single_value<'a>(
     }
 }
 
-/// Compare two field values for ordering.
+/// Compare two field values for rule assertions (`gt`, `lt`, etc.).
 ///
-/// Supports Integer, Float, Date, String, Boolean.
-/// Does NOT support Choice, Multichoice, List, Link, Links (returns None).
+/// Returns `None` for pairs without a defined ordering (Choice,
+/// Multichoice, List, Link, Links) so the assertion fails loudly
+/// instead of silently lex-comparing.
+///
+/// Supports Integer, Float, Date, Duration, String, Boolean.
 /// Cross-type Integer vs Float is promoted to f64.
+///
+/// See also `query::sort::compare_field_values`, which provides a
+/// total order for the sort engine. Different intent — do not merge.
 pub(crate) fn compare_field_values(left: &FieldValue, right: &FieldValue) -> Option<Ordering> {
     match (left, right) {
         (FieldValue::Integer(left), FieldValue::Integer(right)) => Some(left.cmp(right)),
@@ -284,25 +291,6 @@ pub(crate) fn compare_field_values(left: &FieldValue, right: &FieldValue) -> Opt
 }
 
 // ── Formatting helpers ──────────────────────────────────────────────
-
-fn format_field_value(field_value: &FieldValue) -> String {
-    match field_value {
-        FieldValue::String(value) | FieldValue::Choice(value) => value.clone(),
-        FieldValue::Date(date) => date.format("%Y-%m-%d").to_string(),
-        FieldValue::Duration(seconds) => crate::model::duration::format_duration_seconds(*seconds),
-        FieldValue::Link(id) => id.to_string(),
-        FieldValue::Integer(value) => value.to_string(),
-        FieldValue::Float(value) => value.to_string(),
-        FieldValue::Boolean(value) => value.to_string(),
-        FieldValue::Multichoice(values) | FieldValue::List(values) => {
-            format!("[{}]", values.join(", "))
-        }
-        FieldValue::Links(ids) => {
-            let strs: Vec<&str> = ids.iter().map(|id| id.as_str()).collect();
-            format!("[{}]", strs.join(", "))
-        }
-    }
-}
 
 fn format_condition_values(condition_values: &[ConditionValue]) -> Vec<String> {
     condition_values

@@ -16,7 +16,7 @@ use std::fmt::Write as _;
 use workdown_core::model::duration::format_duration_seconds;
 use workdown_core::view_data::{SizeValue, TreemapData, TreemapNode};
 
-use crate::render::common::{card_link, emit_description, format_number, id_link};
+use crate::render::markdown::{card_link, emit_description, format_number, id_link};
 
 /// Render a `TreemapData` as a Markdown string.
 ///
@@ -137,18 +137,9 @@ fn format_size(size: SizeValue) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_fixtures::{card, unplaced_missing};
     use super::*;
-    use workdown_core::model::WorkItemId;
-    use workdown_core::view_data::{Card, TreemapData, TreemapNode, UnplacedCard, UnplacedReason};
-
-    fn card(id: &str, title: Option<&str>) -> Card {
-        Card {
-            id: WorkItemId::from(id.to_owned()),
-            title: title.map(str::to_owned),
-            fields: vec![],
-            body: String::new(),
-        }
-    }
+    use workdown_core::view_data::{TreemapData, TreemapNode, UnplacedCard};
 
     fn leaf(id: &str, title: Option<&str>, size: SizeValue) -> TreemapNode {
         TreemapNode {
@@ -193,15 +184,6 @@ mod tests {
             card: None,
             size,
             children,
-        }
-    }
-
-    fn unplaced(id: &str, title: Option<&str>, field: &str) -> UnplacedCard {
-        UnplacedCard {
-            card: card(id, title),
-            reason: UnplacedReason::MissingValue {
-                field: field.to_owned(),
-            },
         }
     }
 
@@ -370,8 +352,8 @@ mod tests {
                 "effort",
                 root,
                 vec![
-                    unplaced("missing-1", Some("First missing"), "effort"),
-                    unplaced("missing-2", None, "effort"),
+                    unplaced_missing("missing-1", Some("First missing"), "effort"),
+                    unplaced_missing("missing-2", None, "effort"),
                 ],
             ),
             "../workdown-items",
@@ -414,7 +396,7 @@ mod tests {
             &data(
                 "effort",
                 root,
-                vec![unplaced("orphan", Some("Orphan"), "effort")],
+                vec![unplaced_missing("orphan", Some("Orphan"), "effort")],
             ),
             "../workdown-items",
             "Hierarchical breakdown of `effort` summed up the `parent` chain.",

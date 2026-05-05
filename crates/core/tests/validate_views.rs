@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 use workdown_core::model::config::Config;
-use workdown_core::model::diagnostic::{Diagnostic, DiagnosticKind};
+use workdown_core::model::diagnostic::{ConfigDiagnosticKind, Diagnostic, DiagnosticBody};
 use workdown_core::operations::validate::validate;
 use workdown_core::parser::config::load_config;
 
@@ -58,23 +58,9 @@ defaults:
     (tmp, config, root)
 }
 
-/// True iff the diagnostic kind is one of the view-level variants produced
-/// by `views_check::evaluate` or `parse_errors_to_diagnostics`.
+/// True iff the diagnostic is config-scoped (every view-level diagnostic is).
 fn is_view_diagnostic(diagnostic: &Diagnostic) -> bool {
-    matches!(
-        diagnostic.kind,
-        DiagnosticKind::ViewDuplicateId { .. }
-            | DiagnosticKind::ViewMissingSlot { .. }
-            | DiagnosticKind::ViewUnknownField { .. }
-            | DiagnosticKind::ViewFieldTypeMismatch { .. }
-            | DiagnosticKind::ViewWhereParseError { .. }
-            | DiagnosticKind::ViewBucketWithoutDateAxis { .. }
-            | DiagnosticKind::ViewCountAggregateWithValue { .. }
-            | DiagnosticKind::ViewMetricRowUnknownField { .. }
-            | DiagnosticKind::ViewMetricRowAggregateTypeMismatch { .. }
-            | DiagnosticKind::ViewMetricRowCountWithValue { .. }
-            | DiagnosticKind::ViewMetricRowWhereParseError { .. }
-    )
+    matches!(diagnostic.body, DiagnosticBody::Config(_))
 }
 
 /// Shared schema: `status` (choice) so a valid board view can reference it.
@@ -142,9 +128,13 @@ views:
     let view_level = view_diagnostics(&diagnostics);
     assert_eq!(view_level.len(), 1, "got: {view_level:?}");
     assert!(matches!(
-        &view_level[0].kind,
-        DiagnosticKind::ViewUnknownField { view_id, field_name, .. }
-            if view_id == "bad-board" && field_name == "nonexistent"
+        &view_level[0].body,
+        DiagnosticBody::Config(c)
+            if matches!(
+                &c.kind,
+                ConfigDiagnosticKind::ViewUnknownField { view_id, field_name, .. }
+                if view_id == "bad-board" && field_name == "nonexistent"
+            )
     ));
 }
 
@@ -167,9 +157,13 @@ views:
     let view_level = view_diagnostics(&diagnostics);
     assert_eq!(view_level.len(), 1, "got: {view_level:?}");
     assert!(matches!(
-        &view_level[0].kind,
-        DiagnosticKind::ViewMissingSlot { view_id, slot, .. }
-            if view_id == "incomplete" && *slot == "field"
+        &view_level[0].body,
+        DiagnosticBody::Config(c)
+            if matches!(
+                &c.kind,
+                ConfigDiagnosticKind::ViewMissingSlot { view_id, slot, .. }
+                if view_id == "incomplete" && *slot == "field"
+            )
     ));
 }
 

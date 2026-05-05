@@ -10,12 +10,12 @@
 //!
 //! No per-initiative section grouping: each chart is already scoped to
 //! one initiative, so the inner block is flat. Block formatting,
-//! sanitization, and footer reuse [`super::gantt_common`].
+//! sanitization, and footer reuse [`super::mermaid_gantt`].
 
 use workdown_core::view_data::GanttByInitiativeData;
 
-use super::gantt_common::{label_for, render_gantt_block, render_unplaced_footer};
-use crate::render::common::emit_description;
+use super::mermaid_gantt::{label_for, render_gantt_block, render_unplaced_footer};
+use crate::render::markdown::emit_description;
 
 /// Render a `GanttByInitiativeData` as a Markdown string.
 ///
@@ -46,24 +46,15 @@ pub fn render_gantt_by_initiative(data: &GanttByInitiativeData, description: &st
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_fixtures::card;
     use super::*;
     use chrono::NaiveDate;
-    use workdown_core::model::WorkItemId;
     use workdown_core::view_data::{
-        Card, GanttBar, GanttByInitiativeData, Initiative, UnplacedCard, UnplacedReason,
+        GanttBar, GanttByInitiativeData, Initiative, UnplacedCard, UnplacedReason,
     };
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
-    }
-
-    fn card(id: &str, title: Option<&str>) -> Card {
-        Card {
-            id: WorkItemId::from(id.to_owned()),
-            title: title.map(str::to_owned),
-            fields: vec![],
-            body: String::new(),
-        }
     }
 
     fn bar(id: &str, title: Option<&str>, start: NaiveDate, end: NaiveDate) -> GanttBar {

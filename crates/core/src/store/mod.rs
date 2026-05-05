@@ -17,10 +17,13 @@ pub(crate) use coerce::coerce_fields;
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::model::diagnostic::{Diagnostic, DiagnosticKind};
+use crate::model::diagnostic::{
+    Diagnostic, FileDiagnosticKind, FilesDiagnosticKind, ItemDiagnosticKind,
+};
 use crate::model::schema::{Schema, Severity};
-use crate::model::{FieldValue, WorkItem, WorkItemId};
+use crate::model::{WorkItem, WorkItemId};
 use crate::parser;
+use crate::walker::targets_of;
 
 // ── Store ────────────────────────────────────────────────────────────
 
@@ -71,26 +74,24 @@ impl Store {
             let raw = match parser::parse_work_item_file(path) {
                 Ok(raw) => raw,
                 Err(e) => {
-                    diagnostics.push(Diagnostic {
-                        severity: Severity::Error,
-                        kind: DiagnosticKind::FileError {
-                            path: path.clone(),
+                    diagnostics.push(Diagnostic::file(
+                        Severity::Error,
+                        path.clone(),
+                        FileDiagnosticKind::ReadError {
                             detail: e.to_string(),
                         },
-                    });
+                    ));
                     continue;
                 }
             };
 
             // Check for duplicate IDs.
             if let Some(first_path) = seen_ids.get(&raw.id) {
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Error,
-                    kind: DiagnosticKind::DuplicateId {
-                        id: raw.id.clone(),
-                        paths: vec![first_path.clone(), path.clone()],
-                    },
-                });
+                diagnostics.push(Diagnostic::files(
+                    Severity::Error,
+                    vec![first_path.clone(), path.clone()],
+                    FilesDiagnosticKind::DuplicateId { id: raw.id.clone() },
+                ));
                 continue;
             }
             seen_ids.insert(raw.id.clone(), path.clone());
@@ -115,23 +116,18 @@ impl Store {
             HashMap::new();
 
         for item in items.values() {
-            for (field_name, field_value) in &item.fields {
-                let targets: Vec<&WorkItemId> = match field_value {
-                    FieldValue::Link(target) => vec![target],
-                    FieldValue::Links(targets) => targets.iter().collect(),
-                    _ => continue,
-                };
-
-                for target_id in targets {
+            for field_name in item.fields.keys() {
+                for target_id in targets_of(item, field_name) {
                     if !items.contains_key(target_id.as_str()) {
-                        diagnostics.push(Diagnostic {
-                            severity: Severity::Error,
-                            kind: DiagnosticKind::BrokenLink {
-                                item_id: item.id.clone(),
+                        diagnostics.push(Diagnostic::item(
+                            Severity::Error,
+                            item.source_path.clone(),
+                            item.id.clone(),
+                            ItemDiagnosticKind::BrokenLink {
                                 field: field_name.clone(),
                                 target_id: target_id.clone(),
                             },
-                        });
+                        ));
                     }
 
                     reverse_links
@@ -240,7 +236,9 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::diagnostic::DiagnosticBody;
     use crate::model::schema::{FieldDefinition, FieldTypeConfig};
+    use crate::model::FieldValue;
     use indexmap::IndexMap;
     use std::fs;
     use std::path::PathBuf;
@@ -368,7 +366,7 @@ mod tests {
         assert!(store
             .diagnostics()
             .iter()
-            .any(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::FileError { .. })));
+            .any(|diagnostic| matches!(&diagnostic.body, DiagnosticBody::File(_))));
     }
 
     #[test]
@@ -383,8 +381,9 @@ mod tests {
         assert_eq!(store.len(), 1); // item still loaded
         assert!(store.has_errors());
         assert!(store.diagnostics().iter().any(|diagnostic| matches!(
-            &diagnostic.kind,
-            DiagnosticKind::MissingRequired { field, .. } if field == "status"
+            &diagnostic.body,
+            DiagnosticBody::Item(item)
+                if matches!(&item.kind, ItemDiagnosticKind::MissingRequired { field } if field == "status")
         )));
     }
 
@@ -399,8 +398,9 @@ mod tests {
 
         assert_eq!(store.len(), 1);
         assert!(store.diagnostics().iter().any(|diagnostic| matches!(
-            &diagnostic.kind,
-            DiagnosticKind::UnknownField { field, .. } if field == "bogus"
+            &diagnostic.body,
+            DiagnosticBody::Item(item)
+                if matches!(&item.kind, ItemDiagnosticKind::UnknownField { field } if field == "bogus")
         )));
     }
 
@@ -424,8 +424,9 @@ mod tests {
         assert_eq!(item.fields["title"], FieldValue::String("First".into()));
 
         assert!(store.diagnostics().iter().any(|diagnostic| matches!(
-            &diagnostic.kind,
-            DiagnosticKind::DuplicateId { id, .. } if id == "task-a"
+            &diagnostic.body,
+            DiagnosticBody::Files(files)
+                if matches!(&files.kind, FilesDiagnosticKind::DuplicateId { id } if id == "task-a")
         )));
     }
 
@@ -441,8 +442,9 @@ mod tests {
         let store = Store::load(&path, &schema).unwrap();
 
         assert!(store.diagnostics().iter().any(|diagnostic| matches!(
-            &diagnostic.kind,
-            DiagnosticKind::BrokenLink { target_id, .. } if target_id == "nonexistent"
+            &diagnostic.body,
+            DiagnosticBody::Item(item)
+                if matches!(&item.kind, ItemDiagnosticKind::BrokenLink { target_id, .. } if target_id == "nonexistent")
         )));
     }
 
@@ -458,7 +460,13 @@ mod tests {
         let broken: Vec<_> = store
             .diagnostics()
             .iter()
-            .filter(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::BrokenLink { .. }))
+            .filter(|diagnostic| {
+                matches!(
+                    &diagnostic.body,
+                    DiagnosticBody::Item(item)
+                        if matches!(&item.kind, ItemDiagnosticKind::BrokenLink { .. })
+                )
+            })
             .collect();
         assert_eq!(broken.len(), 2);
     }
@@ -475,10 +483,11 @@ mod tests {
         let schema = test_schema();
         let store = Store::load(&path, &schema).unwrap();
 
-        assert!(!store
-            .diagnostics()
-            .iter()
-            .any(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::BrokenLink { .. })));
+        assert!(!store.diagnostics().iter().any(|diagnostic| matches!(
+            &diagnostic.body,
+            DiagnosticBody::Item(item)
+                if matches!(&item.kind, ItemDiagnosticKind::BrokenLink { .. })
+        )));
     }
 
     // ── Inverse relations ────────────────────────────────────────────
@@ -556,7 +565,7 @@ mod tests {
         let parse_errors: Vec<_> = store
             .diagnostics()
             .iter()
-            .filter(|diagnostic| matches!(&diagnostic.kind, DiagnosticKind::FileError { .. }))
+            .filter(|diagnostic| matches!(&diagnostic.body, DiagnosticBody::File(_)))
             .collect();
         assert_eq!(parse_errors.len(), 2);
     }

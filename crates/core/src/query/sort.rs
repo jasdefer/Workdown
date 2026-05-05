@@ -59,10 +59,14 @@ pub fn sort_items(items: &mut [&WorkItem], specs: &[SortSpec], schema: &Schema) 
 
 // ── Field value comparison ──────────────────────────────────────────
 
-/// Compare two field values, using the field type for type-aware ordering.
-///
-/// Missing values sort last: `(None, Some(_))` → `Greater`,
+/// Compare two field values for the sort engine. Always returns an
+/// `Ordering`, with lex fallback for unsupported pairs and null-last
+/// for missing values: `(None, Some(_))` → `Greater`,
 /// `(Some(_), None)` → `Less`.
+///
+/// See also `rules::assertion::compare_field_values`, which returns
+/// `Option<Ordering>` so unsupported pairs fail rule assertions loudly
+/// instead of silently lex-comparing. Different intent — do not merge.
 fn compare_field_values(
     value_a: Option<&FieldValue>,
     value_b: Option<&FieldValue>,

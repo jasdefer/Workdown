@@ -31,11 +31,11 @@ use plotters::prelude::*;
 use workdown_core::model::duration::format_duration_seconds;
 use workdown_core::view_data::{UnplacedReason, WorkloadData, WorkloadUnit};
 
-use crate::render::chart_common::{
+use crate::render::markdown::{card_link, emit_description, format_number};
+use crate::render::svg_chart::{
     format_compact_number, hex_to_rgb, pad_extent, pick_duration_unit, strip_svg_blank_lines,
     OKABE_ITO,
 };
-use crate::render::common::{card_link, emit_description, format_number};
 
 /// Plotters' segmented coords append one extra "Last" segment past the
 /// data range; we need to budget pixel width to draw `n + 1` bar slots
@@ -300,25 +300,16 @@ fn label_step_for(n: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_fixtures::{card, unplaced_missing};
     use super::*;
 
     use chrono::NaiveDate;
-    use workdown_core::model::WorkItemId;
     use workdown_core::view_data::{
-        Card, UnplacedCard, UnplacedReason, WorkloadBucket, WorkloadData, WorkloadUnit,
+        UnplacedCard, UnplacedReason, WorkloadBucket, WorkloadData, WorkloadUnit,
     };
 
     fn ymd(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).unwrap()
-    }
-
-    fn card(id: &str, title: Option<&str>) -> Card {
-        Card {
-            id: WorkItemId::from(id.to_owned()),
-            title: title.map(str::to_owned),
-            fields: vec![],
-            body: String::new(),
-        }
     }
 
     fn data(
@@ -338,15 +329,6 @@ mod tests {
 
     fn bucket(date: NaiveDate, total: f64) -> WorkloadBucket {
         WorkloadBucket { date, total }
-    }
-
-    fn unplaced_missing(id: &str, title: Option<&str>, field: &str) -> UnplacedCard {
-        UnplacedCard {
-            card: card(id, title),
-            reason: UnplacedReason::MissingValue {
-                field: field.to_owned(),
-            },
-        }
     }
 
     fn unplaced_invalid_range(id: &str) -> UnplacedCard {

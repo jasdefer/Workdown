@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use chrono::NaiveDate;
 use regex::Regex;
 
-use crate::model::diagnostic::{Diagnostic, DiagnosticKind, FieldValueError};
+use crate::model::diagnostic::{Diagnostic, FieldValueError, ItemDiagnosticKind};
 use crate::model::schema::{FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity};
 use crate::model::{FieldValue, WorkItemId};
 use crate::parser::RawWorkItem;
@@ -18,7 +18,7 @@ use crate::parser::RawWorkItem;
 ///
 /// Returns the successfully coerced fields and any diagnostics.
 /// Fields that fail coercion are omitted from the map; required fields
-/// that are absent produce a [`DiagnosticKind::MissingRequired`].
+/// that are absent produce an [`ItemDiagnosticKind::MissingRequired`].
 pub(crate) fn coerce_fields(
     raw: &RawWorkItem,
     schema: &Schema,
@@ -38,14 +38,15 @@ pub(crate) fn coerce_fields(
                     fields.insert(name.clone(), field_value);
                 }
                 Err(detail) => {
-                    diagnostics.push(Diagnostic {
-                        severity: Severity::Error,
-                        kind: DiagnosticKind::InvalidFieldValue {
-                            item_id: raw.id.clone(),
+                    diagnostics.push(Diagnostic::item(
+                        Severity::Error,
+                        raw.source_path.clone(),
+                        raw.id.clone(),
+                        ItemDiagnosticKind::InvalidFieldValue {
                             field: name.clone(),
                             detail,
                         },
-                    });
+                    ));
                 }
             },
             _ => {
@@ -54,13 +55,14 @@ pub(crate) fn coerce_fields(
                 // rollup pass, so the post-compute pass in `rollup::run`
                 // emits `MissingRequired` only for items that remain blank.
                 if def.required && def.aggregate.is_none() {
-                    diagnostics.push(Diagnostic {
-                        severity: Severity::Error,
-                        kind: DiagnosticKind::MissingRequired {
-                            item_id: raw.id.clone(),
+                    diagnostics.push(Diagnostic::item(
+                        Severity::Error,
+                        raw.source_path.clone(),
+                        raw.id.clone(),
+                        ItemDiagnosticKind::MissingRequired {
                             field: name.clone(),
                         },
-                    });
+                    ));
                 }
             }
         }
@@ -69,13 +71,14 @@ pub(crate) fn coerce_fields(
     // Warn about fields in frontmatter that aren't in the schema.
     for name in raw.frontmatter.keys() {
         if !schema.fields.contains_key(name) {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Warning,
-                kind: DiagnosticKind::UnknownField {
-                    item_id: raw.id.clone(),
+            diagnostics.push(Diagnostic::item(
+                Severity::Warning,
+                raw.source_path.clone(),
+                raw.id.clone(),
+                ItemDiagnosticKind::UnknownField {
                     field: name.clone(),
                 },
-            });
+            ));
         }
     }
 
@@ -394,6 +397,7 @@ fn yaml_type_name(value: &serde_yaml::Value) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::diagnostic::DiagnosticBody;
     use crate::model::schema::{FieldDefinition, FieldTypeConfig};
     use indexmap::IndexMap;
     use std::path::PathBuf;
@@ -448,11 +452,14 @@ mod tests {
     /// Assert that diagnostics contain exactly one InvalidFieldValue with the expected error kind.
     fn assert_field_error(diagnostics: &[Diagnostic], expected: fn(&FieldValueError) -> bool) {
         assert_eq!(diagnostics.len(), 1, "expected exactly one diagnostic");
-        match &diagnostics[0].kind {
-            DiagnosticKind::InvalidFieldValue { detail, .. } => {
-                assert!(expected(detail), "unexpected error detail: {detail:?}");
-            }
-            other => panic!("expected InvalidFieldValue, got {other:?}"),
+        match &diagnostics[0].body {
+            DiagnosticBody::Item(item) => match &item.kind {
+                ItemDiagnosticKind::InvalidFieldValue { detail, .. } => {
+                    assert!(expected(detail), "unexpected error detail: {detail:?}");
+                }
+                other => panic!("expected InvalidFieldValue, got {other:?}"),
+            },
+            other => panic!("expected Item body, got {other:?}"),
         }
     }
 
@@ -1057,6 +1064,19 @@ mod tests {
 
     // ── Cross-cutting concerns ───────────────────────────────────────
 
+    /// Match against an Item diagnostic's inner kind, returning true if both
+    /// the body is Item and the inner kind matches the predicate.
+    fn matches_item_kind(
+        diagnostic: &Diagnostic,
+        predicate: impl Fn(&ItemDiagnosticKind) -> bool,
+    ) -> bool {
+        if let DiagnosticBody::Item(item) = &diagnostic.body {
+            predicate(&item.kind)
+        } else {
+            false
+        }
+    }
+
     #[test]
     fn unknown_field_produces_warning() {
         let s = schema(vec![(
@@ -1072,10 +1092,9 @@ mod tests {
         assert_eq!(fields.len(), 1);
         assert!(diagnostics.iter().any(|diagnostic| {
             diagnostic.severity == Severity::Warning
-                && matches!(
-                    &diagnostic.kind,
-                    DiagnosticKind::UnknownField { field, .. } if field == "bogus"
-                )
+                && matches_item_kind(diagnostic, |kind| {
+                    matches!(kind, ItemDiagnosticKind::UnknownField { field } if field == "bogus")
+                })
         }));
     }
 
@@ -1088,9 +1107,9 @@ mod tests {
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
         assert!(fields.is_empty());
-        assert!(diagnostics.iter().any(|diagnostic| matches!(
-            &diagnostic.kind,
-            DiagnosticKind::MissingRequired { field, .. } if field == "title"
+        assert!(diagnostics.iter().any(|diagnostic| matches_item_kind(
+            diagnostic,
+            |kind| matches!(kind, ItemDiagnosticKind::MissingRequired { field } if field == "title")
         )));
     }
 
@@ -1103,9 +1122,9 @@ mod tests {
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
         assert!(fields.get("title").is_none());
-        assert!(diagnostics.iter().any(|diagnostic| matches!(
-            &diagnostic.kind,
-            DiagnosticKind::MissingRequired { field, .. } if field == "title"
+        assert!(diagnostics.iter().any(|diagnostic| matches_item_kind(
+            diagnostic,
+            |kind| matches!(kind, ItemDiagnosticKind::MissingRequired { field } if field == "title")
         )));
     }
 
