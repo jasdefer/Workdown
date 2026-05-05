@@ -8,9 +8,9 @@ use std::path::Path;
 use indexmap::IndexMap;
 
 use crate::model::schema::{
-    AggregateFunction, Assertion, Condition, ConditionValue, CountConstraint, DefaultValue,
-    FieldDefinition, FieldType, FieldTypeConfig, Generator, NegationValue, RawFieldDefinition,
-    RawRule, RawSchema, Rule, Schema,
+    is_defined_inverse, is_relation_anchor, AggregateFunction, Assertion, Condition,
+    ConditionValue, CountConstraint, DefaultValue, FieldDefinition, FieldType, FieldTypeConfig,
+    Generator, NegationValue, RawFieldDefinition, RawRule, RawSchema, Rule, Schema,
 };
 
 // ── Public API ────────────────────────────────────────────────────────
@@ -979,27 +979,6 @@ fn validate_field_reference(
             ));
         }
     }
-}
-
-/// Check if a name is a defined inverse relation in the schema.
-///
-/// Returns `true` when any link/links field has `inverse: <name>`.
-fn is_defined_inverse(name: &str, fields: &IndexMap<String, FieldDefinition>) -> bool {
-    fields.values().any(|f| f.inverse() == Some(name))
-}
-
-/// True iff `name` is a valid anchor for a relation traversal — either a
-/// forward link/links field, or an inverse name declared by one.
-///
-/// Shared by schema rule-reference validation (dot-notation left-hand side)
-/// and cross-file view validation (`views_check`). Operates on the field map
-/// directly because the schema parser runs before `Schema::inverse_table` is
-/// built.
-pub(crate) fn is_relation_anchor(name: &str, fields: &IndexMap<String, FieldDefinition>) -> bool {
-    let is_link_field = fields
-        .get(name)
-        .is_some_and(|f| matches!(f.field_type(), FieldType::Link | FieldType::Links));
-    is_link_field || is_defined_inverse(name, fields)
 }
 
 /// Check that quantifiers (all/any/none) in conditions are only used

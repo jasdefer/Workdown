@@ -4,10 +4,10 @@
 //! formatting into a single `execute` call. This is the API that
 //! other commands (board, tree, graph) will use programmatically.
 
+use crate::model::field_value::format_field_value;
 use crate::model::schema::Schema;
 use crate::model::WorkItem;
 use crate::query::eval::{matches_predicate, QueryEvalError};
-use crate::query::format::format_field_value;
 use crate::query::sort::sort_items;
 use crate::query::types::{QueryRequest, QueryResult, QueryRow};
 use crate::store::Store;

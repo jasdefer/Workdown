@@ -8,6 +8,7 @@ use crate::model::config::Config;
 use crate::model::diagnostic::{Diagnostic, DiagnosticBody, FilesDiagnosticKind};
 use crate::model::schema::{Schema, Severity};
 use crate::model::template::TemplateError;
+use crate::model::work_item::is_valid_id;
 use crate::model::WorkItemId;
 use crate::operations::templates::load_template_by_name;
 use crate::parser;
@@ -214,7 +215,7 @@ fn derive_slug(field_values: &HashMap<String, serde_yaml::Value>) -> Result<Stri
                 id: format!("{id_value:?}"),
             })?
             .to_owned();
-        if !parser::is_valid_id(&id_string) {
+        if !is_valid_id(&id_string) {
             return Err(AddError::InvalidId { id: id_string });
         }
         return Ok(id_string);
@@ -267,7 +268,7 @@ fn slugify(title: &str) -> Result<String, AddError> {
     // `is_valid_id` now accepts digit-first ids.
     let trimmed = collapsed.trim_start_matches('-').trim_end_matches('-');
 
-    if trimmed.is_empty() || !parser::is_valid_id(trimmed) {
+    if trimmed.is_empty() || !is_valid_id(trimmed) {
         return Err(AddError::InvalidSlug {
             title: title.to_owned(),
             reason: "title must contain at least one alphanumeric character".to_owned(),

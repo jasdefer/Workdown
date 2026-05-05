@@ -40,10 +40,10 @@ use std::collections::{HashMap, VecDeque};
 use chrono::NaiveDate;
 use serde::Serialize;
 
+use crate::model::field_value::format_field_value;
 use crate::model::schema::{FieldTypeConfig, Schema};
 use crate::model::views::{View, ViewKind};
 use crate::model::{FieldValue, WorkItem};
-use crate::query::format::format_field_value;
 use crate::store::Store;
 
 use super::common::{as_date, as_duration_seconds, build_card, Card, UnplacedCard, UnplacedReason};

@@ -8,6 +8,7 @@ pub mod views;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::model::work_item::is_valid_id;
 use crate::model::WorkItemId;
 
 /// A work item as parsed from a Markdown file, before type coercion.
@@ -190,37 +191,6 @@ pub(crate) fn parse_work_item(content: &str, path: &Path) -> Result<RawWorkItem,
         body,
         source_path: path.to_path_buf(),
     })
-}
-
-/// Check whether an ID is valid: non-empty, starts with a lowercase letter or
-/// digit, contains only lowercase letters, digits, and hyphens, and doesn't
-/// end with a hyphen.
-pub(crate) fn is_valid_id(id: &str) -> bool {
-    if id.is_empty() {
-        return false;
-    }
-
-    let mut chars = id.chars();
-
-    // Must start with a lowercase letter or digit.
-    match chars.next() {
-        Some(c) if c.is_ascii_lowercase() || c.is_ascii_digit() => {}
-        _ => return false,
-    }
-
-    // Remaining: lowercase letters, digits, hyphens.
-    for c in chars {
-        if !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
-            return false;
-        }
-    }
-
-    // Must not end with a hyphen.
-    if id.ends_with('-') {
-        return false;
-    }
-
-    true
 }
 
 #[cfg(test)]
@@ -520,30 +490,5 @@ tags: [a, b, c]
         let content = "---\ntitle: Test\n---\n";
         let item = parse_work_item(content, Path::new("x.md")).unwrap();
         assert_eq!(item.id, "x");
-    }
-
-    // ── is_valid_id unit tests ───────────────────────────────────────
-
-    #[test]
-    fn valid_ids() {
-        assert!(is_valid_id("fix-login"));
-        assert!(is_valid_id("a"));
-        assert!(is_valid_id("task-42"));
-        assert!(is_valid_id("implement-auth-epic"));
-        assert!(is_valid_id("a1b2c3"));
-        assert!(is_valid_id("1-task"));
-        assert!(is_valid_id("42"));
-        assert!(is_valid_id("9-lives"));
-    }
-
-    #[test]
-    fn invalid_ids() {
-        assert!(!is_valid_id(""));
-        assert!(!is_valid_id("-fix"));
-        assert!(!is_valid_id("fix-"));
-        assert!(!is_valid_id("Fix"));
-        assert!(!is_valid_id("fix_login"));
-        assert!(!is_valid_id("1-"));
-        assert!(!is_valid_id("fix login"));
     }
 }

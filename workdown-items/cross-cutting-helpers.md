@@ -1,7 +1,7 @@
 ---
 id: cross-cutting-helpers
 type: issue
-status: to_do
+status: done
 title: Relocate cross-cutting helpers out of feature modules
 parent: code-quality
 ---

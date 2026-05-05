@@ -8,29 +8,6 @@ use crate::model::duration::format_duration_seconds;
 use crate::model::{FieldValue, WorkItem};
 use crate::query::types::QueryResult;
 
-// ── Field value formatting ──────────────────────────────────────────
-
-/// Format a field value as a human-readable display string.
-pub fn format_field_value(value: &FieldValue) -> String {
-    match value {
-        FieldValue::String(string) => string.clone(),
-        FieldValue::Choice(string) => string.clone(),
-        FieldValue::Date(date) => date.format("%Y-%m-%d").to_string(),
-        FieldValue::Duration(seconds) => format_duration_seconds(*seconds),
-        FieldValue::Link(id) => id.as_str().to_owned(),
-        FieldValue::Integer(number) => number.to_string(),
-        FieldValue::Float(number) => number.to_string(),
-        FieldValue::Boolean(flag) => flag.to_string(),
-        FieldValue::Multichoice(values) => values.join(", "),
-        FieldValue::List(values) => values.join(", "),
-        FieldValue::Links(ids) => ids
-            .iter()
-            .map(|id| id.as_str())
-            .collect::<Vec<_>>()
-            .join(", "),
-    }
-}
-
 // ── JSON output ─────────────────────────────────────────────────────
 
 /// Render a query result as a JSON string.
@@ -253,38 +230,6 @@ mod tests {
     use super::*;
     use crate::model::WorkItemId;
     use crate::query::types::{QueryResult, QueryRow};
-
-    #[test]
-    fn format_string_value() {
-        assert_eq!(
-            format_field_value(&FieldValue::String("hello".into())),
-            "hello"
-        );
-    }
-
-    #[test]
-    fn format_integer_value() {
-        assert_eq!(format_field_value(&FieldValue::Integer(42)), "42");
-    }
-
-    #[test]
-    fn format_list_value() {
-        assert_eq!(
-            format_field_value(&FieldValue::List(vec!["a".into(), "b".into()])),
-            "a, b"
-        );
-    }
-
-    #[test]
-    fn format_links_value() {
-        assert_eq!(
-            format_field_value(&FieldValue::Links(vec![
-                WorkItemId::from("x".to_owned()),
-                WorkItemId::from("y".to_owned()),
-            ])),
-            "x, y"
-        );
-    }
 
     #[test]
     fn render_json_produces_valid_json() {

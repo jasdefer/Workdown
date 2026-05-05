@@ -18,9 +18,10 @@
 use std::path::Path;
 
 use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic, FileDiagnosticKind};
-use crate::model::schema::{FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity};
+use crate::model::schema::{
+    is_relation_anchor, FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity,
+};
 use crate::model::views::{Aggregate, MetricRow, View, ViewKind, Views};
-use crate::parser::schema::is_relation_anchor;
 use crate::parser::views::{ViewsLoadError, ViewsValidationError};
 use crate::query::parse::parse_where;
 use crate::query::types::{FieldReference, Predicate};

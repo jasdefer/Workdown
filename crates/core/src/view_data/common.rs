@@ -13,10 +13,10 @@ use std::ops::Add;
 use chrono::NaiveDate;
 use serde::Serialize;
 
+use crate::model::field_value::format_field_value;
 use crate::model::schema::{FieldType, Schema};
 use crate::model::views::View;
 use crate::model::{FieldValue, WorkItem, WorkItemId};
-use crate::query::format::format_field_value;
 
 // ── Card ────────────────────────────────────────────────────────────
 

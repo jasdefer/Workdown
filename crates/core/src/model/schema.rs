@@ -387,3 +387,24 @@ impl std::fmt::Display for AggregateFunction {
         f.write_str(s)
     }
 }
+
+// ── Field-map predicates ────────────────────────────────────────────
+
+/// True iff `name` is a valid anchor for a relation traversal — either a
+/// forward link/links field, or an inverse name declared by one.
+///
+/// Shared by schema rule-reference validation (dot-notation left-hand side)
+/// and cross-file view validation (`views_check`). Operates on the field map
+/// directly because the schema parser runs before `Schema::inverse_table` is
+/// built.
+pub(crate) fn is_relation_anchor(name: &str, fields: &IndexMap<String, FieldDefinition>) -> bool {
+    let is_link_field = fields
+        .get(name)
+        .is_some_and(|f| matches!(f.field_type(), FieldType::Link | FieldType::Links));
+    is_link_field || is_defined_inverse(name, fields)
+}
+
+/// True iff `name` is declared as an inverse on any link/links field.
+pub(crate) fn is_defined_inverse(name: &str, fields: &IndexMap<String, FieldDefinition>) -> bool {
+    fields.values().any(|f| f.inverse() == Some(name))
+}
