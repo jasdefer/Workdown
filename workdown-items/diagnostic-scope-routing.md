@@ -1,7 +1,7 @@
 ---
 id: diagnostic-scope-routing
 type: issue
-status: in_progress
+status: done
 title: Make diagnostic source-routing structural, not enumerative
 parent: code-quality
 ---
