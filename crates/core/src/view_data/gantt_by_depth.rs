@@ -12,14 +12,14 @@
 //! computation, bucketing, and ordering.
 
 use std::collections::HashMap;
-use std::collections::HashSet;
 
 use serde::Serialize;
 
 use crate::model::schema::Schema;
 use crate::model::views::{View, ViewKind};
-use crate::model::{FieldValue, WorkItem};
+use crate::model::WorkItem;
 use crate::store::Store;
+use crate::walker::walk_up;
 
 use super::common::UnplacedCard;
 use super::gantt::{resolve_bars, GanttBar, GanttResolution};
@@ -89,33 +89,12 @@ pub fn extract_gantt_by_depth(view: &View, store: &Store, schema: &Schema) -> Ga
     GanttByDepthData { levels, unplaced }
 }
 
-/// Walk `depth_link` upward from `start` and count steps to a root.
+/// Count steps from `start` to its `depth_link` chain root.
 ///
-/// Termination cases (return the step count at termination):
-/// - Item has no `depth_link` value → it is its own root (depth 0 if
-///   start, otherwise the count up to it).
-/// - Link target id isn't in the store → effective root.
-/// - Cycle defense: a revisit (which `views_check + allow_cycles: false`
-///   should already prevent) terminates the walk at the current count.
+/// Counts ancestors yielded by [`walk_up`] — silently stops on missing
+/// field, broken target, or cycle, matching the chain-root semantics.
 fn walk_to_depth(start: &WorkItem, depth_link: &str, store: &Store) -> usize {
-    let mut visited: HashSet<&str> = HashSet::new();
-    visited.insert(start.id.as_str());
-    let mut current = start;
-    let mut depth: usize = 0;
-    loop {
-        let next_id = match current.fields.get(depth_link) {
-            Some(FieldValue::Link(id)) => id.as_str(),
-            _ => return depth,
-        };
-        let Some(parent) = store.get(next_id) else {
-            return depth;
-        };
-        if !visited.insert(parent.id.as_str()) {
-            return depth;
-        }
-        current = parent;
-        depth += 1;
-    }
+    walk_up(start, depth_link, store).count()
 }
 
 // ── Tests ───────────────────────────────────────────────────────────

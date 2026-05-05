@@ -43,8 +43,9 @@ use serde::Serialize;
 use crate::model::field_value::format_field_value;
 use crate::model::schema::{FieldTypeConfig, Schema};
 use crate::model::views::{View, ViewKind};
-use crate::model::{FieldValue, WorkItem};
+use crate::model::WorkItem;
 use crate::store::Store;
+use crate::walker::targets_of;
 
 use super::common::{as_date, as_duration_seconds, build_card, Card, UnplacedCard, UnplacedReason};
 use super::filter::filtered_items;
@@ -352,15 +353,15 @@ fn compute_after_closure<'store>(
     closure
 }
 
-/// Read predecessor IDs from an item's `after` field. Treats `Link` as a
-/// single-element list and `Links` as a multi-element list. Any other
-/// value (including missing) returns an empty vec.
+/// Read predecessor IDs from an item's `after` field as owned strings.
+///
+/// Owned because `resolve_after_closure` keeps them as `HashMap` keys
+/// independent of the source items' lifetime.
 fn predecessor_ids(item: &WorkItem, after_field: &str) -> Vec<String> {
-    match item.fields.get(after_field) {
-        Some(FieldValue::Link(id)) => vec![id.as_str().to_owned()],
-        Some(FieldValue::Links(ids)) => ids.iter().map(|id| id.as_str().to_owned()).collect(),
-        _ => Vec::new(),
-    }
+    targets_of(item, after_field)
+        .into_iter()
+        .map(|id| id.as_str().to_owned())
+        .collect()
 }
 
 /// Topo-sort the closure and resolve every item's `(start, end)` window.

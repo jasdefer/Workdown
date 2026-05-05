@@ -21,8 +21,9 @@ use crate::model::diagnostic::{
     Diagnostic, FileDiagnosticKind, FilesDiagnosticKind, ItemDiagnosticKind,
 };
 use crate::model::schema::{Schema, Severity};
-use crate::model::{FieldValue, WorkItem, WorkItemId};
+use crate::model::{WorkItem, WorkItemId};
 use crate::parser;
+use crate::walker::targets_of;
 
 // ── Store ────────────────────────────────────────────────────────────
 
@@ -115,14 +116,8 @@ impl Store {
             HashMap::new();
 
         for item in items.values() {
-            for (field_name, field_value) in &item.fields {
-                let targets: Vec<&WorkItemId> = match field_value {
-                    FieldValue::Link(target) => vec![target],
-                    FieldValue::Links(targets) => targets.iter().collect(),
-                    _ => continue,
-                };
-
-                for target_id in targets {
+            for field_name in item.fields.keys() {
+                for target_id in targets_of(item, field_name) {
                     if !items.contains_key(target_id.as_str()) {
                         diagnostics.push(Diagnostic::item(
                             Severity::Error,
@@ -243,6 +238,7 @@ mod tests {
     use super::*;
     use crate::model::diagnostic::DiagnosticBody;
     use crate::model::schema::{FieldDefinition, FieldTypeConfig};
+    use crate::model::FieldValue;
     use indexmap::IndexMap;
     use std::fs;
     use std::path::PathBuf;

@@ -22,6 +22,7 @@ use chrono::{Datelike, NaiveDate};
 use crate::model::diagnostic::{Diagnostic, ItemDiagnosticKind};
 use crate::model::schema::{AggregateFunction, Schema, Severity};
 use crate::model::{FieldValue, WorkItem, WorkItemId};
+use crate::walker::walk_up_in;
 
 /// Link field walked when an aggregate config doesn't set `over`.
 const DEFAULT_OVER_FIELD: &str = "parent";
@@ -122,38 +123,29 @@ fn run_for_field(
 
     // Up-walk pass: contribute each manual-bearing item's value to its
     // non-manual ancestors, stopping (with a chain-conflict diagnostic)
-    // at the first manual-bearing ancestor.
+    // at the first manual-bearing ancestor. Cycle: walk_up_in stops
+    // silently; cycle detector emits its own diagnostic separately.
     for (manual_id, manual_value) in &manual_items {
-        let mut visited: HashSet<WorkItemId> = HashSet::new();
-        visited.insert(manual_id.clone());
-
-        let mut current = parent_of(items, manual_id, &spec.over);
-        while let Some(ancestor_id) = current {
-            if !visited.insert(ancestor_id.clone()) {
-                // Cycle. Cycle detector handles the diagnostic; just stop.
-                break;
-            }
-            if manual_set.contains(&ancestor_id) {
-                let source_path = items
-                    .get(manual_id)
-                    .map(|item| item.source_path.clone())
-                    .unwrap_or_default();
+        let Some(start_item) = items.get(manual_id) else {
+            continue;
+        };
+        for ancestor in walk_up_in(start_item, &spec.over, items) {
+            if manual_set.contains(&ancestor.id) {
                 diagnostics.push(Diagnostic::item(
                     Severity::Error,
-                    source_path,
+                    start_item.source_path.clone(),
                     manual_id.clone(),
                     ItemDiagnosticKind::AggregateChainConflict {
                         field: spec.name.clone(),
-                        conflicting_ancestor_id: ancestor_id,
+                        conflicting_ancestor_id: ancestor.id.clone(),
                     },
                 ));
                 break;
             }
             accumulators
-                .entry(ancestor_id.clone())
+                .entry(ancestor.id.clone())
                 .or_default()
                 .push(manual_value.clone());
-            current = parent_of(items, &ancestor_id, &spec.over);
         }
     }
 
@@ -197,21 +189,6 @@ fn run_for_field(
 
 // ── Helpers: tree navigation ────────────────────────────────────────
 
-/// Read `over_field` on `item_id` and follow it as a Link.
-fn parent_of(
-    items: &HashMap<WorkItemId, WorkItem>,
-    item_id: &WorkItemId,
-    over_field: &str,
-) -> Option<WorkItemId> {
-    items
-        .get(item_id)
-        .and_then(|item| item.fields.get(over_field))
-        .and_then(|value| match value {
-            FieldValue::Link(target) => Some(target.clone()),
-            _ => None,
-        })
-}
-
 /// True if no item references `item_id` as its `over_field` target —
 /// nothing has it as their parent in the rollup hierarchy.
 fn is_tree_leaf(
@@ -226,7 +203,7 @@ fn is_tree_leaf(
 }
 
 /// True if `start` itself or any ancestor on its `over_field` chain is in
-/// `manual_set`. Cycle-safe via visited tracking.
+/// `manual_set`. Cycle-safe via the walker's visited tracking.
 fn covered(
     items: &HashMap<WorkItemId, WorkItem>,
     start: &WorkItemId,
@@ -236,19 +213,10 @@ fn covered(
     if manual_set.contains(start) {
         return true;
     }
-    let mut visited: HashSet<WorkItemId> = HashSet::new();
-    visited.insert(start.clone());
-    let mut current = parent_of(items, start, over_field);
-    while let Some(ancestor) = current {
-        if !visited.insert(ancestor.clone()) {
-            return false;
-        }
-        if manual_set.contains(&ancestor) {
-            return true;
-        }
-        current = parent_of(items, &ancestor, over_field);
-    }
-    false
+    let Some(start_item) = items.get(start) else {
+        return false;
+    };
+    walk_up_in(start_item, over_field, items).any(|ancestor| manual_set.contains(&ancestor.id))
 }
 
 // ── Aggregate application ───────────────────────────────────────────

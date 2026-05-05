@@ -7,7 +7,8 @@ use std::collections::HashMap;
 
 use crate::model::diagnostic::{CollectionDiagnosticKind, Diagnostic};
 use crate::model::schema::{FieldTypeConfig, Schema, Severity};
-use crate::model::{FieldValue, WorkItemId};
+use crate::model::WorkItemId;
+use crate::walker::targets_of;
 
 use super::Store;
 
@@ -109,11 +110,11 @@ fn dfs<'store>(
 fn targets<'a>(store: &'a Store, node_id: &str, field_name: &str) -> Vec<&'a str> {
     store
         .get(node_id)
-        .and_then(|item| item.fields.get(field_name))
-        .map(|field_value| match field_value {
-            FieldValue::Link(t) => vec![t.as_str()],
-            FieldValue::Links(ts) => ts.iter().map(|id| id.as_str()).collect(),
-            _ => vec![],
+        .map(|item| {
+            targets_of(item, field_name)
+                .into_iter()
+                .map(|id| id.as_str())
+                .collect()
         })
         .unwrap_or_default()
 }
