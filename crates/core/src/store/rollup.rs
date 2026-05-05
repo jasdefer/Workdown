@@ -65,21 +65,16 @@ pub(crate) fn run(
         if !field_def.required || field_def.aggregate.is_none() {
             continue;
         }
-        let mut missing: Vec<WorkItemId> = items
+        let mut missing: Vec<(&WorkItemId, &WorkItem)> = items
             .iter()
             .filter(|(_, item)| !item.fields.contains_key(field_name))
-            .map(|(id, _)| id.clone())
             .collect();
-        missing.sort_by(|a, b| a.as_str().cmp(b.as_str()));
-        for item_id in missing {
-            let source_path = items
-                .get(&item_id)
-                .map(|item| item.source_path.clone())
-                .unwrap_or_default();
+        missing.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
+        for (item_id, item) in missing {
             diagnostics.push(Diagnostic::item(
                 Severity::Error,
-                source_path,
-                item_id,
+                item.source_path.clone(),
+                item_id.clone(),
                 ItemDiagnosticKind::MissingRequired {
                     field: field_name.clone(),
                 },
@@ -162,22 +157,17 @@ fn run_for_field(
 
     // Coverage pass: only when error_on_missing is set.
     if spec.error_on_missing {
-        let mut leaves: Vec<WorkItemId> = items
-            .keys()
-            .filter(|id| is_tree_leaf(reverse_links, id, &spec.over))
-            .cloned()
+        let mut leaves: Vec<(&WorkItemId, &WorkItem)> = items
+            .iter()
+            .filter(|(id, _)| is_tree_leaf(reverse_links, id, &spec.over))
             .collect();
-        leaves.sort_by(|a, b| a.as_str().cmp(b.as_str()));
-        for leaf_id in leaves {
-            if !covered(items, &leaf_id, &spec.over, &manual_set) {
-                let source_path = items
-                    .get(&leaf_id)
-                    .map(|item| item.source_path.clone())
-                    .unwrap_or_default();
+        leaves.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
+        for (leaf_id, item) in leaves {
+            if !covered(items, leaf_id, &spec.over, &manual_set) {
                 diagnostics.push(Diagnostic::item(
                     Severity::Error,
-                    source_path,
-                    leaf_id,
+                    item.source_path.clone(),
+                    leaf_id.clone(),
                     ItemDiagnosticKind::AggregateMissingValue {
                         field: spec.name.clone(),
                     },
