@@ -1,8 +1,12 @@
 [package]
 name = "workdown-core"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
 description = "Workdown domain library — model, parser, store, query, rules, operations"
+publish = false
 
 [dependencies]
 indexmap = { version = "2", features = ["serde"] }
