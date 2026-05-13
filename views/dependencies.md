@@ -10,6 +10,7 @@ flowchart TD
             diagnostic-scope-routing["Make diagnostic source-routing structural, not enumerative"]
             diagnostic-variant-cleanup["Collapse parallel View* slot variants and unify their validation helpers"]
             render-module-hygiene["Render module hygiene — escape helpers, test fixtures, common.rs naming"]
+            rules-current-date-reference["Rules can't reference the current date"]
             walker-primitives["Unify the upward chain walks and link-target reads"]
         end
         subgraph foundation ["Foundation"]
@@ -25,8 +26,12 @@ flowchart TD
         frontend["Frontend"]
         subgraph item-mutations ["Item mutations"]
             cli-add-audit["Audit workdown add for UI-driven creation"]
+            cli-body-command["workdown body — edit the Markdown body"]
             cli-move-command["workdown move — shortcut for the board field"]
-            cli-set-command["workdown set — generic field mutation"]
+            cli-rename-command["workdown rename — change an item's id"]
+            cli-set-command["workdown set — replace a field value"]
+            cli-set-modes["workdown set — type-aware modes (append, remove, delta)"]
+            cli-unset-command["workdown unset — clear a field"]
         end
         subgraph polish ["Polish & dogfood"]
             store-diagnostics-consistency["Make store-diagnostic surfacing consistent across commands"]
@@ -66,6 +71,8 @@ flowchart TD
         git-derived-default-generator["Default generator that reads dates from git history"]
     end
     cli-move-command --> cli-set-command
+    cli-set-modes --> cli-set-command
+    cli-unset-command --> cli-set-command
     frontend --> server
     gantt-duration-mode --> duration-field-type
     gantt-duration-mode --> render-gantt

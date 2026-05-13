@@ -5,8 +5,12 @@
 | [adr-phase-04-architecture](../workdown-items/adr-phase-04-architecture.md) | issue | done | [foundation](../workdown-items/foundation.md) |  |
 | [aggregate-rollup](../workdown-items/aggregate-rollup.md) | issue | done | [renderers](../workdown-items/renderers.md) |  |
 | [cli-add-audit](../workdown-items/cli-add-audit.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) |  |
+| [cli-body-command](../workdown-items/cli-body-command.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) |  |
 | [cli-move-command](../workdown-items/cli-move-command.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) | [cli-set-command](../workdown-items/cli-set-command.md) |
-| [cli-set-command](../workdown-items/cli-set-command.md) | issue | in_progress | [item-mutations](../workdown-items/item-mutations.md) |  |
+| [cli-rename-command](../workdown-items/cli-rename-command.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) |  |
+| [cli-set-command](../workdown-items/cli-set-command.md) | issue | done | [item-mutations](../workdown-items/item-mutations.md) |  |
+| [cli-set-modes](../workdown-items/cli-set-modes.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) | [cli-set-command](../workdown-items/cli-set-command.md) |
+| [cli-unset-command](../workdown-items/cli-unset-command.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) | [cli-set-command](../workdown-items/cli-set-command.md) |
 | [code-quality](../workdown-items/code-quality.md) | milestone | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) |  |
 | [cross-cutting-helpers](../workdown-items/cross-cutting-helpers.md) | issue | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md) | issue | done | [code-quality](../workdown-items/code-quality.md) |  |
@@ -39,6 +43,7 @@
 | [render-treemap](../workdown-items/render-treemap.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-workload](../workdown-items/render-workload.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [renderers](../workdown-items/renderers.md) | milestone | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md) |
+| [rules-current-date-reference](../workdown-items/rules-current-date-reference.md) | issue | to_do | [code-quality](../workdown-items/code-quality.md) |  |
 | [serve-command-skeleton](../workdown-items/serve-command-skeleton.md) | issue | to_do | [server](../workdown-items/server.md) |  |
 | [server](../workdown-items/server.md) | milestone | to_do | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md), [item-mutations](../workdown-items/item-mutations.md) |
 | [server-endpoints-and-mutations](../workdown-items/server-endpoints-and-mutations.md) | issue | to_do | [server](../workdown-items/server.md) | [serve-command-skeleton](../workdown-items/serve-command-skeleton.md), [renderers](../workdown-items/renderers.md), [item-mutations](../workdown-items/item-mutations.md) |

@@ -83,7 +83,8 @@
       "Bash(xargs wc *)",
       "Bash(awk '{print $1}')",
       "Bash(awk 'BEGIN{c=0;cli=0;s=0} /core\\\\/src/{c+=$1} /cli/{cli+=$1} /server/{s+=$1} END{print \"core src:\", c; print \"cli:\", cli; print \"server:\", s}')",
-      "Bash(xargs -I {} find {} -name \"*.rs\")"
+      "Bash(xargs -I {} find {} -name \"*.rs\")",
+      "Bash(workdown query *)"
     ]
   }
 }
