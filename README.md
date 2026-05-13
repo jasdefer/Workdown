@@ -81,7 +81,7 @@ Fields are typed (string, choice, integer, date, link, links, …). Any `choice`
 
 ## Status
 
-Early development. The first installable release is `v0.1.0-alpha`. Expect breaking changes before `v1.0.0`.
+Early development. The first installable release is `v0.1.0-alpha.1`. Expect breaking changes before `v1.0.0`.
 
 ## License
 
