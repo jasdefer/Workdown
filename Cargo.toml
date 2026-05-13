@@ -6,6 +6,18 @@ members = [
     "crates/server",
 ]
 
+[workspace.package]
+version = "0.1.0-alpha.1"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/jasdefer/Workdown"
+authors = ["Justus Bonz <justus.bonz@gmail.com>"]
+
 [profile.release]
 strip = true
 lto = true
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
