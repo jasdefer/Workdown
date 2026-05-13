@@ -102,6 +102,16 @@ pub enum Command {
         /// New value
         value: String,
     },
+    /// Clear a single field on a work item
+    ///
+    /// Idempotent: clearing an already-absent field is a silent no-op.
+    /// Typo'd field names still error.
+    Unset {
+        /// Work item id (filename without `.md`)
+        id: String,
+        /// Field name as defined in schema.yaml
+        field: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]

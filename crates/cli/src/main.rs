@@ -135,6 +135,12 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
                     commands::set::run_set_command(&config, &project_root, id, field, value)
                 }
+                cli::Command::Unset { id, field } => {
+                    tracing::info!("clearing field on work item");
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    commands::unset::run_unset_command(&config, &project_root, id, field)
+                }
             }
         }
     }

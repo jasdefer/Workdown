@@ -5,11 +5,12 @@
 //! path; the public API is shaped so they add `SetOperation` variants
 //! rather than parallel functions.
 
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::model::config::Config;
-use crate::model::diagnostic::{Diagnostic, ItemDiagnosticKind};
-use crate::model::schema::Severity;
+use crate::model::diagnostic::Diagnostic;
+use crate::model::schema::Schema;
 use crate::model::WorkItemId;
 use crate::operations::frontmatter_io::{build_frontmatter_yaml, write_file_atomically};
 use crate::parser;
@@ -17,14 +18,15 @@ use crate::parser::schema::SchemaLoadError;
 
 // ── Public types ─────────────────────────────────────────────────────
 
-/// Which mutation to apply to the field.
-///
-/// Only `Replace` is implemented for now. The type-aware modes
-/// (`Append`, `Remove`, `Delta`) and `Unset` land as additional variants
-/// in their own issues without changing `run_set`'s signature.
+/// Per-field mutation. `run_set` dispatches on this variant in its
+/// compute phase. Type-aware modes (`Append`, `Remove`, `Delta`) land as
+/// additional variants here without changing `run_set`'s signature.
 #[derive(Debug, Clone)]
 pub enum SetOperation {
+    /// Replace the field's value (or set it if absent).
     Replace(serde_yaml::Value),
+    /// Remove the field from frontmatter entirely.
+    Unset,
 }
 
 /// The outcome of a successful `workdown set`.
@@ -67,7 +69,7 @@ pub enum SetError {
     #[error("unknown field '{field}' (not defined in schema)")]
     UnknownField { field: String },
 
-    #[error("cannot set 'id' — use `workdown rename` to change an item's id")]
+    #[error("cannot modify 'id' — use `workdown rename` to change an item's id")]
     IdNotMutable,
 
     #[error("failed to read '{path}': {source}")]
@@ -91,12 +93,21 @@ pub enum SetError {
 
 // ── Public API ───────────────────────────────────────────────────────
 
-/// Replace a single field on a work item.
+/// Apply a single field mutation to a work item.
 ///
-/// Pre-flight checks (unknown id, unknown field, `id` rejection) are
-/// hard errors with no disk write. Coercion failures on the new value
-/// are soft warnings — the file is written anyway per ADR-001's
-/// save-with-warning convention, with `mutation_caused_warning = true`.
+/// Three phases:
+///
+/// 1. **Pre-flight** — schema/store load, validate id/field/`id`-key,
+///    read the target file, capture pre-mutation diagnostics for the
+///    diff. Hard errors here never touch disk.
+/// 2. **Compute** — build the new frontmatter map from the requested
+///    [`SetOperation`]. Decides whether a write is actually needed
+///    (no-op unsets skip it).
+/// 3. **Finalize** — atomic write (if needed), reload, diff diagnostics.
+///    Any diagnostic present after the mutation but not before flips
+///    `mutation_caused_warning`. Per ADR-001's save-with-warning
+///    convention, every reload diagnostic is surfaced; the diff is what
+///    drives exit code, not severity or scope.
 pub fn run_set(
     config: &Config,
     project_root: &Path,
@@ -104,6 +115,33 @@ pub fn run_set(
     field: &str,
     operation: SetOperation,
 ) -> Result<SetOutcome, SetError> {
+    let context = preflight(config, project_root, id, field)?;
+    let computed = compute_mutation(&context, field, operation);
+    finalize_mutation(context, computed)
+}
+
+// ── Phase 1: pre-flight ─────────────────────────────────────────────
+
+/// Loaded inputs and pre-mutation state, shared between compute and finalize.
+struct MutationContext {
+    schema: Schema,
+    items_path: PathBuf,
+    file_path: PathBuf,
+    frontmatter: HashMap<String, serde_yaml::Value>,
+    body: String,
+    user_set_id: bool,
+    /// `Store::load` + `rules::evaluate` snapshot taken *before* the write.
+    /// Diffed against the post-write snapshot to drive
+    /// `mutation_caused_warning`.
+    pre_diagnostics: Vec<Diagnostic>,
+}
+
+fn preflight(
+    config: &Config,
+    project_root: &Path,
+    id: &WorkItemId,
+    field: &str,
+) -> Result<MutationContext, SetError> {
     if field == "id" {
         return Err(SetError::IdNotMutable);
     }
@@ -111,12 +149,11 @@ pub fn run_set(
     let schema_path = project_root.join(&config.schema);
     let schema = parser::schema::load_schema(&schema_path)?;
 
-    let field_def = schema
-        .fields
-        .get(field)
-        .ok_or_else(|| SetError::UnknownField {
+    if !schema.fields.contains_key(field) {
+        return Err(SetError::UnknownField {
             field: field.to_owned(),
-        })?;
+        });
+    }
 
     let items_path = project_root.join(&config.paths.work_items);
     let store = crate::store::Store::load(&items_path, &schema)?;
@@ -126,6 +163,10 @@ pub fn run_set(
         .ok_or_else(|| SetError::UnknownItem { id: id.to_string() })?;
     let file_path = work_item.source_path.clone();
 
+    // Snapshot pre-write diagnostics for the post-write diff.
+    let mut pre_diagnostics: Vec<Diagnostic> = store.diagnostics().to_vec();
+    pre_diagnostics.extend(crate::rules::evaluate(&store, &schema));
+
     // Read the file fresh and split frontmatter ourselves so we can see
     // whether `id` was present in the on-disk frontmatter (the parser's
     // `parse_work_item` strips it before handing the map back).
@@ -134,60 +175,133 @@ pub fn run_set(
             path: file_path.clone(),
             source,
         })?;
-    let (mut frontmatter, body) =
+    let (frontmatter, body) =
         parser::split_frontmatter(&file_content, &file_path).map_err(|source| {
             SetError::ParseTarget {
                 path: file_path.clone(),
                 source,
             }
         })?;
-
     let user_set_id = frontmatter.contains_key("id");
-    let previous_value = frontmatter.get(field).cloned();
 
-    let SetOperation::Replace(new_value) = operation;
-    frontmatter.insert(field.to_owned(), new_value.clone());
+    Ok(MutationContext {
+        schema,
+        items_path,
+        file_path,
+        frontmatter,
+        body,
+        user_set_id,
+        pre_diagnostics,
+    })
+}
 
-    // Coerce the new value to surface any schema mismatch as a warning.
-    // We still write the file — hand-editing the same bad value would
-    // produce the same outcome, so the CLI shouldn't be stricter.
-    let mut warnings: Vec<Diagnostic> = Vec::new();
-    let mut mutation_caused_warning = false;
-    if let Err(detail) = crate::store::coerce_value(&new_value, field_def) {
-        warnings.push(Diagnostic::item(
-            Severity::Warning,
-            file_path.clone(),
-            id.clone(),
-            ItemDiagnosticKind::InvalidFieldValue {
-                field: field.to_owned(),
-                detail,
-            },
-        ));
-        mutation_caused_warning = true;
+// ── Phase 2: compute ────────────────────────────────────────────────
+
+/// Post-mutation frontmatter and what to report back about the change.
+struct ComputedMutation {
+    new_frontmatter: HashMap<String, serde_yaml::Value>,
+    previous_value: Option<serde_yaml::Value>,
+    new_value: Option<serde_yaml::Value>,
+    /// `false` when the operation is a no-op on disk (e.g. unsetting an
+    /// absent field). Finalize skips the write but still reloads so
+    /// unrelated diagnostics surface.
+    write_needed: bool,
+}
+
+fn compute_mutation(
+    context: &MutationContext,
+    field: &str,
+    operation: SetOperation,
+) -> ComputedMutation {
+    let previous_value = context.frontmatter.get(field).cloned();
+    let mut new_frontmatter = context.frontmatter.clone();
+
+    match operation {
+        SetOperation::Replace(new_value) => {
+            new_frontmatter.insert(field.to_owned(), new_value.clone());
+            ComputedMutation {
+                new_frontmatter,
+                previous_value,
+                new_value: Some(new_value),
+                write_needed: true,
+            }
+        }
+        SetOperation::Unset => {
+            // Idempotent: unset on an absent field leaves the file
+            // byte-identical. Typo'd field names are already caught by
+            // the `UnknownField` check in pre-flight, so silent success
+            // here doesn't hide bad input.
+            let write_needed = previous_value.is_some();
+            if write_needed {
+                new_frontmatter.remove(field);
+            }
+            ComputedMutation {
+                new_frontmatter,
+                previous_value,
+                new_value: None,
+                write_needed,
+            }
+        }
+    }
+}
+
+// ── Phase 3: finalize ───────────────────────────────────────────────
+
+fn finalize_mutation(
+    context: MutationContext,
+    computed: ComputedMutation,
+) -> Result<SetOutcome, SetError> {
+    if computed.write_needed {
+        let yaml_content =
+            build_frontmatter_yaml(&computed.new_frontmatter, &context.schema, context.user_set_id);
+        let new_file_content = format!("---\n{yaml_content}---\n{}", context.body);
+
+        write_file_atomically(&context.file_path, &new_file_content).map_err(|source| {
+            SetError::WriteFile {
+                path: context.file_path.clone(),
+                source,
+            }
+        })?;
     }
 
-    let yaml_content = build_frontmatter_yaml(&frontmatter, &schema, user_set_id);
-    let new_file_content = format!("---\n{yaml_content}---\n{body}");
+    // Reload and surface every diagnostic. The pre/post diff is what
+    // drives `mutation_caused_warning` — pre-existing problems elsewhere
+    // in the project remain visible (per the milestone's "always show
+    // all" convention) but don't fail this mutation.
+    let reloaded = crate::store::Store::load(&context.items_path, &context.schema)?;
+    let mut post_diagnostics: Vec<Diagnostic> = reloaded.diagnostics().to_vec();
+    post_diagnostics.extend(crate::rules::evaluate(&reloaded, &context.schema));
 
-    write_file_atomically(&file_path, &new_file_content).map_err(|source| SetError::WriteFile {
-        path: file_path.clone(),
-        source,
-    })?;
-
-    // Reload and surface every diagnostic, not just ones tagged to this
-    // item — chain conflicts and cross-item warnings need to be visible
-    // at the moment the user touches that area.
-    let reloaded = crate::store::Store::load(&items_path, &schema)?;
-    warnings.extend(reloaded.diagnostics().iter().cloned());
-    warnings.extend(crate::rules::evaluate(&reloaded, &schema));
+    let mutation_caused_warning = post_diagnostics_introduced_by_mutation(
+        &context.pre_diagnostics,
+        &post_diagnostics,
+    );
 
     Ok(SetOutcome {
-        path: file_path,
-        previous_value,
-        new_value: Some(new_value),
-        warnings,
+        path: context.file_path,
+        previous_value: computed.previous_value,
+        new_value: computed.new_value,
+        warnings: post_diagnostics,
         mutation_caused_warning,
     })
+}
+
+/// `true` iff any diagnostic exists in `post` that wasn't already in `pre`.
+///
+/// Identity is by stable JSON serialization — every `Diagnostic` field
+/// is `Serialize`, and re-serializing the same data produces the same
+/// string. Cheap because `pre` is hashed once.
+fn post_diagnostics_introduced_by_mutation(
+    pre: &[Diagnostic],
+    post: &[Diagnostic],
+) -> bool {
+    let pre_keys: HashSet<String> = pre.iter().filter_map(diagnostic_key).collect();
+    post.iter()
+        .any(|d| diagnostic_key(d).map(|k| !pre_keys.contains(&k)).unwrap_or(true))
+}
+
+fn diagnostic_key(d: &Diagnostic) -> Option<String> {
+    serde_json::to_string(d).ok()
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -483,5 +597,342 @@ defaults:
         let file = read_item(&root, "filename-slug");
         assert!(file.contains("id: custom-id"));
         assert!(file.contains("status: done"));
+    }
+
+    // ── Diff-based mutation_caused_warning (covers a previous gap) ───
+
+    #[test]
+    fn set_with_broken_link_flags_mutation_caused_warning() {
+        use crate::model::diagnostic::{DiagnosticBody, ItemDiagnosticKind};
+
+        let (_directory, root) = setup_project();
+        let config = load_test_config(&root);
+        write_item(&root, "task-1", "---\ntitle: Task 1\nstatus: open\n---\n");
+
+        let outcome = run_set(
+            &config,
+            &root,
+            &WorkItemId::from("task-1".to_owned()),
+            "parent",
+            SetOperation::Replace(serde_yaml::Value::String("does-not-exist".to_owned())),
+        )
+        .unwrap();
+
+        // Broken link is a *new* diagnostic introduced by this mutation
+        // (the parent field passes coerce — the BrokenLink finding is
+        // emitted by Store::load on reload). The diff catches it.
+        assert!(outcome.mutation_caused_warning);
+        let has_broken_link = outcome.warnings.iter().any(|d| match &d.body {
+            DiagnosticBody::Item(item) => matches!(
+                &item.kind,
+                ItemDiagnosticKind::BrokenLink { field, .. } if field == "parent"
+            ),
+            _ => false,
+        });
+        assert!(has_broken_link);
+    }
+
+    // ── Unset ────────────────────────────────────────────────────────
+
+    #[test]
+    fn unset_removes_field_and_writes_file() {
+        let (_directory, root) = setup_project();
+        let config = load_test_config(&root);
+        write_item(
+            &root,
+            "task-1",
+            "---\ntitle: Task 1\nstatus: open\npriority: high\n---\n",
+        );
+
+        let outcome = run_set(
+            &config,
+            &root,
+            &WorkItemId::from("task-1".to_owned()),
+            "priority",
+            SetOperation::Unset,
+        )
+        .unwrap();
+
+        assert_eq!(outcome.previous_value.unwrap().as_str().unwrap(), "high");
+        assert!(outcome.new_value.is_none());
+        assert!(!outcome.mutation_caused_warning);
+
+        let file = read_item(&root, "task-1");
+        assert!(!file.contains("priority:"));
+        assert!(file.contains("status: open"));
+    }
+
+    #[test]
+    fn unset_absent_field_is_noop_and_exits_zero() {
+        let (_directory, root) = setup_project();
+        let config = load_test_config(&root);
+        let original = "---\ntitle: Task 1\nstatus: open\n---\nbody\n";
+        write_item(&root, "task-1", original);
+
+        let outcome = run_set(
+            &config,
+            &root,
+            &WorkItemId::from("task-1".to_owned()),
+            "priority",
+            SetOperation::Unset,
+        )
+        .unwrap();
+
+        assert!(outcome.previous_value.is_none());
+        assert!(outcome.new_value.is_none());
+        assert!(!outcome.mutation_caused_warning);
+
+        // File untouched byte-for-byte.
+        let file = read_item(&root, "task-1");
+        assert_eq!(file, original);
+    }
+
+    #[test]
+    fn unset_required_field_saves_with_missing_required_warning_and_flags_mutation_caused() {
+        use crate::model::diagnostic::{DiagnosticBody, ItemDiagnosticKind};
+
+        let (_directory, root) = setup_project();
+        let config = load_test_config(&root);
+        write_item(&root, "task-1", "---\ntitle: Task 1\nstatus: open\n---\n");
+
+        let outcome = run_set(
+            &config,
+            &root,
+            &WorkItemId::from("task-1".to_owned()),
+            "status",
+            SetOperation::Unset,
+        )
+        .unwrap();
+
+        assert!(outcome.mutation_caused_warning);
+
+        // File written despite the required violation.
+        let file = read_item(&root, "task-1");
+        assert!(!file.contains("status:"));
+
+        let has_missing = outcome.warnings.iter().any(|d| match &d.body {
+            DiagnosticBody::Item(item) => matches!(
+                &item.kind,
+                ItemDiagnosticKind::MissingRequired { field } if field == "status"
+            ),
+            _ => false,
+        });
+        assert!(has_missing);
+    }
+
+    #[test]
+    fn unset_id_returns_idnotmutable_with_reworded_message() {
+        let (_directory, root) = setup_project();
+        let config = load_test_config(&root);
+        write_item(&root, "task-1", "---\ntitle: Task 1\nstatus: open\n---\n");
+
+        let result = run_set(
+            &config,
+            &root,
+            &WorkItemId::from("task-1".to_owned()),
+            "id",
+            SetOperation::Unset,
+        );
+
+        let error = result.unwrap_err();
+        assert!(matches!(error, SetError::IdNotMutable));
+        let message = error.to_string();
+        assert!(message.contains("modify"));
+        assert!(message.contains("workdown rename"));
+    }
+
+    #[test]
+    fn unset_unknown_field_errors_without_writing() {
+        let (_directory, root) = setup_project();
+        let config = load_test_config(&root);
+        let original = "---\ntitle: Task 1\nstatus: open\n---\nbody\n";
+        write_item(&root, "task-1", original);
+
+        let result = run_set(
+            &config,
+            &root,
+            &WorkItemId::from("task-1".to_owned()),
+            "nonexistent",
+            SetOperation::Unset,
+        );
+
+        assert!(matches!(result, Err(SetError::UnknownField { .. })));
+        let file = read_item(&root, "task-1");
+        assert_eq!(file, original);
+    }
+
+    #[test]
+    fn unset_unknown_item_errors_without_writing() {
+        let (_directory, root) = setup_project();
+        let config = load_test_config(&root);
+
+        let result = run_set(
+            &config,
+            &root,
+            &WorkItemId::from("does-not-exist".to_owned()),
+            "priority",
+            SetOperation::Unset,
+        );
+
+        assert!(matches!(result, Err(SetError::UnknownItem { .. })));
+    }
+
+    #[test]
+    fn unset_preserves_body_byte_for_byte() {
+        let (_directory, root) = setup_project();
+        let config = load_test_config(&root);
+        let body = "Line one of the body.\n\n## Heading\n\nMore body.\n";
+        write_item(
+            &root,
+            "task-1",
+            &format!("---\ntitle: Task 1\nstatus: open\npriority: high\n---\n{body}"),
+        );
+
+        run_set(
+            &config,
+            &root,
+            &WorkItemId::from("task-1".to_owned()),
+            "priority",
+            SetOperation::Unset,
+        )
+        .unwrap();
+
+        let file = read_item(&root, "task-1");
+        let body_offset = file.find("---\n").unwrap();
+        let after_first = body_offset + 4;
+        let closing = file[after_first..].find("---\n").unwrap();
+        let body_in_file = &file[after_first + closing + 4..];
+        assert_eq!(body_in_file, body);
+    }
+
+    #[test]
+    fn unset_explicit_id_in_frontmatter_is_preserved() {
+        let (_directory, root) = setup_project();
+        let config = load_test_config(&root);
+        write_item(
+            &root,
+            "filename-slug",
+            "---\nid: custom-id\ntitle: Task\nstatus: open\npriority: high\n---\n",
+        );
+
+        run_set(
+            &config,
+            &root,
+            &WorkItemId::from("custom-id".to_owned()),
+            "priority",
+            SetOperation::Unset,
+        )
+        .unwrap();
+
+        let file = read_item(&root, "filename-slug");
+        assert!(file.contains("id: custom-id"));
+        assert!(!file.contains("priority:"));
+    }
+
+    #[test]
+    fn unset_does_not_flag_mutation_caused_warning_for_unrelated_existing_warnings() {
+        let (_directory, root) = setup_project();
+        let config = load_test_config(&root);
+
+        // Pre-existing item with an UnknownField warning — should be
+        // visible in the post-write output but must not flip
+        // mutation_caused_warning on an unrelated unset.
+        write_item(
+            &root,
+            "noisy",
+            "---\ntitle: Noisy\nstatus: open\nextra_unknown: foo\n---\n",
+        );
+        write_item(
+            &root,
+            "task-1",
+            "---\ntitle: Task 1\nstatus: open\npriority: high\n---\n",
+        );
+
+        let outcome = run_set(
+            &config,
+            &root,
+            &WorkItemId::from("task-1".to_owned()),
+            "priority",
+            SetOperation::Unset,
+        )
+        .unwrap();
+
+        assert!(!outcome.mutation_caused_warning);
+        // Pre-existing warning still surfaces (milestone "always show all").
+        assert!(!outcome.warnings.is_empty());
+    }
+
+    // ── Aggregate field interaction ──────────────────────────────────
+
+    const AGGREGATE_SCHEMA: &str = "\
+fields:
+  title:
+    type: string
+    required: false
+    default: $filename_pretty
+  status:
+    type: choice
+    values: [open, in_progress, done]
+    required: true
+    default: open
+  parent:
+    type: link
+    required: false
+    allow_cycles: false
+    inverse: children
+  effort:
+    type: integer
+    required: false
+    aggregate:
+      function: sum
+      error_on_missing: true
+";
+
+    fn setup_aggregate_project() -> (TempDir, PathBuf) {
+        let directory = TempDir::new().unwrap();
+        let root = directory.path().to_path_buf();
+        fs::create_dir_all(root.join(".workdown/templates")).unwrap();
+        fs::create_dir_all(root.join("workdown-items")).unwrap();
+        fs::write(root.join(".workdown/config.yaml"), TEST_CONFIG).unwrap();
+        fs::write(root.join(".workdown/schema.yaml"), AGGREGATE_SCHEMA).unwrap();
+        (directory, root)
+    }
+
+    #[test]
+    fn unset_aggregate_field_with_error_on_missing_surfaces_warning() {
+        use crate::model::diagnostic::{DiagnosticBody, ItemDiagnosticKind};
+
+        let (_directory, root) = setup_aggregate_project();
+        let config = load_test_config(&root);
+        write_item(
+            &root,
+            "task-1",
+            "---\ntitle: Task 1\nstatus: open\neffort: 5\n---\n",
+        );
+
+        let outcome = run_set(
+            &config,
+            &root,
+            &WorkItemId::from("task-1".to_owned()),
+            "effort",
+            SetOperation::Unset,
+        )
+        .unwrap();
+
+        assert!(outcome.mutation_caused_warning);
+
+        let file = read_item(&root, "task-1");
+        assert!(!file.contains("effort:"));
+
+        // The rollup pass on reload surfaces AggregateMissingValue for
+        // the now-empty aggregate field with error_on_missing.
+        let has_missing = outcome.warnings.iter().any(|d| match &d.body {
+            DiagnosticBody::Item(item) => matches!(
+                &item.kind,
+                ItemDiagnosticKind::AggregateMissingValue { field } if field == "effort"
+            ),
+            _ => false,
+        });
+        assert!(has_missing);
     }
 }

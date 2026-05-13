@@ -2,8 +2,7 @@
 //!
 //! Thin wrapper over `workdown_core::operations::set::run_set` that
 //! parses the user's string value against the schema field type and
-//! renders the change as a human-readable line plus any post-write
-//! warnings.
+//! delegates rendering to [`super::mutation_output`].
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -11,9 +10,10 @@ use std::process::ExitCode;
 use workdown_core::model::config::Config;
 use workdown_core::model::WorkItemId;
 use workdown_core::operations::frontmatter_io;
-use workdown_core::operations::set::{run_set, SetOperation, SetOutcome};
+use workdown_core::operations::set::{run_set, SetOperation};
 
 use crate::cli::output;
+use crate::commands::mutation_output::{render_outcome, MutationMode};
 
 pub fn run_set_command(
     config: &Config,
@@ -41,57 +41,10 @@ pub fn run_set_command(
     let operation = SetOperation::Replace(value);
 
     match run_set(config, project_root, &work_item_id, field, operation) {
-        Ok(outcome) => {
-            render_change_line(id, field, &outcome);
-            for warning in &outcome.warnings {
-                output::warning(&warning.to_string());
-            }
-            if outcome.mutation_caused_warning {
-                Ok(ExitCode::FAILURE)
-            } else {
-                Ok(ExitCode::SUCCESS)
-            }
-        }
+        Ok(outcome) => Ok(render_outcome(id, field, MutationMode::Replace, &outcome)),
         Err(error) => {
             output::error(&error.to_string());
             Ok(ExitCode::FAILURE)
-        }
-    }
-}
-
-/// Render the milestone-table replace-mode output:
-/// `task-1: status: open → in_progress`.
-fn render_change_line(id: &str, field: &str, outcome: &SetOutcome) {
-    let previous = render_value(outcome.previous_value.as_ref());
-    let new = render_value(outcome.new_value.as_ref());
-    output::success(&format!("{id}: {field}: {previous} → {new}"));
-}
-
-/// Render a YAML value for display. `None` becomes `(unset)`; everything
-/// else uses serde_yaml's compact scalar form (sequences render as
-/// `[a, b]`, scalars unquoted).
-fn render_value(value: Option<&serde_yaml::Value>) -> String {
-    match value {
-        None => "(unset)".to_owned(),
-        Some(value) => format_yaml_value(value),
-    }
-}
-
-fn format_yaml_value(value: &serde_yaml::Value) -> String {
-    match value {
-        serde_yaml::Value::Null => "(null)".to_owned(),
-        serde_yaml::Value::String(string) => string.clone(),
-        serde_yaml::Value::Bool(boolean) => boolean.to_string(),
-        serde_yaml::Value::Number(number) => number.to_string(),
-        serde_yaml::Value::Sequence(items) => {
-            let inner: Vec<String> = items.iter().map(format_yaml_value).collect();
-            format!("[{}]", inner.join(", "))
-        }
-        serde_yaml::Value::Mapping(_) | serde_yaml::Value::Tagged(_) => {
-            serde_yaml::to_string(value)
-                .unwrap_or_default()
-                .trim()
-                .to_owned()
         }
     }
 }
