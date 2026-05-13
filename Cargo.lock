@@ -1758,7 +1758,7 @@ dependencies = [
 
 [[package]]
 name = "workdown"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1777,7 +1777,7 @@ dependencies = [
 
 [[package]]
 name = "workdown-core"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "chrono",
  "csv",
@@ -1796,7 +1796,7 @@ dependencies = [
 
 [[package]]
 name = "workdown-server"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "workdown-core",
 ]
