@@ -86,7 +86,7 @@ pub(crate) fn coerce_fields(
 }
 
 /// Coerce a single YAML value into a [`FieldValue`] according to the field definition.
-fn coerce_value(
+pub(crate) fn coerce_value(
     value: &serde_yaml::Value,
     def: &FieldDefinition,
 ) -> Result<FieldValue, FieldValueError> {

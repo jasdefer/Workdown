@@ -90,6 +90,18 @@ pub enum Command {
         #[command(subcommand)]
         action: TemplatesAction,
     },
+    /// Replace a single field on a work item
+    ///
+    /// For list/links/multichoice fields, pass comma-separated values
+    /// (e.g. `workdown set task-1 tags auth,backend`).
+    Set {
+        /// Work item id (filename without `.md`)
+        id: String,
+        /// Field name as defined in schema.yaml
+        field: String,
+        /// New value
+        value: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]

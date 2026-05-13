@@ -5,11 +5,12 @@ use std::path::{Path, PathBuf};
 
 use crate::generators::{resolve_default, resolve_template_tokens};
 use crate::model::config::Config;
-use crate::model::diagnostic::{Diagnostic, DiagnosticBody, FilesDiagnosticKind};
-use crate::model::schema::{Schema, Severity};
+use crate::model::diagnostic::Diagnostic;
+use crate::model::schema::Severity;
 use crate::model::template::TemplateError;
 use crate::model::work_item::is_valid_id;
 use crate::model::WorkItemId;
+use crate::operations::frontmatter_io::build_frontmatter_yaml;
 use crate::operations::templates::load_template_by_name;
 use crate::parser;
 use crate::parser::schema::SchemaLoadError;
@@ -20,7 +21,9 @@ use crate::parser::schema::SchemaLoadError;
 pub struct AddOutcome {
     /// Path to the created file.
     pub path: PathBuf,
-    /// Rule warnings (non-blocking) for the newly created item.
+    /// All non-blocking diagnostics emitted by the post-write store
+    /// reload plus rule evaluation. Not filtered to the new item —
+    /// cross-item warnings (chain conflicts, cascades) surface here too.
     pub warnings: Vec<Diagnostic>,
 }
 
@@ -179,26 +182,16 @@ pub fn run_add(
     // aggregates without per-field provenance.
     let reloaded = crate::store::Store::load(&items_path, &schema)?;
 
-    // Surface diagnostics produced by the reload that concern this new
-    // item (broken links, chain conflicts, missing requireds, etc.) plus
-    // any rule violations against the post-write store.
-    let mut item_warnings: Vec<Diagnostic> = reloaded
-        .diagnostics()
-        .iter()
-        .filter(|diagnostic| is_diagnostic_for_item(diagnostic, &work_item_id))
-        .cloned()
-        .collect();
-
-    let rule_diagnostics = crate::rules::evaluate(&reloaded, &schema);
-    item_warnings.extend(
-        rule_diagnostics
-            .into_iter()
-            .filter(|diagnostic| is_diagnostic_for_item(diagnostic, &work_item_id)),
-    );
+    // Surface every diagnostic from the reload plus every rule
+    // violation against the post-write store. We don't filter to "just
+    // this item" — chain conflicts and cascade effects need to be
+    // visible at the moment the user touches that area.
+    let mut warnings: Vec<Diagnostic> = reloaded.diagnostics().to_vec();
+    warnings.extend(crate::rules::evaluate(&reloaded, &schema));
 
     Ok(AddOutcome {
         path: file_path,
-        warnings: item_warnings,
+        warnings,
     })
 }
 
@@ -276,53 +269,6 @@ fn slugify(title: &str) -> Result<String, AddError> {
     }
 
     Ok(trimmed.to_owned())
-}
-
-/// Build YAML frontmatter string with fields in schema-defined order.
-fn build_frontmatter_yaml(
-    frontmatter: &HashMap<String, serde_yaml::Value>,
-    schema: &Schema,
-    user_set_id: bool,
-) -> String {
-    let mut mapping = serde_yaml::Mapping::new();
-
-    // Emit fields in schema order.
-    for field_name in schema.fields.keys() {
-        if field_name == "id" && !user_set_id {
-            continue;
-        }
-        if let Some(value) = frontmatter.get(field_name) {
-            mapping.insert(serde_yaml::Value::String(field_name.clone()), value.clone());
-        }
-    }
-
-    // Emit any fields not in the schema (alphabetical for determinism).
-    let mut extra_keys: Vec<&String> = frontmatter
-        .keys()
-        .filter(|key| !schema.fields.contains_key(key.as_str()))
-        .collect();
-    extra_keys.sort();
-    for key in extra_keys {
-        if let Some(value) = frontmatter.get(key) {
-            mapping.insert(serde_yaml::Value::String(key.clone()), value.clone());
-        }
-    }
-
-    serde_yaml::to_string(&mapping).unwrap_or_default()
-}
-
-/// Check whether a diagnostic refers to a specific work item.
-fn is_diagnostic_for_item(diagnostic: &Diagnostic, item_id: &WorkItemId) -> bool {
-    match &diagnostic.body {
-        DiagnosticBody::Item(item) => item.item_id == *item_id,
-        DiagnosticBody::Files(files) => matches!(
-            &files.kind,
-            FilesDiagnosticKind::DuplicateId { id } if id == item_id
-        ),
-        DiagnosticBody::File(_) | DiagnosticBody::Collection(_) | DiagnosticBody::Config(_) => {
-            false
-        }
-    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────

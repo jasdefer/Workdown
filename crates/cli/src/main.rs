@@ -129,6 +129,12 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         }
                     }
                 }
+                cli::Command::Set { id, field, value } => {
+                    tracing::info!("setting field on work item");
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    commands::set::run_set_command(&config, &project_root, id, field, value)
+                }
             }
         }
     }

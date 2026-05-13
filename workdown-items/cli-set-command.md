@@ -1,7 +1,7 @@
 ---
 id: cli-set-command
 type: issue
-status: in_progress
+status: done
 title: workdown set — replace a field value
 parent: item-mutations
 ---
