@@ -22,7 +22,13 @@ pub fn run_unset_command(
 ) -> anyhow::Result<ExitCode> {
     let work_item_id = WorkItemId::from(id.to_owned());
 
-    match run_set(config, project_root, &work_item_id, field, SetOperation::Unset) {
+    match run_set(
+        config,
+        project_root,
+        &work_item_id,
+        field,
+        SetOperation::Unset,
+    ) {
         Ok(outcome) => Ok(render_outcome(id, field, MutationMode::Unset, &outcome)),
         Err(error) => {
             output::error(&error.to_string());

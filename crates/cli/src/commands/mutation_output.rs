@@ -24,12 +24,7 @@ pub enum MutationMode {
 
 /// Print the per-mutation headline plus every warning, and return the
 /// exit code derived from `outcome.mutation_caused_warning`.
-pub fn render_outcome(
-    id: &str,
-    field: &str,
-    mode: MutationMode,
-    outcome: &SetOutcome,
-) -> ExitCode {
+pub fn render_outcome(id: &str, field: &str, mode: MutationMode, outcome: &SetOutcome) -> ExitCode {
     let headline = match mode {
         MutationMode::Replace => format_replace(field, outcome),
         MutationMode::Unset => format_unset(field, outcome),

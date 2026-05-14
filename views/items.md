@@ -10,7 +10,7 @@
 | [cli-rename-command](../workdown-items/cli-rename-command.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) |  |
 | [cli-set-command](../workdown-items/cli-set-command.md) | issue | done | [item-mutations](../workdown-items/item-mutations.md) |  |
 | [cli-set-modes](../workdown-items/cli-set-modes.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) | [cli-set-command](../workdown-items/cli-set-command.md) |
-| [cli-unset-command](../workdown-items/cli-unset-command.md) | issue | to_do | [item-mutations](../workdown-items/item-mutations.md) | [cli-set-command](../workdown-items/cli-set-command.md) |
+| [cli-unset-command](../workdown-items/cli-unset-command.md) | issue | done | [item-mutations](../workdown-items/item-mutations.md) | [cli-set-command](../workdown-items/cli-set-command.md) |
 | [code-quality](../workdown-items/code-quality.md) | milestone | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) |  |
 | [cross-cutting-helpers](../workdown-items/cross-cutting-helpers.md) | issue | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md) | issue | done | [code-quality](../workdown-items/code-quality.md) |  |

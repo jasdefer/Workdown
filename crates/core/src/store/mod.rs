@@ -12,7 +12,7 @@ mod coerce;
 mod cycles;
 mod rollup;
 
-pub(crate) use coerce::{coerce_fields, coerce_value};
+pub(crate) use coerce::coerce_fields;
 
 use std::collections::HashMap;
 use std::path::Path;

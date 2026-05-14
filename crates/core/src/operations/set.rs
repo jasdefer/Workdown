@@ -252,8 +252,11 @@ fn finalize_mutation(
     computed: ComputedMutation,
 ) -> Result<SetOutcome, SetError> {
     if computed.write_needed {
-        let yaml_content =
-            build_frontmatter_yaml(&computed.new_frontmatter, &context.schema, context.user_set_id);
+        let yaml_content = build_frontmatter_yaml(
+            &computed.new_frontmatter,
+            &context.schema,
+            context.user_set_id,
+        );
         let new_file_content = format!("---\n{yaml_content}---\n{}", context.body);
 
         write_file_atomically(&context.file_path, &new_file_content).map_err(|source| {
@@ -272,10 +275,8 @@ fn finalize_mutation(
     let mut post_diagnostics: Vec<Diagnostic> = reloaded.diagnostics().to_vec();
     post_diagnostics.extend(crate::rules::evaluate(&reloaded, &context.schema));
 
-    let mutation_caused_warning = post_diagnostics_introduced_by_mutation(
-        &context.pre_diagnostics,
-        &post_diagnostics,
-    );
+    let mutation_caused_warning =
+        post_diagnostics_introduced_by_mutation(&context.pre_diagnostics, &post_diagnostics);
 
     Ok(SetOutcome {
         path: context.file_path,
@@ -291,13 +292,13 @@ fn finalize_mutation(
 /// Identity is by stable JSON serialization — every `Diagnostic` field
 /// is `Serialize`, and re-serializing the same data produces the same
 /// string. Cheap because `pre` is hashed once.
-fn post_diagnostics_introduced_by_mutation(
-    pre: &[Diagnostic],
-    post: &[Diagnostic],
-) -> bool {
+fn post_diagnostics_introduced_by_mutation(pre: &[Diagnostic], post: &[Diagnostic]) -> bool {
     let pre_keys: HashSet<String> = pre.iter().filter_map(diagnostic_key).collect();
-    post.iter()
-        .any(|d| diagnostic_key(d).map(|k| !pre_keys.contains(&k)).unwrap_or(true))
+    post.iter().any(|d| {
+        diagnostic_key(d)
+            .map(|k| !pre_keys.contains(&k))
+            .unwrap_or(true)
+    })
 }
 
 fn diagnostic_key(d: &Diagnostic) -> Option<String> {

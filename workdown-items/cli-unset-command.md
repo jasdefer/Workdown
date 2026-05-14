@@ -1,7 +1,7 @@
 ---
 id: cli-unset-command
 type: issue
-status: to_do
+status: done
 title: workdown unset — clear a field
 parent: item-mutations
 depends_on: [cli-set-command]
