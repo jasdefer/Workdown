@@ -8,6 +8,7 @@
 
 use std::process::ExitCode;
 
+use workdown_core::operations::rename::{FieldRewrite, RenameOutcome, TextualMatchKind};
 use workdown_core::operations::set::SetOutcome;
 
 use crate::cli::output;
@@ -141,6 +142,86 @@ fn render_optional(value: Option<&serde_yaml::Value>) -> String {
     match value {
         None => "(unset)".to_owned(),
         Some(value) => format_yaml_value(value),
+    }
+}
+
+// ── Rename outcome ───────────────────────────────────────────────────
+
+/// Print a rename outcome and return the exit code.
+///
+/// Output order: headline → per-file rewrites → textual matches →
+/// reload warnings. Dry-run prefixes the headline so the user can tell
+/// at a glance that nothing was written.
+pub fn render_rename_outcome(outcome: &RenameOutcome) -> ExitCode {
+    let dry_run_prefix = if outcome.dry_run { "[dry run] " } else { "" };
+    let rewrite_count = outcome.rewritten_files.len();
+    let textual_count = outcome.textual_matches.len();
+
+    let summary = format!(
+        "{dry_run_prefix}{old} → {new} ({rewrite_count} file{rewrite_plural} rewritten\
+         , {textual_count} textual mention{textual_plural})",
+        old = outcome.old_id,
+        new = outcome.new_id,
+        rewrite_plural = if rewrite_count == 1 { "" } else { "s" },
+        textual_plural = if textual_count == 1 { "" } else { "s" },
+    );
+    output::success(&summary);
+
+    for rewritten in &outcome.rewritten_files {
+        if rewritten.field_rewrites.is_empty() {
+            // Renamed file with no self-link rewrites — the move itself
+            // is the only change. Useful to see the path written.
+            output::info(&format!(
+                "  {id}: (moved to {path})",
+                id = rewritten.id,
+                path = rewritten.path.display(),
+            ));
+            continue;
+        }
+        for field_rewrite in &rewritten.field_rewrites {
+            output::info(&format!(
+                "  {id}: {line}",
+                id = rewritten.id,
+                line = format_field_rewrite(field_rewrite),
+            ));
+        }
+    }
+
+    for textual_match in &outcome.textual_matches {
+        output::warning(&format!(
+            "  {kind} match at {path}:{line} — not rewritten, please review",
+            kind = textual_match_kind_label(textual_match.kind),
+            path = textual_match.path.display(),
+            line = textual_match.line,
+        ));
+    }
+
+    for warning in &outcome.warnings {
+        output::warning(&warning.to_string());
+    }
+
+    if outcome.mutation_caused_warning {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+fn format_field_rewrite(field_rewrite: &FieldRewrite) -> String {
+    let previous = format_yaml_value(&field_rewrite.previous_value);
+    let new = format_yaml_value(&field_rewrite.new_value);
+    format!("{field}: {previous} → {new}", field = field_rewrite.field)
+}
+
+fn textual_match_kind_label(kind: TextualMatchKind) -> &'static str {
+    match kind {
+        TextualMatchKind::ItemBody => "body",
+        TextualMatchKind::UnparseableItem => "unparseable item",
+        TextualMatchKind::Config => "config",
+        TextualMatchKind::Schema => "schema",
+        TextualMatchKind::Views => "views",
+        TextualMatchKind::Resources => "resources",
+        TextualMatchKind::Template => "template",
     }
 }
 

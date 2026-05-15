@@ -157,6 +157,24 @@ pub enum Command {
         /// New value for the board field
         value: String,
     },
+    /// Change a work item's id — moves the file and rewrites every
+    /// incoming link/links reference.
+    ///
+    /// Drops the explicit `id:` key from the renamed item's frontmatter
+    /// (the new filename carries the id). Textual mentions of the old
+    /// id outside link fields (in bodies, configs, templates) are
+    /// reported but never rewritten.
+    ///
+    /// To undo: `workdown rename <new-id> <old-id>`.
+    Rename {
+        /// Current work item id
+        old_id: String,
+        /// Desired new id (kebab-case, lowercase alphanumeric with hyphens)
+        new_id: String,
+        /// Print the plan without writing to disk
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
