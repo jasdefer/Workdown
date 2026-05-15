@@ -167,6 +167,12 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
                     commands::unset::run_unset_command(&config, &project_root, id, field)
                 }
+                cli::Command::Move { id, value } => {
+                    tracing::info!("moving work item on board field");
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    commands::r#move::run_move_command(&config, &project_root, id, value)
+                }
             }
         }
     }

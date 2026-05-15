@@ -1,3 +1,4 @@
+pub mod r#move;
 pub mod mutation_output;
 pub mod query;
 pub mod render;

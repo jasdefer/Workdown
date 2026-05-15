@@ -146,6 +146,17 @@ pub enum Command {
         /// Field name as defined in schema.yaml
         field: String,
     },
+    /// Move a work item to a different value of the board field
+    ///
+    /// Shortcut for `workdown set <id> <board_field> <value>`. The board
+    /// field name is read from `defaults.board_field` in
+    /// `.workdown/config.yaml` (typically `status`).
+    Move {
+        /// Work item id (filename without `.md`)
+        id: String,
+        /// New value for the board field
+        value: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
