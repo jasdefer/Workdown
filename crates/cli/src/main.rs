@@ -129,11 +129,37 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         }
                     }
                 }
-                cli::Command::Set { id, field, value } => {
-                    tracing::info!("setting field on work item");
+                cli::Command::Set {
+                    id,
+                    field,
+                    value,
+                    append,
+                    remove,
+                    delta,
+                    toggle,
+                } => {
+                    tracing::info!("mutating field on work item");
                     let project_root = std::env::current_dir()
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
-                    commands::set::run_set_command(&config, &project_root, id, field, value)
+                    // Clap's ArgGroup guarantees exactly one of value /
+                    // append / remove / delta / toggle is set; the
+                    // order below matches that contract.
+                    let mode = if let Some(value_str) = value {
+                        commands::set::CliSetMode::Replace(value_str.clone())
+                    } else if let Some(value_str) = append {
+                        commands::set::CliSetMode::Append(value_str.clone())
+                    } else if let Some(value_str) = remove {
+                        commands::set::CliSetMode::Remove(value_str.clone())
+                    } else if let Some(value_str) = delta {
+                        commands::set::CliSetMode::Delta(value_str.clone())
+                    } else if *toggle {
+                        commands::set::CliSetMode::Toggle
+                    } else {
+                        unreachable!(
+                            "clap ArgGroup ensures one of value/append/remove/delta/toggle is set"
+                        );
+                    };
+                    commands::set::run_set_command(&config, &project_root, id, field, mode)
                 }
                 cli::Command::Unset { id, field } => {
                     tracing::info!("clearing field on work item");

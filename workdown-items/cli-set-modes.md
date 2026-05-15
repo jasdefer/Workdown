@@ -1,7 +1,7 @@
 ---
 id: cli-set-modes
 type: issue
-status: to_do
+status: done
 title: workdown set — type-aware modes (append, remove, delta)
 parent: item-mutations
 depends_on: [cli-set-command]

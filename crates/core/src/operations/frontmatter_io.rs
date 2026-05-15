@@ -96,6 +96,21 @@ fn temp_path_for(path: &Path) -> PathBuf {
 /// List, links, and multichoice values are comma-split with whitespace
 /// trimmed — matching the comma-separated form already accepted by
 /// `workdown add`'s schema-derived flags.
+/// Parse a comma-separated string into a vector of `String` values
+/// (each trimmed of surrounding whitespace).
+///
+/// Used by collection-mode operations (`--append`, `--remove`) that
+/// accept a list of values rather than a single field-typed value. All
+/// elements come back as `serde_yaml::Value::String`; choice membership
+/// and link resolution are validated by the post-write reload, mirroring
+/// [`parse_value_for_field`]'s save-with-warning approach.
+pub fn parse_collection_values(value_str: &str) -> Vec<serde_yaml::Value> {
+    value_str
+        .split(',')
+        .map(|element| serde_yaml::Value::String(element.trim().to_owned()))
+        .collect()
+}
+
 pub fn parse_value_for_field(value_str: &str, field_def: &FieldDefinition) -> serde_yaml::Value {
     use serde_yaml::Value;
 

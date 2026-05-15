@@ -3,7 +3,7 @@ pub mod schema_args;
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{ArgGroup, Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
 /// Git-based project management — work items as Markdown files.
@@ -90,17 +90,51 @@ pub enum Command {
         #[command(subcommand)]
         action: TemplatesAction,
     },
-    /// Replace a single field on a work item
+    /// Mutate a single field on a work item
     ///
-    /// For list/links/multichoice fields, pass comma-separated values
-    /// (e.g. `workdown set task-1 tags auth,backend`).
+    /// In replace mode (bare positional value), the value overwrites
+    /// the field. For list/links/multichoice fields, pass comma-separated
+    /// values (e.g. `workdown set task-1 tags auth,backend`).
+    ///
+    /// Collection fields (list, links, multichoice) also support:
+    ///   --append <value>   add values to the end (comma-separated)
+    ///   --remove <value>   remove every occurrence of each value
+    ///
+    /// Numeric (integer/float), duration, and date fields support:
+    ///   --delta <value>    add a signed amount to the current value
+    ///                      (e.g. `--delta 3`, `--delta -1`, `--delta 1w`)
+    ///
+    /// Boolean fields support:
+    ///   --toggle           flip the current value
+    #[command(group(
+        ArgGroup::new("set_mode")
+            .required(true)
+            .multiple(false)
+            .args(["value", "append", "remove", "delta", "toggle"])
+    ))]
     Set {
         /// Work item id (filename without `.md`)
         id: String,
         /// Field name as defined in schema.yaml
         field: String,
-        /// New value
-        value: String,
+        /// New value (replace mode)
+        value: Option<String>,
+        /// Append values to a collection field (comma-separated)
+        #[arg(long)]
+        append: Option<String>,
+        /// Remove values from a collection field (comma-separated)
+        #[arg(long)]
+        remove: Option<String>,
+        /// Add a signed amount to a numeric / duration / date field
+        ///
+        /// Examples: `--delta 3`, `--delta -1`, `--delta 1w`, `--delta -3d`.
+        /// `allow_hyphen_values` lets clap accept the leading `-` as
+        /// part of the value rather than treating it as a flag.
+        #[arg(long, allow_hyphen_values = true)]
+        delta: Option<String>,
+        /// Flip the current value of a boolean field
+        #[arg(long)]
+        toggle: bool,
     },
     /// Clear a single field on a work item
     ///
