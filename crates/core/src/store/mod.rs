@@ -12,8 +12,6 @@ mod coerce;
 mod cycles;
 mod rollup;
 
-pub(crate) use coerce::coerce_fields;
-
 use std::collections::HashMap;
 use std::path::Path;
 

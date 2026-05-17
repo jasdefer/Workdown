@@ -1,30 +1,39 @@
 //! `workdown add` — create a new work item file.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::generators::{resolve_default, resolve_template_tokens};
 use crate::model::config::Config;
 use crate::model::diagnostic::Diagnostic;
-use crate::model::schema::Severity;
 use crate::model::template::TemplateError;
 use crate::model::work_item::is_valid_id;
 use crate::model::WorkItemId;
 use crate::operations::frontmatter_io::build_frontmatter_yaml;
 use crate::operations::templates::load_template_by_name;
-use crate::parser;
 use crate::parser::schema::SchemaLoadError;
 
 // ── Public types ─────────────────────────────────────────────────────
 
 /// The outcome of a successful `workdown add`.
 pub struct AddOutcome {
+    /// ID of the created work item (the slug, equal to the filename
+    /// without `.md`). Exposed so callers — notably the future server —
+    /// don't have to re-derive it from `path`.
+    pub id: WorkItemId,
     /// Path to the created file.
     pub path: PathBuf,
-    /// All non-blocking diagnostics emitted by the post-write store
-    /// reload plus rule evaluation. Not filtered to the new item —
-    /// cross-item warnings (chain conflicts, cascades) surface here too.
+    /// All diagnostics emitted by the post-write store reload plus rule
+    /// evaluation. Not filtered to the new item — cross-item warnings
+    /// (chain conflicts, cascades) surface here too. May include
+    /// error-severity coercion diagnostics under the save-with-warning
+    /// policy (the file is still written; the caller decides the exit
+    /// code from `mutation_caused_warning`).
     pub warnings: Vec<Diagnostic>,
+    /// `true` iff the add introduced a diagnostic that wasn't present in
+    /// the pre-mutation store. Pre-existing problems elsewhere in the
+    /// project remain visible in `warnings` but don't flip this flag.
+    pub mutation_caused_warning: bool,
 }
 
 /// An error from the add command.
@@ -47,9 +56,6 @@ pub enum AddError {
 
     #[error("work item '{id}' already exists at {path}")]
     AlreadyExists { id: String, path: PathBuf },
-
-    #[error("validation failed for new work item")]
-    ValidationFailed { diagnostics: Vec<Diagnostic> },
 
     #[error("failed to write '{path}': {source}")]
     WriteFile {
@@ -83,10 +89,16 @@ pub fn run_add(
     let items_path = project_root.join(&config.paths.work_items);
 
     tracing::debug!(schema = %schema_path.display(), "loading schema");
-    let schema = parser::schema::load_schema(&schema_path)?;
+    let schema = crate::parser::schema::load_schema(&schema_path)?;
 
     tracing::debug!(items = %items_path.display(), "loading work items");
     let store = crate::store::Store::load(&items_path, &schema)?;
+
+    // Snapshot pre-mutation diagnostics so the post-write diff can tell
+    // mutation-introduced warnings apart from pre-existing project state.
+    // Same pattern as `set` and `rename`.
+    let mut pre_diagnostics: Vec<Diagnostic> = store.diagnostics().to_vec();
+    pre_diagnostics.extend(crate::rules::evaluate(&store, &schema));
 
     // Load template if requested; start the merged map from template
     // frontmatter, then overlay CLI values (shallow replace).
@@ -143,30 +155,13 @@ pub fn run_add(
         }
     }
 
-    // Build a RawWorkItem for coercion validation.
     let work_item_id = WorkItemId::from(slug.clone());
-    let raw_work_item = parser::RawWorkItem {
-        id: work_item_id.clone(),
-        frontmatter: frontmatter.clone(),
-        body: body.clone(),
-        source_path: file_path.clone(),
-    };
 
-    // Coerce fields — block on errors *before* writing the file.
-    let (_, coercion_diagnostics) = crate::store::coerce_fields(&raw_work_item, &schema);
-    let coercion_errors: Vec<Diagnostic> = coercion_diagnostics
-        .iter()
-        .filter(|diagnostic| diagnostic.severity == Severity::Error)
-        .cloned()
-        .collect();
-
-    if !coercion_errors.is_empty() {
-        return Err(AddError::ValidationFailed {
-            diagnostics: coercion_errors,
-        });
-    }
-
-    // Serialize frontmatter in schema field order.
+    // Serialize frontmatter in schema field order. Per ADR-001's
+    // save-with-warning policy: schema violations don't block creation;
+    // the post-write reload below re-coerces and surfaces the same
+    // diagnostics through `warnings` + `mutation_caused_warning`.
+    // Pre-write hard-fails are still possible from I/O and slug derivation.
     let yaml_content = build_frontmatter_yaml(&frontmatter, &schema, user_set_id);
 
     // Write the file. Body (template or empty) follows the closing delimiter.
@@ -189,9 +184,14 @@ pub fn run_add(
     let mut warnings: Vec<Diagnostic> = reloaded.diagnostics().to_vec();
     warnings.extend(crate::rules::evaluate(&reloaded, &schema));
 
+    let mutation_caused_warning =
+        post_diagnostics_introduced_by_mutation(&pre_diagnostics, &warnings);
+
     Ok(AddOutcome {
+        id: work_item_id,
         path: file_path,
         warnings,
+        mutation_caused_warning,
     })
 }
 
@@ -269,6 +269,28 @@ fn slugify(title: &str) -> Result<String, AddError> {
     }
 
     Ok(trimmed.to_owned())
+}
+
+/// `true` iff any diagnostic exists in `post` that wasn't already in `pre`.
+///
+/// Identity is by stable JSON serialization — every `Diagnostic` field
+/// is `Serialize`, and re-serializing the same data produces the same
+/// string. Cheap because `pre` is hashed once. Mirrors the helper in
+/// `operations::set` and `operations::rename`.
+fn post_diagnostics_introduced_by_mutation(
+    pre: &[Diagnostic],
+    post: &[Diagnostic],
+) -> bool {
+    let pre_keys: HashSet<String> = pre.iter().filter_map(diagnostic_key).collect();
+    post.iter().any(|diagnostic| {
+        diagnostic_key(diagnostic)
+            .map(|key| !pre_keys.contains(&key))
+            .unwrap_or(true)
+    })
+}
+
+fn diagnostic_key(diagnostic: &Diagnostic) -> Option<String> {
+    serde_json::to_string(diagnostic).ok()
 }
 
 // ── Tests ────────────────────────────────────────────────────────────

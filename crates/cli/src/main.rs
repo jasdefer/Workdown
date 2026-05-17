@@ -251,13 +251,11 @@ fn run_add_command(
             for warning in &outcome.warnings {
                 cli::output::warning(&warning.to_string());
             }
-            Ok(ExitCode::SUCCESS)
-        }
-        Err(workdown_core::operations::add::AddError::ValidationFailed { diagnostics }) => {
-            for diagnostic in &diagnostics {
-                cli::output::error(&diagnostic.to_string());
+            if outcome.mutation_caused_warning {
+                Ok(ExitCode::FAILURE)
+            } else {
+                Ok(ExitCode::SUCCESS)
             }
-            Ok(ExitCode::FAILURE)
         }
         Err(error @ workdown_core::operations::add::AddError::Template(_)) => {
             cli::output::error(&error.to_string());
