@@ -97,15 +97,15 @@ pub enum Command {
     /// values (e.g. `workdown set task-1 tags auth,backend`).
     ///
     /// Collection fields (list, links, multichoice) also support:
-    ///   --append <value>   add values to the end (comma-separated)
-    ///   --remove <value>   remove every occurrence of each value
+    ///   `--append <value>`   add values to the end (comma-separated)
+    ///   `--remove <value>`   remove every occurrence of each value
     ///
     /// Numeric (integer/float), duration, and date fields support:
-    ///   --delta <value>    add a signed amount to the current value
-    ///                      (e.g. `--delta 3`, `--delta -1`, `--delta 1w`)
+    ///   `--delta <value>`    add a signed amount to the current value
+    ///                        (e.g. `--delta 3`, `--delta -1`, `--delta 1w`)
     ///
     /// Boolean fields support:
-    ///   --toggle           flip the current value
+    ///   `--toggle`           flip the current value
     #[command(group(
         ArgGroup::new("set_mode")
             .required(true)

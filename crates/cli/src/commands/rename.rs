@@ -2,7 +2,7 @@
 //!
 //! Thin wrapper over [`workdown_core::operations::rename::run_rename`].
 //! Parses CLI arguments into `RenameOptions`, hands off to core, and
-//! delegates output to [`mutation_output::render_rename_outcome`].
+//! delegates output to [`super::mutation_output::render_rename_outcome`].
 
 use std::path::Path;
 use std::process::ExitCode;
