@@ -1,5 +1,6 @@
 pub mod add;
 pub mod body;
+pub mod diagnostics;
 pub mod frontmatter_io;
 pub mod init;
 pub mod rename;

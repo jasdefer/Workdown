@@ -744,8 +744,10 @@ fn execute_plan(
     let mut post_diagnostics: Vec<Diagnostic> = reloaded.diagnostics().to_vec();
     post_diagnostics.extend(crate::rules::evaluate(&reloaded, &context.schema));
 
-    let mutation_caused_warning =
-        post_diagnostics_introduced_by_mutation(&context.pre_diagnostics, &post_diagnostics);
+    let mutation_caused_warning = crate::operations::diagnostics::introduced_by_mutation(
+        &context.pre_diagnostics,
+        &post_diagnostics,
+    );
 
     Ok(RenameOutcome {
         old_id: context.old_id,
@@ -778,21 +780,6 @@ fn collect_rewritten_files(plan: &RenamePlan) -> Vec<RewrittenFile> {
 /// did change — the `id:` key was dropped and the file was moved.
 fn staged_is_renamed(plan: &RenamePlan, staged: &StagedWrite) -> bool {
     std::ptr::eq(staged, &plan.renamed_file_write)
-}
-
-/// Same approach as `set.rs`: serialize each `Diagnostic` to JSON and
-/// compare set membership. Cheap because the pre-set is hashed once.
-fn post_diagnostics_introduced_by_mutation(pre: &[Diagnostic], post: &[Diagnostic]) -> bool {
-    let pre_keys: HashSet<String> = pre.iter().filter_map(diagnostic_key).collect();
-    post.iter().any(|diagnostic| {
-        diagnostic_key(diagnostic)
-            .map(|key| !pre_keys.contains(&key))
-            .unwrap_or(true)
-    })
-}
-
-fn diagnostic_key(diagnostic: &Diagnostic) -> Option<String> {
-    serde_json::to_string(diagnostic).ok()
 }
 
 /// Build a `RenameError::PartialFailure` carrying the boxed context.

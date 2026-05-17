@@ -5,7 +5,7 @@
 //! path; the public API is shaped so they add `SetOperation` variants
 //! rather than parallel functions.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::model::config::Config;
@@ -215,7 +215,7 @@ pub fn run_set(
 // ── Phase 1: pre-flight ─────────────────────────────────────────────
 
 /// Loaded inputs and pre-mutation state, shared between compute and finalize.
-struct MutationContext {
+struct SetContext {
     schema: Schema,
     items_path: PathBuf,
     file_path: PathBuf,
@@ -234,7 +234,7 @@ fn preflight(
     id: &WorkItemId,
     field: &str,
     operation: &SetOperation,
-) -> Result<MutationContext, SetError> {
+) -> Result<SetContext, SetError> {
     if field == "id" {
         return Err(SetError::IdNotMutable);
     }
@@ -285,7 +285,7 @@ fn preflight(
     // we can only check after the frontmatter is read.
     check_operation_preconditions(operation, &frontmatter, field)?;
 
-    Ok(MutationContext {
+    Ok(SetContext {
         schema,
         items_path,
         file_path,
@@ -484,7 +484,7 @@ struct ComputedMutation {
 }
 
 fn compute_mutation(
-    context: &MutationContext,
+    context: &SetContext,
     field: &str,
     operation: SetOperation,
 ) -> ComputedMutation {
@@ -740,7 +740,7 @@ fn format_value_for_info(value: &serde_yaml::Value) -> String {
 // ── Phase 3: finalize ───────────────────────────────────────────────
 
 fn finalize_mutation(
-    context: MutationContext,
+    context: SetContext,
     computed: ComputedMutation,
 ) -> Result<SetOutcome, SetError> {
     if computed.write_needed {
@@ -767,8 +767,10 @@ fn finalize_mutation(
     let mut post_diagnostics: Vec<Diagnostic> = reloaded.diagnostics().to_vec();
     post_diagnostics.extend(crate::rules::evaluate(&reloaded, &context.schema));
 
-    let mutation_caused_warning =
-        post_diagnostics_introduced_by_mutation(&context.pre_diagnostics, &post_diagnostics);
+    let mutation_caused_warning = crate::operations::diagnostics::introduced_by_mutation(
+        &context.pre_diagnostics,
+        &post_diagnostics,
+    );
 
     Ok(SetOutcome {
         path: context.file_path,
@@ -778,24 +780,6 @@ fn finalize_mutation(
         info_messages: computed.info_messages,
         mutation_caused_warning,
     })
-}
-
-/// `true` iff any diagnostic exists in `post` that wasn't already in `pre`.
-///
-/// Identity is by stable JSON serialization — every `Diagnostic` field
-/// is `Serialize`, and re-serializing the same data produces the same
-/// string. Cheap because `pre` is hashed once.
-fn post_diagnostics_introduced_by_mutation(pre: &[Diagnostic], post: &[Diagnostic]) -> bool {
-    let pre_keys: HashSet<String> = pre.iter().filter_map(diagnostic_key).collect();
-    post.iter().any(|d| {
-        diagnostic_key(d)
-            .map(|k| !pre_keys.contains(&k))
-            .unwrap_or(true)
-    })
-}
-
-fn diagnostic_key(d: &Diagnostic) -> Option<String> {
-    serde_json::to_string(d).ok()
 }
 
 // ── Tests ────────────────────────────────────────────────────────────

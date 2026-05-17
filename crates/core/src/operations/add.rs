@@ -1,6 +1,6 @@
 //! `workdown add` — create a new work item file.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::generators::{resolve_default, resolve_template_tokens};
@@ -185,7 +185,7 @@ pub fn run_add(
     warnings.extend(crate::rules::evaluate(&reloaded, &schema));
 
     let mutation_caused_warning =
-        post_diagnostics_introduced_by_mutation(&pre_diagnostics, &warnings);
+        crate::operations::diagnostics::introduced_by_mutation(&pre_diagnostics, &warnings);
 
     Ok(AddOutcome {
         id: work_item_id,
@@ -269,28 +269,6 @@ fn slugify(title: &str) -> Result<String, AddError> {
     }
 
     Ok(trimmed.to_owned())
-}
-
-/// `true` iff any diagnostic exists in `post` that wasn't already in `pre`.
-///
-/// Identity is by stable JSON serialization — every `Diagnostic` field
-/// is `Serialize`, and re-serializing the same data produces the same
-/// string. Cheap because `pre` is hashed once. Mirrors the helper in
-/// `operations::set` and `operations::rename`.
-fn post_diagnostics_introduced_by_mutation(
-    pre: &[Diagnostic],
-    post: &[Diagnostic],
-) -> bool {
-    let pre_keys: HashSet<String> = pre.iter().filter_map(diagnostic_key).collect();
-    post.iter().any(|diagnostic| {
-        diagnostic_key(diagnostic)
-            .map(|key| !pre_keys.contains(&key))
-            .unwrap_or(true)
-    })
-}
-
-fn diagnostic_key(diagnostic: &Diagnostic) -> Option<String> {
-    serde_json::to_string(diagnostic).ok()
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
