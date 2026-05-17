@@ -157,6 +157,20 @@ pub enum Command {
         /// New value for the board field
         value: String,
     },
+    /// Replace the freeform Markdown body of a work item
+    ///
+    /// Pass an empty string to clear the body. For interactive editing,
+    /// open the `.md` file in your editor — this command exists for
+    /// non-interactive callers (UI, scripts, the future server).
+    ///
+    /// Frontmatter bytes are preserved verbatim. The body is normalised
+    /// to end with exactly one trailing newline (or none if empty).
+    Body {
+        /// Work item id (filename without `.md`)
+        id: String,
+        /// New body content (use `""` to clear)
+        body: String,
+    },
     /// Change a work item's id — moves the file and rewrites every
     /// incoming link/links reference.
     ///

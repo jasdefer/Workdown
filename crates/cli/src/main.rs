@@ -173,6 +173,12 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
                     commands::r#move::run_move_command(&config, &project_root, id, value)
                 }
+                cli::Command::Body { id, body } => {
+                    tracing::info!("replacing body of work item");
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    commands::body::run_body_command(&config, &project_root, id, body)
+                }
                 cli::Command::Rename {
                     old_id,
                     new_id,

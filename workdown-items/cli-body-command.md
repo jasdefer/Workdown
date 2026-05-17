@@ -1,54 +1,75 @@
 ---
 id: cli-body-command
 type: issue
-status: to_do
-title: workdown body — edit the Markdown body
+status: done
+title: workdown body — replace the Markdown body
 parent: item-mutations
 ---
 
-Frontmatter mutations cover structured fields. The Markdown body below the frontmatter is freeform and needs its own command — the UI's card detail view will want a description editor, and scripts will want to append notes.
+Frontmatter mutations cover structured fields. The Markdown body below the frontmatter is freeform and needs its own command — the UI's card detail view will write the description through it, and scripts will occasionally want to overwrite the body programmatically. For interactive editing the user opens the `.md` file directly; the CLI command exists for the non-interactive cases.
+
+## Surface
 
 ```
-workdown body <id> --set "<markdown>"
-workdown body <id> --append "<markdown>"
-workdown body <id> --edit
+workdown body <id> <markdown>
 ```
 
-## Initial idea
+- Single positional value, always a full replacement of the body.
+- No `--edit` (open the file in your editor instead), no `--append` (read + concat + replace in the caller if needed), no stdin support.
+- Empty value (`workdown body task-1 ""`) is valid and clears the body; the frontmatter stays.
+- The CLI command is a thin wrapper over a pure core function so the future server can call the same code path.
 
-- `--set` replaces the entire body with the given Markdown. Reads from stdin when value is `-` (the standard "read from pipe" convention) so multi-line content is ergonomic.
-- `--append` appends Markdown to the existing body (with a separating blank line).
-- `--edit` opens `$EDITOR` on a temp file pre-populated with the current body, writes back on close. Falls back to a sensible default editor on Windows / macOS / Linux if `$EDITOR` is unset (or errors with a clear message — open question).
-- No validation: the body is freeform Markdown by design. The file's frontmatter is left untouched.
-- Errors: unknown item id, I/O failure, editor failure (e.g. user exits with non-zero status). The `--edit` path needs special handling — if the user empties the file or cancels, what should we do? Open question.
+## File hygiene
+
+The body is always stored with exactly one trailing `\n`. The CLI normalises:
+
+- `"hello"` → `hello\n`
+- `"hello\n\n\n"` → `hello\n`
+- `""` → no trailing newline (file ends after the closing frontmatter `---`)
+
+Reason: hand-edited Markdown files end with `\n` by convention. Picking one rule keeps diffs quiet when users switch between CLI writes and editor saves.
 
 ## Core function
 
 ```rust
-pub fn run_body_edit(
+pub fn run_body_replace(
     config: &Config,
     project_root: &Path,
     id: &WorkItemId,
-    operation: BodyOperation,  // Set(String) | Append(String) | Replace(String)
+    new_body: String,
 ) -> Result<BodyOutcome, BodyError>;
+
+pub struct BodyOutcome {
+    pub path: PathBuf,
+    pub previous_body: String,
+    pub new_body: String,
+    pub warnings: Vec<Diagnostic>,
+}
 ```
 
-The `--edit` mode is CLI-side only — it launches the editor, captures the result, and then calls `run_body_edit` with `BodyOperation::Set(new_content)`. Keeps the core function pure and reusable by the server.
+Bodies are small Markdown blobs, so returning both strings is cheap and matches the shape of `SetOutcome` (`previous_value` / `new_value`). The server will want `new_body` to echo into the UI; the CLI computes its summary from the strings.
 
-`BodyOutcome` probably needs `previous_body`, `new_body`, `path` — though `previous_body` could be large; consider returning a byte count or a diff summary instead. Open question.
+## CLI output
+
+```
+task-1: body replaced (12 lines)
+```
+
+Line count of the new body. Line deltas (`-3 / +5`) aren't meaningful for a full replacement — the user can read the file to see what's there.
+
+## Behaviour
+
+- Loads the whole store (same as other mutations) for post-write diagnostics.
+- Frontmatter bytes must be byte-identical before and after.
+- Schema violations after the write follow the save-with-warning rule (ADR-001): write succeeds, warnings are surfaced, exit code is non-zero.
+- I/O or parse errors on the target file hard-fail without writing.
+- Unknown id is an error.
 
 ## Acceptance
 
-- `workdown body task-1 --append "## Notes\nLooks good."` adds the text to the end of the body.
-- `workdown body task-1 --set "Fresh description"` replaces the body.
-- `workdown body task-1 --set -` reads from stdin.
-- `workdown body task-1 --edit` opens an editor; saving and closing persists the changes.
-- Frontmatter is byte-identical before and after.
-
-## Open questions to think about during implementation
-
-- Should `--append` separator be configurable, or fixed as a blank line? Some users may want a Markdown horizontal rule.
-- `--edit` cancel semantics: if the user exits without saving, do we no-op or error? Lean: no-op if the file is unchanged, save if it changed.
-- Length limits / sanity checks (gigabyte paste)? Probably skip — trust the user.
-- Should the CLI print a body-diff on completion or just "Updated task-1 body (+3 lines, -1 line)"? Lean: a line count summary, full diff only on `--verbose`.
-- Future: a `workdown body <id> --show` for stdout-friendly viewing without involving cat / less. Or is that out of scope here?
+- `workdown body task-1 "Fresh description"` replaces the body and prints `task-1: body replaced (1 line)`.
+- `workdown body task-1 ""` clears the body. The file ends with `---\n` (closing frontmatter delimiter, no extra trailing newline).
+- `workdown body task-1 "line one\nline two\n\n\n"` is stored as `line one\nline two\n`.
+- Frontmatter bytes are byte-identical before and after every call.
+- All store-wide warnings (`Store::load` + `rules::evaluate`) are printed after the mutation, same as `set` / `unset`.
+- Unknown id exits non-zero with a clear error and writes nothing.
