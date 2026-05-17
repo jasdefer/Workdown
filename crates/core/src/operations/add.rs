@@ -5,23 +5,35 @@ use std::path::{Path, PathBuf};
 
 use crate::generators::{resolve_default, resolve_template_tokens};
 use crate::model::config::Config;
-use crate::model::diagnostic::{Diagnostic, DiagnosticBody, FilesDiagnosticKind};
-use crate::model::schema::{Schema, Severity};
+use crate::model::diagnostic::Diagnostic;
 use crate::model::template::TemplateError;
 use crate::model::work_item::is_valid_id;
 use crate::model::WorkItemId;
+use crate::operations::frontmatter_io::build_frontmatter_yaml;
 use crate::operations::templates::load_template_by_name;
-use crate::parser;
 use crate::parser::schema::SchemaLoadError;
 
 // ── Public types ─────────────────────────────────────────────────────
 
 /// The outcome of a successful `workdown add`.
 pub struct AddOutcome {
+    /// ID of the created work item (the slug, equal to the filename
+    /// without `.md`). Exposed so callers — notably the future server —
+    /// don't have to re-derive it from `path`.
+    pub id: WorkItemId,
     /// Path to the created file.
     pub path: PathBuf,
-    /// Rule warnings (non-blocking) for the newly created item.
+    /// All diagnostics emitted by the post-write store reload plus rule
+    /// evaluation. Not filtered to the new item — cross-item warnings
+    /// (chain conflicts, cascades) surface here too. May include
+    /// error-severity coercion diagnostics under the save-with-warning
+    /// policy (the file is still written; the caller decides the exit
+    /// code from `mutation_caused_warning`).
     pub warnings: Vec<Diagnostic>,
+    /// `true` iff the add introduced a diagnostic that wasn't present in
+    /// the pre-mutation store. Pre-existing problems elsewhere in the
+    /// project remain visible in `warnings` but don't flip this flag.
+    pub mutation_caused_warning: bool,
 }
 
 /// An error from the add command.
@@ -44,9 +56,6 @@ pub enum AddError {
 
     #[error("work item '{id}' already exists at {path}")]
     AlreadyExists { id: String, path: PathBuf },
-
-    #[error("validation failed for new work item")]
-    ValidationFailed { diagnostics: Vec<Diagnostic> },
 
     #[error("failed to write '{path}': {source}")]
     WriteFile {
@@ -80,10 +89,16 @@ pub fn run_add(
     let items_path = project_root.join(&config.paths.work_items);
 
     tracing::debug!(schema = %schema_path.display(), "loading schema");
-    let schema = parser::schema::load_schema(&schema_path)?;
+    let schema = crate::parser::schema::load_schema(&schema_path)?;
 
     tracing::debug!(items = %items_path.display(), "loading work items");
     let store = crate::store::Store::load(&items_path, &schema)?;
+
+    // Snapshot pre-mutation diagnostics so the post-write diff can tell
+    // mutation-introduced warnings apart from pre-existing project state.
+    // Same pattern as `set` and `rename`.
+    let mut pre_diagnostics: Vec<Diagnostic> = store.diagnostics().to_vec();
+    pre_diagnostics.extend(crate::rules::evaluate(&store, &schema));
 
     // Load template if requested; start the merged map from template
     // frontmatter, then overlay CLI values (shallow replace).
@@ -140,30 +155,13 @@ pub fn run_add(
         }
     }
 
-    // Build a RawWorkItem for coercion validation.
     let work_item_id = WorkItemId::from(slug.clone());
-    let raw_work_item = parser::RawWorkItem {
-        id: work_item_id.clone(),
-        frontmatter: frontmatter.clone(),
-        body: body.clone(),
-        source_path: file_path.clone(),
-    };
 
-    // Coerce fields — block on errors *before* writing the file.
-    let (_, coercion_diagnostics) = crate::store::coerce_fields(&raw_work_item, &schema);
-    let coercion_errors: Vec<Diagnostic> = coercion_diagnostics
-        .iter()
-        .filter(|diagnostic| diagnostic.severity == Severity::Error)
-        .cloned()
-        .collect();
-
-    if !coercion_errors.is_empty() {
-        return Err(AddError::ValidationFailed {
-            diagnostics: coercion_errors,
-        });
-    }
-
-    // Serialize frontmatter in schema field order.
+    // Serialize frontmatter in schema field order. Per ADR-001's
+    // save-with-warning policy: schema violations don't block creation;
+    // the post-write reload below re-coerces and surfaces the same
+    // diagnostics through `warnings` + `mutation_caused_warning`.
+    // Pre-write hard-fails are still possible from I/O and slug derivation.
     let yaml_content = build_frontmatter_yaml(&frontmatter, &schema, user_set_id);
 
     // Write the file. Body (template or empty) follows the closing delimiter.
@@ -179,26 +177,21 @@ pub fn run_add(
     // aggregates without per-field provenance.
     let reloaded = crate::store::Store::load(&items_path, &schema)?;
 
-    // Surface diagnostics produced by the reload that concern this new
-    // item (broken links, chain conflicts, missing requireds, etc.) plus
-    // any rule violations against the post-write store.
-    let mut item_warnings: Vec<Diagnostic> = reloaded
-        .diagnostics()
-        .iter()
-        .filter(|diagnostic| is_diagnostic_for_item(diagnostic, &work_item_id))
-        .cloned()
-        .collect();
+    // Surface every diagnostic from the reload plus every rule
+    // violation against the post-write store. We don't filter to "just
+    // this item" — chain conflicts and cascade effects need to be
+    // visible at the moment the user touches that area.
+    let mut warnings: Vec<Diagnostic> = reloaded.diagnostics().to_vec();
+    warnings.extend(crate::rules::evaluate(&reloaded, &schema));
 
-    let rule_diagnostics = crate::rules::evaluate(&reloaded, &schema);
-    item_warnings.extend(
-        rule_diagnostics
-            .into_iter()
-            .filter(|diagnostic| is_diagnostic_for_item(diagnostic, &work_item_id)),
-    );
+    let mutation_caused_warning =
+        crate::operations::diagnostics::introduced_by_mutation(&pre_diagnostics, &warnings);
 
     Ok(AddOutcome {
+        id: work_item_id,
         path: file_path,
-        warnings: item_warnings,
+        warnings,
+        mutation_caused_warning,
     })
 }
 
@@ -276,53 +269,6 @@ fn slugify(title: &str) -> Result<String, AddError> {
     }
 
     Ok(trimmed.to_owned())
-}
-
-/// Build YAML frontmatter string with fields in schema-defined order.
-fn build_frontmatter_yaml(
-    frontmatter: &HashMap<String, serde_yaml::Value>,
-    schema: &Schema,
-    user_set_id: bool,
-) -> String {
-    let mut mapping = serde_yaml::Mapping::new();
-
-    // Emit fields in schema order.
-    for field_name in schema.fields.keys() {
-        if field_name == "id" && !user_set_id {
-            continue;
-        }
-        if let Some(value) = frontmatter.get(field_name) {
-            mapping.insert(serde_yaml::Value::String(field_name.clone()), value.clone());
-        }
-    }
-
-    // Emit any fields not in the schema (alphabetical for determinism).
-    let mut extra_keys: Vec<&String> = frontmatter
-        .keys()
-        .filter(|key| !schema.fields.contains_key(key.as_str()))
-        .collect();
-    extra_keys.sort();
-    for key in extra_keys {
-        if let Some(value) = frontmatter.get(key) {
-            mapping.insert(serde_yaml::Value::String(key.clone()), value.clone());
-        }
-    }
-
-    serde_yaml::to_string(&mapping).unwrap_or_default()
-}
-
-/// Check whether a diagnostic refers to a specific work item.
-fn is_diagnostic_for_item(diagnostic: &Diagnostic, item_id: &WorkItemId) -> bool {
-    match &diagnostic.body {
-        DiagnosticBody::Item(item) => item.item_id == *item_id,
-        DiagnosticBody::Files(files) => matches!(
-            &files.kind,
-            FilesDiagnosticKind::DuplicateId { id } if id == item_id
-        ),
-        DiagnosticBody::File(_) | DiagnosticBody::Collection(_) | DiagnosticBody::Config(_) => {
-            false
-        }
-    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────

@@ -4,13 +4,15 @@ Cards grouped into columns by `status`.
 
 ## to_do
 - [cli-add-audit](../workdown-items/cli-add-audit.md)
+- [cli-body-command](../workdown-items/cli-body-command.md)
 - [cli-move-command](../workdown-items/cli-move-command.md)
-- [cli-set-command](../workdown-items/cli-set-command.md)
+- [cli-rename-command](../workdown-items/cli-rename-command.md)
+- [cli-set-modes](../workdown-items/cli-set-modes.md)
 - [duration-comparison-rule](../workdown-items/duration-comparison-rule.md)
 - [frontend](../workdown-items/frontend.md)
 - [git-derived-default-generator](../workdown-items/git-derived-default-generator.md)
-- [item-mutations](../workdown-items/item-mutations.md)
 - [polish](../workdown-items/polish.md)
+- [rules-current-date-reference](../workdown-items/rules-current-date-reference.md)
 - [serve-command-skeleton](../workdown-items/serve-command-skeleton.md)
 - [server](../workdown-items/server.md)
 - [server-endpoints-and-mutations](../workdown-items/server-endpoints-and-mutations.md)
@@ -20,13 +22,17 @@ Cards grouped into columns by `status`.
 - [ui-build-integration](../workdown-items/ui-build-integration.md)
 
 ## in_progress
-- [code-quality](../workdown-items/code-quality.md)
-- [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md)
+- [item-mutations](../workdown-items/item-mutations.md)
 - [phase-04-visualization](../workdown-items/phase-04-visualization.md)
 
 ## done
 - [adr-phase-04-architecture](../workdown-items/adr-phase-04-architecture.md)
 - [aggregate-rollup](../workdown-items/aggregate-rollup.md)
+- [cli-set-command](../workdown-items/cli-set-command.md)
+- [cli-unset-command](../workdown-items/cli-unset-command.md)
+- [code-quality](../workdown-items/code-quality.md)
+- [cross-cutting-helpers](../workdown-items/cross-cutting-helpers.md)
+- [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md)
 - [diagnostic-variant-cleanup](../workdown-items/diagnostic-variant-cleanup.md)
 - [duration-field-type](../workdown-items/duration-field-type.md)
 - [field-value-native-date](../workdown-items/field-value-native-date.md)
@@ -44,6 +50,7 @@ Cards grouped into columns by `status`.
 - [render-heatmap](../workdown-items/render-heatmap.md)
 - [render-line-chart](../workdown-items/render-line-chart.md)
 - [render-metric](../workdown-items/render-metric.md)
+- [render-module-hygiene](../workdown-items/render-module-hygiene.md)
 - [render-table](../workdown-items/render-table.md)
 - [render-tree](../workdown-items/render-tree.md)
 - [render-treemap](../workdown-items/render-treemap.md)
@@ -56,6 +63,7 @@ Cards grouped into columns by `status`.
 - [views-title-slot](../workdown-items/views-title-slot.md)
 - [views-validate-integration](../workdown-items/views-validate-integration.md)
 - [views-yaml-design](../workdown-items/views-yaml-design.md)
+- [walker-primitives](../workdown-items/walker-primitives.md)
 - [workspace-refactor](../workdown-items/workspace-refactor.md)
 
 ## removed

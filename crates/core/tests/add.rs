@@ -5,6 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use tempfile::TempDir;
+use workdown_core::model::diagnostic::{DiagnosticBody, ItemDiagnosticKind};
 use workdown_core::operations::add::{run_add, AddError};
 use workdown_core::parser::config::load_config;
 
@@ -256,24 +257,55 @@ fn add_refuses_duplicate_filename() {
     assert!(matches!(result, Err(AddError::AlreadyExists { .. })));
 }
 
-// ── Validation blocks creation ──────────────────────────────────────
+// ── Save-with-warning on schema violations ──────────────────────────
 
 #[test]
-fn add_blocks_on_invalid_choice_value() {
+fn add_writes_with_warning_on_invalid_choice_value() {
+    // Per ADR-001's save-with-warning policy: a schema violation during
+    // `add` does not block creation. The file is written, the offending
+    // diagnostic appears in `warnings`, `mutation_caused_warning` is
+    // true, and the CLI exits non-zero — same shape as `set`/`unset`.
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let result = run_add(
+    let outcome = run_add(
         &config,
         &root,
         fields(&[("title", "Bad Status"), ("status", "nonexistent")]),
         None,
-    );
+    )
+    .expect("save-with-warning: add should succeed despite invalid choice");
 
-    assert!(matches!(result, Err(AddError::ValidationFailed { .. })));
+    // File exists and the outcome carries the new id field.
+    assert!(root.join("workdown-items/bad-status.md").exists());
+    assert_eq!(outcome.id.as_str(), "bad-status");
+    assert!(outcome.mutation_caused_warning);
 
-    // File should NOT have been created.
-    assert!(!root.join("workdown-items/bad-status.md").exists());
+    // The invalid-choice diagnostic is surfaced for the new item, with
+    // a structured `field` reference (UI-mappable per Check #4).
+    let invalid_field = outcome.warnings.iter().find_map(|warning| {
+        if let DiagnosticBody::Item(item) = &warning.body {
+            if item.item_id.as_str() == "bad-status" {
+                if let ItemDiagnosticKind::InvalidFieldValue { field, .. } = &item.kind {
+                    return Some(field.clone());
+                }
+            }
+        }
+        None
+    });
+    assert_eq!(invalid_field.as_deref(), Some("status"));
+}
+
+#[test]
+fn add_with_valid_fields_does_not_flag_mutation_warning() {
+    let (_directory, root) = setup_project();
+    let config = load_test_config(&root);
+
+    let outcome = run_add(&config, &root, fields(&[("title", "Clean Task")]), None)
+        .expect("valid add should succeed");
+
+    assert_eq!(outcome.id.as_str(), "clean-task");
+    assert!(!outcome.mutation_caused_warning);
 }
 
 // ── Schema field ordering ───────────────────────────────────────────

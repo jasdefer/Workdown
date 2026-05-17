@@ -81,6 +81,21 @@ pub(crate) fn split_frontmatter(
     content: &str,
     path: &Path,
 ) -> Result<(HashMap<String, serde_yaml::Value>, String), ParseError> {
+    let (frontmatter, body_offset) = split_frontmatter_with_body_offset(content, path)?;
+    let body = content.get(body_offset..).unwrap_or("").to_owned();
+    Ok((frontmatter, body))
+}
+
+/// Like [`split_frontmatter`] but returns the byte offset where the body
+/// begins in `content` instead of an owned body string.
+///
+/// Used by body-replacing mutations that need to splice a new body onto
+/// the original frontmatter bytes without re-emitting (and thereby
+/// canonicalising) the YAML.
+pub(crate) fn split_frontmatter_with_body_offset(
+    content: &str,
+    path: &Path,
+) -> Result<(HashMap<String, serde_yaml::Value>, usize), ParseError> {
     let mut lines = content.lines();
 
     // First line must be `---`
@@ -144,9 +159,8 @@ pub(crate) fn split_frontmatter(
     // The opening `---\n` plus everything we consumed gives us the body offset.
     let opening_delimiter_len = content.lines().next().unwrap().len() + 1;
     let body_offset = opening_delimiter_len + bytes_consumed;
-    let body = content.get(body_offset..).unwrap_or("").to_owned();
 
-    Ok((frontmatter, body))
+    Ok((frontmatter, body_offset))
 }
 
 /// Parse work item content into a [`RawWorkItem`] with a resolved ID.

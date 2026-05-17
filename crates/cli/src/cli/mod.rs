@@ -3,7 +3,7 @@ pub mod schema_args;
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{ArgGroup, Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
 /// Git-based project management — work items as Markdown files.
@@ -89,6 +89,105 @@ pub enum Command {
     Templates {
         #[command(subcommand)]
         action: TemplatesAction,
+    },
+    /// Mutate a single field on a work item
+    ///
+    /// In replace mode (bare positional value), the value overwrites
+    /// the field. For list/links/multichoice fields, pass comma-separated
+    /// values (e.g. `workdown set task-1 tags auth,backend`).
+    ///
+    /// Collection fields (list, links, multichoice) also support:
+    ///   `--append <value>`   add values to the end (comma-separated)
+    ///   `--remove <value>`   remove every occurrence of each value
+    ///
+    /// Numeric (integer/float), duration, and date fields support:
+    ///   `--delta <value>`    add a signed amount to the current value
+    ///                        (e.g. `--delta 3`, `--delta -1`, `--delta 1w`)
+    ///
+    /// Boolean fields support:
+    ///   `--toggle`           flip the current value
+    #[command(group(
+        ArgGroup::new("set_mode")
+            .required(true)
+            .multiple(false)
+            .args(["value", "append", "remove", "delta", "toggle"])
+    ))]
+    Set {
+        /// Work item id (filename without `.md`)
+        id: String,
+        /// Field name as defined in schema.yaml
+        field: String,
+        /// New value (replace mode)
+        value: Option<String>,
+        /// Append values to a collection field (comma-separated)
+        #[arg(long)]
+        append: Option<String>,
+        /// Remove values from a collection field (comma-separated)
+        #[arg(long)]
+        remove: Option<String>,
+        /// Add a signed amount to a numeric / duration / date field
+        ///
+        /// Examples: `--delta 3`, `--delta -1`, `--delta 1w`, `--delta -3d`.
+        /// `allow_hyphen_values` lets clap accept the leading `-` as
+        /// part of the value rather than treating it as a flag.
+        #[arg(long, allow_hyphen_values = true)]
+        delta: Option<String>,
+        /// Flip the current value of a boolean field
+        #[arg(long)]
+        toggle: bool,
+    },
+    /// Clear a single field on a work item
+    ///
+    /// Idempotent: clearing an already-absent field is a silent no-op.
+    /// Typo'd field names still error.
+    Unset {
+        /// Work item id (filename without `.md`)
+        id: String,
+        /// Field name as defined in schema.yaml
+        field: String,
+    },
+    /// Move a work item to a different value of the board field
+    ///
+    /// Shortcut for `workdown set <id> <board_field> <value>`. The board
+    /// field name is read from `defaults.board_field` in
+    /// `.workdown/config.yaml` (typically `status`).
+    Move {
+        /// Work item id (filename without `.md`)
+        id: String,
+        /// New value for the board field
+        value: String,
+    },
+    /// Replace the freeform Markdown body of a work item
+    ///
+    /// Pass an empty string to clear the body. For interactive editing,
+    /// open the `.md` file in your editor — this command exists for
+    /// non-interactive callers (UI, scripts, the future server).
+    ///
+    /// Frontmatter bytes are preserved verbatim. The body is normalised
+    /// to end with exactly one trailing newline (or none if empty).
+    Body {
+        /// Work item id (filename without `.md`)
+        id: String,
+        /// New body content (use `""` to clear)
+        body: String,
+    },
+    /// Change a work item's id — moves the file and rewrites every
+    /// incoming link/links reference.
+    ///
+    /// Drops the explicit `id:` key from the renamed item's frontmatter
+    /// (the new filename carries the id). Textual mentions of the old
+    /// id outside link fields (in bodies, configs, templates) are
+    /// reported but never rewritten.
+    ///
+    /// To undo: `workdown rename <new-id> <old-id>`.
+    Rename {
+        /// Current work item id
+        old_id: String,
+        /// Desired new id (kebab-case, lowercase alphanumeric with hyphens)
+        new_id: String,
+        /// Print the plan without writing to disk
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 

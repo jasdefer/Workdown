@@ -129,6 +129,72 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         }
                     }
                 }
+                cli::Command::Set {
+                    id,
+                    field,
+                    value,
+                    append,
+                    remove,
+                    delta,
+                    toggle,
+                } => {
+                    tracing::info!("mutating field on work item");
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    // Clap's ArgGroup guarantees exactly one of value /
+                    // append / remove / delta / toggle is set; the
+                    // order below matches that contract.
+                    let mode = if let Some(value_str) = value {
+                        commands::set::CliSetMode::Replace(value_str.clone())
+                    } else if let Some(value_str) = append {
+                        commands::set::CliSetMode::Append(value_str.clone())
+                    } else if let Some(value_str) = remove {
+                        commands::set::CliSetMode::Remove(value_str.clone())
+                    } else if let Some(value_str) = delta {
+                        commands::set::CliSetMode::Delta(value_str.clone())
+                    } else if *toggle {
+                        commands::set::CliSetMode::Toggle
+                    } else {
+                        unreachable!(
+                            "clap ArgGroup ensures one of value/append/remove/delta/toggle is set"
+                        );
+                    };
+                    commands::set::run_set_command(&config, &project_root, id, field, mode)
+                }
+                cli::Command::Unset { id, field } => {
+                    tracing::info!("clearing field on work item");
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    commands::unset::run_unset_command(&config, &project_root, id, field)
+                }
+                cli::Command::Move { id, value } => {
+                    tracing::info!("moving work item on board field");
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    commands::r#move::run_move_command(&config, &project_root, id, value)
+                }
+                cli::Command::Body { id, body } => {
+                    tracing::info!("replacing body of work item");
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    commands::body::run_body_command(&config, &project_root, id, body)
+                }
+                cli::Command::Rename {
+                    old_id,
+                    new_id,
+                    dry_run,
+                } => {
+                    tracing::info!("renaming work item");
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    commands::rename::run_rename_command(
+                        &config,
+                        &project_root,
+                        old_id,
+                        new_id,
+                        *dry_run,
+                    )
+                }
             }
         }
     }
@@ -185,13 +251,11 @@ fn run_add_command(
             for warning in &outcome.warnings {
                 cli::output::warning(&warning.to_string());
             }
-            Ok(ExitCode::SUCCESS)
-        }
-        Err(workdown_core::operations::add::AddError::ValidationFailed { diagnostics }) => {
-            for diagnostic in &diagnostics {
-                cli::output::error(&diagnostic.to_string());
+            if outcome.mutation_caused_warning {
+                Ok(ExitCode::FAILURE)
+            } else {
+                Ok(ExitCode::SUCCESS)
             }
-            Ok(ExitCode::FAILURE)
         }
         Err(error @ workdown_core::operations::add::AddError::Template(_)) => {
             cli::output::error(&error.to_string());

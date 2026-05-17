@@ -6,7 +6,7 @@ Timeline of items starting at `max(start_date, predecessor end)` for `duration` 
 gantt
     dateFormat YYYY-MM-DD
     section epic
-    Phase 04 Visualization :phase-04-visualization, 2026-04-24, 2026-07-02
+    Phase 04 Visualization :phase-04-visualization, 2026-04-24, 2026-07-25
 ```
 
 > _8 items dropped:_

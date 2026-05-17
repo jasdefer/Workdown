@@ -1,7 +1,7 @@
 ---
 id: cli-move-command
 type: issue
-status: to_do
+status: done
 title: workdown move — shortcut for the board field
 parent: item-mutations
 depends_on: [cli-set-command]
