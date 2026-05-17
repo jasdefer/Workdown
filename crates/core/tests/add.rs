@@ -301,13 +301,8 @@ fn add_with_valid_fields_does_not_flag_mutation_warning() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
 
-    let outcome = run_add(
-        &config,
-        &root,
-        fields(&[("title", "Clean Task")]),
-        None,
-    )
-    .expect("valid add should succeed");
+    let outcome = run_add(&config, &root, fields(&[("title", "Clean Task")]), None)
+        .expect("valid add should succeed");
 
     assert_eq!(outcome.id.as_str(), "clean-task");
     assert!(!outcome.mutation_caused_warning);
