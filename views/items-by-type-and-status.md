@@ -38,26 +38,30 @@ milestone
 <polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="261,160 261,165 "/>
 <rect x="140" y="55" width="34" height="35" opacity="1" fill="#EEEEEE" stroke="none"/>
 <rect x="140" y="90" width="34" height="35" opacity="1" fill="#FFFFFF" stroke="none"/>
-<rect x="140" y="125" width="34" height="34" opacity="1" fill="#EEEEEE" stroke="none"/>
+<rect x="140" y="125" width="34" height="34" opacity="1" fill="#FFFFFF" stroke="none"/>
 <rect x="174" y="55" width="35" height="35" opacity="1" fill="#0072B2" stroke="none"/>
 <rect x="174" y="90" width="35" height="35" opacity="1" fill="#EEEEEE" stroke="none"/>
-<rect x="174" y="125" width="35" height="34" opacity="1" fill="#A8CFE5" stroke="none"/>
-<rect x="209" y="55" width="35" height="35" opacity="1" fill="#F0F7FB" stroke="none"/>
-<rect x="209" y="90" width="35" height="35" opacity="1" fill="#FFFFFF" stroke="none"/>
-<rect x="209" y="125" width="35" height="34" opacity="1" fill="#E9F3F8" stroke="none"/>
+<rect x="174" y="125" width="35" height="34" opacity="1" fill="#C6DFEE" stroke="none"/>
+<rect x="209" y="55" width="35" height="35" opacity="1" fill="#ECF4F9" stroke="none"/>
+<rect x="209" y="90" width="35" height="35" opacity="1" fill="#EEEEEE" stroke="none"/>
+<rect x="209" y="125" width="35" height="34" opacity="1" fill="#F2F8FB" stroke="none"/>
 <polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="359,20 359,179 "/>
-<text x="352" y="139" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#000000">
+<text x="352" y="144" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#000000">
 10
 </text>
-<polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="355,139 359,139 "/>
-<text x="352" y="93" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#000000">
+<polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="355,144 359,144 "/>
+<text x="352" y="104" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#000000">
 20
 </text>
-<polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="355,93 359,93 "/>
-<text x="352" y="48" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#000000">
+<polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="355,104 359,104 "/>
+<text x="352" y="64" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#000000">
 30
 </text>
-<polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="355,48 359,48 "/>
+<polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="355,64 359,64 "/>
+<text x="352" y="24" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#000000">
+40
+</text>
+<polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="355,24 359,24 "/>
 <rect x="360" y="177" width="69" height="2" opacity="1" fill="#FDFEFE" stroke="none"/>
 <rect x="360" y="175" width="69" height="2" opacity="1" fill="#F9FCFD" stroke="none"/>
 <rect x="360" y="172" width="69" height="3" opacity="1" fill="#F5F9FC" stroke="none"/>
@@ -128,7 +132,7 @@ milestone
 
 | status / type | epic | issue | milestone |
 | --- | --- | --- | --- |
-| done |  | 36 | 3 |
-| in_progress | 1 |  | 1 |
-| to_do |  | 13 | 4 |
+| done |  | 41 | 4 |
+| in_progress | 1 |  |  |
+| to_do | 1 | 10 | 3 |
 

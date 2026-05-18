@@ -4,6 +4,9 @@ Directed graph of items connected through `depends_on`, nested by `parent`.
 
 ```mermaid
 flowchart TD
+    subgraph multi-project-support ["Multi-project support"]
+        multi-project-design["Design multi-project support — set decisions and break out follow-up work"]
+    end
     subgraph phase-04-visualization ["Phase 04: Visualization"]
         subgraph code-quality ["Code-quality cleanup"]
             cross-cutting-helpers["Relocate cross-cutting helpers out of feature modules"]
@@ -23,10 +26,9 @@ flowchart TD
             views-yaml-design["Design views.yaml shape"]
             workspace-refactor["Split into core / cli / server workspace"]
         end
-        frontend["Frontend"]
         subgraph item-mutations ["Item mutations"]
             cli-add-audit["Audit workdown add for UI-driven creation"]
-            cli-body-command["workdown body — edit the Markdown body"]
+            cli-body-command["workdown body — replace the Markdown body"]
             cli-move-command["workdown move — shortcut for the board field"]
             cli-rename-command["workdown rename — change an item's id"]
             cli-set-command["workdown set — replace a field value"]
@@ -59,11 +61,12 @@ flowchart TD
             view-data-intermediate["Design ViewData and extractors"]
             views-title-slot["Add per-view `title:` slot to views.yaml"]
         end
-        subgraph server ["Interactive server"]
-            serve-command-skeleton["workdown serve skeleton"]
-            server-endpoints-and-mutations["Query and mutation endpoints"]
-            server-sse-file-watching["File watcher and SSE for auto-update"]
-            ui-build-integration["UI build integration and asset embedding"]
+        subgraph server ["Interactive UI (workdown serve)"]
+            first-view-end-to-end["First view end-to-end (board, read-only)"]
+            live-updates["File watcher and SSE for live updates"]
+            mutations-slice["Mutations end-to-end"]
+            remaining-read-views["Remaining read-only views"]
+            walking-skeleton["workdown serve skeleton with embedded UI"]
         end
     end
     subgraph time-tracking ["Time tracking"]
@@ -73,12 +76,14 @@ flowchart TD
     cli-move-command --> cli-set-command
     cli-set-modes --> cli-set-command
     cli-unset-command --> cli-set-command
-    frontend --> server
+    first-view-end-to-end --> walking-skeleton
     gantt-duration-mode --> duration-field-type
     gantt-duration-mode --> render-gantt
     gantt-predecessor-mode --> gantt-duration-mode
     item-mutations --> foundation
-    polish --> frontend
+    live-updates --> walking-skeleton
+    mutations-slice --> first-view-end-to-end
+    remaining-read-views --> first-view-end-to-end
     render-bar-chart --> view-data-intermediate
     render-board --> view-data-intermediate
     render-command --> render-bar-chart
@@ -106,11 +111,7 @@ flowchart TD
     renderers --> foundation
     server --> foundation
     server --> item-mutations
-    server-endpoints-and-mutations --> item-mutations
-    server-endpoints-and-mutations --> renderers
-    server-endpoints-and-mutations --> serve-command-skeleton
-    server-sse-file-watching --> server-endpoints-and-mutations
-    ui-build-integration --> serve-command-skeleton
+    server --> renderers
     view-data-intermediate --> field-value-native-date
     view-data-intermediate --> views-title-slot
     views-validate-integration --> foundation-cleanup

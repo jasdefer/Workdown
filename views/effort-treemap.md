@@ -2,16 +2,14 @@
 
 Hierarchical breakdown of `duration` summed up the `parent` chain.
 
-**Total: 4w 2d**
+**Total: 0s**
 
-- **4w 2d** (100%) — [Phase 04: Visualization](../workdown-items/phase-04-visualization.md)
-  - **4w 2d** (100%) — [Frontend](../workdown-items/frontend.md)
 
 ## Unplaced (missing `duration`)
 - [ADR — visualization architecture](../workdown-items/adr-phase-04-architecture.md)
 - [Compute schema-declared aggregate fields up the parent chain](../workdown-items/aggregate-rollup.md)
 - [Audit workdown add for UI-driven creation](../workdown-items/cli-add-audit.md)
-- [workdown body — edit the Markdown body](../workdown-items/cli-body-command.md)
+- [workdown body — replace the Markdown body](../workdown-items/cli-body-command.md)
 - [workdown move — shortcut for the board field](../workdown-items/cli-move-command.md)
 - [workdown rename — change an item's id](../workdown-items/cli-rename-command.md)
 - [workdown set — replace a field value](../workdown-items/cli-set-command.md)
@@ -23,10 +21,15 @@ Hierarchical breakdown of `duration` summed up the `parent` chain.
 - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md)
 - [Add `duration` field type](../workdown-items/duration-field-type.md)
 - [Store FieldValue::Date as chrono::NaiveDate](../workdown-items/field-value-native-date.md)
+- [First view end-to-end (board, read-only)](../workdown-items/first-view-end-to-end.md)
 - [Consolidate duplication and tighten types before more foundation work](../workdown-items/foundation-cleanup.md)
 - [Gantt duration input mode](../workdown-items/gantt-duration-mode.md)
 - [Gantt predecessor input mode](../workdown-items/gantt-predecessor-mode.md)
 - [Default generator that reads dates from git history](../workdown-items/git-derived-default-generator.md)
+- [File watcher and SSE for live updates](../workdown-items/live-updates.md)
+- [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
+- [Mutations end-to-end](../workdown-items/mutations-slice.md)
+- [Remaining read-only views](../workdown-items/remaining-read-views.md)
 - [Bar chart renderer](../workdown-items/render-bar-chart.md)
 - [Board renderer](../workdown-items/render-board.md)
 - [workdown render command](../workdown-items/render-command.md)
@@ -43,11 +46,7 @@ Hierarchical breakdown of `duration` summed up the `parent` chain.
 - [Treemap renderer](../workdown-items/render-treemap.md)
 - [Workload renderer](../workdown-items/render-workload.md)
 - [Rules can't reference the current date](../workdown-items/rules-current-date-reference.md)
-- [workdown serve skeleton](../workdown-items/serve-command-skeleton.md)
-- [Query and mutation endpoints](../workdown-items/server-endpoints-and-mutations.md)
-- [File watcher and SSE for auto-update](../workdown-items/server-sse-file-watching.md)
 - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md)
-- [UI build integration and asset embedding](../workdown-items/ui-build-integration.md)
 - [Design ViewData and extractors](../workdown-items/view-data-intermediate.md)
 - [Add views path to config; ship default views.yaml](../workdown-items/views-config-path.md)
 - [Cross-file validation for views.yaml](../workdown-items/views-cross-file-validation.md)
@@ -56,4 +55,5 @@ Hierarchical breakdown of `duration` summed up the `parent` chain.
 - [Wire views validation into workdown validate](../workdown-items/views-validate-integration.md)
 - [Design views.yaml shape](../workdown-items/views-yaml-design.md)
 - [Unify the upward chain walks and link-target reads](../workdown-items/walker-primitives.md)
+- [workdown serve skeleton with embedded UI](../workdown-items/walking-skeleton.md)
 - [Split into core / cli / server workspace](../workdown-items/workspace-refactor.md)

@@ -217,11 +217,10 @@ start_date
 <polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="717,330 717,335 "/>
 <polyline fill="none" opacity="1" stroke="#E69F00" stroke-width="2" points="121,35 "/>
 <circle cx="121" cy="35" r="3" opacity="1" fill="#E69F00" stroke="none" stroke-width="1"/>
-<polyline fill="none" opacity="1" stroke="#56B4E9" stroke-width="2" points="121,312 200,247 250,273 449,240 747,315 "/>
+<polyline fill="none" opacity="1" stroke="#56B4E9" stroke-width="2" points="121,312 200,247 250,175 747,315 "/>
 <circle cx="121" cy="312" r="3" opacity="1" fill="#56B4E9" stroke="none" stroke-width="1"/>
 <circle cx="200" cy="247" r="3" opacity="1" fill="#56B4E9" stroke="none" stroke-width="1"/>
-<circle cx="250" cy="273" r="3" opacity="1" fill="#56B4E9" stroke="none" stroke-width="1"/>
-<circle cx="449" cy="240" r="3" opacity="1" fill="#56B4E9" stroke="none" stroke-width="1"/>
+<circle cx="250" cy="175" r="3" opacity="1" fill="#56B4E9" stroke="none" stroke-width="1"/>
 <circle cx="747" cy="315" r="3" opacity="1" fill="#56B4E9" stroke="none" stroke-width="1"/>
 <rect x="676" y="152" width="99" height="45" opacity="0.85" fill="#FFFFFF" stroke="none"/>
 <rect x="676" y="152" width="99" height="45" opacity="1" fill="none" stroke="#000000"/>
@@ -239,7 +238,7 @@ milestone
 - [ADR — visualization architecture](../workdown-items/adr-phase-04-architecture.md) — missing `start_date`
 - [Compute schema-declared aggregate fields up the parent chain](../workdown-items/aggregate-rollup.md) — missing `start_date`
 - [Audit workdown add for UI-driven creation](../workdown-items/cli-add-audit.md) — missing `start_date`
-- [workdown body — edit the Markdown body](../workdown-items/cli-body-command.md) — missing `start_date`
+- [workdown body — replace the Markdown body](../workdown-items/cli-body-command.md) — missing `start_date`
 - [workdown move — shortcut for the board field](../workdown-items/cli-move-command.md) — missing `start_date`
 - [workdown rename — change an item's id](../workdown-items/cli-rename-command.md) — missing `start_date`
 - [workdown set — replace a field value](../workdown-items/cli-set-command.md) — missing `start_date`
@@ -252,11 +251,17 @@ milestone
 - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md) — missing `start_date`
 - [Add `duration` field type](../workdown-items/duration-field-type.md) — missing `start_date`
 - [Store FieldValue::Date as chrono::NaiveDate](../workdown-items/field-value-native-date.md) — missing `start_date`
+- [First view end-to-end (board, read-only)](../workdown-items/first-view-end-to-end.md) — missing `start_date`
 - [Foundation](../workdown-items/foundation.md) — missing `start_date`
 - [Consolidate duplication and tighten types before more foundation work](../workdown-items/foundation-cleanup.md) — missing `start_date`
 - [Gantt duration input mode](../workdown-items/gantt-duration-mode.md) — missing `start_date`
 - [Gantt predecessor input mode](../workdown-items/gantt-predecessor-mode.md) — missing `start_date`
 - [Default generator that reads dates from git history](../workdown-items/git-derived-default-generator.md) — missing `start_date`
+- [File watcher and SSE for live updates](../workdown-items/live-updates.md) — missing `start_date`
+- [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — missing `start_date`
+- [Multi-project support](../workdown-items/multi-project-support.md) — missing `start_date`
+- [Mutations end-to-end](../workdown-items/mutations-slice.md) — missing `start_date`
+- [Remaining read-only views](../workdown-items/remaining-read-views.md) — missing `start_date`
 - [Bar chart renderer](../workdown-items/render-bar-chart.md) — missing `start_date`
 - [Board renderer](../workdown-items/render-board.md) — missing `start_date`
 - [workdown render command](../workdown-items/render-command.md) — missing `start_date`
@@ -273,12 +278,8 @@ milestone
 - [Treemap renderer](../workdown-items/render-treemap.md) — missing `start_date`
 - [Workload renderer](../workdown-items/render-workload.md) — missing `start_date`
 - [Rules can't reference the current date](../workdown-items/rules-current-date-reference.md) — missing `start_date`
-- [workdown serve skeleton](../workdown-items/serve-command-skeleton.md) — missing `start_date`
-- [Query and mutation endpoints](../workdown-items/server-endpoints-and-mutations.md) — missing `start_date`
-- [File watcher and SSE for auto-update](../workdown-items/server-sse-file-watching.md) — missing `start_date`
 - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md) — missing `start_date`
 - [Time tracking](../workdown-items/time-tracking.md) — missing `start_date`
-- [UI build integration and asset embedding](../workdown-items/ui-build-integration.md) — missing `start_date`
 - [Design ViewData and extractors](../workdown-items/view-data-intermediate.md) — missing `start_date`
 - [Add views path to config; ship default views.yaml](../workdown-items/views-config-path.md) — missing `start_date`
 - [Cross-file validation for views.yaml](../workdown-items/views-cross-file-validation.md) — missing `start_date`
@@ -287,4 +288,5 @@ milestone
 - [Wire views validation into workdown validate](../workdown-items/views-validate-integration.md) — missing `start_date`
 - [Design views.yaml shape](../workdown-items/views-yaml-design.md) — missing `start_date`
 - [Unify the upward chain walks and link-target reads](../workdown-items/walker-primitives.md) — missing `start_date`
+- [workdown serve skeleton with embedded UI](../workdown-items/walking-skeleton.md) — missing `start_date`
 - [Split into core / cli / server workspace](../workdown-items/workspace-refactor.md) — missing `start_date`

@@ -10,7 +10,6 @@ gantt
 ```
 
 > _8 items dropped:_
-> _- no anchor: "Code-quality cleanup", "Foundation", "Time tracking"_
-> _- predecessor 'foundation' unresolved: "Item mutations", "Renderers", "Interactive server"_
+> _- no anchor: "Code-quality cleanup", "Foundation", "Multi-project support", "Time tracking"_
+> _- predecessor 'foundation' unresolved: "Item mutations", "Renderers", "Interactive UI (workdown serve)"_
 > _- predecessor 'frontend' unresolved: "Polish & dogfood"_
-> _- predecessor 'server' unresolved: "Frontend"_
