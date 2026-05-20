@@ -22,11 +22,15 @@ Same playbook as `walking-skeleton`: discuss each decision in turn, record the r
 - **Frontend state management.** Svelte 5 runes alone / runes-in-context / Svelte stores / external library. For shared state — cached API responses, current view, theme, etc.
 - **URL / route structure.** `/views/:id` vs `/board/:id` vs `/v/:id`. What lives at `/`? How are item deep links shaped (`/items/:id`)?
 - **Linter and formatter.** We turned ESLint and Prettier off during the SvelteKit scaffold to defer the decision. Slice 2 is the right moment to land them — before lots of code accumulates and the auto-format diff explodes.
+- **TypeScript strictness beyond `strict: true`.** Current `ui/tsconfig.json` is SvelteKit defaults. Candidates to turn on: `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`, `allowJs: false`. Cheap upfront, painful to retrofit once code accumulates.
+- **Theme support and dark mode.** Decide whether to bake in a theme store (Svelte 5 rune, persisted to `localStorage`) and dark-mode discipline from day one, or defer. Cheap upfront because every new component is written with the dark variant in mind; painful to retrofit across many components later. Ties to the CSS-framework decision (Tailwind's `darkMode: 'class'` strategy, vs CSS variables, vs nothing).
 
 ## Scope
 
 - Each decision discussed and recorded — in code where natural (Tailwind config files, ts-rs build step, module-level comments, ESLint config), in this body where the rationale outlasts the code.
 - Minimum viable scaffold installed for each: CSS framework + base styles, type-generation tooling (with one example exported type), an example empty API handler module, a typed fetch helper, the folder structure created with placeholders, lint/format running locally and in CI.
+- Minimal app shell: header (app name + theme toggle if theme support is in) and a main slot that `first-view-end-to-end` can render into. No nav, no sidebar — just enough chrome that slice 2 doesn't have to invent layout while it's building the board.
+- Devcontainer: persistent volume mount for `ui/node_modules` (mirrors the existing pattern for the Rust `target/` volume) so rebuilds don't re-install on every container start.
 - No feature code — every line that responds to a real work item lives in `first-view-end-to-end`.
 
 ## Acceptance
