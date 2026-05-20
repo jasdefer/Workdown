@@ -171,6 +171,20 @@ pub enum Command {
         /// New body content (use `""` to clear)
         body: String,
     },
+    /// Run the workdown web UI on a local port
+    ///
+    /// Default port is 3141. Override via `--port <N>` or by setting
+    /// `serve.port` in `.workdown/config.yaml`. On port conflict (no
+    /// explicit `--port`), scans up to 10 ports forward before giving
+    /// up. Pass `--open` to launch the URL in your browser.
+    Serve {
+        /// Port to bind (overrides `serve.port` in config and hard-fails on conflict).
+        #[arg(long, short = 'p')]
+        port: Option<u16>,
+        /// Open the URL in the default browser after the server is ready.
+        #[arg(long)]
+        open: bool,
+    },
     /// Change a work item's id — moves the file and rewrites every
     /// incoming link/links reference.
     ///

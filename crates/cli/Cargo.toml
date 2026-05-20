@@ -13,12 +13,15 @@ path = "src/main.rs"
 
 [dependencies]
 workdown-core = { path = "../core" }
+workdown-server = { path = "../server" }
 anyhow = "1"
 clap = { version = "4", features = ["derive", "wrap_help", "env"] }
 console = "0.15"
 comfy-table = "7"
+open = "5"
 serde_json = "1"
 serde_yaml = "0.9"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 csv = "1"

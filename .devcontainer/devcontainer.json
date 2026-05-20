@@ -2,7 +2,10 @@
   "name": "Workdown",
   "image": "mcr.microsoft.com/devcontainers/rust:latest",
   "features": {
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    }
   },
   "customizations": {
     "vscode": {

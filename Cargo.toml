@@ -4,7 +4,11 @@ members = [
     "crates/core",
     "crates/cli",
     "crates/server",
+    "crates/xtask",
 ]
+# `cargo run` (without -p) targets the CLI. xtask is dev tooling
+# invoked via the `cargo xtask` alias, never as the default binary.
+default-members = ["crates/cli"]
 
 [workspace.package]
 version = "0.1.0-alpha.1"

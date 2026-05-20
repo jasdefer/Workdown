@@ -179,6 +179,10 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
                     commands::body::run_body_command(&config, &project_root, id, body)
                 }
+                cli::Command::Serve { port, open } => {
+                    tracing::info!("starting workdown serve");
+                    commands::serve::run_serve_command(&config, *port, *open)
+                }
                 cli::Command::Rename {
                     old_id,
                     new_id,

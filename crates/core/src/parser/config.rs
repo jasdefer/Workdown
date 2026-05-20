@@ -192,6 +192,53 @@ working_days: [saturday, sunday]
     }
 
     #[test]
+    fn parse_default_config_has_serve_port() {
+        let config = parse_config(include_str!("../../defaults/config.yaml")).unwrap();
+        assert_eq!(config.serve.as_ref().and_then(|s| s.port), Some(3141));
+    }
+
+    #[test]
+    fn parse_config_without_serve_section() {
+        let yaml = r#"
+project:
+  name: Test
+paths:
+  work_items: items
+  templates: .workdown/templates
+  resources: .workdown/resources.yaml
+  views: .workdown/views.yaml
+schema: .workdown/schema.yaml
+defaults:
+  board_field: status
+  tree_field: parent
+  graph_field: depends_on
+"#;
+        let config = parse_config(yaml).unwrap();
+        assert!(config.serve.is_none());
+    }
+
+    #[test]
+    fn parse_config_with_empty_serve_section() {
+        let yaml = r#"
+project:
+  name: Test
+paths:
+  work_items: items
+  templates: .workdown/templates
+  resources: .workdown/resources.yaml
+  views: .workdown/views.yaml
+schema: .workdown/schema.yaml
+defaults:
+  board_field: status
+  tree_field: parent
+  graph_field: depends_on
+serve: {}
+"#;
+        let config = parse_config(yaml).unwrap();
+        assert!(config.serve.unwrap().port.is_none());
+    }
+
+    #[test]
     fn parse_rejects_abbreviated_working_day() {
         // Memory rule: full day names only.
         let yaml = r#"
