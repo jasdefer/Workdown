@@ -4,7 +4,7 @@ type: issue
 status: to_do
 title: First view end-to-end (board, read-only)
 parent: server
-depends_on: [walking-skeleton]
+depends_on: [walking-skeleton, ui-foundation]
 ---
 
 Wire one view all the way through the stack. Board is the pick: most visually distinct, lowest risk of looking trivial. This slice is where the API JSON shape, error envelope, warning surface, and Svelte fetch/component patterns get decided — against a real consumer, in one PR.
