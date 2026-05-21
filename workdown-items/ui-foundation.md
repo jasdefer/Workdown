@@ -1,7 +1,7 @@
 ---
 id: ui-foundation
 type: issue
-status: to_do
+status: in_progress
 title: UI foundation — conventions and scaffolding before the first view
 parent: server
 depends_on: [walking-skeleton]
@@ -11,9 +11,89 @@ Before building any real view, settle the conventions that will shape every futu
 
 Same playbook as `walking-skeleton`: discuss each decision in turn, record the rationale (in code where natural, in this body where it isn't), install the minimum scaffold for each. No feature code lands in this issue — that's slice 2.
 
-## Decisions to make (in roughly the order they unlock each other)
+## Decisions
 
-- **CSS framework / styling approach.** Tailwind / UnoCSS / Pico / DaisyUI / vanilla CSS + Svelte scoped styles. Affects every component, retrofit is painful.
+### CSS framework / styling approach — **vanilla CSS + CSS variables + Svelte scoped styles**
+
+Rejected Tailwind primarily because (a) theme switching via CSS variables is more elegant and DRY than `dark:` prefixes at every call site — one block of variable overrides flips every component, no per-property duplication; (b) most CSS is going to be AI-written, which weakens Tailwind's main human-facing wins (decision fatigue, naming ceremony, design-token guardrails); (c) HTML stays semantic and grep-friendly, which matters more for a solo project with many view types than utility-class density would. Also rejected: UnoCSS (Tailwind-shaped, smaller ecosystem — no reason to pick it over either extreme); Pico / classless frameworks (wrong shape — won't help with kanban columns, gantt bars, graph nodes); DaisyUI / component libs (layer on top of a system, not instead of one — defer until a real need surfaces).
+
+Retrofit cost if we're wrong is bounded: `svelte-add tailwindcss` and our custom classes coexist during a migration.
+
+#### Core CSS plan
+
+Files:
+
+```
+ui/src/
+  app.css                    -- imported once in +layout.svelte
+  lib/styles/
+    reset.css                -- modern element reset (Andy Bell-flavored)
+    tokens.css               -- design tokens (CSS variables) + theme overrides
+    base.css                 -- global element defaults
+```
+
+Splitting lets `tokens.css` evolve independently (it'll be the file touched most often as the design grows) and keeps each file under ~60 lines.
+
+`tokens.css` — start small, grow with need:
+
+```css
+:root {
+  color-scheme: light dark;
+
+  /* Colors — light theme defaults */
+  --color-bg:       #ffffff;
+  --color-surface:  #f7f7f8;
+  --color-fg:       #18181b;
+  --color-fg-muted: #71717a;
+  --color-border:   #e4e4e7;
+  --color-accent:   #3b82f6;
+
+  /* Spacing — 4px scale */
+  --space-1: 0.25rem;   --space-2: 0.5rem;
+  --space-3: 0.75rem;   --space-4: 1rem;
+  --space-6: 1.5rem;    --space-8: 2rem;
+
+  /* Radii */
+  --radius-md: 0.375rem;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06);
+
+  /* Typography */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --text-sm: 0.875rem;  --text-base: 1rem;  --text-lg: 1.125rem;
+}
+
+[data-theme="dark"] {
+  --color-bg:       #09090b;
+  --color-surface:  #18181b;
+  --color-fg:       #e4e4e7;
+  --color-fg-muted: #a1a1aa;
+  --color-border:   #27272a;
+  --color-accent:   #60a5fa;
+}
+```
+
+`base.css` — body using tokens, `:focus-visible` ring, `.sr-only` utility, `prefers-reduced-motion` block disabling animations.
+
+`reset.css` — modern reset: box-sizing border-box, body margin 0, image/form sensible defaults. ~25 lines copy-paste from a known-good source.
+
+Theme switching: set `data-theme="dark"` on `<html>`. Variables cascade, every `var(--color-bg)` descendant updates. No FOUC concern since `ssr = false` (SPA-only). Persistence and toggle UI land with the theme/dark-mode decision below.
+
+No global utility classes beyond `.sr-only`. No "grid system" — modern CSS Grid + Flexbox handle layout per-component in scoped styles. The app shell layout lives in `+layout.svelte`, not core CSS.
+
+#### Deferred — add when first needed
+
+- Semantic colors (success / warning / danger / info) — add with the first badge / toast / validation message.
+- Z-index scale — add when the first modal or popover lands.
+- Full type scale (xs / xl / 2xl / 3xl) — extend as headings / displays appear.
+- More shadow tiers (md / lg / popover) — add when surfaces stack.
+- Animation tokens (`--ease-out`, `--duration-fast`) — when the first non-trivial transition lands.
+
+## Remaining decisions (in roughly the order they unlock each other)
+
 - **Type sharing between Rust and TypeScript.** Hand-written TS types (drift risk) / `ts-rs` codegen (Rust attribute → TS file) / `specta` (similar) / OpenAPI + codegen. Sets the discipline for the "Rust adds a field, UI sees it" loop.
 - **API conventions.** JSON envelope shape (naked vs `{ data, ... }`), error format (RFC 7807 problem details vs custom), HTTP status code conventions, URL shape (`/api/views/:id` vs versioned vs other).
 - **Backend handler organization.** `crates/server/src/` is currently one `lib.rs`. Options: one file per resource (`api/views.rs`, `api/items.rs`), feature folders (`features/board/`), or flat-by-type. Ties to the vertical-slice-vs-layered question on the backend side.
