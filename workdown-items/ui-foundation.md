@@ -1,7 +1,7 @@
 ---
 id: ui-foundation
 type: issue
-status: in_progress
+status: done
 title: UI foundation — conventions and scaffolding before the first view
 parent: server
 depends_on: [walking-skeleton]

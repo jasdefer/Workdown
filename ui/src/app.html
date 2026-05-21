@@ -4,6 +4,15 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
+		<script>
+			// Sync the persisted theme before stylesheets parse so dark-mode
+			// users don't see a light-mode flash on first paint. Wrapped in
+			// try/catch because localStorage can throw in privacy modes.
+			try {
+				var t = localStorage.getItem('theme');
+				if (t === 'dark') document.documentElement.dataset.theme = 'dark';
+			} catch {}
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

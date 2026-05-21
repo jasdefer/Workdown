@@ -48,8 +48,14 @@ pub(crate) struct RawRule {
 }
 
 /// Rule severity level.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+///
+/// First type exported via `ts-rs` to TypeScript — see
+/// `crates/core/examples/gen_types.rs`. The `export_to` path resolves
+/// relative to this crate's manifest dir; the generator dumps it (and
+/// future wire-level types) under `ui/src/lib/api/generated/`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../ui/src/lib/api/generated/")]
 pub enum Severity {
     #[default]
     Error,

@@ -13,7 +13,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum SubCmd {
-    /// Build the UI bundle (npm ci + npm run check + npm run build).
+    /// Emit TypeScript type bindings from the Rust wire-level types.
+    GenTypes,
+    /// Build the UI bundle (gen-types + npm ci + npm run check + npm run build).
     BuildUi,
     /// Full release build: build the UI bundle, then `cargo build --release`.
     Build,
@@ -23,12 +25,23 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let workspace_root = workspace_root()?;
     match cli.command {
+        SubCmd::GenTypes => gen_types(&workspace_root),
         SubCmd::BuildUi => build_ui(&workspace_root),
         SubCmd::Build => {
             build_ui(&workspace_root)?;
             build_release(&workspace_root)
         }
     }
+}
+
+fn gen_types(workspace_root: &Path) -> Result<()> {
+    let cargo = locate_cargo();
+    run(
+        "cargo run --example gen_types",
+        &cargo,
+        &["run", "-p", "workdown-core", "--example", "gen_types"],
+        workspace_root,
+    )
 }
 
 fn build_ui(workspace_root: &Path) -> Result<()> {
@@ -41,6 +54,10 @@ fn build_ui(workspace_root: &Path) -> Result<()> {
     }
     let npm = locate_npm()?;
 
+    // Types must exist before svelte-check / eslint run, otherwise
+    // imports from `$lib/api/generated/` fail. Generation is cheap and
+    // idempotent; always run it.
+    gen_types(workspace_root)?;
     run("npm ci", &npm, &["ci"], &ui_dir)?;
     run("npm run check", &npm, &["run", "check"], &ui_dir)?;
     run("npm run build", &npm, &["run", "build"], &ui_dir)?;
@@ -48,13 +65,19 @@ fn build_ui(workspace_root: &Path) -> Result<()> {
 }
 
 fn build_release(workspace_root: &Path) -> Result<()> {
-    let cargo = std::env::var_os("CARGO").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("cargo"));
+    let cargo = locate_cargo();
     run(
         "cargo build --release",
         &cargo,
         &["build", "--release", "--workspace"],
         workspace_root,
     )
+}
+
+fn locate_cargo() -> PathBuf {
+    std::env::var_os("CARGO")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("cargo"))
 }
 
 fn run(label: &str, program: &Path, args: &[&str], working_dir: &Path) -> Result<()> {

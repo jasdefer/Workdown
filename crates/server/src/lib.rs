@@ -3,6 +3,15 @@
 //! Library-shaped: exposes `router`, `bind`, and `serve` for the CLI to
 //! wire together. No `main`, no flag parsing, no browser-launching —
 //! those concerns live in `workdown-cli`.
+//!
+//! The router has two layers: the `/api/*` tree (built in
+//! [`api::router`]) and a fallback that serves the embedded UI bundle
+//! (SPA shell). The API tree is nested under `/api`; everything else
+//! falls through to the UI assets.
+
+pub mod api;
+pub mod envelope;
+pub mod error;
 
 use std::net::SocketAddr;
 
@@ -39,8 +48,16 @@ struct UiAssets;
 struct UiAssets;
 
 /// Build the axum router for the workdown UI.
+///
+/// Routes match in this order:
+/// 1. `/api/*` — handled by [`api::router`].
+/// 2. Anything else — the SPA fallback ([`asset_handler`]) serves
+///    embedded UI assets, returning `index.html` for unknown paths so
+///    the client-side router can resolve them.
 pub fn router() -> Router {
-    Router::new().fallback(asset_handler)
+    Router::new()
+        .nest("/api", api::router())
+        .fallback(asset_handler)
 }
 
 /// Bind a TCP listener on `127.0.0.1:port`. Returns the listener; the

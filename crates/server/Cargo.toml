@@ -17,6 +17,8 @@ mime_guess = "2"
 # disk at runtime, release builds bake it in. Keeps `cargo check` / `cargo
 # test` fast and pure-Rust during dev.
 rust-embed = "8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal"] }
 tower = "0.5"
 tracing = "0.1"
