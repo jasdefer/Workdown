@@ -53,7 +53,7 @@ Internally `load_project()` returns `Result<Project, LoadError>`. `Err` → tier
 
 Rejected: 404 with a synthesized `Diagnostic`. "View not found" isn't a validation finding — no source path, no item, no view-config issue. A diagnostic for "the URL is wrong" would dilute the vocabulary.
 
-### `GET /api/views` shape — **`{ views: ViewSummary[], default: Option<String> }`**
+### `GET /api/views` shape — **`ViewSummary[]` flat array**
 
 ```rust
 #[derive(Serialize, TS)]
@@ -71,9 +71,9 @@ pub enum ViewKindLabel {
 }
 ```
 
-One round trip serves both navigation and landing-page resolution. `title` stays optional; the UI prettifies the id when it's unset.
+The endpoint returns the array directly inside the envelope's `data` field. The landing page at `/` redirects to the first view in `views.yaml`, or renders an empty state when the array is empty. Users who want a different landing view reorder `views.yaml` — file order doubling as priority is fine for something this lightweight, and visibly the first entry comes first. `title` stays optional; the UI prettifies the id when it's unset.
 
-Rejected: full `View` shape (leaks per-kind config the navigation doesn't need, ties the wire response to internal model evolution); separate `/api/default-view` endpoint (two round trips for one read).
+Rejected: full `View` shape (leaks per-kind config the navigation doesn't need, ties the wire response to internal model evolution); `{ views, default: Option<String> }` wrapper with a `defaults.default_view:` config field (extra noise in `config.yaml` for a behavior file-order already expresses); separate `/api/default-view` endpoint (two round trips for what's now zero — the UI uses `views[0]`).
 
 ### ts-rs scope — **all wire-bound types now, generated per-file**
 
@@ -91,7 +91,7 @@ Slice 2 only renders the board, but every type is decorated so slices 3-5 are pu
 
 Tests in `crates/server/tests/views_endpoint.rs` exercise the contract:
 
-1. `GET /api/views` returns the fixture's configured views as `ViewSummary[]` with the resolved default.
+1. `GET /api/views` returns the fixture's configured views as `ViewSummary[]`.
 2. `GET /api/views/<board-id>` returns a `BoardData` payload with expected columns.
 3. `GET /api/views/typo` returns `404`.
 
