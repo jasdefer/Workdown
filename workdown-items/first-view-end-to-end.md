@@ -11,7 +11,7 @@ Wire one view all the way through the stack. Board is the pick: most visually di
 
 ## Decisions
 
-Backend decisions discussed in turn and recorded here. Frontend decisions follow in a second pass — `### Frontend …` headings will be appended as they're settled.
+Backend decisions first, frontend decisions second. Two issues split out during the frontend pass: navigation chrome lives in [[app-shell-navigation]], per-card / per-cell field selection lives in [[view-display-config]] (cross-view-kind).
 
 ### Project loading strategy — **cold-load per request, no cache**
 
@@ -99,16 +99,147 @@ Run via `tower::ServiceExt::oneshot` against `workdown_server::router(state)` �
 
 Edge cases (unparseable views.yaml, missing schema, broken links) are tested at the `core::load_project` layer, not at the HTTP layer. UI testing stays manual for slice 2; framework choice deferred until there's more component surface to test against.
 
+### Frontend: Landing redirect — **first view in `views.yaml`, empty state when none**
+
+`+page.ts` at `/` reads the layout-loaded views list and issues `redirect(307, '/views/${views[0].id}')`. When `views.length === 0`, the root page renders a small empty-state component ("No views configured yet. Add one to `.workdown/views.yaml`."). No HTTP error, no diagnostic — the project is healthy, there's just nothing to render. Users who want a different landing view reorder `views.yaml`.
+
+### Frontend: View page dispatcher — **dedicated `<ViewRenderer>` component**
+
+`+page.svelte` at `/views/[id]` mounts `<DiagnosticBanner>` + `<ViewRenderer data={...} />`. `ViewRenderer` switches on `data.type` and renders the matching view component (`<BoardView>`, future `<TableView>`, etc.). The route page stays focused on page-level orchestration (load + banner + dispatch).
+
+Rejected: inline `{#if data.type === 'board'}` chain inside `+page.svelte`. Same line count, but the diagnostic banner already consumes view data for primary/secondary grouping (two consumers of the same payload at the page level), and a dispatcher component is reusable when item-detail panels later embed view previews — a one-line embed rather than a duplicated if-chain.
+
+### Frontend: Card content — **title + id badge + rendered Markdown body preview**
+
+```
+┌─────────────────────────────────┐
+│ Implement user login        a1  │   title (or prettified id) + id badge
+│                                 │
+│ Wire OAuth provider through the │   compact Markdown render of body,
+│ existing auth middleware. Need… │   height-capped with mask-gradient fade
+└─────────────────────────────────┘
+```
+
+Title resolves from `card.title` with fallback to `prettify(card.id)` — always present visually. Id badge in muted monospace, top-right. Body preview is the rendered Markdown (compact mode: collapsed paragraph spacing, tight line-height) inside a `max-height`-capped container with a CSS mask-gradient fade at the bottom for the "more below" visual hint. Empty body → no preview line.
+
+Field-importance heuristics (assignee, deadline, priority, …) are deferred — captured in [[view-display-config]] for cross-view-kind treatment, since the underlying question recurs across boards, tables, trees, graphs, tooltips, item previews.
+
+### Frontend: Markdown rendering — **`marked` + `DOMPurify` + shared `<Markdown>` component**
+
+The library is pulled forward from `mutations-slice` (item-detail panels) into this slice rather than writing throwaway syntax-stripping for card previews. ~50 KB of dependencies (marked ~30 KB, DOMPurify ~20 KB) plus a ~15-line `ui/src/lib/ui/Markdown.svelte` component: parser → sanitizer → `{@html}`. The component supports a `compact` prop that collapses paragraph spacing for card-sized previews.
+
+Rejected: writing a syntax-stripping regex pass for card previews. Non-trivial edge cases (nested syntax, escaped chars, links, images), produces throwaway code, and we'd still need the full library for item-detail surfaces — duplicating effort. Stripping was tempting but undersold the cost.
+
+Mermaid, KaTeX, footnotes, and other GFM-adjacent extensions stay out of scope; if a project's body content uses them, they render as text.
+
+### Frontend: Diagnostic banner — **above `<ViewRenderer>`, grouped by item id, primary/secondary visual split**
+
+Component at `ui/src/lib/ui/DiagnosticBanner.svelte`. Props: `diagnostics: Diagnostic[]` and `viewData: ViewData | undefined` (the banner derives in-view ids itself). Hidden entirely when `diagnostics.length === 0`.
+
+Layout:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ This view                                                   │
+│                                                             │
+│ task-a                                                      │
+│   ✕ field 'parent': broken link to 'epic-1'                 │
+│   ✕ field 'depends_on': broken link to 'task-z'             │
+│                                                             │
+│ task-c                                                      │
+│   ⚠ required field 'assignee' is missing                    │
+│                                                             │
+│ ▸ Other diagnostics (3)                                     │   ← collapsed by default
+└─────────────────────────────────────────────────────────────┘
+```
+
+When expanded, the secondary section uses synthetic group headers for non-item diagnostics: `Cycles`, `Views`, `Duplicates`.
+
+**Primary/secondary classification rule.** A diagnostic is primary if either (a) at least one of its referenced work item ids is in the current view, OR (b) it's a view-config diagnostic for the *current* view (tier 2 surfacing). Everything else is secondary.
+
+Cycles spanning items in the current view go primary (they affect cards the user is looking at). View-config diagnostics for other views stay secondary.
+
+**Two TS helpers** under `ui/src/lib/diagnostics/`:
+
+- `idsInView(viewData: ViewData) → Set<WorkItemId>` — one match arm per view kind.
+- `idsInDiagnostic(diagnostic: Diagnostic) → Set<WorkItemId>` — one match arm per diagnostic kind (ItemDiagnostic → 1 id, Cycle → N ids, DuplicateId → 1 id, ConfigDiagnostic → empty).
+
+**Per-row content:** severity icon (`✕` error, `⚠` warning), item id label (or synthetic group), message from `Diagnostic`'s existing `Display` impl (reused from the CLI — keeps surfaces consistent). Sort: errors before warnings within each item group; item groups by id ascending; synthetic groups last.
+
+**No click behavior in slice 2.** Item-detail navigation lands with `mutations-slice`.
+
+**Semantic color tokens added to `tokens.css`:** `--color-warning-fg`, `--color-warning-bg`, `--color-error-fg`, `--color-error-bg`. First surface that needs them; the rest of the family (success, info) follows whenever a use case lands.
+
+### Frontend: Loading and error states — **blocking `await` in `load()`, errors fall through to `+error.svelte`**
+
+`+page.ts` `await`s `api.getView(id)` — page doesn't render until data arrives. SvelteKit's default navigation indicator handles the visual gap. Cold-load latency is milliseconds on a local project; streaming `{#await}` blocks would add complexity (`{:then}`/`{:catch}` branches, skeleton components) for invisible benefit.
+
+`ui/src/routes/+error.svelte` at the route root handles three error cases by switching on `$page.status`:
+
+- `422` (project unloadable, tier 1 from B5 above) → render the full diagnostic list with the `+error.svelte` template.
+- `404` (unknown view id) → "View not found, try one of these:" with links built from the layout-loaded views list.
+- Network failure / unexpected throw → generic "Couldn't reach the workdown server" with a refresh hint.
+
+Rejected: streaming `{#await}` (deferred — switch on a per-page basis if latency ever bites).
+
+### Frontend: Empty state — **render empty columns, hide synthetic when empty, subtle hint when board is fully empty**
+
+Each declared column always renders (header visible, body empty) so the board's structure stays legible regardless of card count. The synthetic `value: null` column hides when it has zero cards; when shown, its header reads `(none)` in muted text. When *every* column has zero cards, a single quiet line renders above the columns: "No items to display." No big empty-state graphic, no setup wizard.
+
+Individual empty columns don't carry "no items" text inside — that's noise across many columns on a board with realistic uneven card distributions.
+
+### Frontend: Board visual shape — **flexbox fill-evenly with min-width, horizontal scroll on overflow**
+
+```css
+.board   { display: flex; gap: var(--space-4); overflow-x: auto; flex: 1; }
+.column  { flex: 1 1 0; min-width: 280px;
+           display: flex; flex-direction: column; min-height: 0; }
+.cards   { flex: 1; overflow-y: auto; }
+```
+
+Behavior:
+
+- Few columns + wide screen → each column gets `(viewport_width − gaps) / N`, fills the available real estate evenly.
+- Many columns / narrow screen → columns stay at `280px` minimum, container scrolls horizontally.
+- Cards stretch to column width (wider screen → wider cards → more breathing room for the body preview).
+- Each column has its own vertical scroll on the cards area; column header sticks to the top of its column.
+
+Rejected: fixed `max-width` per column (wastes screen real estate when only a few columns exist); CSS Grid `repeat(N, minmax(280px, 1fr))` (equivalent behavior, but needs `N` interpolated from JS — flexbox is cleaner here).
+
+Layout CSS is scoped to `BoardView.svelte` / `Column.svelte`. If a second consumer of the same pattern appears in slice 3 (metric tiles is the closest candidate), extract to `lib/ui/Lanes.svelte` or a `.lanes` utility class at that point — premature now with one consumer.
+
+### Frontend: Frontend tests — **deferred**
+
+Manual browser testing for slice 2. Test framework choice (Playwright for E2E vs vitest + Svelte Testing Library for components) wants two or more real components to evaluate against; defer until slice 3 or later when there's more surface to commit against.
+
 ## Scope
 
-- `GET /api/views` — list configured views from `views.yaml`
-- `GET /api/views/:id` — return `ViewData` as JSON for a board view
-- Svelte board component renders columns and cards from the JSON
-- Fetch layer + error/loading state pattern established for later slices
-- API conventions decided here (code review is sufficient — no separate ADR; internal contract):
-  - JSON envelope shape
-  - Error format and HTTP status codes
-  - How `ViewData` serializes (especially typed field values)
+**Backend (`crates/core` + `crates/server`):**
+
+- `core::load_project()` shared loader returning `Result<Project, LoadError>`; `workdown render` and `workdown validate` refactored to call it.
+- `AppState { project_root, config }` constructed by the CLI's `serve` and threaded into the router.
+- `GET /api/views` → `ViewSummary[]` flat array inside the envelope's `data`.
+- `GET /api/views/:id` → `ViewData` (discriminated union) for any configured view; 404 (empty body) when the id isn't in `views.yaml`.
+- Three failure tiers wired per the decisions above: `Err(LoadError)` → 422 with diagnostics; `Ok` with view-config issue for the requested view → 200 + empty data + diagnostics; `Ok` with item-level diagnostics → 200 + data + diagnostics.
+- `#[derive(TS)]` on every wire-bound type (full transitive closure listed in the decisions). Generated `.ts` files land in `ui/src/lib/api/generated/` (gitignored).
+- Three HTTP integration tests at `crates/server/tests/views_endpoint.rs` against a checked-in fixture project at `crates/server/tests/fixtures/project/`.
+
+**Frontend (`ui/`):**
+
+- `+layout.ts` loads `GET /api/views`; the result is available to every child page (`+page.ts`, `+error.svelte`).
+- `+page.ts` at `/` redirects to the first view, or returns empty-state flag when none configured.
+- `+page.ts` at `/views/[id]` calls `api.getView(params.id)`, throws SvelteKit `error(...)` on 422/404 so `+error.svelte` catches.
+- `+page.svelte` at `/views/[id]` mounts `<DiagnosticBanner>` + `<ViewRenderer>`.
+- `lib/views/ViewRenderer.svelte` dispatches on `data.type`.
+- `lib/views/board/` — `BoardView.svelte`, `Column.svelte`, `Card.svelte`. Layout per the board-shape decision.
+- `lib/ui/Markdown.svelte` — `marked` + `DOMPurify` + `{@html}`, with a `compact` prop for card-sized previews.
+- `lib/ui/DiagnosticBanner.svelte` — grouped by item id, primary/secondary classified per the rule.
+- `lib/diagnostics/` — `idsInView.ts` and `idsInDiagnostic.ts` helpers.
+- `+error.svelte` at the route root — 422 / 404 / network failure handling.
+- Semantic color tokens (warning/error pairs) added to `tokens.css`.
+- `api.getView(id)` and `api.getViews()` added to `lib/api/client.ts` (the existing `request<T>` helper covers the unwrap).
+
+**Settled internal contracts:** envelope shape, error format and HTTP status codes, `ViewData` serialization with typed field values. All recorded above; code-level annotations (module docs, type comments) carry the rest — no separate ADR.
 
 ## Acceptance
 
