@@ -181,7 +181,9 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                 }
                 cli::Command::Serve { port, open } => {
                     tracing::info!("starting workdown serve");
-                    commands::serve::run_serve_command(&config, *port, *open)
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    commands::serve::run_serve_command(&config, &project_root, *port, *open)
                 }
                 cli::Command::Rename {
                     old_id,

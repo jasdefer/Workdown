@@ -12,6 +12,7 @@
 pub mod api;
 pub mod envelope;
 pub mod error;
+pub mod state;
 
 use std::net::SocketAddr;
 
@@ -24,6 +25,8 @@ use axum::{
 };
 use rust_embed::{Embed, EmbeddedFile};
 use tokio::net::TcpListener;
+
+pub use state::AppState;
 
 /// Embedded UI bundle.
 ///
@@ -50,14 +53,16 @@ struct UiAssets;
 /// Build the axum router for the workdown UI.
 ///
 /// Routes match in this order:
-/// 1. `/api/*` — handled by [`api::router`].
+/// 1. `/api/*` — handled by [`api::router`], state-bound for handlers
+///    that need to load the project.
 /// 2. Anything else — the SPA fallback ([`asset_handler`]) serves
 ///    embedded UI assets, returning `index.html` for unknown paths so
 ///    the client-side router can resolve them.
-pub fn router() -> Router {
+pub fn router(state: AppState) -> Router {
     Router::new()
         .nest("/api", api::router())
         .fallback(asset_handler)
+        .with_state(state)
 }
 
 /// Bind a TCP listener on `127.0.0.1:port`. Returns the listener; the
@@ -120,7 +125,38 @@ fn serve_file(path: &str, file: EmbeddedFile) -> Response {
 mod tests {
     use super::*;
     use axum::http::Request;
+    use std::path::PathBuf;
     use tower::ServiceExt;
+    use workdown_core::model::config::{Config, Paths, ProjectMeta, ViewDefaults};
+
+    /// Minimal `AppState` for asset-handler tests — these tests don't
+    /// exercise any handler that uses the project loader, so the paths
+    /// don't have to resolve to a real project.
+    fn test_state() -> AppState {
+        AppState {
+            project_root: PathBuf::from("/tmp/workdown-test-stub"),
+            config: Config {
+                project: ProjectMeta {
+                    name: "test".into(),
+                    description: String::new(),
+                },
+                paths: Paths {
+                    work_items: PathBuf::from("workdown-items"),
+                    templates: PathBuf::from(".workdown/templates"),
+                    resources: PathBuf::from(".workdown/resources.yaml"),
+                    views: PathBuf::from(".workdown/views.yaml"),
+                },
+                schema: PathBuf::from(".workdown/schema.yaml"),
+                defaults: ViewDefaults {
+                    board_field: "status".into(),
+                    tree_field: "parent".into(),
+                    graph_field: "depends_on".into(),
+                },
+                working_days: None,
+                serve: None,
+            },
+        }
+    }
 
     async fn body_bytes(response: Response) -> Vec<u8> {
         axum::body::to_bytes(response.into_body(), usize::MAX)
@@ -131,7 +167,7 @@ mod tests {
 
     #[tokio::test]
     async fn serves_index_at_root() {
-        let app = router();
+        let app = router(test_state());
         let response = app
             .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
             .await
@@ -145,7 +181,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_route_falls_through_to_index() {
-        let app = router();
+        let app = router(test_state());
         let response = app
             .oneshot(
                 Request::builder()
@@ -162,7 +198,7 @@ mod tests {
 
     #[tokio::test]
     async fn missing_asset_with_extension_returns_404() {
-        let app = router();
+        let app = router(test_state());
         let response = app
             .oneshot(
                 Request::builder()
@@ -177,7 +213,7 @@ mod tests {
 
     #[tokio::test]
     async fn robots_txt_is_served() {
-        let app = router();
+        let app = router(test_state());
         let response = app
             .oneshot(
                 Request::builder()

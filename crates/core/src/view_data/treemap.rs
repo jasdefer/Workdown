@@ -20,7 +20,7 @@ use super::common::{as_size, build_card, Card, SizeValue, UnplacedCard, Unplaced
 use super::filter::filtered_items;
 use super::traverse::{walk_forest, Traversal};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TreemapData {
     pub group_field: String,
     pub size_field: String,
@@ -28,7 +28,7 @@ pub struct TreemapData {
     pub unplaced: Vec<UnplacedCard>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TreemapNode {
     /// `None` on the synthetic top-level root; `Some` on every real item.
     pub card: Option<Card>,

@@ -17,13 +17,13 @@ use crate::store::Store;
 use super::common::{build_card, Card};
 use super::filter::filtered_items;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct BoardData {
     pub field: String,
     pub columns: Vec<BoardColumn>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct BoardColumn {
     /// `None` = synthetic bucket for items without a value for the grouping field.
     pub value: Option<String>,

@@ -20,7 +20,7 @@ walkdir = "2"
 csv = "1"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
-ts-rs = { version = "10", features = ["serde-compat"] }
+ts-rs = { version = "10", features = ["serde-compat", "chrono-impl"] }
 
 [dev-dependencies]
 tempfile = "3"

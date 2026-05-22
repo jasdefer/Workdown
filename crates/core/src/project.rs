@@ -1,0 +1,100 @@
+//! Shared project loader: reads everything `workdown render`, `workdown
+//! validate`, and the HTTP server need from disk into one in-memory
+//! struct.
+//!
+//! Hard failures (schema missing, views.yaml unparseable, items dir
+//! unreadable) become [`LoadError`]. Per-item, cross-item, and
+//! views_check diagnostics ride along inside the successful
+//! [`Project`] — callers iterate `project.diagnostics` to surface them.
+//!
+//! The server calls this per HTTP request (cold-load — no caching).
+//! Parsing is in the millisecond range for projects with a few hundred
+//! items, well below human-perceptible latency. A future watcher
+//! (`live-updates`) handles SSE push, not cache invalidation, because
+//! there is no cache to invalidate.
+
+use std::path::{Path, PathBuf};
+
+use thiserror::Error;
+
+use crate::model::calendar::WorkingCalendar;
+use crate::model::config::Config;
+use crate::model::diagnostic::Diagnostic;
+use crate::model::schema::Schema;
+use crate::model::views::Views;
+use crate::parser;
+use crate::store::Store;
+use crate::views_check;
+
+/// A fully loaded workdown project.
+///
+/// `views` is `None` when the project has no `views.yaml` file — that's
+/// a valid configuration meaning "this project has no persisted views
+/// yet," not an error.
+pub struct Project {
+    pub store: Store,
+    pub schema: Schema,
+    pub views: Option<Views>,
+    pub calendar: WorkingCalendar,
+    /// Every diagnostic collected during loading: per-item and
+    /// cross-item findings from [`Store::load`], plus `views_check`
+    /// findings when `views.yaml` exists. May be empty for a healthy
+    /// project.
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+/// Failures that prevent the loader from returning a [`Project`].
+///
+/// Only schema and items-directory failures are hard — without them
+/// nothing useful can be served. Views.yaml problems (missing,
+/// unparseable, semantically invalid) become diagnostics inside an
+/// otherwise-successful `Project` so the server can still answer
+/// `GET /api/views` with an empty list and a diagnostic explaining why.
+#[derive(Debug, Error)]
+pub enum LoadError {
+    #[error("failed to load schema from {path}: {detail}")]
+    Schema { path: PathBuf, detail: String },
+
+    #[error("failed to read items directory {path}: {detail}")]
+    Items { path: PathBuf, detail: String },
+}
+
+/// Load every part of the project from disk into memory.
+pub fn load_project(config: &Config, project_root: &Path) -> Result<Project, LoadError> {
+    let schema_path = project_root.join(&config.schema);
+    let items_path = project_root.join(&config.paths.work_items);
+    let views_path = project_root.join(&config.paths.views);
+
+    let schema = parser::schema::load_schema(&schema_path).map_err(|e| LoadError::Schema {
+        path: schema_path.clone(),
+        detail: e.to_string(),
+    })?;
+
+    let store = Store::load(&items_path, &schema).map_err(|e| LoadError::Items {
+        path: items_path.clone(),
+        detail: e.to_string(),
+    })?;
+
+    let mut diagnostics: Vec<Diagnostic> = store.diagnostics().to_vec();
+    diagnostics.extend(store.detect_cycles(&schema));
+    diagnostics.extend(crate::rules::evaluate(&store, &schema));
+    diagnostics.extend(views_check::load_and_check(&views_path, &schema));
+
+    // Try to load views; on failure the parse-error diagnostics are
+    // already in the list above via load_and_check.
+    let views = if views_path.exists() {
+        parser::views::load_views(&views_path).ok()
+    } else {
+        None
+    };
+
+    let calendar = config.working_calendar();
+
+    Ok(Project {
+        store,
+        schema,
+        views,
+        calendar,
+        diagnostics,
+    })
+}

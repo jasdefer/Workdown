@@ -26,7 +26,7 @@ use super::common::{build_card, Card};
 use super::filter::filtered_items;
 use super::tree::{build_tree_data, TreeData};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct GraphData {
     pub field: String,
     /// The `group_by` field name from the view config, if any. Mirrored
@@ -42,7 +42,7 @@ pub struct GraphData {
     pub groups: Option<TreeData>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct Edge {
     pub from: WorkItemId,
     pub to: WorkItemId,

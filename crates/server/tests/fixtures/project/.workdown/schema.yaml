@@ -1,0 +1,22 @@
+fields:
+  id:
+    type: string
+    required: false
+    default: $filename
+
+  title:
+    type: string
+    required: false
+    default: $filename_pretty
+
+  status:
+    type: choice
+    values: [open, in_progress, done]
+    required: true
+    default: open
+
+  parent:
+    type: link
+    required: false
+    allow_cycles: false
+    inverse: children

@@ -1,20 +1,13 @@
 <!--
-	Root landing page.
-
-	The settled URL convention is "/" redirects to the first view in
-	views.yaml. That redirect can't be wired today because no API
-	endpoint exposes the views list (and we deliberately ship no
-	endpoints in this slice). The redirect lands with
-	first-view-end-to-end alongside the first view + a `GET /api/views`
-	endpoint.
-
-	Until then this is a deliberate stub: identifies what's missing
-	rather than pretending the app has no front door.
+  Root page. Only renders when no views are configured — otherwise
+  `+page.ts` redirects to the first view in `views.yaml`.
 -->
 
 <section class="empty">
 	<h1>Workdown</h1>
-	<p>No views configured yet. The first view lands with the next slice.</p>
+	<p>
+		No views configured yet. Add one to <code>.workdown/views.yaml</code> to get started.
+	</p>
 </section>
 
 <style>
@@ -32,5 +25,12 @@
 
 	.empty p {
 		color: var(--color-fg-muted);
+	}
+
+	.empty code {
+		font-family: var(--font-mono);
+		background-color: var(--color-surface);
+		padding: 0.1em 0.3em;
+		border-radius: var(--radius-md);
 	}
 </style>

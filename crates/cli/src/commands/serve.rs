@@ -1,9 +1,11 @@
 //! `workdown serve` — boot the local web UI.
 
+use std::path::Path;
 use std::process::ExitCode;
 
 use anyhow::{Context, Result};
 use workdown_core::model::config::Config;
+use workdown_server::AppState;
 
 const DEFAULT_PORT: u16 = 3141;
 const SCAN_FALLBACK_COUNT: u16 = 10;
@@ -12,16 +14,29 @@ const SCAN_FALLBACK_COUNT: u16 = 10;
 ///
 /// Sets up a tokio runtime inline (rather than `#[tokio::main]`) so the
 /// other CLI subcommands stay synchronous and pay no async-runtime cost.
-pub fn run_serve_command(config: &Config, port: Option<u16>, open: bool) -> Result<ExitCode> {
+pub fn run_serve_command(
+    config: &Config,
+    project_root: &Path,
+    port: Option<u16>,
+    open: bool,
+) -> Result<ExitCode> {
     let port_resolution = resolve_port(config, port);
+    let state = AppState {
+        project_root: project_root.to_path_buf(),
+        config: config.clone(),
+    };
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .context("building tokio runtime")?;
-    runtime.block_on(async move { run_serve(port_resolution, open).await })
+    runtime.block_on(async move { run_serve(port_resolution, state, open).await })
 }
 
-async fn run_serve(resolution: PortResolution, open: bool) -> Result<ExitCode> {
+async fn run_serve(
+    resolution: PortResolution,
+    state: AppState,
+    open: bool,
+) -> Result<ExitCode> {
     let listener = match bind_with_scan(&resolution).await {
         Ok(listener) => listener,
         Err(err) => {
@@ -61,7 +76,7 @@ async fn run_serve(resolution: PortResolution, open: bool) -> Result<ExitCode> {
         }
     }
 
-    let router = workdown_server::router();
+    let router = workdown_server::router(state);
     workdown_server::serve(listener, router).await?;
     Ok(ExitCode::SUCCESS)
 }
@@ -95,9 +110,14 @@ fn resolve_port(config: &Config, flag: Option<u16>) -> PortResolution {
 
 async fn bind_with_scan(resolution: &PortResolution) -> Result<tokio::net::TcpListener> {
     if resolution.explicit {
-        return workdown_server::bind(resolution.start_port).await.with_context(|| {
-            format!("binding port {} (explicitly requested)", resolution.start_port)
-        });
+        return workdown_server::bind(resolution.start_port)
+            .await
+            .with_context(|| {
+                format!(
+                    "binding port {} (explicitly requested)",
+                    resolution.start_port
+                )
+            });
     }
 
     let mut last_error = None;
@@ -152,8 +172,7 @@ defaults:
 {}
 "#,
             match serve {
-                Some(s) if s.port.is_some() =>
-                    format!("serve:\n  port: {}\n", s.port.unwrap()),
+                Some(s) if s.port.is_some() => format!("serve:\n  port: {}\n", s.port.unwrap()),
                 Some(_) => "serve: {}\n".to_string(),
                 None => String::new(),
             },

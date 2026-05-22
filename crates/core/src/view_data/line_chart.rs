@@ -26,7 +26,7 @@ use super::common::{
 };
 use super::filter::filtered_items;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct LineChartData {
     pub x_field: String,
     pub y_field: String,
@@ -37,7 +37,7 @@ pub struct LineChartData {
     pub unplaced: Vec<UnplacedCard>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct LinePoint {
     pub id: WorkItemId,
     pub x: AxisValue,

@@ -34,7 +34,7 @@ use super::common::{as_date, as_size, build_card, UnplacedCard, UnplacedReason};
 use super::filter::filtered_items;
 
 /// How a [`WorkloadBucket::total`] should be interpreted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ts_rs::TS)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkloadUnit {
     /// Raw numeric value — sum of integer/float effort fields.
@@ -44,7 +44,7 @@ pub enum WorkloadUnit {
     Duration,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct WorkloadData {
     pub start_field: String,
     pub end_field: String,
@@ -57,7 +57,7 @@ pub struct WorkloadData {
     pub unplaced: Vec<UnplacedCard>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct WorkloadBucket {
     pub date: NaiveDate,
     pub total: f64,

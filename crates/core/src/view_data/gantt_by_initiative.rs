@@ -27,13 +27,13 @@ use crate::walker::walk_up;
 use super::common::{build_card, Card, UnplacedCard};
 use super::gantt::{resolve_bars, GanttBar, GanttResolution};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct GanttByInitiativeData {
     pub initiatives: Vec<Initiative>,
     pub unplaced: Vec<UnplacedCard>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct Initiative {
     pub root: Card,
     pub bars: Vec<GanttBar>,

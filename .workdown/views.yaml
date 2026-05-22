@@ -6,6 +6,8 @@ views:
   - id: status-board
     type: board
     field: status
+    where:
+        - type=issue
 
   - id: hierarchy
     type: tree

@@ -1,7 +1,7 @@
 ---
 id: server
 type: milestone
-status: to_do
+status: in_progress
 title: Interactive UI (workdown serve)
 parent: phase-04-visualization
 depends_on: [foundation, item-mutations, renderers]

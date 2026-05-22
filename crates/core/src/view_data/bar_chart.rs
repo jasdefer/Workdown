@@ -24,7 +24,7 @@ use super::aggregate::compute_aggregate;
 use super::common::{build_card, AggregateValue, UnplacedCard, UnplacedReason};
 use super::filter::filtered_items;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct BarChartData {
     pub group_by: String,
     pub value_field: Option<String>,
@@ -33,7 +33,7 @@ pub struct BarChartData {
     pub unplaced: Vec<UnplacedCard>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct BarChartBar {
     pub group: String,
     pub value: AggregateValue,

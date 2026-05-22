@@ -32,7 +32,7 @@
 	.shell {
 		display: flex;
 		flex-direction: column;
-		min-height: 100vh;
+		height: 100vh;
 	}
 
 	.app-header {
@@ -42,6 +42,7 @@
 		padding: var(--space-3) var(--space-6);
 		background-color: var(--color-surface);
 		border-bottom: 1px solid var(--color-border);
+		flex-shrink: 0;
 	}
 
 	.brand {
@@ -56,8 +57,15 @@
 		gap: var(--space-2);
 	}
 
+	/* Flex container so view-page's `flex: 1` can constrain against
+	   a known height — that's what lets columns scroll independently
+	   instead of the whole page scrolling. */
 	.app-main {
 		flex: 1;
+		min-height: 0;
 		padding: var(--space-6);
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
 	}
 </style>

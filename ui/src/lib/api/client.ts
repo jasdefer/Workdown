@@ -4,18 +4,14 @@
 // same shape for every endpoint. Centralising the unwrap here keeps
 // every call site free of optional-chaining boilerplate on
 // `diagnostics`.
-//
-// No endpoint-specific methods exist yet — slice 2 adds them as each
-// endpoint lands. The `request<T>` helper is the only export today.
-//
-// `Diagnostic` will be imported from the generated types once an
-// endpoint actually exchanges diagnostics; for now the helper types it
-// as `unknown[]` so generated/ can stay empty of wire-level types
-// until they're earned.
+
+import type { Diagnostic } from './generated/Diagnostic';
+import type { ViewData } from './generated/ViewData';
+import type { ViewSummary } from './generated/ViewSummary';
 
 export interface ApiResult<T> {
 	data?: T;
-	diagnostics: unknown[];
+	diagnostics: Diagnostic[];
 	status: number;
 }
 
@@ -39,11 +35,12 @@ export async function request<T>(
 
 	const response = await fetch(path, init);
 
-	// 204 (and any empty body) is normalised to `{ diagnostics: [] }`
-	// so callers never see a parse error from `.json()` on an empty body.
+	// 204 (and any empty body — e.g. 404) is normalised to
+	// `{ diagnostics: [] }` so callers never see a parse error from
+	// `.json()` on an empty body.
 	const text = await response.text();
 	const envelope =
-		text.length > 0 ? (JSON.parse(text) as { data?: T; diagnostics?: unknown[] }) : {};
+		text.length > 0 ? (JSON.parse(text) as { data?: T; diagnostics?: Diagnostic[] }) : {};
 
 	// Same conditional-spread pattern for `data` — omitted on absence,
 	// not set to `undefined`.
@@ -54,9 +51,7 @@ export async function request<T>(
 	};
 }
 
-// Endpoint methods land here as slice 2 wires the first one:
-//
-//   export const api = {
-//     getView: (id: string) => request<ViewData>('GET', `/api/views/${id}`),
-//     ...
-//   };
+export const api = {
+	getViews: () => request<ViewSummary[]>('GET', '/api/views'),
+	getView: (id: string) => request<ViewData>('GET', `/api/views/${encodeURIComponent(id)}`)
+};

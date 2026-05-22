@@ -26,7 +26,7 @@ use super::aggregate::compute_aggregate;
 use super::common::{build_card, AggregateValue, UnplacedCard, UnplacedReason};
 use super::filter::filtered_items;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct HeatmapData {
     pub x_field: String,
     pub y_field: String,
@@ -39,7 +39,7 @@ pub struct HeatmapData {
     pub unplaced: Vec<UnplacedCard>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct HeatmapCell {
     pub x: String,
     pub y: String,

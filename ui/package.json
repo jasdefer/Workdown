@@ -13,11 +13,16 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && eslint . && prettier --check .",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
 	},
+	"dependencies": {
+		"dompurify": "^3.2.4",
+		"marked": "^15.0.6"
+	},
 	"devDependencies": {
 		"@eslint/js": "^9.18.0",
 		"@sveltejs/adapter-static": "^3.0.10",
 		"@sveltejs/kit": "^2.57.0",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
+		"@types/dompurify": "^3.0.5",
 		"@types/node": "^25.9.1",
 		"eslint": "^9.18.0",
 		"eslint-config-prettier": "^9.1.0",

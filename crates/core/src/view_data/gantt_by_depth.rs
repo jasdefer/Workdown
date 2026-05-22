@@ -24,13 +24,13 @@ use crate::walker::walk_up;
 use super::common::UnplacedCard;
 use super::gantt::{resolve_bars, GanttBar, GanttResolution};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct GanttByDepthData {
     pub levels: Vec<Level>,
     pub unplaced: Vec<UnplacedCard>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct Level {
     pub depth: usize,
     pub bars: Vec<GanttBar>,

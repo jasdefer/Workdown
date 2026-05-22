@@ -29,7 +29,8 @@ use workdown_core::model::diagnostic::Diagnostic;
 /// HTTP response envelope.
 ///
 /// `data` is `Option<T>` so the `skip_serializing_if` attribute can
-/// omit the field entirely on `None`. `diagnostics` is always serialized.
+/// omit the field entirely on `None`. `diagnostics` is always serialized
+/// — except when `omit_body` is set, which sends no body at all (404).
 #[derive(Debug, Serialize)]
 pub struct ApiResponse<T: Serialize> {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -37,6 +38,13 @@ pub struct ApiResponse<T: Serialize> {
     pub diagnostics: Vec<Diagnostic>,
     #[serde(skip)]
     pub status: StatusCode,
+    /// When `true`, the response sends just the status code with no
+    /// body — not even `{ diagnostics: [] }`. Used for 404 (unknown
+    /// view id) where the empty body is intentional and a synthesized
+    /// "you asked for the wrong URL" diagnostic would dilute the
+    /// diagnostic vocabulary.
+    #[serde(skip)]
+    pub omit_body: bool,
 }
 
 impl<T: Serialize> ApiResponse<T> {
@@ -46,6 +54,7 @@ impl<T: Serialize> ApiResponse<T> {
             data: Some(data),
             diagnostics: Vec::new(),
             status: StatusCode::OK,
+            omit_body: false,
         }
     }
 
@@ -55,22 +64,56 @@ impl<T: Serialize> ApiResponse<T> {
             data: Some(data),
             diagnostics,
             status: StatusCode::OK,
+            omit_body: false,
         }
     }
 
-    /// 422 Unprocessable Entity — request well-formed but rejected.
-    /// Caller passes the diagnostics that explain why.
+    /// 200 OK with empty data plus diagnostics — tier 2 of the failure
+    /// model: the request was understood, the project loaded, but the
+    /// requested view can't render because its own config is broken.
+    /// The accompanying diagnostics explain what's wrong with the view.
+    pub fn unrenderable(diagnostics: Vec<Diagnostic>) -> Self {
+        Self {
+            data: None,
+            diagnostics,
+            status: StatusCode::OK,
+            omit_body: false,
+        }
+    }
+
+    /// 422 Unprocessable Entity — tier 1 of the failure model: the
+    /// project itself can't be loaded (missing schema, unparseable
+    /// views.yaml). Caller passes the diagnostics that explain why.
+    /// Body present (with diagnostics, no `data`) so the UI can render
+    /// the full diagnostic list on the error page.
     pub fn rejected(diagnostics: Vec<Diagnostic>) -> Self {
         Self {
             data: None,
             diagnostics,
             status: StatusCode::UNPROCESSABLE_ENTITY,
+            omit_body: false,
+        }
+    }
+
+    /// 404 Not Found with no body — the URL doesn't resolve to anything
+    /// the API knows about (typically: unknown view id). The UI builds
+    /// any friendly "did you mean…" surface from layout-loaded data;
+    /// the server doesn't synthesize a diagnostic for a routing miss.
+    pub fn not_found() -> Self {
+        Self {
+            data: None,
+            diagnostics: Vec::new(),
+            status: StatusCode::NOT_FOUND,
+            omit_body: true,
         }
     }
 }
 
 impl<T: Serialize> IntoResponse for ApiResponse<T> {
     fn into_response(self) -> Response {
+        if self.omit_body {
+            return self.status.into_response();
+        }
         (self.status, Json(EnvelopeBody::from(&self))).into_response()
     }
 }

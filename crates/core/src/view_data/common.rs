@@ -20,7 +20,7 @@ use crate::model::{FieldValue, WorkItem, WorkItemId};
 
 // ── Card ────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct Card {
     pub id: WorkItemId,
     pub title: Option<String>,
@@ -28,7 +28,7 @@ pub struct Card {
     pub body: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct CardField {
     pub name: String,
     pub value: FieldValue,
@@ -74,13 +74,13 @@ pub fn resolve_title(item: &WorkItem, view: &View) -> Option<String> {
 
 // ── Unplaced items ──────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct UnplacedCard {
     pub card: Card,
     pub reason: UnplacedReason,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum UnplacedReason {
     MissingValue {
@@ -131,7 +131,7 @@ pub enum UnplacedReason {
 /// fields. `Duration` is returned (rather than `Number(seconds_as_f64)`)
 /// when the input field is a duration field, so renderers can format
 /// `5d` instead of `432000`.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, ts_rs::TS)]
 #[serde(untagged)]
 pub enum AggregateValue {
     Number(f64),
@@ -140,7 +140,7 @@ pub enum AggregateValue {
 }
 
 /// A point coordinate on a chart's x-axis (or similar).
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, ts_rs::TS)]
 #[serde(untagged)]
 pub enum AxisValue {
     Number(f64),
@@ -155,7 +155,7 @@ pub enum AxisValue {
 /// the `Date` arm (sizes can't be dates). Carrying the variant through
 /// the data structure lets downstream renderers format `5d` instead of
 /// raw seconds — same role `AggregateValue` plays for metric/heatmap.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, ts_rs::TS)]
 #[serde(untagged)]
 pub enum SizeValue {
     Number(f64),

@@ -29,7 +29,7 @@ use super::WorkItemId;
 ///
 /// Carries severity plus a scope-tagged [`DiagnosticBody`]. JSON
 /// serializes flat: `{ severity, scope, ...source-data, type, ...variant-fields }`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct Diagnostic {
     /// Whether this finding is a blocking error or an informational warning.
     pub severity: Severity,
@@ -42,7 +42,7 @@ pub struct Diagnostic {
 ///
 /// Each variant wraps a struct with the source data invariant for that
 /// scope plus an inner kind enum holding the variant-specific data.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "scope", rename_all = "snake_case")]
 pub enum DiagnosticBody {
     /// A diagnostic about a single file (typically I/O or parse failure).
@@ -59,14 +59,14 @@ pub enum DiagnosticBody {
 
 // ── File scope ───────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct FileDiagnostic {
     pub source_path: PathBuf,
     #[serde(flatten)]
     pub kind: FileDiagnosticKind,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FileDiagnosticKind {
     /// A work item or config file could not be read or parsed at all.
@@ -75,7 +75,7 @@ pub enum FileDiagnosticKind {
 
 // ── Item scope ───────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct ItemDiagnostic {
     pub source_path: PathBuf,
     pub item_id: WorkItemId,
@@ -83,7 +83,7 @@ pub struct ItemDiagnostic {
     pub kind: ItemDiagnosticKind,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ItemDiagnosticKind {
     /// A field value doesn't match the schema's type or constraints.
@@ -121,14 +121,14 @@ pub enum ItemDiagnosticKind {
 
 // ── Files scope ──────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct FilesDiagnostic {
     pub paths: Vec<PathBuf>,
     #[serde(flatten)]
     pub kind: FilesDiagnosticKind,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FilesDiagnosticKind {
     /// Two or more files resolved to the same ID.
@@ -137,13 +137,13 @@ pub enum FilesDiagnosticKind {
 
 // ── Collection scope ─────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct CollectionDiagnostic {
     #[serde(flatten)]
     pub kind: CollectionDiagnosticKind,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CollectionDiagnosticKind {
     /// A circular reference chain was detected in a non-cyclic link field.
@@ -163,7 +163,7 @@ pub enum CollectionDiagnosticKind {
 
 // ── Config scope ─────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct ConfigDiagnostic {
     pub source_path: PathBuf,
     #[serde(flatten)]
@@ -175,7 +175,7 @@ pub struct ConfigDiagnostic {
 /// Today every variant carries a `view_id`. When a future `Schema*`
 /// family lands for cross-file `schema.yaml` validation, those variants
 /// will share `ConfigDiagnosticKind` but will not have a `view_id`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConfigDiagnosticKind {
     /// Two or more view entries share the same `id`.
@@ -297,7 +297,7 @@ pub enum ConfigDiagnosticKind {
 ///
 /// Produced by the coercion layer when converting raw YAML values to
 /// typed [`FieldValue`](super::FieldValue)s.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FieldValueError {
     /// Expected one type, got another.

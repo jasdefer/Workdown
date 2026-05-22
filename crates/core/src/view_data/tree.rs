@@ -16,13 +16,13 @@ use super::common::{build_card, Card};
 use super::filter::filtered_items;
 use super::traverse::{walk_forest, Traversal};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TreeData {
     pub field: String,
     pub roots: Vec<TreeNode>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TreeNode {
     pub card: Card,
     pub children: Vec<TreeNode>,

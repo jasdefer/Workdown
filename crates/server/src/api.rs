@@ -2,8 +2,7 @@
 //!
 //! This module is **wiring only**. Each resource gets its own child
 //! module under `api/` (added when its first endpoint lands); this file
-//! declares them and assembles the `/api/*` router. Today the router
-//! is empty — handlers arrive in `first-view-end-to-end`.
+//! declares them and assembles the `/api/*` router.
 //!
 //! The flat-by-resource layout is deliberate: the view surface is one
 //! generic `/api/views/:id` endpoint serving every view kind, so
@@ -13,7 +12,12 @@
 
 use axum::Router;
 
-/// Build the `/api` router. Handlers nest under here once they exist.
-pub fn router() -> Router {
-    Router::new()
+use crate::state::AppState;
+
+pub mod views;
+
+/// Build the `/api` router. State-typed `Router<AppState>` so child
+/// handlers can extract `State<AppState>` and call `core::load_project`.
+pub fn router() -> Router<AppState> {
+    Router::new().merge(views::router())
 }

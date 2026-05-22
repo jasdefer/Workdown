@@ -63,7 +63,7 @@ pub use treemap::{TreemapData, TreemapNode};
 pub use workload::{WorkloadBucket, WorkloadData, WorkloadUnit};
 
 /// Extracted, fully-resolved data for a single view.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ViewData {
     BarChart(BarChartData),

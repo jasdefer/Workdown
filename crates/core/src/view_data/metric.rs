@@ -28,12 +28,12 @@ use super::aggregate::compute_aggregate;
 use super::common::{build_card, AggregateValue, UnplacedCard, UnplacedReason};
 use super::filter::filtered_items_with_extras;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct MetricData {
     pub rows: Vec<MetricRowData>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct MetricRowData {
     pub label: String,
     pub aggregate: Aggregate,

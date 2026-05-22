@@ -1,7 +1,7 @@
 ---
 id: first-view-end-to-end
 type: issue
-status: to_do
+status: done
 title: First view end-to-end (board, read-only)
 parent: server
 depends_on: [walking-skeleton, ui-foundation]

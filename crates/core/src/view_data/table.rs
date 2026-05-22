@@ -14,13 +14,13 @@ use crate::store::Store;
 
 use super::filter::filtered_items;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TableData {
     pub columns: Vec<String>,
     pub rows: Vec<TableRow>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TableRow {
     pub id: WorkItemId,
     pub cells: Vec<Option<FieldValue>>,

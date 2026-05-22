@@ -53,14 +53,14 @@ use super::filter::filtered_items;
 /// Seconds per day for ceil-to-days conversion.
 const SECONDS_PER_DAY: i64 = 86_400;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct GanttData {
     pub group_field: Option<String>,
     pub bars: Vec<GanttBar>,
     pub unplaced: Vec<UnplacedCard>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct GanttBar {
     pub card: Card,
     pub start: NaiveDate,

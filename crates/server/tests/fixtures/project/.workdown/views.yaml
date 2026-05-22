@@ -1,0 +1,8 @@
+views:
+  - id: status-board
+    type: board
+    field: status
+
+  - id: hierarchy
+    type: tree
+    field: parent

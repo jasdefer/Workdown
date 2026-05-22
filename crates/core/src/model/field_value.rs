@@ -13,7 +13,7 @@ use super::WorkItemId;
 /// that emits the formatted string (`"5d"`) — same convention `Date`
 /// follows for human-readable output. Deserialize is not derived —
 /// values are produced by the coercion layer, not parsed from JSON.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
 #[serde(untagged)]
 pub enum FieldValue {
     /// A free-form string.
@@ -30,7 +30,9 @@ pub enum FieldValue {
     Date(chrono::NaiveDate),
     /// A signed duration in canonical seconds. Formatted as suffix
     /// shorthand (`"5d"`, `"1w 2d 3h"`) for human-readable output.
-    Duration(#[serde(serialize_with = "serialize_duration_seconds")] i64),
+    /// JSON-typed as `string` to match the custom serializer; raw `i64`
+    /// in Rust would mismatch the wire shape.
+    Duration(#[serde(serialize_with = "serialize_duration_seconds")] #[ts(type = "string")] i64),
     /// A boolean flag.
     Boolean(bool),
     /// A list of free-form strings.
