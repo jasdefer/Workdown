@@ -7,6 +7,7 @@
 <script lang="ts">
 	import type { ViewData } from '$lib/api/generated/ViewData';
 	import BoardView from './board/BoardView.svelte';
+	import TableView from './table/TableView.svelte';
 
 	interface Props {
 		data: ViewData;
@@ -17,6 +18,8 @@
 
 {#if data.type === 'board'}
 	<BoardView {data} />
+{:else if data.type === 'table'}
+	<TableView {data} />
 {:else}
 	<div class="placeholder">
 		<p>View kind <code>{data.type}</code> is not yet rendered.</p>

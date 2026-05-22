@@ -30,8 +30,14 @@ pub fn render_table(data: &TableData, item_link_base: &str, description: &str) -
         return out;
     }
 
+    let column_names: Vec<&str> = data
+        .columns
+        .iter()
+        .map(|column| column.name.as_str())
+        .collect();
+
     out.push_str("| ");
-    out.push_str(&data.columns.join(" | "));
+    out.push_str(&column_names.join(" | "));
     out.push_str(" |\n");
 
     out.push('|');
@@ -41,19 +47,19 @@ pub fn render_table(data: &TableData, item_link_base: &str, description: &str) -
     out.push('\n');
 
     for row in &data.rows {
-        render_row(row, &data.columns, item_link_base, &mut out);
+        render_row(row, &column_names, item_link_base, &mut out);
     }
 
     out
 }
 
-fn render_row(row: &TableRow, columns: &[String], item_link_base: &str, out: &mut String) {
+fn render_row(row: &TableRow, columns: &[&str], item_link_base: &str, out: &mut String) {
     out.push_str("| ");
     for (idx, cell) in row.cells.iter().enumerate() {
         if idx > 0 {
             out.push_str(" | ");
         }
-        out.push_str(&format_cell(cell, &columns[idx], item_link_base));
+        out.push_str(&format_cell(cell, columns[idx], item_link_base));
     }
     out.push_str(" |\n");
 }
@@ -100,7 +106,9 @@ mod tests {
     use super::*;
     use chrono::NaiveDate;
     use workdown_core::model::{FieldValue, WorkItemId};
-    use workdown_core::view_data::{TableData, TableRow};
+    use std::collections::HashMap;
+    use workdown_core::model::schema::FieldType;
+    use workdown_core::view_data::{TableColumn, TableData, TableRow};
 
     fn row(id: &str, cells: Vec<Option<FieldValue>>) -> TableRow {
         TableRow {
@@ -111,8 +119,15 @@ mod tests {
 
     fn table(columns: Vec<&str>, rows: Vec<TableRow>) -> TableData {
         TableData {
-            columns: columns.into_iter().map(str::to_owned).collect(),
+            columns: columns
+                .into_iter()
+                .map(|name| TableColumn {
+                    name: name.to_owned(),
+                    field_type: FieldType::String,
+                })
+                .collect(),
             rows,
+            items: HashMap::new(),
         }
     }
 

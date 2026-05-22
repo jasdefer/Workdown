@@ -57,7 +57,7 @@ pub use graph::{Edge, GraphData};
 pub use heatmap::{HeatmapCell, HeatmapData};
 pub use line_chart::{LineChartData, LinePoint};
 pub use metric::{MetricData, MetricRowData};
-pub use table::{TableData, TableRow};
+pub use table::{ItemRef, TableColumn, TableData, TableRow};
 pub use tree::{TreeData, TreeNode};
 pub use treemap::{TreemapData, TreemapNode};
 pub use workload::{WorkloadBucket, WorkloadData, WorkloadUnit};

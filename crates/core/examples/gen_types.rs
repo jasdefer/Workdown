@@ -30,9 +30,9 @@ use workdown_core::model::WorkItemId;
 use workdown_core::view_data::{
     AggregateValue, AxisValue, BarChartBar, BarChartData, BoardColumn, BoardData, Card, CardField,
     Edge, GanttBar, GanttByDepthData, GanttByInitiativeData, GanttData, GraphData, HeatmapCell,
-    HeatmapData, Initiative, Level, LineChartData, LinePoint, MetricData, MetricRowData, SizeValue,
-    TableData, TableRow, TreeData, TreeNode, TreemapData, TreemapNode, UnplacedCard,
-    UnplacedReason, ViewData, WorkloadBucket, WorkloadData, WorkloadUnit,
+    HeatmapData, Initiative, ItemRef, Level, LineChartData, LinePoint, MetricData, MetricRowData,
+    SizeValue, TableColumn, TableData, TableRow, TreeData, TreeNode, TreemapData, TreemapNode,
+    UnplacedCard, UnplacedReason, ViewData, WorkloadBucket, WorkloadData, WorkloadUnit,
 };
 
 const FILE_HEADER: &str =
@@ -78,7 +78,9 @@ const ALL_TYPES: &[&str] = &[
     "BoardData",
     "BoardColumn",
     "TableData",
+    "TableColumn",
     "TableRow",
+    "ItemRef",
     "TreeData",
     "TreeNode",
     "GraphData",
@@ -150,7 +152,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_type::<BoardData>(&target_dir)?;
     write_type::<BoardColumn>(&target_dir)?;
     write_type::<TableData>(&target_dir)?;
+    write_type::<TableColumn>(&target_dir)?;
     write_type::<TableRow>(&target_dir)?;
+    write_type::<ItemRef>(&target_dir)?;
     write_type::<TreeData>(&target_dir)?;
     write_type::<TreeNode>(&target_dir)?;
     write_type::<GraphData>(&target_dir)?;

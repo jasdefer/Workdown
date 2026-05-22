@@ -56,14 +56,58 @@ async fn list_views_returns_summary_array() {
 
     let envelope = body_json(response).await;
     let views = envelope["data"].as_array().expect("data is array");
-    assert_eq!(views.len(), 2);
+    assert_eq!(views.len(), 3);
     assert_eq!(views[0]["id"], "status-board");
     assert_eq!(views[0]["kind"], "board");
     assert_eq!(views[1]["id"], "hierarchy");
     assert_eq!(views[1]["kind"], "tree");
+    assert_eq!(views[2]["id"], "items-table");
+    assert_eq!(views[2]["kind"], "table");
 
     // Envelope always carries diagnostics, even when empty.
     assert!(envelope["diagnostics"].is_array());
+}
+
+#[tokio::test]
+async fn get_table_view_returns_table_data_with_resolved_link_titles() {
+    let app = router(fixture_state());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/views/items-table")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    let data = &envelope["data"];
+    assert_eq!(data["type"], "table");
+
+    let columns = data["columns"].as_array().expect("columns is array");
+    let column_names: Vec<&str> = columns
+        .iter()
+        .map(|column| column["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(column_names, vec!["id", "title", "status", "parent"]);
+
+    // Each column carries its schema-derived field type. The virtual
+    // `id` column is treated as a String — it has no schema definition.
+    let column_types: Vec<&str> = columns
+        .iter()
+        .map(|column| column["field_type"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        column_types,
+        vec!["string", "string", "choice", "link"]
+    );
+
+    // task-b's parent points at task-a, which exists — so the items
+    // sidecar resolves task-a's title via the view's `title:` slot.
+    let items = data["items"].as_object().expect("items is object");
+    assert_eq!(items["task-a"]["title"], "Wire OAuth provider");
 }
 
 #[tokio::test]
