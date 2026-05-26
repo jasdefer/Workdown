@@ -50,6 +50,11 @@ pub enum ViewKind {
     },
     Tree {
         field: String,
+        /// Ordered list of schema field names to display as columns next
+        /// to each row's hierarchy cell. Empty = title-only outline.
+        /// Same rules as `Table { columns }`: the virtual `id` field is
+        /// allowed; every other entry must resolve in `schema.fields`.
+        columns: Vec<String>,
     },
     Graph {
         field: String,

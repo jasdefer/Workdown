@@ -150,6 +150,7 @@ mod tests {
     fn tree_node(id: &str, title: Option<&str>, children: Vec<TreeNode>) -> TreeNode {
         TreeNode {
             card: card(id, title),
+            cells: vec![],
             children,
         }
     }
@@ -197,6 +198,7 @@ mod tests {
             edges: vec![edge("task-2", "task-1")],
             groups: Some(TreeData {
                 field: "parent".into(),
+                columns: vec![],
                 roots: vec![tree_node(
                     "epic-a",
                     Some("Epic A"),
@@ -231,6 +233,7 @@ mod tests {
             edges: vec![],
             groups: Some(TreeData {
                 field: "parent".into(),
+                columns: vec![],
                 roots: vec![tree_node(
                     "milestone",
                     None,
@@ -281,6 +284,7 @@ mod tests {
             edges: vec![edge("loose", "epic")],
             groups: Some(TreeData {
                 field: "parent".into(),
+                columns: vec![],
                 roots: vec![
                     tree_node(
                         "epic",

@@ -108,7 +108,7 @@ mod tests {
     use workdown_core::model::{FieldValue, WorkItemId};
     use std::collections::HashMap;
     use workdown_core::model::schema::FieldType;
-    use workdown_core::view_data::{TableColumn, TableData, TableRow};
+    use workdown_core::view_data::{Column, TableData, TableRow};
 
     fn row(id: &str, cells: Vec<Option<FieldValue>>) -> TableRow {
         TableRow {
@@ -121,7 +121,7 @@ mod tests {
         TableData {
             columns: columns
                 .into_iter()
-                .map(|name| TableColumn {
+                .map(|name| Column {
                     name: name.to_owned(),
                     field_type: FieldType::String,
                 })

@@ -29,9 +29,9 @@ use workdown_core::model::views::{Aggregate, Bucket, ViewSummary, ViewType};
 use workdown_core::model::WorkItemId;
 use workdown_core::view_data::{
     AggregateValue, AxisValue, BarChartBar, BarChartData, BoardColumn, BoardData, Card, CardField,
-    Edge, GanttBar, GanttByDepthData, GanttByInitiativeData, GanttData, GraphData, HeatmapCell,
-    HeatmapData, Initiative, ItemRef, Level, LineChartData, LinePoint, MetricData, MetricRowData,
-    SizeValue, TableColumn, TableData, TableRow, TreeData, TreeNode, TreemapData, TreemapNode,
+    Column, Edge, GanttBar, GanttByDepthData, GanttByInitiativeData, GanttData, GraphData,
+    HeatmapCell, HeatmapData, Initiative, ItemRef, Level, LineChartData, LinePoint, MetricData,
+    MetricRowData, SizeValue, TableData, TableRow, TreeData, TreeNode, TreemapData, TreemapNode,
     UnplacedCard, UnplacedReason, ViewData, WorkloadBucket, WorkloadData, WorkloadUnit,
 };
 
@@ -77,8 +77,8 @@ const ALL_TYPES: &[&str] = &[
     "SizeValue",
     "BoardData",
     "BoardColumn",
+    "Column",
     "TableData",
-    "TableColumn",
     "TableRow",
     "ItemRef",
     "TreeData",
@@ -151,8 +151,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Per-view-kind data.
     write_type::<BoardData>(&target_dir)?;
     write_type::<BoardColumn>(&target_dir)?;
+    write_type::<Column>(&target_dir)?;
     write_type::<TableData>(&target_dir)?;
-    write_type::<TableColumn>(&target_dir)?;
     write_type::<TableRow>(&target_dir)?;
     write_type::<ItemRef>(&target_dir)?;
     write_type::<TreeData>(&target_dir)?;

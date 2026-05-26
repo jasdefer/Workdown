@@ -145,15 +145,20 @@ fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
             "choice, multichoice, or string",
             out,
         ),
-        ViewKind::Tree { field } => check_slot(
-            ctx,
-            view_id,
-            "field",
-            field,
-            &[FieldType::Link],
-            "link",
-            out,
-        ),
+        ViewKind::Tree { field, columns } => {
+            check_slot(
+                ctx,
+                view_id,
+                "field",
+                field,
+                &[FieldType::Link],
+                "link",
+                out,
+            );
+            for column in columns {
+                check_slot(ctx, view_id, "columns", column, &[], "", out);
+            }
+        }
         ViewKind::Graph { field, group_by } => {
             check_graph_field(ctx, view_id, field, out);
             if let Some(group_by) = group_by {
@@ -1091,6 +1096,7 @@ mod tests {
         let diagnostics = evaluate(
             &one_view(ViewKind::Tree {
                 field: "status".into(), // choice, not link
+                columns: vec![],
             }),
             &simple_schema(),
             test_views_path(),
@@ -1100,6 +1106,37 @@ mod tests {
             ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
                 if *slot == "field" && *actual_type == FieldType::Choice
         ));
+    }
+
+    #[test]
+    fn unknown_column_in_tree_errors() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Tree {
+                field: "parent".into(),
+                columns: vec!["status".into(), "nonexistent".into()],
+            }),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert_eq!(diagnostics.len(), 1);
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
+                if *slot == "columns" && field_name == "nonexistent"
+        ));
+    }
+
+    #[test]
+    fn id_accepted_as_tree_column_without_schema_entry() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Tree {
+                field: "parent".into(),
+                columns: vec!["id".into(), "status".into()],
+            }),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
 
     #[test]

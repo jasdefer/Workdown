@@ -10,16 +10,26 @@
   param vs localStorage vs views.yaml) lands with the filter-editor
   and display-config issues, since all three share the same shape.
 
+  Per-column resize: drag the right edge of any header (except the
+  last) to set a fixed pixel width. On first drag we seed `columnWidths`
+  with every column's currently rendered width and switch the table to
+  `table-layout: fixed` so subsequent drags update only the dragged
+  column without reflowing the others. Same persistence story as sort
+  — session-local for now, joins view-display-config later.
+
   Per-cell formatting (dates, booleans, chips, link resolution) is
-  delegated to Cell.svelte — TableView is just structure plus sort.
+  delegated to Cell.svelte — TableView is just structure plus sort
+  plus resize.
 -->
 <script lang="ts">
 	import type { FieldType } from '$lib/api/generated/FieldType';
 	import type { FieldValue } from '$lib/api/generated/FieldValue';
-	import type { TableColumn } from '$lib/api/generated/TableColumn';
+	import type { Column } from '$lib/api/generated/Column';
 	import type { TableData } from '$lib/api/generated/TableData';
 	import type { WorkItemId } from '$lib/api/generated/WorkItemId';
+	import { SvelteMap } from 'svelte/reactivity';
 	import { prettifyId } from '$lib/views/prettify';
+	import ColumnResizeHandle from '$lib/views/ColumnResizeHandle.svelte';
 	import Cell from './Cell.svelte';
 
 	interface Props {
@@ -28,8 +38,29 @@
 
 	let { data }: Props = $props();
 
+	let columnWidths = $state(new SvelteMap<number, number>());
+	const isResizing = $derived(columnWidths.size > 0);
+
+	// Run before the first resize: capture every column's current
+	// rendered width so switching to table-layout: fixed doesn't
+	// redistribute remaining columns to equal shares.
+	function seedAllWidths(handle: HTMLElement) {
+		if (columnWidths.size > 0) return;
+		const thead = handle.closest('thead');
+		if (!thead) return;
+		const headerCells = thead.querySelectorAll('th');
+		headerCells.forEach((th, index) => {
+			columnWidths.set(index, th.getBoundingClientRect().width);
+		});
+	}
+
+	function widthStyle(index: number): string {
+		const width = columnWidths.get(index);
+		return width === undefined ? '' : `width: ${width.toString()}px;`;
+	}
+
 	interface RenderableCell {
-		column: TableColumn;
+		column: Column;
 		value: FieldValue | null;
 	}
 
@@ -146,11 +177,11 @@
 {/if}
 
 <div class="scroll-container" role="region" aria-label="Table view">
-	<table>
+	<table class:fixed-layout={isResizing}>
 		<thead>
 			<tr>
-				{#each data.columns as column (column.name)}
-					<th aria-sort={ariaSort(column.name)}>
+				{#each data.columns as column, index (column.name)}
+					<th aria-sort={ariaSort(column.name)} style={widthStyle(index)}>
 						<button
 							type="button"
 							class="header-button"
@@ -161,6 +192,13 @@
 							<span class="header-label">{prettifyId(column.name)}</span>
 							<span class="header-indicator" aria-hidden="true">{indicator(column.name)}</span>
 						</button>
+						{#if index < data.columns.length - 1}
+							<ColumnResizeHandle
+								columnIndex={index}
+								widths={columnWidths}
+								onBeforeStart={seedAllWidths}
+							/>
+						{/if}
 					</th>
 				{/each}
 			</tr>
@@ -209,6 +247,19 @@
 		border-collapse: separate;
 		border-spacing: 0;
 		width: 100%;
+	}
+
+	/* Engaged once any column has a user-set width. Forces strict
+	   width honoring on <th> and clips overflowing cell content with
+	   ellipsis on body cells. */
+	table.fixed-layout {
+		table-layout: fixed;
+	}
+
+	table.fixed-layout tbody td {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	th,

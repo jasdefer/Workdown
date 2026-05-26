@@ -12,6 +12,8 @@ views:
   - id: hierarchy
     type: tree
     field: parent
+    title: title
+    columns: [type, status]
 
   - id: dependencies
     type: graph

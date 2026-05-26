@@ -86,7 +86,7 @@ pub fn extract_graph(view: &View, store: &Store, schema: &Schema) -> GraphData {
 
     let groups = group_by
         .as_deref()
-        .map(|gb_field| build_tree_data(&items, gb_field, store, schema, view));
+        .map(|gb_field| build_tree_data(&items, gb_field, &[], store, schema, view));
 
     GraphData {
         field: field.clone(),

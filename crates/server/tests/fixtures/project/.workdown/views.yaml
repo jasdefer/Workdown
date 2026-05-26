@@ -6,6 +6,8 @@ views:
   - id: hierarchy
     type: tree
     field: parent
+    title: title
+    columns: [status]
 
   - id: items-table
     type: table

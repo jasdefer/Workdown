@@ -18,6 +18,52 @@ use crate::model::schema::{FieldType, Schema};
 use crate::model::views::View;
 use crate::model::{FieldValue, WorkItem, WorkItemId};
 
+// ── Column (shared by table and tree) ───────────────────────────────
+
+/// One user-configured column in a column-bearing view (table, tree).
+///
+/// Carries the schema field name and its [`FieldType`] so renderers can
+/// align and format cells deterministically even when every cell in the
+/// column is `None`. The virtual `id` column is represented with
+/// [`FieldType::String`].
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct Column {
+    pub name: String,
+    pub field_type: FieldType,
+}
+
+/// Resolve a user-configured column name to its [`Column`] payload.
+///
+/// `views_check` guarantees every non-`id` name resolves in
+/// `schema.fields`; the lookup is `expect`-safe here.
+pub fn build_column(name: &str, schema: &Schema) -> Column {
+    let field_type = if name == "id" {
+        FieldType::String
+    } else {
+        schema
+            .fields
+            .get(name)
+            .expect("views_check validates column references")
+            .field_type()
+    };
+    Column {
+        name: name.to_owned(),
+        field_type,
+    }
+}
+
+/// Resolve a single cell value for a given column and item.
+///
+/// The virtual `id` column emits the item id as a String cell; real
+/// fields emit their typed [`FieldValue`] when set, `None` otherwise.
+pub fn column_cell(column_name: &str, item: &WorkItem) -> Option<FieldValue> {
+    if column_name == "id" {
+        Some(FieldValue::String(item.id.as_str().to_owned()))
+    } else {
+        item.fields.get(column_name).cloned()
+    }
+}
+
 // ── Card ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]

@@ -23,7 +23,7 @@ pub fn description_for(view: &View) -> String {
         ViewKind::Board { field } => {
             format!("Cards grouped into columns by `{field}`.")
         }
-        ViewKind::Tree { field } => {
+        ViewKind::Tree { field, .. } => {
             format!("Hierarchical outline following `{field}` upward to roots.")
         }
         ViewKind::Graph { field, group_by } => match group_by {
@@ -186,6 +186,7 @@ mod tests {
     fn tree_describes_link_field() {
         let v = view(ViewKind::Tree {
             field: "parent".into(),
+            columns: vec![],
         });
         assert_eq!(
             description_for(&v),

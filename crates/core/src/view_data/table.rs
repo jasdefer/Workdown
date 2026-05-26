@@ -17,27 +17,21 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use crate::model::schema::{FieldType, Schema};
+use crate::model::schema::Schema;
 use crate::model::views::{View, ViewKind};
 use crate::model::{FieldValue, WorkItemId};
 use crate::store::Store;
 
-use super::common::resolve_title;
+use super::common::{build_column, column_cell, resolve_title, Column};
 use super::filter::filtered_items;
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TableData {
-    pub columns: Vec<TableColumn>,
+    pub columns: Vec<Column>,
     pub rows: Vec<TableRow>,
     /// Resolution map for ids referenced by Link/Links cells. Absent ids
     /// are broken links — UI falls back to rendering the raw id.
     pub items: HashMap<WorkItemId, ItemRef>,
-}
-
-#[derive(Debug, Clone, Serialize, ts_rs::TS)]
-pub struct TableColumn {
-    pub name: String,
-    pub field_type: FieldType,
 }
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
@@ -60,31 +54,19 @@ pub fn extract_table(view: &View, store: &Store, schema: &Schema) -> TableData {
     };
     let items = filtered_items(view, store, schema);
 
-    let table_columns: Vec<TableColumn> = columns
+    let table_columns: Vec<Column> = columns
         .iter()
-        .map(|column_name| TableColumn {
-            name: column_name.clone(),
-            field_type: column_field_type(column_name, schema),
-        })
+        .map(|column_name| build_column(column_name, schema))
         .collect();
 
     let rows: Vec<TableRow> = items
         .iter()
-        .map(|item| {
-            let cells = columns
+        .map(|item| TableRow {
+            id: item.id.clone(),
+            cells: columns
                 .iter()
-                .map(|column| {
-                    if column == "id" {
-                        Some(FieldValue::String(item.id.as_str().to_owned()))
-                    } else {
-                        item.fields.get(column).cloned()
-                    }
-                })
-                .collect();
-            TableRow {
-                id: item.id.clone(),
-                cells,
-            }
+                .map(|column| column_cell(column, item))
+                .collect(),
         })
         .collect();
 
@@ -95,19 +77,6 @@ pub fn extract_table(view: &View, store: &Store, schema: &Schema) -> TableData {
         rows,
         items: items_sidecar,
     }
-}
-
-/// Look up a column's field type. The virtual `id` column has no schema
-/// definition; it always emits a String cell.
-fn column_field_type(column_name: &str, schema: &Schema) -> FieldType {
-    if column_name == "id" {
-        return FieldType::String;
-    }
-    schema
-        .fields
-        .get(column_name)
-        .expect("views_check validates column references")
-        .field_type()
 }
 
 /// Walk every Link / Links cell, resolve each referenced id against the
@@ -160,7 +129,7 @@ fn insert_ref(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::schema::FieldTypeConfig;
+    use crate::model::schema::{FieldType, FieldTypeConfig};
     use crate::model::views::{View, ViewKind};
     use crate::view_data::test_support::{make_item, make_schema, make_store};
 

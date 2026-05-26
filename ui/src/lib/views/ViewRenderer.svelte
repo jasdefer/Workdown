@@ -8,6 +8,7 @@
 	import type { ViewData } from '$lib/api/generated/ViewData';
 	import BoardView from './board/BoardView.svelte';
 	import TableView from './table/TableView.svelte';
+	import TreeView from './tree/TreeView.svelte';
 
 	interface Props {
 		data: ViewData;
@@ -20,6 +21,8 @@
 	<BoardView {data} />
 {:else if data.type === 'table'}
 	<TableView {data} />
+{:else if data.type === 'tree'}
+	<TreeView {data} />
 {:else}
 	<div class="placeholder">
 		<p>View kind <code>{data.type}</code> is not yet rendered.</p>
