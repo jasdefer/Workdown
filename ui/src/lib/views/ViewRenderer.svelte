@@ -10,6 +10,7 @@
 	import TableView from './table/TableView.svelte';
 	import TreeView from './tree/TreeView.svelte';
 	import GraphView from './graph/GraphView.svelte';
+	import GanttView from './gantt/GanttView.svelte';
 
 	interface Props {
 		data: ViewData;
@@ -26,6 +27,8 @@
 	<TreeView {data} />
 {:else if data.type === 'graph'}
 	<GraphView {data} />
+{:else if data.type === 'gantt'}
+	<GanttView {data} />
 {:else}
 	<div class="placeholder">
 		<p>View kind <code>{data.type}</code> is not yet rendered.</p>

@@ -14,11 +14,14 @@ import prettier from 'eslint-config-prettier';
 import globals from 'globals';
 
 // `*.ts` files (incl. `vite.config.ts`) are already in the SvelteKit-
-// generated tsconfig and are picked up by the project service. Only
-// the `*.js` config files (eslint.config.js, svelte.config.js) sit
-// outside the include list and need allowDefaultProject coverage.
+// generated tsconfig and are picked up by the project service. The
+// `*.js` config files (eslint.config.js, svelte.config.js) and
+// `vitest.config.ts` sit outside that include list and need
+// allowDefaultProject coverage. (`vitest.config.ts` is listed by name
+// rather than `*.config.ts`, which would collide with the in-project
+// `vite.config.ts`.)
 const projectService = {
-	allowDefaultProject: ['*.js', '*.config.js']
+	allowDefaultProject: ['*.js', '*.config.js', 'vitest.config.ts']
 };
 
 export default [
