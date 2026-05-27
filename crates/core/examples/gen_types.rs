@@ -225,8 +225,8 @@ fn decl_contains_identifier(haystack: &str, needle: &str) -> bool {
             continue;
         }
         let before_ok = index == 0 || !is_ident_continue(bytes[index - 1]);
-        let after_ok = index + target.len() == bytes.len()
-            || !is_ident_continue(bytes[index + target.len()]);
+        let after_ok =
+            index + target.len() == bytes.len() || !is_ident_continue(bytes[index + target.len()]);
         if before_ok && after_ok {
             return true;
         }

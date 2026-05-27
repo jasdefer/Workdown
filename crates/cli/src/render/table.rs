@@ -105,9 +105,9 @@ fn format_cell(cell: &Option<FieldValue>, column: &str, item_link_base: &str) ->
 mod tests {
     use super::*;
     use chrono::NaiveDate;
-    use workdown_core::model::{FieldValue, WorkItemId};
     use std::collections::HashMap;
     use workdown_core::model::schema::FieldType;
+    use workdown_core::model::{FieldValue, WorkItemId};
     use workdown_core::view_data::{Column, TableData, TableRow};
 
     fn row(id: &str, cells: Vec<Option<FieldValue>>) -> TableRow {

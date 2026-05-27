@@ -99,10 +99,7 @@ async fn get_table_view_returns_table_data_with_resolved_link_titles() {
         .iter()
         .map(|column| column["field_type"].as_str().unwrap())
         .collect();
-    assert_eq!(
-        column_types,
-        vec!["string", "string", "choice", "link"]
-    );
+    assert_eq!(column_types, vec!["string", "string", "choice", "link"]);
 
     // task-b's parent points at task-a, which exists — so the items
     // sidecar resolves task-a's title via the view's `title:` slot.

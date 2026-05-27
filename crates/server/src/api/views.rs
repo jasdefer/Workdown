@@ -46,10 +46,7 @@ async fn list_views(State(state): State<AppState>) -> ApiResponse<Vec<ViewSummar
     }
 }
 
-async fn get_view(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> ApiResponse<ViewData> {
+async fn get_view(State(state): State<AppState>, Path(id): Path<String>) -> ApiResponse<ViewData> {
     let project = match load_project(&state.config, &state.project_root) {
         Err(error) => return ApiResponse::rejected(vec![load_error_to_diagnostic(&error)]),
         Ok(project) => project,

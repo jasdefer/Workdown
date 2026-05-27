@@ -192,7 +192,10 @@ mod tests {
     }
 
     fn column_names(data: &TableData) -> Vec<&str> {
-        data.columns.iter().map(|column| column.name.as_str()).collect()
+        data.columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect()
     }
 
     #[test]
@@ -429,8 +432,7 @@ mod tests {
                 ),
             ],
         );
-        let view =
-            table_view_with_title(vec!["id", "depends_on"], vec![], Some("title"));
+        let view = table_view_with_title(vec!["id", "depends_on"], vec![], Some("title"));
 
         let data = extract_table(&view, &store, &schema);
 
@@ -475,9 +477,6 @@ mod tests {
         let data = extract_table(&view, &store, &schema);
 
         let epic_id = WorkItemId::from("epic-1".to_owned());
-        assert_eq!(
-            data.items.get(&epic_id),
-            Some(&ItemRef { title: None })
-        );
+        assert_eq!(data.items.get(&epic_id), Some(&ItemRef { title: None }));
     }
 }

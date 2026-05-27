@@ -115,11 +115,7 @@ mod tests {
         tree_view_with_columns(field, where_clauses, vec![])
     }
 
-    fn tree_view_with_columns(
-        field: &str,
-        where_clauses: Vec<&str>,
-        columns: Vec<&str>,
-    ) -> View {
+    fn tree_view_with_columns(field: &str, where_clauses: Vec<&str>, columns: Vec<&str>) -> View {
         View {
             id: "my-tree".into(),
             where_clauses: where_clauses.into_iter().map(str::to_owned).collect(),
@@ -294,7 +290,11 @@ mod tests {
 
         let data = extract_tree(&view, &store, &schema);
 
-        let types: Vec<FieldType> = data.columns.iter().map(|column| column.field_type).collect();
+        let types: Vec<FieldType> = data
+            .columns
+            .iter()
+            .map(|column| column.field_type)
+            .collect();
         assert_eq!(types, vec![FieldType::String, FieldType::Choice]);
         let names: Vec<&str> = data.columns.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, vec!["id", "status"]);
@@ -304,10 +304,8 @@ mod tests {
     fn cells_parallel_to_columns_and_missing_fields_are_none() {
         use crate::model::FieldValue;
         let schema = parent_schema();
-        let (_tmp, store) = make_store_with_files(
-            &schema,
-            vec![("a.md", "---\nstatus: open\n---\n")],
-        );
+        let (_tmp, store) =
+            make_store_with_files(&schema, vec![("a.md", "---\nstatus: open\n---\n")]);
         let view = tree_view_with_columns("parent", vec![], vec!["id", "status", "parent"]);
 
         let data = extract_tree(&view, &store, &schema);

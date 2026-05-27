@@ -32,7 +32,11 @@ pub enum FieldValue {
     /// shorthand (`"5d"`, `"1w 2d 3h"`) for human-readable output.
     /// JSON-typed as `string` to match the custom serializer; raw `i64`
     /// in Rust would mismatch the wire shape.
-    Duration(#[serde(serialize_with = "serialize_duration_seconds")] #[ts(type = "string")] i64),
+    Duration(
+        #[serde(serialize_with = "serialize_duration_seconds")]
+        #[ts(type = "string")]
+        i64,
+    ),
     /// A boolean flag.
     Boolean(bool),
     /// A list of free-form strings.

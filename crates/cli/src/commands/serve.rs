@@ -32,11 +32,7 @@ pub fn run_serve_command(
     runtime.block_on(async move { run_serve(port_resolution, state, open).await })
 }
 
-async fn run_serve(
-    resolution: PortResolution,
-    state: AppState,
-    open: bool,
-) -> Result<ExitCode> {
+async fn run_serve(resolution: PortResolution, state: AppState, open: bool) -> Result<ExitCode> {
     let listener = match bind_with_scan(&resolution).await {
         Ok(listener) => listener,
         Err(err) => {

@@ -122,10 +122,7 @@ mod tests {
 
     #[test]
     fn single_root_no_columns_emits_plain_bullet() {
-        let tree = data(
-            vec![],
-            vec![leaf("task-a", Some("Login form"), vec![])],
-        );
+        let tree = data(vec![], vec![leaf("task-a", Some("Login form"), vec![])]);
         let output = render_tree(&tree, "../workdown-items", "");
         assert!(output.contains("- [Login form](../workdown-items/task-a.md)\n"));
         assert!(!output.contains(" — "));
@@ -134,7 +131,10 @@ mod tests {
     #[test]
     fn populated_columns_emit_inline_fields_after_em_dash() {
         let tree = data(
-            vec![("status", FieldType::Choice), ("points", FieldType::Integer)],
+            vec![
+                ("status", FieldType::Choice),
+                ("points", FieldType::Integer),
+            ],
             vec![leaf(
                 "task-a",
                 Some("Login"),
@@ -153,7 +153,10 @@ mod tests {
     #[test]
     fn all_none_cells_skip_em_dash() {
         let tree = data(
-            vec![("status", FieldType::Choice), ("points", FieldType::Integer)],
+            vec![
+                ("status", FieldType::Choice),
+                ("points", FieldType::Integer),
+            ],
             vec![leaf("task-a", Some("Login"), vec![None, None])],
         );
         let output = render_tree(&tree, "../workdown-items", "");
@@ -164,7 +167,10 @@ mod tests {
     #[test]
     fn partial_none_cells_join_only_set_values() {
         let tree = data(
-            vec![("status", FieldType::Choice), ("points", FieldType::Integer)],
+            vec![
+                ("status", FieldType::Choice),
+                ("points", FieldType::Integer),
+            ],
             vec![leaf(
                 "task-a",
                 Some("Login"),
@@ -191,15 +197,16 @@ mod tests {
         );
         let output = render_tree(&tree, "../workdown-items", "");
         assert!(output.contains("- [Auth epic](../workdown-items/epic.md) — status: open\n"));
-        assert!(output.contains(
-            "  - [Login](../workdown-items/story.md) — status: in_progress\n"
-        ));
+        assert!(output.contains("  - [Login](../workdown-items/story.md) — status: in_progress\n"));
     }
 
     #[test]
     fn full_output_snapshot() {
         let tree = data(
-            vec![("status", FieldType::Choice), ("assignee", FieldType::String)],
+            vec![
+                ("status", FieldType::Choice),
+                ("assignee", FieldType::String),
+            ],
             vec![TreeNode {
                 card: card("epic", Some("Auth")),
                 cells: vec![Some(FieldValue::Choice("open".into())), None],
