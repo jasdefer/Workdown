@@ -11,7 +11,9 @@ Add the rest of the view types: table, tree, graph, gantt, plus the chart family
 
 ## Status
 
-Table and tree are shipped. Remaining: graph, gantt (+ gantt-by-depth, gantt-by-initiative), chart family (bar, line, workload, metric, treemap, heatmap).
+Board, table, tree, and graph are shipped. Remaining: gantt (+ gantt-by-depth, gantt-by-initiative), chart family (bar, line, workload, metric, treemap, heatmap).
+
+The graph slice settled the graph-library question: **Cytoscape** with the **cytoscape-dagre** layout — the same layered-DAG algorithm Mermaid's `flowchart TD` uses. The built-in breadthfirst/cose layouts ordered nodes noticeably worse and were dropped. Cytoscape is dynamically imported so it only loads on graph pages; node hover reuses the board `<Card>` for a title/id/body popover; click-to-open is deferred with the other views to the item-page slice.
 
 ## Scope
 
@@ -51,6 +53,8 @@ Table and tree are shipped. Remaining: graph, gantt (+ gantt-by-depth, gantt-by-
 
 - **Sticky-header + sticky-first-column inside `overflow-x: auto`.** Reusable for any wide-grid-shaped view.
 
+- **Canvas-renderer theming (established in the graph slice).** Renderers that draw to `<canvas>` (Cytoscape, and the upcoming chart libraries) can't inherit `var(--color-*)`. Read resolved token values via `getComputedStyle(document.documentElement).getPropertyValue(...)` at build time and re-apply on theme flip — an `$effect` that reads `themeStore.value`. Also dynamically `import()` heavy renderer libs so they only load on pages that use them. See `ui/src/lib/views/graph/GraphView.svelte`.
+
 - **Inline secondary fields in markdown trees.** `- [Title](path) — name: value · name: value` with em-dash separator and middle-dot join. Em dash and entire suffix suppressed when no cells are set. Worth replicating for any future markdown renderer that wants to surface secondary fields beside link text.
 
 ## Consistency notes for upcoming view implementations
@@ -84,5 +88,4 @@ When adding the next view (graph / gantt / chart family), keep these in lockstep
 
 ## Open questions
 
-- **Graph library** — Mermaid vs Cytoscape. Decide during the graph slice.
 - **Chart library** — pick once before starting the chart family.

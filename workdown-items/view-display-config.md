@@ -19,6 +19,7 @@ Every view kind makes implicit choices about which fields display where: which f
 - **Config shape:**
   - Each view kind declares named display slots (e.g. `card.title`, `card.subtitle`, `tooltip.summary`, `bar.label`). Config picks which schema field fills each slot.
   - Slots are typed — some want strings, some want dates, some accept any field.
+  - **Wire prerequisite:** rendering a *typed value* in a card/tooltip slot needs the field's type alongside its value (a bare wire value can't distinguish a date from a choice from a link). Table/tree `Column` already carries `field_type`; `CardField` (board cards, graph nodes) does not. Add `field_type` to `CardField` in `view_data::common` before slot-driven card/tooltip rendering can format dates/choices/links correctly and reuse `Cell.svelte`. (Surfaced by the graph node tooltip in [[remaining-read-views]], which shows the rendered body but no typed fields for exactly this reason.)
 
 - **UI affordance for runtime override:**
   - Inline pickers per view page.
