@@ -11,6 +11,8 @@
 	import TreeView from './tree/TreeView.svelte';
 	import GraphView from './graph/GraphView.svelte';
 	import GanttView from './gantt/GanttView.svelte';
+	import GanttByDepthView from './gantt/GanttByDepthView.svelte';
+	import GanttByInitiativeView from './gantt/GanttByInitiativeView.svelte';
 
 	interface Props {
 		data: ViewData;
@@ -29,6 +31,10 @@
 	<GraphView {data} />
 {:else if data.type === 'gantt'}
 	<GanttView {data} />
+{:else if data.type === 'gantt_by_depth'}
+	<GanttByDepthView {data} />
+{:else if data.type === 'gantt_by_initiative'}
+	<GanttByInitiativeView {data} />
 {:else}
 	<div class="placeholder">
 		<p>View kind <code>{data.type}</code> is not yet rendered.</p>

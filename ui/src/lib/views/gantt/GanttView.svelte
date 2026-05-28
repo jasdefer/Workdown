@@ -47,7 +47,7 @@
 	});
 
 	const countLabel = $derived(
-		data.bars.length === 1 ? '1 item' : `${data.bars.length.toString()} items`
+		data.bars.length === 1 ? 'Showing 1 item' : `Showing ${data.bars.length.toString()} items`
 	);
 </script>
 
