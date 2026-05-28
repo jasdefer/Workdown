@@ -39,6 +39,11 @@ export const PX_PER_DAY: Record<Granularity, number> = {
 /** Minimum rendered bar width, so a 1-day bar stays visible. */
 export const MIN_BAR_WIDTH = 6;
 
+/** When deciding whether to promote to a finer tier, allow a sliver of
+ *  overflow — preferring more detail with a touch of scroll over jumping
+ *  to a coarser unit. */
+const TIER_PROMOTION_SLACK = 1.1;
+
 /** Inclusive epoch-day range `[startDay, endDay]`. */
 export interface DateRange {
 	startDay: number;
@@ -125,12 +130,27 @@ export function spanDays(range: DateRange): number {
 	return range.endDay - range.startDay + 1;
 }
 
-/** Pick tick granularity from a span: days up to ~6 weeks, weeks up to
- *  ~1 year, months beyond. */
-export function chooseGranularity(span: number): Granularity {
-	if (span <= 42) return 'day';
-	if (span <= 366) return 'week';
-	return 'month';
+/** Pick tick granularity from the total span, with an optional viewport
+ *  width that can promote to a finer tier. Span sets the *coarsest*
+ *  acceptable tier (days up to ~6 weeks, weeks up to ~1 year, months
+ *  beyond); when `availableWidth` is given, the finest tier whose total
+ *  pixel width fits the viewport (with a touch of slack) is preferred,
+ *  so a short chart on a wide screen renders day ticks instead of weeks.
+ *  Width never makes the tier coarser than the span-based default —
+ *  cramped viewports just scroll. */
+export function chooseGranularity(span: number, availableWidth?: number): Granularity {
+	const fromSpan: Granularity = span <= 42 ? 'day' : span <= 366 ? 'week' : 'month';
+	if (availableWidth === undefined || availableWidth <= 0) return fromSpan;
+
+	const order: readonly Granularity[] = ['day', 'week', 'month'];
+	const fromSpanIndex = order.indexOf(fromSpan);
+	for (let index = 0; index < fromSpanIndex; index++) {
+		const tier = order[index];
+		if (tier !== undefined && span * PX_PER_DAY[tier] <= availableWidth * TIER_PROMOTION_SLACK) {
+			return tier;
+		}
+	}
+	return fromSpan;
 }
 
 /** Raw inclusive bounds across bars, or null when there are no bars. */
@@ -162,13 +182,15 @@ export function snapRange(bounds: DateRange, granularity: Granularity): DateRang
 /** Compute the snapped range + granularity for a set of bars, or null when
  *  empty. Granularity is chosen from the raw span (before snapping) so a
  *  range sitting just under a threshold doesn't flip category from the
- *  snap padding alone. */
+ *  snap padding alone. `availableWidth` (optional) lets a wide viewport
+ *  promote to a finer tier — see [[chooseGranularity]]. */
 export function computeRange(
-	bars: { start: string; end: string }[]
+	bars: { start: string; end: string }[],
+	availableWidth?: number
 ): { range: DateRange; granularity: Granularity } | null {
 	const bounds = boundsOf(bars);
 	if (bounds === null) return null;
-	const granularity = chooseGranularity(spanDays(bounds));
+	const granularity = chooseGranularity(spanDays(bounds), availableWidth);
 	return { range: snapRange(bounds, granularity), granularity };
 }
 

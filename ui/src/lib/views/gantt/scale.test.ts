@@ -45,6 +45,32 @@ describe('chooseGranularity', () => {
 		expect(chooseGranularity(367)).toBe('month');
 		expect(chooseGranularity(1000)).toBe('month');
 	});
+
+	it('falls back to the span-based tier when no width is provided', () => {
+		expect(chooseGranularity(60)).toBe('week');
+		expect(chooseGranularity(60, 0)).toBe('week');
+	});
+
+	it('promotes to a finer tier when the viewport has room', () => {
+		// 60 days × 28 px/day (day tier) = 1680 px, well under 2400 × slack.
+		expect(chooseGranularity(60, 2400)).toBe('day');
+	});
+
+	it('does not promote when even slack does not cover the finer tier', () => {
+		// 60 × 28 = 1680 > 1000 × 1.1; day tier doesn't fit.
+		expect(chooseGranularity(60, 1000)).toBe('week');
+	});
+
+	it('promotes month-tier spans to week when the viewport is wide enough', () => {
+		// 500 days × 10 px (week) = 5000 px ≤ 6000 × 1.1; week tier fits.
+		expect(chooseGranularity(500, 6000)).toBe('week');
+	});
+
+	it('never coarsens below the span-based tier on a narrow viewport', () => {
+		// 200-day span → week-tier by span. A 500 px viewport would "fit"
+		// month tier (200 × 4 = 800) but we keep week regardless.
+		expect(chooseGranularity(200, 500)).toBe('week');
+	});
 });
 
 describe('boundsOf', () => {
