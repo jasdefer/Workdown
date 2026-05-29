@@ -20,3 +20,11 @@ fields:
     required: false
     allow_cycles: false
     inverse: children
+
+  effort:
+    type: integer
+    required: false
+
+  deadline:
+    type: date
+    required: false

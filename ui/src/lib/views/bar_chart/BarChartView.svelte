@@ -34,6 +34,12 @@
 	let { data }: Props = $props();
 
 	let container = $state<HTMLDivElement>();
+	// Plot defaults to 640px wide; bind clientWidth to fill the parent
+	// instead. The effect re-runs on width change so the chart relays
+	// out (rather than CSS-scaling a 640px SVG, which would shrink the
+	// text along with it).
+	let availableWidth = $state(0);
+	const CHART_HEIGHT = 400;
 
 	const barCount = $derived(data.bars.length);
 	const itemCountLabel = $derived(barCount === 1 ? '1 bar' : `${barCount.toString()} bars`);
@@ -69,7 +75,7 @@
 
 	$effect(() => {
 		const host = container;
-		if (host === undefined || data.bars.length === 0) return;
+		if (host === undefined || data.bars.length === 0 || availableWidth === 0) return;
 
 		let cancelled = false;
 
@@ -94,7 +100,9 @@
 			if (cancelled) return;
 
 			const chart = Plot.plot({
-				marginBottom: 60,
+				width: availableWidth,
+				height: CHART_HEIGHT,
+				marginBottom: 90,
 				marginLeft: 80,
 				style: {
 					color: 'var(--color-fg-muted)',
@@ -104,7 +112,7 @@
 				},
 				x: {
 					label: prettifyId(data.group_by),
-					tickRotate: -25,
+					tickRotate: -45,
 					type: 'band'
 				},
 				y: {
@@ -149,7 +157,13 @@
 {#if data.bars.length === 0}
 	<p class="empty-hint">No items to display.</p>
 {:else}
-	<div class="chart" bind:this={container} role="region" aria-label="Bar chart view"></div>
+	<div
+		class="chart"
+		bind:this={container}
+		bind:clientWidth={availableWidth}
+		role="region"
+		aria-label="Bar chart view"
+	></div>
 	<p class="row-count">{itemCountLabel}</p>
 {/if}
 
@@ -157,14 +171,13 @@
 
 <style>
 	.chart {
+		width: 100%;
 		color: var(--color-fg-muted);
 		font-family: var(--font-sans);
-		max-width: 100%;
 	}
 
 	.chart :global(svg) {
-		max-width: 100%;
-		height: auto;
+		display: block;
 		overflow: visible;
 	}
 

@@ -33,3 +33,9 @@ views:
     type: bar_chart
     group_by: status
     aggregate: count
+
+  - id: effort-over-time
+    type: line_chart
+    x: deadline
+    y: effort
+    title: title

@@ -56,13 +56,19 @@ async fn list_views_returns_summary_array() {
 
     let envelope = body_json(response).await;
     let views = envelope["data"].as_array().expect("data is array");
-    assert_eq!(views.len(), 3);
+    assert_eq!(views.len(), 6);
     assert_eq!(views[0]["id"], "status-board");
     assert_eq!(views[0]["kind"], "board");
     assert_eq!(views[1]["id"], "hierarchy");
     assert_eq!(views[1]["kind"], "tree");
     assert_eq!(views[2]["id"], "items-table");
     assert_eq!(views[2]["kind"], "table");
+    assert_eq!(views[3]["id"], "project-stats");
+    assert_eq!(views[3]["kind"], "metric");
+    assert_eq!(views[4]["id"], "items-by-status");
+    assert_eq!(views[4]["kind"], "bar_chart");
+    assert_eq!(views[5]["id"], "effort-over-time");
+    assert_eq!(views[5]["kind"], "line_chart");
 
     // Envelope always carries diagnostics, even when empty.
     assert!(envelope["diagnostics"].is_array());
