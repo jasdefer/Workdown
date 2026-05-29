@@ -46,3 +46,9 @@ views:
     end: deadline
     effort: effort
     title: title
+
+  - id: load-by-status-team
+    type: heatmap
+    x: status
+    y: team
+    aggregate: count

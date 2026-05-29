@@ -32,3 +32,8 @@ fields:
   deadline:
     type: date
     required: false
+
+  team:
+    type: choice
+    values: [backend, frontend, infra]
+    required: false

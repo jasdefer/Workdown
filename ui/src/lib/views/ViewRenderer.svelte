@@ -16,6 +16,7 @@
 	import BarChartView from './bar_chart/BarChartView.svelte';
 	import LineChartView from './line_chart/LineChartView.svelte';
 	import WorkloadView from './workload/WorkloadView.svelte';
+	import HeatmapView from './heatmap/HeatmapView.svelte';
 
 	interface Props {
 		data: ViewData;
@@ -46,6 +47,8 @@
 	<LineChartView {data} />
 {:else if data.type === 'workload'}
 	<WorkloadView {data} />
+{:else if data.type === 'heatmap'}
+	<HeatmapView {data} />
 {:else}
 	<div class="placeholder">
 		<p>View kind <code>{data.type}</code> is not yet rendered.</p>
