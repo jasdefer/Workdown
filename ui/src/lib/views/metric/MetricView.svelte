@@ -4,64 +4,19 @@
   dropped" footer when the row has unplaced items (filter-matched but
   missing the value field needed for aggregation).
 
-  Value formatting mirrors the markdown renderer's rules in
-  crates/cli/src/render/metric.rs:
-    null                          → "—"           no data (avg/min/max over empty set)
-    {type: "number", value}       → drop integer fraction         (12, 3.5)
-    {type: "date",   value}       → pass through                  (already ISO YYYY-MM-DD)
-    {type: "duration", value}     → seconds → suffix shorthand    (1d 1h, 30min)
-
-  AggregateValue is tagged on the wire so the frontend can recover the
-  variant (JSON has no bigint; an untagged i64 would arrive as a JS
-  number indistinguishable from a Number variant). Formatter kept
-  inline rather than in lib/views/ until the bar slice surfaces a
-  second consumer.
+  Value formatting is shared with the chart-family views via
+  `$lib/views/format` — mirrors the markdown renderer's rules in
+  crates/cli/src/render/metric.rs.
 -->
 <script lang="ts">
 	import type { MetricData } from '$lib/api/generated/MetricData';
-	import type { AggregateValue } from '$lib/api/generated/AggregateValue';
+	import { formatAggregateValue } from '$lib/views/format';
 
 	interface Props {
 		data: MetricData;
 	}
 
 	let { data }: Props = $props();
-
-	function formatValue(value: AggregateValue | null): string {
-		if (value === null) return '—';
-		if (value.type === 'duration') return formatDurationSeconds(value.value);
-		if (value.type === 'date') return value.value;
-		return formatNumber(value.value);
-	}
-
-	function formatNumber(n: number): string {
-		if (Number.isFinite(n) && Number.isInteger(n) && Math.abs(n) < 1e15) {
-			return n.toFixed(0);
-		}
-		return n.toString();
-	}
-
-	function formatDurationSeconds(seconds: number): string {
-		if (seconds === 0) return '0s';
-		const sign = seconds < 0 ? '-' : '';
-		let remaining = Math.abs(seconds);
-		const units: [number, string][] = [
-			[604800, 'w'],
-			[86400, 'd'],
-			[3600, 'h'],
-			[60, 'min'],
-			[1, 's']
-		];
-		const parts: string[] = [];
-		for (const [size, suffix] of units) {
-			const count = Math.floor(remaining / size);
-			if (count > 0) {
-				parts.push(count.toString() + suffix);
-				remaining -= count * size;
-			}
-		}
-		return sign + parts.join(' ');
-	}
 </script>
 
 {#if data.rows.length === 0}
@@ -70,7 +25,7 @@
 	<div class="metric-grid" role="region" aria-label="Metric view">
 		{#each data.rows as row, index (index)}
 			<article class="tile">
-				<span class="value" class:none={row.value === null}>{formatValue(row.value)}</span>
+				<span class="value" class:none={row.value === null}>{formatAggregateValue(row.value)}</span>
 				<span class="label">{row.label}</span>
 				{#if row.unplaced.length > 0}
 					<span class="dropped">

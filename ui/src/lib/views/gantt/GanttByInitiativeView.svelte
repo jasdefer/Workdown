@@ -10,7 +10,7 @@
 	import type { GanttByInitiativeData } from '$lib/api/generated/GanttByInitiativeData';
 	import { prettifyId } from '$lib/views/prettify';
 	import GanttChart, { type GanttSection } from './GanttChart.svelte';
-	import UnplacedFooter from './UnplacedFooter.svelte';
+	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
 
 	interface Props {
 		data: GanttByInitiativeData;

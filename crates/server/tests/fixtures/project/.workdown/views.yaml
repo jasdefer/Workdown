@@ -28,3 +28,8 @@ views:
       - label: Done
         aggregate: count
         where: ["status=done"]
+
+  - id: items-by-status
+    type: bar_chart
+    group_by: status
+    aggregate: count

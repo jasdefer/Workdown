@@ -9,7 +9,7 @@
 <script lang="ts">
 	import type { GanttByDepthData } from '$lib/api/generated/GanttByDepthData';
 	import GanttChart, { type GanttSection } from './GanttChart.svelte';
-	import UnplacedFooter from './UnplacedFooter.svelte';
+	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
 
 	interface Props {
 		data: GanttByDepthData;

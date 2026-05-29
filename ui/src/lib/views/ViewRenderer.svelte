@@ -13,6 +13,7 @@
 	import GanttByDepthView from './gantt/GanttByDepthView.svelte';
 	import GanttByInitiativeView from './gantt/GanttByInitiativeView.svelte';
 	import MetricView from './metric/MetricView.svelte';
+	import BarChartView from './bar_chart/BarChartView.svelte';
 
 	interface Props {
 		data: ViewData;
@@ -37,6 +38,8 @@
 	<GanttByInitiativeView {data} />
 {:else if data.type === 'metric'}
 	<MetricView {data} />
+{:else if data.type === 'bar_chart'}
+	<BarChartView {data} />
 {:else}
 	<div class="placeholder">
 		<p>View kind <code>{data.type}</code> is not yet rendered.</p>
