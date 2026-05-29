@@ -39,3 +39,10 @@ views:
     x: deadline
     y: effort
     title: title
+
+  - id: weekly-load
+    type: workload
+    start: start_date
+    end: deadline
+    effort: effort
+    title: title

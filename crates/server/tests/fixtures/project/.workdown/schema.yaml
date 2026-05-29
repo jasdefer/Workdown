@@ -25,6 +25,10 @@ fields:
     type: integer
     required: false
 
+  start_date:
+    type: date
+    required: false
+
   deadline:
     type: date
     required: false

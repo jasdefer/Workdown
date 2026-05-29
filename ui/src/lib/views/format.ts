@@ -33,11 +33,15 @@ export function formatNumber(n: number): string {
 }
 
 /**
- * Render a canonical-seconds duration as suffix shorthand
- * (`1w 2d 3h 4min 5s`). Mirrors `format_duration_seconds` in
- * crates/core/src/model/duration.rs.
+ * Render a canonical-seconds duration as suffix shorthand. Defaults to
+ * compact form (at most two most-significant units) for UI display —
+ * `2d 13h` rather than `2d 13h 6min 40s`. The Rust-side
+ * `format_duration_seconds` in crates/core/src/model/duration.rs emits
+ * full precision for the markdown renderers, intentional divergence.
+ *
+ * Pass `maxUnits = Infinity` for full precision when needed.
  */
-export function formatDurationSeconds(seconds: number): string {
+export function formatDurationSeconds(seconds: number, maxUnits = 2): string {
 	if (seconds === 0) return '0s';
 	const sign = seconds < 0 ? '-' : '';
 	let remaining = Math.abs(seconds);
@@ -54,7 +58,26 @@ export function formatDurationSeconds(seconds: number): string {
 		if (count > 0) {
 			parts.push(count.toString() + suffix);
 			remaining -= count * size;
+			if (parts.length >= maxUnits) break;
 		}
 	}
 	return sign + parts.join(' ');
+}
+
+/**
+ * Pick a duration unit (weeks / days / hours / minutes / seconds)
+ * appropriate for an axis whose maximum value is `maxSeconds`. The
+ * caller divides values by `seconds` to produce small whole numbers
+ * for the axis ticks, and appends `label` to the axis title.
+ *
+ * Mirrors `pick_duration_unit` in crates/cli/src/render/svg_chart.rs,
+ * which serves the same role for the server-side SVG renderers.
+ */
+export function pickDurationUnit(maxSeconds: number): { seconds: number; label: string } {
+	const abs = Math.abs(maxSeconds);
+	if (abs >= 604800) return { seconds: 604800, label: 'weeks' };
+	if (abs >= 86400) return { seconds: 86400, label: 'days' };
+	if (abs >= 3600) return { seconds: 3600, label: 'hours' };
+	if (abs >= 60) return { seconds: 60, label: 'minutes' };
+	return { seconds: 1, label: 'seconds' };
 }

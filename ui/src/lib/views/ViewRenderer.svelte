@@ -15,6 +15,7 @@
 	import MetricView from './metric/MetricView.svelte';
 	import BarChartView from './bar_chart/BarChartView.svelte';
 	import LineChartView from './line_chart/LineChartView.svelte';
+	import WorkloadView from './workload/WorkloadView.svelte';
 
 	interface Props {
 		data: ViewData;
@@ -43,6 +44,8 @@
 	<BarChartView {data} />
 {:else if data.type === 'line_chart'}
 	<LineChartView {data} />
+{:else if data.type === 'workload'}
+	<WorkloadView {data} />
 {:else}
 	<div class="placeholder">
 		<p>View kind <code>{data.type}</code> is not yet rendered.</p>
