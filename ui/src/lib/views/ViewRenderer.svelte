@@ -1,8 +1,7 @@
 <!--
   Dispatches a `ViewData` payload to the matching per-kind component.
-  In slice 2 only the board has a real component; other variants fall
-  through to a placeholder until their UI lands in
-  `remaining-read-views`.
+  Variants without a Svelte renderer yet fall through to a placeholder
+  until their UI lands in `remaining-read-views`.
 -->
 <script lang="ts">
 	import type { ViewData } from '$lib/api/generated/ViewData';
@@ -13,6 +12,7 @@
 	import GanttView from './gantt/GanttView.svelte';
 	import GanttByDepthView from './gantt/GanttByDepthView.svelte';
 	import GanttByInitiativeView from './gantt/GanttByInitiativeView.svelte';
+	import MetricView from './metric/MetricView.svelte';
 
 	interface Props {
 		data: ViewData;
@@ -35,6 +35,8 @@
 	<GanttByDepthView {data} />
 {:else if data.type === 'gantt_by_initiative'}
 	<GanttByInitiativeView {data} />
+{:else if data.type === 'metric'}
+	<MetricView {data} />
 {:else}
 	<div class="placeholder">
 		<p>View kind <code>{data.type}</code> is not yet rendered.</p>

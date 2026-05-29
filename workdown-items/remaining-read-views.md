@@ -11,16 +11,16 @@ Add the rest of the view types: table, tree, graph, gantt, plus the chart family
 
 ## Status
 
-Board, table, tree, and graph are shipped. Remaining: gantt (+ gantt-by-depth, gantt-by-initiative), chart family (bar, line, workload, metric, treemap, heatmap).
+Board, table, tree, graph, and gantt (+ gantt-by-depth, gantt-by-initiative) are shipped. Remaining: chart family (bar, line, workload, metric, treemap, heatmap).
 
 The graph slice settled the graph-library question: **Cytoscape** with the **cytoscape-dagre** layout — the same layered-DAG algorithm Mermaid's `flowchart TD` uses. The built-in breadthfirst/cose layouts ordered nodes noticeably worse and were dropped. Cytoscape is dynamically imported so it only loads on graph pages; node hover reuses the board `<Card>` for a title/id/body popover; click-to-open is deferred with the other views to the item-page slice.
+
+The chart-family planning settled the chart-library question: **Observable Plot**. All six chart kinds (bar, line, workload, heatmap, treemap, metric) are first-class marks — no plugin sprawl, single maintained surface. SVG output integrates directly with the app's `var(--color-*)` theming so we don't carry the computed-style glue we have for Cytoscape. Compositional mark API fits Svelte's DOM-first model; ECharts's "owns the container" model does not. Bundle weight (~30–50kb gz) is acceptable given the Cytoscape precedent. Plot's treemap mark wraps `d3-hierarchy`, so the squarify algorithm comes along transitively.
 
 ## Scope
 
 - Per view type, a Svelte component that renders the corresponding `ViewData` variant
 - One endpoint handles all types via the discriminated `ViewData` enum
-- Graph library decision (Mermaid vs Cytoscape) — pick during impl
-- Chart library decision (Chart.js / Observable Plot / d3 / bespoke SVG) — pick before starting the chart family
 
 ## Acceptance
 
@@ -82,10 +82,32 @@ When adding the next view (graph / gantt / chart family), keep these in lockstep
 
 - **Commit style.** Read-only view slices have shipped under `Land <view-name>: <one-line capability>` (see `7652667` board, `c41b1db` table, `e5badb7` tree). Match that for the graph / gantt / chart commits.
 
+## Chart family hover scope
+
+Hover semantics split into two layers: every chart owes the reader the **exact value** at the pointer (the chart only shows the approx); some chart kinds additionally support **drill-down** to contributing items.
+
+| Kind     | Value hover                                  | Drill-down v1?           |
+|----------|----------------------------------------------|--------------------------|
+| Bar      | group + formatted aggregate                  | defer                    |
+| Line     | item title + x + y + group                   | n/a (point is the item)  |
+| Workload | date + formatted total                       | defer                    |
+| Heatmap  | x + y + formatted value                      | defer                    |
+| Treemap  | reuses the board `<Card>` (already in wire)  | included (free)          |
+| Metric   | no hover — value is displayed                | n/a                      |
+
+Deferred drill-down for bar/workload/heatmap shares one wire-shape extension: each bucket/cell carries contributing item ids or Cards. Pick up as one follow-up slice when needed. Line chart needs a sidecar `items: HashMap<WorkItemId, ItemRef>` map (Table pattern) for title resolution — added in the line slice, not deferred.
+
+## Chart family slice plan
+
+Six slices, one PR each — same cadence as graph and the gantt variants.
+
+1. **Metric** — pure Svelte, no Plot. Warmup; validates ViewRenderer wiring for the chart family in isolation.
+2. **Bar + Plot foundation** — adds Plot as a dynamic import, the value-tooltip popover component, the "Plot SVG inside Svelte" pattern, and CSS-var theming for Plot marks. Bar is the simplest mark, right vehicle for this groundwork.
+3. **Line** — adds the sidecar `items` map on `LineChartData` (Rust wire change). Single-series + grouped variants.
+4. **Workload** — `Plot.rectY` with stack transform on a date axis.
+5. **Heatmap** — `Plot.cell` with a color channel.
+6. **Treemap** — `Plot.treemap` with the richer `<Card>` popover.
+
 ## Known wire-shape gaps to revisit when they bite
 
 - `FieldValue::Duration` serializes as the formatted string (`"5d"`). Frontend sorts/compares lexicographically, which mis-orders mixed magnitudes (`"10d"` < `"2d"`). Easy fix when needed: ship raw seconds alongside the formatted string.
-
-## Open questions
-
-- **Chart library** — pick once before starting the chart family.

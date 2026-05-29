@@ -13,3 +13,18 @@ views:
     type: table
     title: title
     columns: [id, title, status, parent]
+
+  - id: project-stats
+    type: metric
+    metrics:
+      - label: Total items
+        aggregate: count
+      - label: Open
+        aggregate: count
+        where: ["status=open"]
+      - label: In progress
+        aggregate: count
+        where: ["status=in_progress"]
+      - label: Done
+        aggregate: count
+        where: ["status=done"]

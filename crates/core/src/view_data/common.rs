@@ -177,21 +177,31 @@ pub enum UnplacedReason {
 /// fields. `Duration` is returned (rather than `Number(seconds_as_f64)`)
 /// when the input field is a duration field, so renderers can format
 /// `5d` instead of `432000`.
+///
+/// Wire shape is tagged (`{type, value}`) so the frontend can recover
+/// the variant. JSON has no bigint and an untagged i64 would land as a
+/// JS number, indistinguishable from a `Number(seconds_as_f64)` —
+/// renderers couldn't tell `5d` from raw `432000`. The Duration's i64
+/// fits inside JS number's safe range for any human time scale, so the
+/// value is typed as `number` on the TS side.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, ts_rs::TS)]
-#[serde(untagged)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum AggregateValue {
     Number(f64),
     Date(NaiveDate),
-    Duration(i64),
+    Duration(#[ts(type = "number")] i64),
 }
 
 /// A point coordinate on a chart's x-axis (or similar).
+///
+/// Wire shape is tagged (`{type, value}`) for the same variant-recovery
+/// reason as [`AggregateValue`].
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, ts_rs::TS)]
-#[serde(untagged)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum AxisValue {
     Number(f64),
     Date(NaiveDate),
-    Duration(i64),
+    Duration(#[ts(type = "number")] i64),
 }
 
 /// A magnitude carried by a non-aggregated leaf field — the size column
@@ -202,10 +212,10 @@ pub enum AxisValue {
 /// the data structure lets downstream renderers format `5d` instead of
 /// raw seconds — same role `AggregateValue` plays for metric/heatmap.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, ts_rs::TS)]
-#[serde(untagged)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum SizeValue {
     Number(f64),
-    Duration(i64),
+    Duration(#[ts(type = "number")] i64),
 }
 
 impl SizeValue {
