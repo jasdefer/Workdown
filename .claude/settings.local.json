@@ -86,7 +86,8 @@
       "Bash(xargs -I {} find {} -name \"*.rs\")",
       "Bash(workdown query *)",
       "Bash(cat)",
-      "Bash(docker cp *)"
+      "Bash(docker cp *)",
+      "Bash(npx --prefix ui prettier --check ui/src/lib/views/tree/TreeView.svelte)"
     ]
   }
 }
