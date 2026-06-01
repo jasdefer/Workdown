@@ -1,7 +1,9 @@
 <!--
   Dispatches a `ViewData` payload to the matching per-kind component.
-  Variants without a Svelte renderer yet fall through to a placeholder
-  until their UI lands in `remaining-read-views`.
+  Every variant of the discriminated union currently has a renderer; if
+  the backend ever adds a new variant the regenerated `ViewData` union
+  will widen and the final `{:else}` branch surfaces the unknown kind
+  rather than silently rendering nothing.
 -->
 <script lang="ts">
 	import type { ViewData } from '$lib/api/generated/ViewData';
@@ -17,6 +19,7 @@
 	import LineChartView from './line_chart/LineChartView.svelte';
 	import WorkloadView from './workload/WorkloadView.svelte';
 	import HeatmapView from './heatmap/HeatmapView.svelte';
+	import TreemapView from './treemap/TreemapView.svelte';
 
 	interface Props {
 		data: ViewData;
@@ -49,12 +52,14 @@
 	<WorkloadView {data} />
 {:else if data.type === 'heatmap'}
 	<HeatmapView {data} />
+{:else if data.type === 'treemap'}
+	<TreemapView {data} />
 {:else}
 	<div class="placeholder">
-		<p>View kind <code>{data.type}</code> is not yet rendered.</p>
-		<p class="hint">
-			This view will gain its UI in a later slice (<code>remaining-read-views</code>).
+		<p>
+			View kind <code>{(data as { type: string }).type}</code> is not yet rendered.
 		</p>
+		<p class="hint">Regenerate types after a backend addition and add the matching branch above.</p>
 	</div>
 {/if}
 

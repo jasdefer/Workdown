@@ -1,7 +1,7 @@
 ---
 id: remaining-read-views
 type: issue
-status: in_progress
+status: done
 title: Remaining read-only views
 parent: server
 depends_on: [first-view-end-to-end]
@@ -11,7 +11,9 @@ Add the rest of the view types: table, tree, graph, gantt, plus the chart family
 
 ## Status
 
-Board, table, tree, graph, and gantt (+ gantt-by-depth, gantt-by-initiative) are shipped. Remaining: chart family (bar, line, workload, metric, treemap, heatmap).
+All view kinds are shipped: board, table, tree, graph, gantt (+ gantt-by-depth, gantt-by-initiative), metric, bar chart, line chart, workload, heatmap, treemap.
+
+The treemap slice diverged from the chart-family Plot-mark pattern: it uses `d3-hierarchy` directly (added as a direct dependency rather than relying on Plot's transitive copy) so the same SVG render can draw labeled bordered frames for internal nodes at every depth, not just leaves. Color is intentionally not data-encoded — area carries the only numeric dimension, so accent-solid leaves + thin border + per-rect `<clipPath>` for clipped titles do the job; a sequential color scale would have been redundant. Hover reuses the board `<Card>` via a thin composing wrapper (`TreemapItemTooltip`) that prepends a one-line size row above the rich card body, so the reader gets both "what item" and "how much" without modifying `<Card>`.
 
 The graph slice settled the graph-library question: **Cytoscape** with the **cytoscape-dagre** layout — the same layered-DAG algorithm Mermaid's `flowchart TD` uses. The built-in breadthfirst/cose layouts ordered nodes noticeably worse and were dropped. Cytoscape is dynamically imported so it only loads on graph pages; node hover reuses the board `<Card>` for a title/id/body popover; click-to-open is deferred with the other views to the item-page slice.
 

@@ -56,7 +56,7 @@ async fn list_views_returns_summary_array() {
 
     let envelope = body_json(response).await;
     let views = envelope["data"].as_array().expect("data is array");
-    assert_eq!(views.len(), 8);
+    assert_eq!(views.len(), 9);
     assert_eq!(views[0]["id"], "status-board");
     assert_eq!(views[0]["kind"], "board");
     assert_eq!(views[1]["id"], "hierarchy");
@@ -73,6 +73,8 @@ async fn list_views_returns_summary_array() {
     assert_eq!(views[6]["kind"], "workload");
     assert_eq!(views[7]["id"], "load-by-status-team");
     assert_eq!(views[7]["kind"], "heatmap");
+    assert_eq!(views[8]["id"], "effort-treemap");
+    assert_eq!(views[8]["kind"], "treemap");
 
     // Envelope always carries diagnostics, even when empty.
     assert!(envelope["diagnostics"].is_array());
@@ -149,6 +151,61 @@ async fn get_board_view_returns_board_data() {
         column_values,
         vec!["open", "in_progress", "done", "(synthetic)"]
     );
+}
+
+#[tokio::test]
+async fn get_treemap_view_rolls_up_size_into_synthetic_root() {
+    let app = router(fixture_state());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/views/effort-treemap")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    let data = &envelope["data"];
+    assert_eq!(data["type"], "treemap");
+    assert_eq!(data["group_field"], "parent");
+    assert_eq!(data["size_field"], "effort");
+
+    // Synthetic root carries no card and the grand total. The fixture
+    // has three items: task-c (effort 8, no parent) and task-a (effort
+    // 5, but has child task-b effort 3 — its children's sum overrides
+    // its own field). So the grand total is 3 + 8 = 11, and the two
+    // top-level children are task-a and task-c.
+    let root = &data["root"];
+    assert!(root["card"].is_null());
+    assert_eq!(root["size"]["type"], "number");
+    assert_eq!(root["size"]["value"], 11.0);
+
+    let top_children = root["children"].as_array().expect("children is array");
+    assert_eq!(top_children.len(), 2);
+    let top_ids: Vec<&str> = top_children
+        .iter()
+        .map(|child| child["card"]["id"].as_str().unwrap())
+        .collect();
+    assert!(top_ids.contains(&"task-a"));
+    assert!(top_ids.contains(&"task-c"));
+
+    // task-a is an internal node: its size mirrors task-b (3), not its
+    // own effort field (5).
+    let task_a = top_children
+        .iter()
+        .find(|child| child["card"]["id"] == "task-a")
+        .expect("task-a present");
+    assert_eq!(task_a["size"]["value"], 3.0);
+    let task_a_children = task_a["children"].as_array().expect("task-a children");
+    assert_eq!(task_a_children.len(), 1);
+    assert_eq!(task_a_children[0]["card"]["id"], "task-b");
+    assert_eq!(task_a_children[0]["size"]["value"], 3.0);
+
+    // Every item has an effort, so nothing is dropped.
+    assert!(data["unplaced"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]

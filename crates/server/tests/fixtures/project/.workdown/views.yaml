@@ -52,3 +52,9 @@ views:
     x: status
     y: team
     aggregate: count
+
+  - id: effort-treemap
+    type: treemap
+    group: parent
+    size: effort
+    title: title
