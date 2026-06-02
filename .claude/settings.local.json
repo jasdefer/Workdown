@@ -87,7 +87,8 @@
       "Bash(workdown query *)",
       "Bash(cat)",
       "Bash(docker cp *)",
-      "Bash(npx --prefix ui prettier --check ui/src/lib/views/tree/TreeView.svelte)"
+      "Bash(npx --prefix ui prettier --check ui/src/lib/views/tree/TreeView.svelte)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }
