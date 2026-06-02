@@ -74,7 +74,7 @@ views:
   - id: effort-treemap
     type: treemap
     group: parent
-    size: duration
+    size: effort
     title: title
     where:
       - "status!=removed"

@@ -42,20 +42,37 @@
 
 	let { data }: Props = $props();
 
-	const CHART_HEIGHT = 600;
+	// The treemap keeps the full container width and grows downward: its
+	// height scales with the leaf count, floored so it never collapses and
+	// never falls below the width. Keeping height >= width guarantees a
+	// portrait (or at worst square) box, so squarify splits along the
+	// vertical axis first and stacks the frames top-to-bottom instead of
+	// spreading them across a wide horizontal band.
+	const MIN_CHART_HEIGHT = 480;
+	const HEIGHT_PER_LEAF = 26;
 	// Strip height reserved at the top of every internal frame for its
 	// label; matches the `paddingTop` passed to the layout.
 	const FRAME_LABEL_STRIP = 22;
 	const FRAME_INNER_GAP = 2;
 	// Below these thresholds a rectangle is too small to legibly carry a
 	// label — we keep the rect but skip the text rather than overflow.
-	const MIN_LEAF_LABEL_WIDTH = 36;
-	const MIN_LEAF_LABEL_HEIGHT = 16;
-	const MIN_FRAME_LABEL_WIDTH = 28;
+	const MIN_LEAF_LABEL_WIDTH = 42;
+	const MIN_LEAF_LABEL_HEIGHT = 18;
+	const MIN_FRAME_LABEL_WIDTH = 32;
+	// Frame border weight by depth: shallower frames (the larger groupings)
+	// get thicker borders so the boundary between one group and the next
+	// reads clearly; deeper frames thin out toward the 1px leaf stroke.
+	const FRAME_STROKE_MAX = 4;
 
 	let container = $state<HTMLDivElement>();
 	let availableWidth = $state(0);
-	let hovered = $state<{ card: CardData; size: SizeValue; x: number; y: number } | null>(null);
+	let hovered = $state<{
+		card: CardData;
+		size: SizeValue;
+		chain: string[];
+		x: number;
+		y: number;
+	} | null>(null);
 
 	function sizeAsNumber(value: SizeValue): number {
 		return value.value;
@@ -71,12 +88,21 @@
 		return node.card.title ?? prettifyId(node.card.id);
 	}
 
+	function frameStrokeWidth(depth: number): number {
+		return Math.max(1, FRAME_STROKE_MAX - (depth - 1));
+	}
+
 	const sizeLabel = $derived(prettifyId(data.size_field));
 
 	interface LaidNode {
 		key: string;
 		node: TreemapNode;
 		isLeaf: boolean;
+		depth: number;
+		// Ancestor titles, outermost first (e.g. ["Phase 04", "Renderers"]),
+		// excluding the synthetic root and the node itself. Used for the
+		// hover breadcrumb.
+		chain: string[];
 		x0: number;
 		y0: number;
 		width: number;
@@ -92,13 +118,25 @@
 		return node.children.length === 0 ? sizeAsNumber(node.size) : 0;
 	}
 
+	// Structural leaf count drives the chart height. Only placed items are
+	// in the tree (unplaced ones live in data.unplaced), so the box grows
+	// as the project grows and each leaf keeps a legible minimum area.
+	function countLeaves(node: TreemapNode): number {
+		if (node.children.length === 0) return 1;
+		return node.children.reduce((total, child) => total + countLeaves(child), 0);
+	}
+
+	const chartHeight = $derived(
+		Math.max(MIN_CHART_HEIGHT, availableWidth, countLeaves(data.root) * HEIGHT_PER_LEAF)
+	);
+
 	const laidNodes = $derived.by((): LaidNode[] => {
 		if (availableWidth === 0) return [];
 		const root = hierarchy<TreemapNode>(data.root, (n) => n.children)
 			.sum(leafValue)
 			.sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
 		const laid = treemap<TreemapNode>()
-			.size([availableWidth, CHART_HEIGHT])
+			.size([availableWidth, chartHeight])
 			.tile(treemapSquarify)
 			.paddingTop(FRAME_LABEL_STRIP)
 			.paddingInner(FRAME_INNER_GAP)(root);
@@ -114,6 +152,12 @@
 				key: data.card?.id ?? `__frame_${(internalCounter++).toString()}`,
 				node: data,
 				isLeaf,
+				depth: descendant.depth,
+				chain: descendant
+					.ancestors()
+					.slice(1, -1)
+					.reverse()
+					.map((ancestor) => nodeLabel(ancestor.data)),
 				x0: descendant.x0,
 				y0: descendant.y0,
 				width: Math.max(0, descendant.x1 - descendant.x0),
@@ -134,8 +178,12 @@
 		hovered = {
 			card: laid.node.card,
 			size: laid.node.size,
-			x: event.clientX - rect.left,
-			y: event.clientY - rect.top
+			chain: laid.chain,
+			// The tooltip is absolutely positioned inside the scrolling wrap,
+			// so its origin is the (scrolled) content top — add the scroll
+			// offset that getBoundingClientRect (visible top) doesn't include.
+			x: event.clientX - rect.left + host.scrollLeft,
+			y: event.clientY - rect.top + host.scrollTop
 		};
 	}
 
@@ -159,8 +207,8 @@
 			<svg
 				class="treemap"
 				width={availableWidth}
-				height={CHART_HEIGHT}
-				viewBox="0 0 {availableWidth} {CHART_HEIGHT}"
+				height={chartHeight}
+				viewBox="0 0 {availableWidth} {chartHeight}"
 				role="presentation"
 			>
 				{#each laidNodes as laid (laid.key)}
@@ -192,7 +240,12 @@
 									>
 								{/if}
 							{:else}
-								<rect class="frame" width={laid.width} height={laid.height} />
+								<rect
+									class="frame"
+									width={laid.width}
+									height={laid.height}
+									stroke-width={frameStrokeWidth(laid.depth)}
+								/>
 								{#if laid.width >= MIN_FRAME_LABEL_WIDTH && laid.height >= FRAME_LABEL_STRIP}
 									<text class="frame-label" x={6} y={14} clip-path="url(#{clipId})"
 										>{nodeLabel(laid.node)}</text
@@ -210,6 +263,7 @@
 					card={hovered.card}
 					{sizeLabel}
 					sizeFormatted={formatSize(hovered.size)}
+					chain={hovered.chain}
 				/>
 			</div>
 		{/if}
@@ -223,6 +277,13 @@
 	.treemap-wrap {
 		position: relative;
 		width: 100%;
+		/* Fill the bounded height the view-page gives us and scroll
+		   internally — the chart can be taller than the viewport, and the
+		   app shell deliberately doesn't scroll the whole page. */
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		overflow-x: hidden;
 	}
 
 	.treemap {
@@ -241,20 +302,21 @@
 	.frame {
 		fill: transparent;
 		stroke: var(--color-border);
-		stroke-width: 1;
+		/* stroke-width is set per-rect via the `stroke-width` attribute
+		   (scaled by depth); a CSS rule here would override that attribute. */
 		pointer-events: none;
 	}
 
 	.frame-label {
 		fill: var(--color-fg-muted);
-		font-size: 11px;
+		font-size: 13px;
 		font-weight: 600;
 		pointer-events: none;
 	}
 
 	.leaf-label {
 		fill: var(--color-bg);
-		font-size: 11px;
+		font-size: 13px;
 		pointer-events: none;
 	}
 

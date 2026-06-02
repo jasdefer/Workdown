@@ -16,12 +16,24 @@
 		card: CardData;
 		sizeLabel: string;
 		sizeFormatted: string;
+		// Ancestor titles, outermost first. Rendered as a breadcrumb so the
+		// reader can see which grouping chain this item sits in.
+		chain: string[];
 	}
 
-	let { card, sizeLabel, sizeFormatted }: Props = $props();
+	let { card, sizeLabel, sizeFormatted, chain }: Props = $props();
 </script>
 
 <div class="tooltip-body">
+	{#if chain.length > 0}
+		<p class="chain">
+			{#each chain as crumb, index (index)}
+				{#if index > 0}<span class="sep" aria-hidden="true">›</span>{/if}<span class="crumb"
+					>{crumb}</span
+				>
+			{/each}
+		</p>
+	{/if}
 	<dl class="size-row">
 		<dt>{sizeLabel}</dt>
 		<dd>{sizeFormatted}</dd>
@@ -34,6 +46,18 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-2);
+	}
+
+	.chain {
+		margin: 0;
+		font-size: var(--text-sm);
+		color: var(--color-fg-muted);
+		line-height: 1.3;
+	}
+
+	.chain .sep {
+		margin: 0 0.35em;
+		opacity: 0.7;
 	}
 
 	.size-row {
