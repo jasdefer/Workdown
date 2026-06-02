@@ -5,6 +5,7 @@ status: done
 title: Table renderer
 parent: renderers
 depends_on: [view-data-intermediate]
+effort: "4h"
 ---
 
 Render `TableView` as a Markdown file written to `views/<id>.md`.

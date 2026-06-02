@@ -4,7 +4,7 @@ type: milestone
 status: to_do
 title: Polish & dogfood
 parent: phase-04-visualization
-depends_on: [frontend]
+depends_on: [server]
 start_date: 2026-06-26
 end_date: 2026-07-02
 duration: "1w"

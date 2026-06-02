@@ -4,6 +4,7 @@ type: issue
 status: done
 title: workdown rename — change an item's id
 parent: item-mutations
+effort: "1d"
 ---
 
 Renames a work item, which is more involved than it sounds: the id is the filename *and* what every other item links to. Carved out of `set` because it's a fundamentally different operation — file move plus cross-file reference rewrite.

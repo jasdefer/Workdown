@@ -5,6 +5,7 @@ status: done
 title: Tree renderer
 parent: renderers
 depends_on: [view-data-intermediate]
+effort: "4h"
 ---
 
 Render `TreeView` as a Markdown file written to `views/<id>.md`.

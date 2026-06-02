@@ -16,6 +16,7 @@ depends_on:
   - render-metric
   - render-treemap
   - render-heatmap
+effort: "4h"
 ---
 
 `workdown render` — reads `views.yaml`, produces static outputs per configured view.

@@ -5,6 +5,7 @@ status: done
 title: Gantt by depth view
 parent: renderers
 depends_on: [render-gantt]
+effort: "4h"
 ---
 
 New view type `gantt_by_depth` (option E from the Gantt design

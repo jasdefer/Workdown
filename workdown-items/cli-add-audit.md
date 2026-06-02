@@ -4,6 +4,7 @@ type: issue
 status: done
 title: Audit workdown add for UI-driven creation
 parent: item-mutations
+effort: "4h"
 ---
 
 Confirm `workdown add` supports everything the UI will need to create items from a browser form.

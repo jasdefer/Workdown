@@ -4,6 +4,7 @@ type: issue
 status: done
 title: workdown serve skeleton with embedded UI
 parent: server
+effort: "1d"
 ---
 
 End-to-end smoke test of the build and serve pipeline: `workdown serve` boots axum, the Vite-built Svelte bundle is embedded via `rust-embed`, the browser loads a placeholder page. No real API, no real UI — just proves the plumbing all the way from `cargo build` to a working page in the browser.

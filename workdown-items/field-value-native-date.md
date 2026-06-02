@@ -5,6 +5,7 @@ status: done
 title: Store FieldValue::Date as chrono::NaiveDate
 parent: renderers
 depends_on: []
+effort: "4h"
 ---
 
 Change `FieldValue::Date` from `String` to `chrono::NaiveDate` so dates are

@@ -4,6 +4,7 @@ type: issue
 status: done
 title: Relocate cross-cutting helpers out of feature modules
 parent: code-quality
+effort: "4h"
 ---
 
 Some helpers that everything-needs-to-format-a-value live inside feature modules where they happened to be written first. They're now imported across the codebase, which makes the dependency graph misleading and suggests the helper is feature-specific when it isn't.

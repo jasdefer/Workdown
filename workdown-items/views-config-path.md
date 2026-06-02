@@ -4,6 +4,7 @@ type: issue
 status: done
 title: Add views path to config; ship default views.yaml
 parent: foundation
+effort: "4h"
 ---
 
 Ship the `views.yaml` infrastructure: a path entry in `config.yaml`, a default file copied by `workdown init`, and the matching code change. No validation logic here — that lands in `views-cross-file-validation` and `views-validate-integration`.

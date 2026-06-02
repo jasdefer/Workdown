@@ -4,6 +4,7 @@ type: issue
 status: done
 title: Collapse parallel View* slot variants and unify their validation helpers
 parent: code-quality
+effort: "4h"
 ---
 
 Four `views.yaml` slots — `graph.group_by`, `gantt.after`, `gantt_by_initiative.root_link`, `gantt_by_depth.depth_link` — share the same validation rules (must be a `link`/`links` field, `allow_cycles: false`, not an inverse name). Today this is implemented as four near-identical validation helpers and eight near-identical diagnostic variants. Unify both.
