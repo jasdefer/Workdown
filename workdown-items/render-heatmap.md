@@ -5,7 +5,7 @@ status: done
 title: Heatmap renderer
 parent: renderers
 depends_on: [view-data-intermediate]
-effort: "1d"
+effort: "8h"
 ---
 
 Render `HeatmapView` as a Markdown file written to `views/<id>.md` — a 2D grid of aggregated values.

@@ -5,7 +5,7 @@ status: done
 title: Remaining read-only views
 parent: server
 depends_on: [first-view-end-to-end]
-effort: "5d"
+effort: "40h"
 ---
 
 Add the rest of the view types: table, tree, graph, gantt, plus the chart family (bar, line, workload, metric, treemap, heatmap). Each gets a Svelte component fed by the same `GET /api/views/:id` endpoint; ViewData is type-discriminated, so the endpoint shape is settled.

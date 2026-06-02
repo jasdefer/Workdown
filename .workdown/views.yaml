@@ -83,7 +83,7 @@ views:
     type: workload
     start: start_date
     end: end_date
-    effort: duration
+    effort: effort
     title: title
     where:
       - "type=milestone"

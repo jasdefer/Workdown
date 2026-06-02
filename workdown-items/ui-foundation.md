@@ -5,7 +5,7 @@ status: done
 title: UI foundation — conventions and scaffolding before the first view
 parent: server
 depends_on: [walking-skeleton]
-effort: "2d"
+effort: "16h"
 ---
 
 Before building any real view, settle the conventions that will shape every future view and ship the scaffolding so slice 2 (`first-view-end-to-end`) can focus purely on feature code. Each individual decision is small, but each is hard to retrofit once views start piling on.

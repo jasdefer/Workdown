@@ -5,7 +5,7 @@ status: done
 title: Line chart renderer
 parent: renderers
 depends_on: [view-data-intermediate]
-effort: "1d"
+effort: "8h"
 ---
 
 Render `LineChartView` as a Markdown file written to `views/<id>.md`.
