@@ -23,6 +23,7 @@
 	import type { WorkloadData } from '$lib/api/generated/WorkloadData';
 	import type { WorkloadBucket } from '$lib/api/generated/WorkloadBucket';
 	import { formatDurationSeconds, formatNumber, pickDurationUnit } from '$lib/views/format';
+	import { mountPlot, PLOT_STYLE } from '$lib/views/plot';
 	import { prettifyId } from '$lib/views/prettify';
 	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
 
@@ -50,8 +51,6 @@
 		const host = container;
 		if (host === undefined || data.buckets.length === 0 || availableWidth === 0) return;
 
-		let cancelled = false;
-
 		// For Duration unit, scale bar heights into a human unit
 		// (weeks/days/hours/minutes) so Plot's auto-ticks land on whole
 		// numbers — 0, 1, 2 days rather than 0, 50000, 100000 seconds.
@@ -66,75 +65,60 @@
 				? `${prettifyId(data.effort_field)} per day`
 				: `${prettifyId(data.effort_field)} (${durationUnit.label})`;
 
-		const build = async (): Promise<void> => {
-			const Plot = await import('@observablehq/plot');
-			if (cancelled) return;
-
-			const chart = Plot.plot({
-				width: availableWidth,
-				height: CHART_HEIGHT,
-				marginBottom: 90,
-				marginLeft: 80,
-				style: {
-					color: 'var(--color-fg-muted)',
-					fontFamily: 'var(--font-sans)',
-					background: 'transparent',
-					fontSize: '12px'
-				},
-				x: {
-					label: prettifyId(data.start_field),
-					type: 'time',
-					tickRotate: -35,
-					tickSpacing: 80
-				},
-				y: {
-					label: yAxisLabel,
-					grid: true,
-					tickFormat: (n: number): string => formatNumber(n),
-					zero: true
-				},
-				marks: [
-					Plot.rectY(data.buckets, {
-						x: (bucket: WorkloadBucket): Date => new Date(bucket.date),
-						y: scaledTotal,
-						interval: 'day',
-						fill: 'var(--color-accent)',
-						channels: {
-							day: { value: (bucket: WorkloadBucket): string => bucket.date },
-							load: {
-								value: (bucket: WorkloadBucket): string => formatTotal(bucket.total)
+		return mountPlot(
+			host,
+			(Plot) =>
+				Plot.plot({
+					width: availableWidth,
+					height: CHART_HEIGHT,
+					marginBottom: 90,
+					marginLeft: 80,
+					style: PLOT_STYLE,
+					x: {
+						label: prettifyId(data.start_field),
+						type: 'time',
+						tickRotate: -35,
+						tickSpacing: 80
+					},
+					y: {
+						label: yAxisLabel,
+						grid: true,
+						tickFormat: (n: number): string => formatNumber(n),
+						zero: true
+					},
+					marks: [
+						Plot.rectY(data.buckets, {
+							x: (bucket: WorkloadBucket): Date => new Date(bucket.date),
+							y: scaledTotal,
+							interval: 'day',
+							fill: 'var(--color-accent)',
+							channels: {
+								day: { value: (bucket: WorkloadBucket): string => bucket.date },
+								load: {
+									value: (bucket: WorkloadBucket): string => formatTotal(bucket.total)
+								}
+							},
+							tip: {
+								format: {
+									x: false,
+									x1: false,
+									x2: false,
+									y: false,
+									day: true,
+									load: true,
+									fill: false
+								}
 							}
-						},
-						tip: {
-							format: {
-								x: false,
-								x1: false,
-								x2: false,
-								y: false,
-								day: true,
-								load: true,
-								fill: false
-							}
-						}
-					}),
-					Plot.ruleX([new Date()], {
-						stroke: 'var(--color-fg-muted)',
-						strokeDasharray: '4 2'
-					}),
-					Plot.ruleY([0])
-				]
-			});
-			host.replaceChildren(chart);
-		};
-
-		build().catch((error: unknown) => {
-			console.error('Failed to render workload view', error);
-		});
-
-		return () => {
-			cancelled = true;
-			host.replaceChildren();
-		};
+						}),
+						Plot.ruleX([new Date()], {
+							stroke: 'var(--color-fg-muted)',
+							strokeDasharray: '4 2'
+						}),
+						Plot.ruleY([0])
+					]
+				}),
+			'workload view'
+		);
 	});
 </script>
 

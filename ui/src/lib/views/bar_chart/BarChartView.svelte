@@ -23,7 +23,8 @@
 	import type { BarChartBar } from '$lib/api/generated/BarChartBar';
 	import type { AggregateValue } from '$lib/api/generated/AggregateValue';
 	import type { Aggregate } from '$lib/api/generated/Aggregate';
-	import { formatAggregateValue } from '$lib/views/format';
+	import { formatAggregateValue, formatIsoDate } from '$lib/views/format';
+	import { mountPlot, PLOT_STYLE } from '$lib/views/plot';
 	import { prettifyId } from '$lib/views/prettify';
 	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
 
@@ -77,8 +78,6 @@
 		const host = container;
 		if (host === undefined || data.bars.length === 0 || availableWidth === 0) return;
 
-		let cancelled = false;
-
 		const valueType: AggregateValue['type'] | undefined = data.bars[0]?.value.type;
 
 		const formatYTick = (n: number): string => {
@@ -86,71 +85,54 @@
 				return formatAggregateValue({ type: 'duration', value: n });
 			}
 			if (valueType === 'date') {
-				const date = new Date(n);
-				const pad = (v: number): string => v.toString().padStart(2, '0');
-				return `${date.getFullYear().toString()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+				return formatIsoDate(new Date(n));
 			}
 			return formatAggregateValue({ type: 'number', value: n });
 		};
 
 		const tipFormatBar = (bar: BarChartBar): string => formatAggregateValue(bar.value);
 
-		const build = async (): Promise<void> => {
-			const Plot = await import('@observablehq/plot');
-			if (cancelled) return;
-
-			const chart = Plot.plot({
-				width: availableWidth,
-				height: CHART_HEIGHT,
-				marginBottom: 90,
-				marginLeft: 80,
-				style: {
-					color: 'var(--color-fg-muted)',
-					fontFamily: 'var(--font-sans)',
-					background: 'transparent',
-					fontSize: '12px'
-				},
-				x: {
-					label: prettifyId(data.group_by),
-					tickRotate: -45,
-					type: 'band'
-				},
-				y: {
-					label: yAxisLabel(),
-					grid: true,
-					tickFormat: formatYTick,
-					type: valueType === 'date' ? 'time' : 'linear',
-					zero: valueType !== 'date'
-				},
-				marks: [
-					Plot.barY(data.bars, {
-						x: (bar: BarChartBar): string => bar.group,
-						y: (bar: BarChartBar): number => valueAsPlotNumber(bar.value),
-						fill: 'var(--color-accent)',
-						channels: { exact: { value: tipFormatBar, label: yAxisLabel() } },
-						tip: {
-							format: {
-								x: true,
-								y: false,
-								exact: true,
-								fill: false
+		return mountPlot(
+			host,
+			(Plot) =>
+				Plot.plot({
+					width: availableWidth,
+					height: CHART_HEIGHT,
+					marginBottom: 90,
+					marginLeft: 80,
+					style: PLOT_STYLE,
+					x: {
+						label: prettifyId(data.group_by),
+						tickRotate: -45,
+						type: 'band'
+					},
+					y: {
+						label: yAxisLabel(),
+						grid: true,
+						tickFormat: formatYTick,
+						type: valueType === 'date' ? 'time' : 'linear',
+						zero: valueType !== 'date'
+					},
+					marks: [
+						Plot.barY(data.bars, {
+							x: (bar: BarChartBar): string => bar.group,
+							y: (bar: BarChartBar): number => valueAsPlotNumber(bar.value),
+							fill: 'var(--color-accent)',
+							channels: { exact: { value: tipFormatBar, label: yAxisLabel() } },
+							tip: {
+								format: {
+									x: true,
+									y: false,
+									exact: true,
+									fill: false
+								}
 							}
-						}
-					}),
-					valueType === 'date' ? null : Plot.ruleY([0])
-				]
-			});
-			host.replaceChildren(chart);
-		};
-
-		build().catch((error: unknown) => {
-			console.error('Failed to render bar chart view', error);
-		});
-
-		return () => {
-			cancelled = true;
-			host.replaceChildren();
-		};
+						}),
+						valueType === 'date' ? null : Plot.ruleY([0])
+					]
+				}),
+			'bar chart view'
+		);
 	});
 </script>
 

@@ -65,6 +65,17 @@ export function formatDurationSeconds(seconds: number, maxUnits = 2): string {
 }
 
 /**
+ * Format a Date as a local `YYYY-MM-DD` string, for date-axis tick labels
+ * and the gantt "today" marker. Uses local calendar parts — this is a
+ * verbatim lift of the formatter the chart views each carried inline; the
+ * local-vs-UTC choice is preserved deliberately, not revisited here.
+ */
+export function formatIsoDate(date: Date): string {
+	const pad = (v: number): string => v.toString().padStart(2, '0');
+	return `${date.getFullYear().toString()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/**
  * Pick a duration unit (weeks / days / hours / minutes / seconds)
  * appropriate for an axis whose maximum value is `maxSeconds`. The
  * caller divides values by `seconds` to produce small whole numbers

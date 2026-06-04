@@ -22,7 +22,13 @@
 	import type { HeatmapData } from '$lib/api/generated/HeatmapData';
 	import type { HeatmapCell } from '$lib/api/generated/HeatmapCell';
 	import type { AggregateValue } from '$lib/api/generated/AggregateValue';
-	import { formatAggregateValue, formatNumber, pickDurationUnit } from '$lib/views/format';
+	import {
+		formatAggregateValue,
+		formatIsoDate,
+		formatNumber,
+		pickDurationUnit
+	} from '$lib/views/format';
+	import { mountPlot, PLOT_STYLE } from '$lib/views/plot';
 	import { prettifyId } from '$lib/views/prettify';
 	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
 
@@ -71,8 +77,6 @@
 		const host = container;
 		if (host === undefined || data.cells.length === 0 || chartSize.width === 0) return;
 
-		let cancelled = false;
-
 		const valueType: AggregateValue['type'] | undefined = data.cells[0]?.value.type;
 		const maxDurationSeconds =
 			valueType === 'duration'
@@ -95,9 +99,7 @@
 
 		const legendTickFormat = (n: number): string => {
 			if (valueType === 'date') {
-				const date = new Date(n);
-				const pad = (v: number): string => v.toString().padStart(2, '0');
-				return `${date.getFullYear().toString()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+				return formatIsoDate(new Date(n));
 			}
 			return formatNumber(n);
 		};
@@ -105,70 +107,55 @@
 		const legendLabel =
 			durationUnit === null ? colorLegendLabel() : `${colorLegendLabel()} (${durationUnit.label})`;
 
-		const build = async (): Promise<void> => {
-			const Plot = await import('@observablehq/plot');
-			if (cancelled) return;
-
-			const chart = Plot.plot({
-				width: chartSize.width,
-				height: chartSize.height,
-				marginBottom: 80,
-				marginLeft: 100,
-				style: {
-					color: 'var(--color-fg-muted)',
-					fontFamily: 'var(--font-sans)',
-					background: 'transparent',
-					fontSize: '12px'
-				},
-				x: {
-					label: prettifyId(data.x_field),
-					domain: data.x_labels,
-					tickRotate: -25,
-					type: 'band'
-				},
-				y: {
-					label: prettifyId(data.y_field),
-					domain: data.y_labels,
-					type: 'band'
-				},
-				color: {
-					scheme: 'blues',
-					legend: true,
-					label: legendLabel,
-					tickFormat: legendTickFormat
-				},
-				marks: [
-					Plot.cell(data.cells, {
-						x: 'x',
-						y: 'y',
-						fill: valueAsNumber,
-						channels: {
-							formatted: {
-								value: (cell: HeatmapCell): string => formatAggregateValue(cell.value)
+		return mountPlot(
+			host,
+			(Plot) =>
+				Plot.plot({
+					width: chartSize.width,
+					height: chartSize.height,
+					marginBottom: 80,
+					marginLeft: 100,
+					style: PLOT_STYLE,
+					x: {
+						label: prettifyId(data.x_field),
+						domain: data.x_labels,
+						tickRotate: -25,
+						type: 'band'
+					},
+					y: {
+						label: prettifyId(data.y_field),
+						domain: data.y_labels,
+						type: 'band'
+					},
+					color: {
+						scheme: 'blues',
+						legend: true,
+						label: legendLabel,
+						tickFormat: legendTickFormat
+					},
+					marks: [
+						Plot.cell(data.cells, {
+							x: 'x',
+							y: 'y',
+							fill: valueAsNumber,
+							channels: {
+								formatted: {
+									value: (cell: HeatmapCell): string => formatAggregateValue(cell.value)
+								}
+							},
+							tip: {
+								format: {
+									x: true,
+									y: true,
+									fill: false,
+									formatted: true
+								}
 							}
-						},
-						tip: {
-							format: {
-								x: true,
-								y: true,
-								fill: false,
-								formatted: true
-							}
-						}
-					})
-				]
-			});
-			host.replaceChildren(chart);
-		};
-
-		build().catch((error: unknown) => {
-			console.error('Failed to render heatmap view', error);
-		});
-
-		return () => {
-			cancelled = true;
-			host.replaceChildren();
-		};
+						})
+					]
+				}),
+			'heatmap view'
+		);
 	});
 </script>
 

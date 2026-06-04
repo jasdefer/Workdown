@@ -21,7 +21,8 @@
 	import type { LinePoint } from '$lib/api/generated/LinePoint';
 	import type { AxisValue } from '$lib/api/generated/AxisValue';
 	import type { WorkItemId } from '$lib/api/generated/WorkItemId';
-	import { formatDurationSeconds, formatNumber } from '$lib/views/format';
+	import { formatDurationSeconds, formatIsoDate, formatNumber } from '$lib/views/format';
+	import { mountPlot, PLOT_STYLE } from '$lib/views/plot';
 	import { prettifyId } from '$lib/views/prettify';
 	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
 
@@ -55,7 +56,6 @@
 		const host = container;
 		if (host === undefined || data.points.length === 0 || availableWidth === 0) return;
 
-		let cancelled = false;
 		const xType: AxisValue['type'] | undefined = data.points[0]?.x.type;
 		const yType = data.points[0]?.y.type;
 		const isGrouped = data.group_field !== null;
@@ -64,9 +64,7 @@
 		const formatXTick = (n: number): string => {
 			if (xType === 'duration') return formatDurationSeconds(n);
 			if (xType === 'date') {
-				const date = new Date(n);
-				const pad = (v: number): string => v.toString().padStart(2, '0');
-				return `${date.getFullYear().toString()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+				return formatIsoDate(new Date(n));
 			}
 			return formatNumber(n);
 		};
@@ -77,80 +75,64 @@
 		};
 
 		const groupKey = (p: LinePoint): string => p.group ?? '(none)';
+		const colorChannel: ((p: LinePoint) => string) | string = isGrouped
+			? groupKey
+			: 'var(--color-accent)';
 
-		const build = async (): Promise<void> => {
-			const Plot = await import('@observablehq/plot');
-			if (cancelled) return;
-
-			const colorChannel: ((p: LinePoint) => string) | string = isGrouped
-				? groupKey
-				: 'var(--color-accent)';
-
-			const chart = Plot.plot({
-				width: availableWidth,
-				height: CHART_HEIGHT,
-				marginBottom: 90,
-				marginLeft: 80,
-				style: {
-					color: 'var(--color-fg-muted)',
-					fontFamily: 'var(--font-sans)',
-					background: 'transparent',
-					fontSize: '12px'
-				},
-				x: {
-					label: prettifyId(data.x_field),
-					tickFormat: formatXTick,
-					tickRotate: -35,
-					tickSpacing: 80,
-					type: xType === 'date' ? 'time' : 'linear'
-				},
-				y: {
-					label: prettifyId(data.y_field),
-					grid: true,
-					tickFormat: formatYTick,
-					type: 'linear',
-					zero: false
-				},
-				...(isGrouped ? { color: { legend: true, label: groupLabel } } : {}),
-				marks: [
-					Plot.line(data.points, {
-						x: (p: LinePoint) => axisAsNumber(p.x),
-						y: (p: LinePoint) => p.y.value,
-						stroke: colorChannel,
-						strokeWidth: 1.5,
-						...(isGrouped ? { z: groupKey } : {})
-					}),
-					Plot.dot(data.points, {
-						x: (p: LinePoint) => axisAsNumber(p.x),
-						y: (p: LinePoint) => p.y.value,
-						fill: colorChannel,
-						stroke: colorChannel,
-						r: 4,
-						channels: { item: (p: LinePoint): string => titleFor(p.id) },
-						tip: {
-							format: {
-								x: formatXTick,
-								y: formatYTick,
-								item: true,
-								fill: isGrouped,
-								stroke: false,
-								r: false
+		return mountPlot(
+			host,
+			(Plot) =>
+				Plot.plot({
+					width: availableWidth,
+					height: CHART_HEIGHT,
+					marginBottom: 90,
+					marginLeft: 80,
+					style: PLOT_STYLE,
+					x: {
+						label: prettifyId(data.x_field),
+						tickFormat: formatXTick,
+						tickRotate: -35,
+						tickSpacing: 80,
+						type: xType === 'date' ? 'time' : 'linear'
+					},
+					y: {
+						label: prettifyId(data.y_field),
+						grid: true,
+						tickFormat: formatYTick,
+						type: 'linear',
+						zero: false
+					},
+					...(isGrouped ? { color: { legend: true, label: groupLabel } } : {}),
+					marks: [
+						Plot.line(data.points, {
+							x: (p: LinePoint) => axisAsNumber(p.x),
+							y: (p: LinePoint) => p.y.value,
+							stroke: colorChannel,
+							strokeWidth: 1.5,
+							...(isGrouped ? { z: groupKey } : {})
+						}),
+						Plot.dot(data.points, {
+							x: (p: LinePoint) => axisAsNumber(p.x),
+							y: (p: LinePoint) => p.y.value,
+							fill: colorChannel,
+							stroke: colorChannel,
+							r: 4,
+							channels: { item: (p: LinePoint): string => titleFor(p.id) },
+							tip: {
+								format: {
+									x: formatXTick,
+									y: formatYTick,
+									item: true,
+									fill: isGrouped,
+									stroke: false,
+									r: false
+								}
 							}
-						}
-					})
-				]
-			});
-			host.replaceChildren(chart);
-		};
-
-		build().catch((error: unknown) => {
-			console.error('Failed to render line chart view', error);
-		});
-
-		return () => {
-			cancelled = true;
-			host.replaceChildren();
-		};
+						})
+					]
+				}),
+			'line chart view'
+		);
 	});
 </script>
 
