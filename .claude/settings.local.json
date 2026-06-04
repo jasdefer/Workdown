@@ -88,7 +88,12 @@
       "Bash(cat)",
       "Bash(docker cp *)",
       "Bash(npx --prefix ui prettier --check ui/src/lib/views/tree/TreeView.svelte)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "PowerShell(git fetch *)",
+      "PowerShell(gh pr *)",
+      "PowerShell(gh run *)",
+      "PowerShell(git status -sb; \"---DIFF STAT---\"; git diff --stat; \"---UNTRACKED settings---\"; git status --porcelain .claude/settings.local.json)",
+      "PowerShell(git add *)"
     ]
   }
 }

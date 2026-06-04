@@ -28,6 +28,12 @@ jobs:
           cache: 'npm'
           cache-dependency-path: ui/package-lock.json
 
+      # Build the UI bundle before any Rust step: the non-test
+      # `UiAssets` rust-embed derive requires `ui/dist/` to exist at
+      # compile time, so clippy/build/doc would fail without it.
+      - name: Build UI bundle
+        run: cargo xtask build-ui
+
       - name: Check formatting
         run: cargo fmt --check
 
@@ -45,8 +51,10 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
-      - name: Release pipeline (xtask build)
-        run: cargo xtask build
+      # UI bundle is already built above; just exercise the release
+      # compile so we catch `--release`-only breakage.
+      - name: Release build
+        run: cargo build --release --workspace
 
       - name: Install cargo-audit
         uses: taiki-e/install-action@v2
