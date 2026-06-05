@@ -11,6 +11,7 @@ declare global {
 		}
 		interface PageData {
 			views?: ViewSummary[];
+			viewsStatus?: number;
 			layoutDiagnostics?: Diagnostic[];
 		}
 		// interface Locals {}

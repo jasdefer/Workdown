@@ -16,6 +16,7 @@ export const load: LayoutLoad = async () => {
 	const result = await api.getViews();
 	return {
 		views: result.data ?? [],
+		viewsStatus: result.status,
 		layoutDiagnostics: result.diagnostics
 	};
 };
