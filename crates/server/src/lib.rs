@@ -55,7 +55,7 @@ struct UiAssets;
 /// Routes match in this order:
 /// 1. `/api/*` — handled by [`api::router`], state-bound for handlers
 ///    that need to load the project.
-/// 2. Anything else — the SPA fallback ([`asset_handler`]) serves
+/// 2. Anything else — the SPA fallback (`asset_handler`) serves
 ///    embedded UI assets, returning `index.html` for unknown paths so
 ///    the client-side router can resolve them.
 pub fn router(state: AppState) -> Router {

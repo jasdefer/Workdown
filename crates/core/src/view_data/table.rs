@@ -5,7 +5,7 @@
 //! cell; real fields emit their typed [`FieldValue`] when set, `None`
 //! when the item doesn't have that field.
 //!
-//! Each column carries its [`FieldType`] so the UI can render and align
+//! Each column carries its [`FieldType`](crate::model::schema::FieldType) so the UI can render and align
 //! cells correctly even when every cell in a column is `None`. Link and
 //! Links cells reference items by id; an `items` sidecar map resolves
 //! those ids to display titles (via the view's `title:` slot, same

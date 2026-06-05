@@ -37,7 +37,7 @@ pub struct Diagnostic {
     /// Pre-rendered, human-readable line for this finding — the single
     /// source of phrasing shared by the CLI (`validate`) and the web
     /// banner, so neither re-derives messages from the structured fields.
-    /// Rendered once at construction; see [`render_message`].
+    /// Rendered once at construction (see `render_message`).
     pub message: String,
     /// Body of the diagnostic, tagged by scope category.
     #[serde(flatten)]
