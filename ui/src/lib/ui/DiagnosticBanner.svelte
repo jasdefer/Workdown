@@ -14,7 +14,6 @@
 	import type { WorkItemId } from '$lib/api/generated/WorkItemId';
 	import { idsInDiagnostic } from '$lib/diagnostics/idsInDiagnostic';
 	import { idsInView } from '$lib/diagnostics/idsInView';
-	import { formatDiagnostic } from '$lib/diagnostics/formatDiagnostic';
 
 	interface Props {
 		diagnostics: Diagnostic[];
@@ -54,12 +53,11 @@
 				return true;
 			}
 		}
-		// Rule 2: view-config diagnostic for the current view.
+		// Rule 2: view-config diagnostic for the current view. Every
+		// ConfigDiagnostic variant carries `view_id`, so narrowing on
+		// `scope` is enough — no field probing needed.
 		if (diagnostic.scope === 'config' && currentView !== undefined) {
-			const viewId = (diagnostic as Record<string, unknown>).view_id;
-			if (typeof viewId === 'string' && viewId === currentView) {
-				return true;
-			}
+			return diagnostic.view_id === currentView;
 		}
 		return false;
 	}
@@ -168,7 +166,7 @@
 									<span class="icon" aria-hidden="true">
 										{diagnostic.severity === 'error' ? '✕' : '⚠'}
 									</span>
-									<span class="message">{formatDiagnostic(diagnostic)}</span>
+									<span class="message">{diagnostic.message}</span>
 								</li>
 							{/each}
 						</ul>
@@ -201,7 +199,7 @@
 											<span class="icon" aria-hidden="true">
 												{diagnostic.severity === 'error' ? '✕' : '⚠'}
 											</span>
-											<span class="message">{formatDiagnostic(diagnostic)}</span>
+											<span class="message">{diagnostic.message}</span>
 										</li>
 									{/each}
 								</ul>

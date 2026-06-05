@@ -20,7 +20,6 @@
 -->
 <script lang="ts">
 	import { page } from '$app/state';
-	import { formatDiagnostic } from '$lib/diagnostics/formatDiagnostic';
 	import type { Diagnostic } from '$lib/api/generated/Diagnostic';
 
 	const status = $derived(page.status);
@@ -59,7 +58,7 @@
 						<span class="icon" aria-hidden="true">
 							{diagnostic.severity === 'error' ? '✕' : '⚠'}
 						</span>
-						{formatDiagnostic(diagnostic)}
+						{diagnostic.message}
 					</li>
 				{/each}
 			</ul>

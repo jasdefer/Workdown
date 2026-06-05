@@ -27,12 +27,18 @@ use super::WorkItemId;
 
 /// A single validation finding.
 ///
-/// Carries severity plus a scope-tagged [`DiagnosticBody`]. JSON
-/// serializes flat: `{ severity, scope, ...source-data, type, ...variant-fields }`.
+/// Carries severity, a pre-rendered human-readable `message`, and a
+/// scope-tagged [`DiagnosticBody`]. JSON serializes flat:
+/// `{ severity, message, scope, ...source-data, type, ...variant-fields }`.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct Diagnostic {
     /// Whether this finding is a blocking error or an informational warning.
     pub severity: Severity,
+    /// Pre-rendered, human-readable line for this finding — the single
+    /// source of phrasing shared by the CLI (`validate`) and the web
+    /// banner, so neither re-derives messages from the structured fields.
+    /// Rendered once at construction; see [`render_message`].
+    pub message: String,
     /// Body of the diagnostic, tagged by scope category.
     #[serde(flatten)]
     pub body: DiagnosticBody,
@@ -342,12 +348,24 @@ pub enum FieldValueError {
 // ── Constructors ─────────────────────────────────────────────────────
 
 impl Diagnostic {
-    /// Construct a file-scope diagnostic.
-    pub fn file(severity: Severity, source_path: PathBuf, kind: FileDiagnosticKind) -> Self {
+    /// Assemble a diagnostic from severity and body, rendering the
+    /// human-readable `message` once. Every public constructor routes
+    /// through here so `message` is always populated.
+    fn new(severity: Severity, body: DiagnosticBody) -> Self {
+        let message = render_message(&body);
         Self {
             severity,
-            body: DiagnosticBody::File(FileDiagnostic { source_path, kind }),
+            message,
+            body,
         }
+    }
+
+    /// Construct a file-scope diagnostic.
+    pub fn file(severity: Severity, source_path: PathBuf, kind: FileDiagnosticKind) -> Self {
+        Self::new(
+            severity,
+            DiagnosticBody::File(FileDiagnostic { source_path, kind }),
+        )
     }
 
     /// Construct an item-scope diagnostic.
@@ -357,38 +375,38 @@ impl Diagnostic {
         item_id: WorkItemId,
         kind: ItemDiagnosticKind,
     ) -> Self {
-        Self {
+        Self::new(
             severity,
-            body: DiagnosticBody::Item(ItemDiagnostic {
+            DiagnosticBody::Item(ItemDiagnostic {
                 source_path,
                 item_id,
                 kind,
             }),
-        }
+        )
     }
 
     /// Construct a multi-file-scope diagnostic.
     pub fn files(severity: Severity, paths: Vec<PathBuf>, kind: FilesDiagnosticKind) -> Self {
-        Self {
+        Self::new(
             severity,
-            body: DiagnosticBody::Files(FilesDiagnostic { paths, kind }),
-        }
+            DiagnosticBody::Files(FilesDiagnostic { paths, kind }),
+        )
     }
 
     /// Construct a collection-wide diagnostic with no specific source.
     pub fn collection(severity: Severity, kind: CollectionDiagnosticKind) -> Self {
-        Self {
+        Self::new(
             severity,
-            body: DiagnosticBody::Collection(CollectionDiagnostic { kind }),
-        }
+            DiagnosticBody::Collection(CollectionDiagnostic { kind }),
+        )
     }
 
     /// Construct a config-file-scope diagnostic.
     pub fn config(severity: Severity, source_path: PathBuf, kind: ConfigDiagnosticKind) -> Self {
-        Self {
+        Self::new(
             severity,
-            body: DiagnosticBody::Config(ConfigDiagnostic { source_path, kind }),
-        }
+            DiagnosticBody::Config(ConfigDiagnostic { source_path, kind }),
+        )
     }
 }
 
@@ -445,27 +463,44 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
     }
 }
 
-// ── Display ──────────────────────────────────────────────────────────
+// ── Display & message rendering ──────────────────────────────────────
 //
 // Layered: each inner kind enum renders its own variant data only
-// (compact form). The outer `Diagnostic` orchestrates wrapper-level
-// context — for `Item`, prefixes with `item 'X', `; for `File`, the
-// path is shown by the file header in `render_human` so the outer
-// Display also prepends the path when full context is wanted.
+// (compact form). Two body-level renderings sit on top:
 //
-// `format_diagnostic_line` uses the inner kind Display directly for
-// `Item` scope (compact under file headers) and the outer Display for
-// everything else.
+// - `render_full` — self-contained: prefixes `Item` with `item 'X', `
+//   and `File`/`Files` with their path(s). This is the `Display` form,
+//   used where a diagnostic stands alone (e.g. `workdown render`).
+// - `render_message` — the compact line stored on every `Diagnostic`,
+//   shared by the CLI's grouped `validate` output and the web banner.
+//   `Item` scope drops the `item 'X', ` prefix because the surrounding
+//   UI (file header / banner group label) already shows the id; every
+//   other scope is identical to `render_full`.
 
 impl std::fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.body {
-            DiagnosticBody::File(d) => write!(f, "{}: {}", d.source_path.display(), d.kind),
-            DiagnosticBody::Item(d) => write!(f, "item '{}', {}", d.item_id, d.kind),
-            DiagnosticBody::Files(d) => write!(f, "{}: {}", d.kind, format_paths(&d.paths)),
-            DiagnosticBody::Collection(d) => write!(f, "{}", d.kind),
-            DiagnosticBody::Config(d) => write!(f, "{}", d.kind),
-        }
+        f.write_str(&render_full(&self.body))
+    }
+}
+
+/// Self-contained rendering of a body, including item-id / file-path
+/// context. Backs `Display` and the non-`Item` arms of [`render_message`].
+fn render_full(body: &DiagnosticBody) -> String {
+    match body {
+        DiagnosticBody::File(d) => format!("{}: {}", d.source_path.display(), d.kind),
+        DiagnosticBody::Item(d) => format!("item '{}', {}", d.item_id, d.kind),
+        DiagnosticBody::Files(d) => format!("{}: {}", d.kind, format_paths(&d.paths)),
+        DiagnosticBody::Collection(d) => d.kind.to_string(),
+        DiagnosticBody::Config(d) => d.kind.to_string(),
+    }
+}
+
+/// The compact line stored as [`Diagnostic::message`]: `Item` scope shows
+/// its inner kind only; every other scope uses [`render_full`].
+fn render_message(body: &DiagnosticBody) -> String {
+    match body {
+        DiagnosticBody::Item(d) => d.kind.to_string(),
+        other => render_full(other),
     }
 }
 
