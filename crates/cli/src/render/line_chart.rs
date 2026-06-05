@@ -318,6 +318,7 @@ mod tests {
 
     use crate::render::svg_chart::{SECONDS_PER_DAY, SECONDS_PER_HOUR};
     use chrono::NaiveDate;
+    use std::collections::HashMap;
     use workdown_core::model::WorkItemId;
     use workdown_core::view_data::{LineChartData, LinePoint, UnplacedCard};
 
@@ -344,6 +345,7 @@ mod tests {
             y_field: y_field.to_owned(),
             group_field: group_field.map(str::to_owned),
             points,
+            items: HashMap::new(),
             unplaced,
         }
     }
