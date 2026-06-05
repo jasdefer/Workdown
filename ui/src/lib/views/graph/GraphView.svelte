@@ -37,6 +37,8 @@
 	import type { TreeNode } from '$lib/api/generated/TreeNode';
 	import { prettifyId } from '$lib/views/prettify';
 	import { themeStore, type Theme } from '$lib/stores/theme.svelte';
+	import EmptyHint from '$lib/views/EmptyHint.svelte';
+	import RowCount from '$lib/views/RowCount.svelte';
 	import Card from '$lib/views/board/Card.svelte';
 
 	interface Props {
@@ -50,7 +52,6 @@
 	let hovered = $state<{ card: CardData; x: number; y: number } | null>(null);
 
 	const nodeCount = $derived(data.nodes.length);
-	const itemCountLabel = $derived(nodeCount === 1 ? '1 item' : `${nodeCount.toString()} items`);
 	const cardById = $derived(new Map(data.nodes.map((card): [string, CardData] => [card.id, card])));
 
 	function nodeLabel(card: CardData): string {
@@ -226,7 +227,7 @@
 </script>
 
 {#if nodeCount === 0}
-	<p class="empty-hint">No items to display.</p>
+	<EmptyHint />
 {:else}
 	<div class="graph-wrap">
 		<div class="graph" bind:this={container} role="region" aria-label="Graph view"></div>
@@ -236,8 +237,9 @@
 			</div>
 		{/if}
 	</div>
-	<p class="row-count">{itemCountLabel}</p>
 {/if}
+
+<RowCount count={nodeCount} />
 
 <style>
 	.graph-wrap {
@@ -266,17 +268,5 @@
 		max-width: 22rem;
 		pointer-events: none;
 		z-index: 5;
-	}
-
-	.empty-hint {
-		color: var(--color-fg-muted);
-		font-size: var(--text-sm);
-		margin: 0 0 var(--space-3);
-	}
-
-	.row-count {
-		margin: var(--space-2) 0 0;
-		font-size: var(--text-sm);
-		color: var(--color-fg-muted);
 	}
 </style>

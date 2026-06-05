@@ -24,6 +24,8 @@
 	import { formatDurationSeconds, formatIsoDate, formatNumber } from '$lib/views/format';
 	import { mountPlot, PLOT_STYLE } from '$lib/views/plot';
 	import { prettifyId } from '$lib/views/prettify';
+	import EmptyHint from '$lib/views/EmptyHint.svelte';
+	import RowCount from '$lib/views/RowCount.svelte';
 	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
 
 	interface Props {
@@ -41,7 +43,6 @@
 	const CHART_HEIGHT = 400;
 
 	const pointCount = $derived(data.points.length);
-	const itemCountLabel = $derived(pointCount === 1 ? '1 point' : `${pointCount.toString()} points`);
 
 	function axisAsNumber(value: AxisValue): number {
 		if (value.type === 'date') return new Date(value.value).getTime();
@@ -137,7 +138,7 @@
 </script>
 
 {#if data.points.length === 0}
-	<p class="empty-hint">No items to display.</p>
+	<EmptyHint />
 {:else}
 	<div
 		class="chart"
@@ -146,8 +147,9 @@
 		role="region"
 		aria-label="Line chart view"
 	></div>
-	<p class="row-count">{itemCountLabel}</p>
 {/if}
+
+<RowCount count={pointCount} noun="point" />
 
 <UnplacedFooter unplaced={data.unplaced} />
 
@@ -161,17 +163,5 @@
 	.chart :global(svg) {
 		display: block;
 		overflow: visible;
-	}
-
-	.empty-hint {
-		color: var(--color-fg-muted);
-		font-size: var(--text-sm);
-		margin: 0 0 var(--space-3);
-	}
-
-	.row-count {
-		margin: var(--space-2) 0 0;
-		font-size: var(--text-sm);
-		color: var(--color-fg-muted);
 	}
 </style>

@@ -29,6 +29,8 @@
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { prettifyId } from '$lib/views/prettify';
 	import ColumnResizeHandle from '$lib/views/ColumnResizeHandle.svelte';
+	import EmptyHint from '$lib/views/EmptyHint.svelte';
+	import RowCount from '$lib/views/RowCount.svelte';
 	import TreeNodeRow from './TreeNode.svelte';
 
 	interface Props {
@@ -57,7 +59,6 @@
 	}
 
 	const totalNodes = $derived(nodeCount(data.roots));
-	const itemCountLabel = $derived(totalNodes === 1 ? '1 item' : `${totalNodes.toString()} items`);
 
 	function trackWidth(index: number, fallback: string): string {
 		const set = columnWidths.get(index);
@@ -73,7 +74,7 @@
 </script>
 
 {#if totalNodes === 0}
-	<p class="empty-hint">No items to display.</p>
+	<EmptyHint />
 {/if}
 
 <div class="scroll-container" class:empty={totalNodes === 0} role="region" aria-label="Tree view">
@@ -101,9 +102,7 @@
 	</div>
 </div>
 
-{#if totalNodes > 0}
-	<p class="row-count">{itemCountLabel}</p>
-{/if}
+<RowCount count={totalNodes} />
 
 <style>
 	.scroll-container {
@@ -178,17 +177,5 @@
 
 	:global(.tree .row.header .cell.title) {
 		z-index: 3;
-	}
-
-	.empty-hint {
-		color: var(--color-fg-muted);
-		font-size: var(--text-sm);
-		margin: 0 0 var(--space-3);
-	}
-
-	.row-count {
-		margin: var(--space-2) 0 0;
-		font-size: var(--text-sm);
-		color: var(--color-fg-muted);
 	}
 </style>

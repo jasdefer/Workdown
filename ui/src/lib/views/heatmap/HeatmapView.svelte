@@ -30,6 +30,8 @@
 	} from '$lib/views/format';
 	import { mountPlot, PLOT_STYLE } from '$lib/views/plot';
 	import { prettifyId } from '$lib/views/prettify';
+	import EmptyHint from '$lib/views/EmptyHint.svelte';
+	import RowCount from '$lib/views/RowCount.svelte';
 	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
 
 	interface Props {
@@ -63,7 +65,6 @@
 	});
 
 	const cellCount = $derived(data.cells.length);
-	const itemCountLabel = $derived(cellCount === 1 ? '1 cell' : `${cellCount.toString()} cells`);
 
 	function colorLegendLabel(): string {
 		if (data.aggregate === 'count') return 'count';
@@ -160,7 +161,7 @@
 </script>
 
 {#if data.cells.length === 0}
-	<p class="empty-hint">No items to display.</p>
+	<EmptyHint />
 {:else}
 	<div
 		class="chart"
@@ -169,8 +170,9 @@
 		role="region"
 		aria-label="Heatmap view"
 	></div>
-	<p class="row-count">{itemCountLabel}</p>
 {/if}
+
+<RowCount count={cellCount} noun="cell" />
 
 <UnplacedFooter unplaced={data.unplaced} />
 
@@ -186,17 +188,5 @@
 	.chart :global(svg) {
 		display: block;
 		overflow: visible;
-	}
-
-	.empty-hint {
-		color: var(--color-fg-muted);
-		font-size: var(--text-sm);
-		margin: 0 0 var(--space-3);
-	}
-
-	.row-count {
-		margin: var(--space-2) 0 0;
-		font-size: var(--text-sm);
-		color: var(--color-fg-muted);
 	}
 </style>

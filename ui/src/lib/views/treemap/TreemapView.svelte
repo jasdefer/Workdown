@@ -33,6 +33,8 @@
 	import type { Card as CardData } from '$lib/api/generated/Card';
 	import { formatDurationSeconds, formatNumber } from '$lib/views/format';
 	import { prettifyId } from '$lib/views/prettify';
+	import EmptyHint from '$lib/views/EmptyHint.svelte';
+	import RowCount from '$lib/views/RowCount.svelte';
 	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
 	import TreemapItemTooltip from './TreemapItemTooltip.svelte';
 
@@ -168,7 +170,6 @@
 	});
 
 	const leafCount = $derived(laidNodes.filter((laid) => laid.isLeaf).length);
-	const itemCountLabel = $derived(leafCount === 1 ? '1 item' : `${leafCount.toString()} items`);
 
 	function onMove(event: MouseEvent, laid: LaidNode): void {
 		if (!laid.isLeaf || laid.node.card === null) return;
@@ -193,7 +194,7 @@
 </script>
 
 {#if data.root.children.length === 0}
-	<p class="empty-hint">No items to display.</p>
+	<EmptyHint />
 {:else}
 	<div
 		class="treemap-wrap"
@@ -268,8 +269,9 @@
 			</div>
 		{/if}
 	</div>
-	<p class="row-count">{itemCountLabel}</p>
 {/if}
+
+<RowCount count={leafCount} />
 
 <UnplacedFooter unplaced={data.unplaced} />
 
@@ -329,17 +331,5 @@
 		background-color: var(--color-bg);
 		border-radius: var(--radius-md);
 		box-shadow: var(--shadow-sm);
-	}
-
-	.empty-hint {
-		color: var(--color-fg-muted);
-		font-size: var(--text-sm);
-		margin: 0 0 var(--space-3);
-	}
-
-	.row-count {
-		margin: var(--space-2) 0 0;
-		font-size: var(--text-sm);
-		color: var(--color-fg-muted);
 	}
 </style>

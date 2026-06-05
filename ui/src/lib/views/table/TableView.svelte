@@ -30,6 +30,8 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { prettifyId } from '$lib/views/prettify';
 	import ColumnResizeHandle from '$lib/views/ColumnResizeHandle.svelte';
+	import EmptyHint from '$lib/views/EmptyHint.svelte';
+	import RowCount from '$lib/views/RowCount.svelte';
 	import Cell from './Cell.svelte';
 
 	interface Props {
@@ -166,14 +168,10 @@
 			return compareNonNull(valueA, valueB, sortColumn.field_type) * direction;
 		});
 	});
-
-	const rowCountLabel = $derived(
-		data.rows.length === 1 ? '1 item' : `${data.rows.length.toString()} items`
-	);
 </script>
 
 {#if data.rows.length === 0}
-	<p class="empty-hint">No items to display.</p>
+	<EmptyHint />
 {/if}
 
 <div class="scroll-container" role="region" aria-label="Table view">
@@ -217,23 +215,9 @@
 	</table>
 </div>
 
-{#if data.rows.length > 0}
-	<p class="row-count">{rowCountLabel}</p>
-{/if}
+<RowCount count={data.rows.length} />
 
 <style>
-	.empty-hint {
-		color: var(--color-fg-muted);
-		font-size: var(--text-sm);
-		margin: 0 0 var(--space-3);
-	}
-
-	.row-count {
-		margin: var(--space-2) 0 0;
-		font-size: var(--text-sm);
-		color: var(--color-fg-muted);
-	}
-
 	.scroll-container {
 		overflow-x: auto;
 		flex: 1;

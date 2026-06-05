@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatIsoDate } from './format';
+import { formatIsoDate, pluralize } from './format';
 
 describe('formatIsoDate', () => {
 	it('formats a date as YYYY-MM-DD', () => {
@@ -13,5 +13,21 @@ describe('formatIsoDate', () => {
 
 	it('handles December (month index 11)', () => {
 		expect(formatIsoDate(new Date(2025, 11, 31))).toBe('2025-12-31');
+	});
+});
+
+describe('pluralize', () => {
+	it('uses the singular noun for a count of one', () => {
+		expect(pluralize(1, 'item')).toBe('1 item');
+	});
+
+	it('adds "s" for counts other than one', () => {
+		expect(pluralize(0, 'item')).toBe('0 items');
+		expect(pluralize(5, 'bar')).toBe('5 bars');
+		expect(pluralize(7, 'working day')).toBe('7 working days');
+	});
+
+	it('uses an explicit plural when given', () => {
+		expect(pluralize(2, 'entry', 'entries')).toBe('2 entries');
 	});
 });

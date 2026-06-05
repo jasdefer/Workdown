@@ -92,3 +92,13 @@ export function pickDurationUnit(maxSeconds: number): { seconds: number; label: 
 	if (abs >= 60) return { seconds: 60, label: 'minutes' };
 	return { seconds: 1, label: 'seconds' };
 }
+
+/**
+ * Format a count with its noun, pluralizing for counts other than one:
+ * `pluralize(1, 'item')` → "1 item", `pluralize(5, 'bar')` → "5 bars".
+ * The naive "+s" rule covers every view-chrome noun (item, bar, cell,
+ * point, working day); pass an explicit `plural` for an irregular noun.
+ */
+export function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+	return `${count.toString()} ${count === 1 ? singular : plural}`;
+}

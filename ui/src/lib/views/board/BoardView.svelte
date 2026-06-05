@@ -8,6 +8,7 @@
 -->
 <script lang="ts">
 	import type { BoardData } from '$lib/api/generated/BoardData';
+	import EmptyHint from '$lib/views/EmptyHint.svelte';
 	import Column from './Column.svelte';
 
 	interface Props {
@@ -24,7 +25,7 @@
 </script>
 
 {#if totalCards === 0}
-	<p class="empty-hint">No items to display.</p>
+	<EmptyHint />
 {/if}
 
 <div class="board" role="region" aria-label="Board view">
@@ -41,11 +42,5 @@
 		flex: 1;
 		min-height: 0;
 		padding-bottom: var(--space-2);
-	}
-
-	.empty-hint {
-		color: var(--color-fg-muted);
-		font-size: var(--text-sm);
-		margin: 0 0 var(--space-3);
 	}
 </style>

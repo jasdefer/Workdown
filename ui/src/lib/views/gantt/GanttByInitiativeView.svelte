@@ -11,6 +11,8 @@
 	import { prettifyId } from '$lib/views/prettify';
 	import GanttChart, { type GanttSection } from './GanttChart.svelte';
 	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
+	import EmptyHint from '$lib/views/EmptyHint.svelte';
+	import RowCount from '$lib/views/RowCount.svelte';
 
 	interface Props {
 		data: GanttByInitiativeData;
@@ -28,15 +30,11 @@
 			bars: initiative.bars
 		}))
 	);
-
-	const countLabel = $derived(
-		totalBars === 1 ? 'Showing 1 item' : `Showing ${totalBars.toString()} items`
-	);
 </script>
 
 {#if totalBars === 0}
 	{#if data.unplaced.length === 0}
-		<p class="empty-hint">No items to display.</p>
+		<EmptyHint />
 	{/if}
 {:else}
 	<GanttChart {sections} />
@@ -44,20 +42,4 @@
 
 <UnplacedFooter unplaced={data.unplaced} />
 
-{#if totalBars > 0}
-	<p class="row-count">{countLabel}</p>
-{/if}
-
-<style>
-	.empty-hint {
-		color: var(--color-fg-muted);
-		font-size: var(--text-sm);
-		margin: 0 0 var(--space-3);
-	}
-
-	.row-count {
-		margin: var(--space-2) 0 0;
-		font-size: var(--text-sm);
-		color: var(--color-fg-muted);
-	}
-</style>
+<RowCount count={totalBars} />

@@ -10,7 +10,8 @@
 -->
 <script lang="ts">
 	import type { MetricData } from '$lib/api/generated/MetricData';
-	import { formatAggregateValue } from '$lib/views/format';
+	import { formatAggregateValue, pluralize } from '$lib/views/format';
+	import EmptyHint from '$lib/views/EmptyHint.svelte';
 
 	interface Props {
 		data: MetricData;
@@ -20,7 +21,7 @@
 </script>
 
 {#if data.rows.length === 0}
-	<p class="empty-hint">No metrics to display.</p>
+	<EmptyHint message="No metrics to display." />
 {:else}
 	<div class="metric-grid" role="region" aria-label="Metric view">
 		{#each data.rows as row, index (index)}
@@ -29,8 +30,7 @@
 				<span class="label">{row.label}</span>
 				{#if row.unplaced.length > 0}
 					<span class="dropped">
-						{row.unplaced.length}
-						{row.unplaced.length === 1 ? 'item' : 'items'} dropped
+						{pluralize(row.unplaced.length, 'item')} dropped
 					</span>
 				{/if}
 			</article>
@@ -80,11 +80,5 @@
 		font-size: var(--text-sm);
 		color: var(--color-fg-muted);
 		margin-top: var(--space-2);
-	}
-
-	.empty-hint {
-		color: var(--color-fg-muted);
-		font-size: var(--text-sm);
-		margin: 0 0 var(--space-3);
 	}
 </style>

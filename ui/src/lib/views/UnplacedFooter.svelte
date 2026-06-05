@@ -13,6 +13,7 @@
 	import type { UnplacedCard } from '$lib/api/generated/UnplacedCard';
 	import type { UnplacedReason } from '$lib/api/generated/UnplacedReason';
 	import { prettifyId } from '$lib/views/prettify';
+	import { pluralize } from '$lib/views/format';
 
 	interface Props {
 		unplaced: UnplacedCard[];
@@ -67,9 +68,7 @@
 		return order.map((label) => ({ label, names: byLabel.get(label) ?? [] }));
 	});
 
-	const headingLabel = $derived(
-		unplaced.length === 1 ? '1 item dropped:' : `${unplaced.length.toString()} items dropped:`
-	);
+	const headingLabel = $derived(`${pluralize(unplaced.length, 'item')} dropped:`);
 </script>
 
 {#if unplaced.length > 0}
