@@ -93,7 +93,8 @@
       "PowerShell(gh pr *)",
       "PowerShell(gh run *)",
       "PowerShell(git status -sb; \"---DIFF STAT---\"; git diff --stat; \"---UNTRACKED settings---\"; git status --porcelain .claude/settings.local.json)",
-      "PowerShell(git add *)"
+      "PowerShell(git add *)",
+      "PowerShell(git *)"
     ]
   }
 }
