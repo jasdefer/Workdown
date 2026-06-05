@@ -80,13 +80,6 @@
 		margin-bottom: 0;
 	}
 
-	.placeholder code {
-		font-family: var(--font-mono);
-		background-color: var(--color-surface);
-		padding: 0.1em 0.3em;
-		border-radius: var(--radius-md);
-	}
-
 	.hint {
 		font-size: var(--text-sm);
 	}

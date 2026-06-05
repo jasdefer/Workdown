@@ -26,11 +26,4 @@
 	.empty p {
 		color: var(--color-fg-muted);
 	}
-
-	.empty code {
-		font-family: var(--font-mono);
-		background-color: var(--color-surface);
-		padding: 0.1em 0.3em;
-		border-radius: var(--radius-md);
-	}
 </style>

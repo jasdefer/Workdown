@@ -41,7 +41,7 @@
 			<ul>
 				{#each views as view (view.id)}
 					<li>
-						<a href="/views/{view.id}">{view.title ?? view.id}</a>
+						<a href="/views/{encodeURIComponent(view.id)}">{view.title ?? view.id}</a>
 						<span class="view-kind">{view.kind}</span>
 					</li>
 				{/each}
@@ -133,12 +133,5 @@
 	.refresh-hint {
 		color: var(--color-fg-muted);
 		font-size: var(--text-sm);
-	}
-
-	.refresh-hint code {
-		font-family: var(--font-mono);
-		background-color: var(--color-surface);
-		padding: 0.1em 0.3em;
-		border-radius: var(--radius-md);
 	}
 </style>
