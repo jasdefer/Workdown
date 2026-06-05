@@ -15,7 +15,7 @@ use serde::Serialize;
 
 use crate::model::field_value::format_field_value;
 use crate::model::schema::{FieldType, Schema};
-use crate::model::views::View;
+use crate::model::views::{Bucket, View};
 use crate::model::{FieldValue, WorkItem, WorkItemId};
 
 // ── Column (shared by table and tree) ───────────────────────────────
@@ -78,6 +78,18 @@ pub struct Card {
 pub struct CardField {
     pub name: String,
     pub value: FieldValue,
+}
+
+/// A lightweight resolved reference to a work item — just its display
+/// title, keyed by id in a view's `items` sidecar map. Link/Links cells
+/// (table) and point ids (line chart) resolve through it so renderers can
+/// show a linked item by name rather than raw id.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+pub struct ItemRef {
+    /// Resolved via the view's `title:` slot. `None` when the view has
+    /// no title slot configured or the linked item lacks that field —
+    /// the UI falls back to `prettifyId(id)` in that case.
+    pub title: Option<String>,
 }
 
 /// Build a Card from a work item, resolving the view's title slot.
@@ -167,6 +179,12 @@ pub enum UnplacedReason {
     },
 }
 
+/// Sort unplaced cards by work-item id ascending — the stable order every
+/// view presents its "couldn't place these" list in.
+pub(super) fn sort_unplaced(unplaced: &mut [UnplacedCard]) {
+    unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
+}
+
 // ── Aggregate / axis values ─────────────────────────────────────────
 
 /// Result of an aggregate (sum/avg/min/max) on a numeric, date, or
@@ -247,6 +265,18 @@ impl Add for SizeValue {
     }
 }
 
+/// The zero [`SizeValue`] for a size field — `Duration(0)` for a duration
+/// field, `Number(0.0)` otherwise — so a treemap frame can start an empty
+/// accumulator in the field's own variant. `views_check` guarantees the
+/// field resolves to an allowed numeric type; an unexpected type falls
+/// back to `Number(0)` defensively.
+pub(super) fn zero_for_size_field(field: &str, schema: &Schema) -> SizeValue {
+    match schema.fields.get(field).map(|config| config.field_type()) {
+        Some(FieldType::Duration) => SizeValue::Duration(0),
+        _ => SizeValue::Number(0.0),
+    }
+}
+
 // ── FieldValue conversions ──────────────────────────────────────────
 
 /// Extract a [`NaiveDate`] from a field value, if it is one.
@@ -288,5 +318,32 @@ pub(super) fn as_axis(value: Option<&FieldValue>) -> Option<AxisValue> {
         Some(FieldValue::Duration(seconds)) => Some(AxisValue::Duration(*seconds)),
         Some(FieldValue::Date(date)) => Some(AxisValue::Date(*date)),
         _ => None,
+    }
+}
+
+// ── Grouping / axis keys ────────────────────────────────────────────
+
+/// Stringify a field's value into the group keys (bar chart) or axis
+/// labels (heatmap) it contributes. Multichoice/list/links spread across
+/// multiple keys; a `Date` formats via `bucket` (day = `YYYY-MM-DD`, week
+/// = ISO `YYYY-Www`, month = `YYYY-MM`); everything else stringifies via
+/// [`format_field_value`]. `bucket` is `None` for views without date
+/// bucketing (bar chart), where a date takes the day format — identical
+/// to `format_field_value`'s date output, so the behaviour is unchanged.
+pub(super) fn group_keys(item: &WorkItem, field: &str, bucket: Option<Bucket>) -> Vec<String> {
+    match item.fields.get(field) {
+        None => Vec::new(),
+        Some(FieldValue::Multichoice(values)) => values.clone(),
+        Some(FieldValue::List(values)) => values.clone(),
+        Some(FieldValue::Links(ids)) => ids.iter().map(|id| id.as_str().to_owned()).collect(),
+        Some(FieldValue::Date(date)) => {
+            let formatted = match bucket {
+                Some(Bucket::Week) => date.format("%G-W%V").to_string(),
+                Some(Bucket::Month) => date.format("%Y-%m").to_string(),
+                Some(Bucket::Day) | None => date.format("%Y-%m-%d").to_string(),
+            };
+            vec![formatted]
+        }
+        Some(other) => vec![format_field_value(other)],
     }
 }

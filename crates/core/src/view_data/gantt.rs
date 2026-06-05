@@ -47,7 +47,9 @@ use crate::model::WorkItem;
 use crate::store::Store;
 use crate::walker::targets_of;
 
-use super::common::{as_date, as_duration_seconds, build_card, Card, UnplacedCard, UnplacedReason};
+use super::common::{
+    as_date, as_duration_seconds, build_card, sort_unplaced, Card, UnplacedCard, UnplacedReason,
+};
 use super::filter::filtered_items;
 
 /// Seconds per day for ceil-to-days conversion.
@@ -158,7 +160,7 @@ pub(super) fn resolve_bars(
         ),
     };
 
-    unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
+    sort_unplaced(&mut unplaced);
     (bars, unplaced)
 }
 

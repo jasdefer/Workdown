@@ -14,9 +14,32 @@
 use chrono::{Datelike, NaiveDate};
 
 use crate::model::views::Aggregate;
-use crate::model::FieldValue;
+use crate::model::{FieldValue, WorkItem};
 
 use super::common::AggregateValue;
+
+/// Aggregate a bucket of items (a bar's group, a heatmap cell) into one
+/// value. `Count` returns the item count; every other aggregate collects
+/// each item's `value_field` (when the view configures one) and reduces
+/// via [`compute_aggregate`]. Returns `None` when avg/min/max sees no
+/// valid values — the caller drops that bar/cell.
+pub(super) fn aggregate_bucket(
+    items: &[&WorkItem],
+    value_field: Option<&str>,
+    aggregate: Aggregate,
+) -> Option<AggregateValue> {
+    if aggregate == Aggregate::Count {
+        return Some(AggregateValue::Number(items.len() as f64));
+    }
+    let field_values: Vec<&FieldValue> = match value_field {
+        Some(field) => items
+            .iter()
+            .filter_map(|item| item.fields.get(field))
+            .collect(),
+        None => Vec::new(),
+    };
+    compute_aggregate(&field_values, aggregate)
+}
 
 pub(super) fn compute_aggregate(
     values: &[&FieldValue],

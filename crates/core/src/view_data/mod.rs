@@ -47,8 +47,8 @@ use crate::store::Store;
 pub use bar_chart::{BarChartBar, BarChartData};
 pub use board::{BoardColumn, BoardData};
 pub use common::{
-    build_card, resolve_title, AggregateValue, AxisValue, Card, CardField, Column, SizeValue,
-    UnplacedCard, UnplacedReason,
+    build_card, resolve_title, AggregateValue, AxisValue, Card, CardField, Column, ItemRef,
+    SizeValue, UnplacedCard, UnplacedReason,
 };
 pub use gantt::{GanttBar, GanttData};
 pub use gantt_by_depth::{GanttByDepthData, Level};
@@ -57,7 +57,7 @@ pub use graph::{Edge, GraphData};
 pub use heatmap::{HeatmapCell, HeatmapData};
 pub use line_chart::{LineChartData, LinePoint};
 pub use metric::{MetricData, MetricRowData};
-pub use table::{ItemRef, TableData, TableRow};
+pub use table::{TableData, TableRow};
 pub use tree::{TreeData, TreeNode};
 pub use treemap::{TreemapData, TreemapNode};
 pub use workload::{WorkloadBucket, WorkloadData, WorkloadUnit};

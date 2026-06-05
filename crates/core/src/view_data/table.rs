@@ -22,7 +22,7 @@ use crate::model::views::{View, ViewKind};
 use crate::model::{FieldValue, WorkItemId};
 use crate::store::Store;
 
-use super::common::{build_column, column_cell, resolve_title, Column};
+use super::common::{build_column, column_cell, resolve_title, Column, ItemRef};
 use super::filter::filtered_items;
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
@@ -38,14 +38,6 @@ pub struct TableData {
 pub struct TableRow {
     pub id: WorkItemId,
     pub cells: Vec<Option<FieldValue>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
-pub struct ItemRef {
-    /// Resolved via the view's `title:` slot. `None` when the view has
-    /// no title slot configured or the linked item lacks that field —
-    /// the UI falls back to `prettifyId(id)` in that case.
-    pub title: Option<String>,
 }
 
 pub fn extract_table(view: &View, store: &Store, schema: &Schema) -> TableData {

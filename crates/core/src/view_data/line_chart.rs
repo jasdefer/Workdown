@@ -23,10 +23,10 @@ use crate::model::WorkItemId;
 use crate::store::Store;
 
 use super::common::{
-    as_axis, as_size, build_card, resolve_title, AxisValue, SizeValue, UnplacedCard, UnplacedReason,
+    as_axis, as_size, build_card, resolve_title, sort_unplaced, AxisValue, ItemRef, SizeValue,
+    UnplacedCard, UnplacedReason,
 };
 use super::filter::filtered_items;
-use super::table::ItemRef;
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct LineChartData {
@@ -102,7 +102,7 @@ pub fn extract_line_chart(view: &View, store: &Store, schema: &Schema) -> LineCh
     points.sort_by(|left, right| {
         compare_axis(&left.x, &right.x).then_with(|| left.id.as_str().cmp(right.id.as_str()))
     });
-    unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
+    sort_unplaced(&mut unplaced);
 
     LineChartData {
         x_field: x.clone(),

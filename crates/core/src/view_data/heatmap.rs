@@ -16,14 +16,15 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
-use crate::model::field_value::format_field_value;
 use crate::model::schema::Schema;
 use crate::model::views::{Aggregate, Bucket, View, ViewKind};
-use crate::model::{FieldValue, WorkItem};
+use crate::model::WorkItem;
 use crate::store::Store;
 
-use super::aggregate::compute_aggregate;
-use super::common::{build_card, AggregateValue, UnplacedCard, UnplacedReason};
+use super::aggregate::aggregate_bucket;
+use super::common::{
+    build_card, group_keys, sort_unplaced, AggregateValue, UnplacedCard, UnplacedReason,
+};
 use super::filter::filtered_items;
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
@@ -65,8 +66,8 @@ pub fn extract_heatmap(view: &View, store: &Store, schema: &Schema) -> HeatmapDa
     let mut unplaced: Vec<UnplacedCard> = Vec::new();
 
     for item in &items {
-        let x_axis = axis_labels_for(item, x, *bucket);
-        let y_axis = axis_labels_for(item, y, *bucket);
+        let x_axis = group_keys(item, x, *bucket);
+        let y_axis = group_keys(item, y, *bucket);
 
         if x_axis.is_empty() {
             unplaced.push(UnplacedCard {
@@ -115,20 +116,7 @@ pub fn extract_heatmap(view: &View, store: &Store, schema: &Schema) -> HeatmapDa
 
     let mut cells: Vec<HeatmapCell> = Vec::new();
     for ((x_label, y_label), items_in_cell) in cell_items {
-        let result = match aggregate {
-            Aggregate::Count => Some(AggregateValue::Number(items_in_cell.len() as f64)),
-            _ => {
-                let field_values: Vec<&FieldValue> = match value.as_ref() {
-                    Some(value_field) => items_in_cell
-                        .iter()
-                        .filter_map(|item| item.fields.get(value_field))
-                        .collect(),
-                    None => Vec::new(),
-                };
-                compute_aggregate(&field_values, *aggregate)
-            }
-        };
-        if let Some(result) = result {
+        if let Some(result) = aggregate_bucket(&items_in_cell, value.as_deref(), *aggregate) {
             cells.push(HeatmapCell {
                 x: x_label,
                 y: y_label,
@@ -137,7 +125,7 @@ pub fn extract_heatmap(view: &View, store: &Store, schema: &Schema) -> HeatmapDa
         }
     }
 
-    unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
+    sort_unplaced(&mut unplaced);
 
     HeatmapData {
         x_field: x.clone(),
@@ -152,24 +140,6 @@ pub fn extract_heatmap(view: &View, store: &Store, schema: &Schema) -> HeatmapDa
     }
 }
 
-fn axis_labels_for(item: &WorkItem, field: &str, bucket: Option<Bucket>) -> Vec<String> {
-    match item.fields.get(field) {
-        None => Vec::new(),
-        Some(FieldValue::Multichoice(values)) => values.clone(),
-        Some(FieldValue::List(values)) => values.clone(),
-        Some(FieldValue::Links(ids)) => ids.iter().map(|id| id.as_str().to_owned()).collect(),
-        Some(FieldValue::Date(date)) => {
-            let formatted = match bucket {
-                Some(Bucket::Week) => date.format("%G-W%V").to_string(),
-                Some(Bucket::Month) => date.format("%Y-%m").to_string(),
-                Some(Bucket::Day) | None => date.format("%Y-%m-%d").to_string(),
-            };
-            vec![formatted]
-        }
-        Some(other) => vec![format_field_value(other)],
-    }
-}
-
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -179,6 +149,7 @@ mod tests {
 
     use crate::model::schema::FieldTypeConfig;
     use crate::model::views::{View, ViewKind};
+    use crate::model::FieldValue;
     use crate::view_data::test_support::{make_item, make_schema, make_store};
 
     fn heatmap_view(
