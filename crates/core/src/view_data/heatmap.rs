@@ -2,7 +2,8 @@
 //!
 //! Builds a grid of cells keyed by stringified `x`/`y` values. Axis fields
 //! accept any type: choice/string/link/boolean/integer/float stringify via
-//! [`format_field_value`]; multichoice/list/links contribute one label
+//! [`format_field_value`](crate::model::field_value::format_field_value);
+//! multichoice/list/links contribute one label
 //! per element (so an item lands in multiple cells); date axes format via
 //! the `bucket` slot (day = `YYYY-MM-DD`, week = ISO `YYYY-Www`, month =
 //! `YYYY-MM`). All ISO date formats are zero-padded so lex sort matches

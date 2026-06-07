@@ -49,13 +49,13 @@ pub(crate) struct RawRule {
 
 /// Rule severity level.
 ///
-/// First type exported via `ts-rs` to TypeScript — see
-/// `crates/core/examples/gen_types.rs`. The `export_to` path resolves
-/// relative to this crate's manifest dir; the generator dumps it (and
-/// future wire-level types) under `ui/src/lib/api/generated/`.
+/// Exported to TypeScript via `cargo xtask gen-types` like every other
+/// wire-level type — see `crates/core/examples/gen_types.rs`. No
+/// `#[ts(export)]` here: that attribute makes `cargo test` write the
+/// binding too, and ts-rs resolves its `export_to` relative to the
+/// default bindings dir, which landed the file in a stray `crates/ui/`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
-#[ts(export, export_to = "../../ui/src/lib/api/generated/")]
 pub enum Severity {
     #[default]
     Error,
