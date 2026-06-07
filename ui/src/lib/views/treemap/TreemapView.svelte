@@ -31,8 +31,8 @@
 	import type { TreemapNode } from '$lib/api/generated/TreemapNode';
 	import type { SizeValue } from '$lib/api/generated/SizeValue';
 	import type { Card as CardData } from '$lib/api/generated/Card';
-	import { formatDurationSeconds, formatNumber } from '$lib/views/format';
-	import { prettifyId } from '$lib/views/prettify';
+	import { formatScalar } from '$lib/views/format';
+	import { cardLabel, prettifyId } from '$lib/views/prettify';
 	import EmptyHint from '$lib/views/EmptyHint.svelte';
 	import RowCount from '$lib/views/RowCount.svelte';
 	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
@@ -81,13 +81,11 @@
 	}
 
 	function formatSize(value: SizeValue): string {
-		if (value.type === 'duration') return formatDurationSeconds(value.value);
-		return formatNumber(value.value);
+		return formatScalar(value.value, value.type === 'duration');
 	}
 
 	function nodeLabel(node: TreemapNode): string {
-		if (node.card === null) return '';
-		return node.card.title ?? prettifyId(node.card.id);
+		return node.card === null ? '' : cardLabel(node.card);
 	}
 
 	function frameStrokeWidth(depth: number): number {

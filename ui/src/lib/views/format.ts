@@ -94,6 +94,17 @@ export function pickDurationUnit(maxSeconds: number): { seconds: number; label: 
 }
 
 /**
+ * Format a scalar magnitude that is either a duration (canonical
+ * seconds, rendered as suffix shorthand like `2d 13h`) or a plain
+ * number. The duration-vs-number branch shared by workload totals and
+ * treemap sizes — the untagged-value counterpart of
+ * [`formatAggregateValue`].
+ */
+export function formatScalar(value: number, isDuration: boolean): string {
+	return isDuration ? formatDurationSeconds(value) : formatNumber(value);
+}
+
+/**
  * Format a count with its noun, pluralizing for counts other than one:
  * `pluralize(1, 'item')` → "1 item", `pluralize(5, 'bar')` → "5 bars".
  * The naive "+s" rule covers every view-chrome noun (item, bar, cell,

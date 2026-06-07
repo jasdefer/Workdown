@@ -23,7 +23,7 @@
 	import type { WorkItemId } from '$lib/api/generated/WorkItemId';
 	import { formatDurationSeconds, formatIsoDate, formatNumber } from '$lib/views/format';
 	import { mountPlot, PLOT_STYLE } from '$lib/views/plot';
-	import { prettifyId } from '$lib/views/prettify';
+	import { itemRefLabel, prettifyId } from '$lib/views/prettify';
 	import EmptyHint from '$lib/views/EmptyHint.svelte';
 	import RowCount from '$lib/views/RowCount.svelte';
 	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
@@ -50,7 +50,7 @@
 	}
 
 	function titleFor(id: WorkItemId): string {
-		return data.items[id]?.title ?? prettifyId(id);
+		return itemRefLabel(data.items, id);
 	}
 
 	$effect(() => {

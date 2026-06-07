@@ -6,7 +6,7 @@
 <script lang="ts">
 	import type { Card } from '$lib/api/generated/Card';
 	import Markdown from '$lib/ui/Markdown.svelte';
-	import { prettifyId } from '$lib/views/prettify';
+	import { cardLabel } from '$lib/views/prettify';
 
 	interface Props {
 		card: Card;
@@ -14,7 +14,7 @@
 
 	let { card }: Props = $props();
 
-	const displayTitle = $derived(card.title ?? prettifyId(card.id));
+	const displayTitle = $derived(cardLabel(card));
 </script>
 
 <article class="card">

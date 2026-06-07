@@ -35,7 +35,7 @@
 	import type { GraphData } from '$lib/api/generated/GraphData';
 	import type { Card as CardData } from '$lib/api/generated/Card';
 	import type { TreeNode } from '$lib/api/generated/TreeNode';
-	import { prettifyId } from '$lib/views/prettify';
+	import { cardLabel } from '$lib/views/prettify';
 	import { themeStore, type Theme } from '$lib/stores/theme.svelte';
 	import EmptyHint from '$lib/views/EmptyHint.svelte';
 	import RowCount from '$lib/views/RowCount.svelte';
@@ -54,10 +54,6 @@
 	const nodeCount = $derived(data.nodes.length);
 	const cardById = $derived(new Map(data.nodes.map((card): [string, CardData] => [card.id, card])));
 
-	function nodeLabel(card: CardData): string {
-		return card.title ?? prettifyId(card.id);
-	}
-
 	// Flat: one node per card. Grouped: walk `groups`, tagging each node
 	// with its `parent` so Cytoscape nests it. Edges are identical either
 	// way.
@@ -68,7 +64,7 @@
 				for (const node of nodes) {
 					const nodeData: cytoscape.NodeDataDefinition = {
 						id: node.card.id,
-						label: nodeLabel(node.card)
+						label: cardLabel(node.card)
 					};
 					if (parent !== undefined) nodeData.parent = parent;
 					elements.push({ data: nodeData });
@@ -78,7 +74,7 @@
 			walk(graph.groups.roots, undefined);
 		} else {
 			for (const card of graph.nodes) {
-				elements.push({ data: { id: card.id, label: nodeLabel(card) } });
+				elements.push({ data: { id: card.id, label: cardLabel(card) } });
 			}
 		}
 		for (const edge of graph.edges) {

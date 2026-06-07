@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatIsoDate, pluralize } from './format';
+import { formatIsoDate, formatScalar, pluralize } from './format';
 
 describe('formatIsoDate', () => {
 	it('formats a date as YYYY-MM-DD', () => {
@@ -29,5 +29,16 @@ describe('pluralize', () => {
 
 	it('uses an explicit plural when given', () => {
 		expect(pluralize(2, 'entry', 'entries')).toBe('2 entries');
+	});
+});
+
+describe('formatScalar', () => {
+	it('renders durations as suffix shorthand', () => {
+		expect(formatScalar(219600, true)).toBe('2d 13h');
+	});
+
+	it('renders plain numbers via formatNumber', () => {
+		expect(formatScalar(42, false)).toBe('42');
+		expect(formatScalar(2.5, false)).toBe('2.5');
 	});
 });

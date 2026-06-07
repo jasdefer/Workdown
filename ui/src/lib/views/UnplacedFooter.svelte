@@ -12,7 +12,7 @@
 <script lang="ts">
 	import type { UnplacedCard } from '$lib/api/generated/UnplacedCard';
 	import type { UnplacedReason } from '$lib/api/generated/UnplacedReason';
-	import { prettifyId } from '$lib/views/prettify';
+	import { cardLabel, prettifyId } from '$lib/views/prettify';
 	import { pluralize } from '$lib/views/format';
 
 	interface Props {
@@ -20,10 +20,6 @@
 	}
 
 	let { unplaced }: Props = $props();
-
-	function itemName(card: UnplacedCard['card']): string {
-		return card.title ?? prettifyId(card.id);
-	}
 
 	// A short human description of why an item was dropped. The set covers
 	// every UnplacedReason variant, though only a few can occur for gantt.
@@ -63,7 +59,7 @@
 				byLabel.set(label, names);
 				order.push(label);
 			}
-			names.push(itemName(card.card));
+			names.push(cardLabel(card.card));
 		}
 		return order.map((label) => ({ label, names: byLabel.get(label) ?? [] }));
 	});

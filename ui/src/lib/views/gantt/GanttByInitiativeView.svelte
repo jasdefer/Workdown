@@ -8,7 +8,7 @@
 -->
 <script lang="ts">
 	import type { GanttByInitiativeData } from '$lib/api/generated/GanttByInitiativeData';
-	import { prettifyId } from '$lib/views/prettify';
+	import { cardLabel } from '$lib/views/prettify';
 	import GanttChart, { type GanttSection } from './GanttChart.svelte';
 	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
 	import EmptyHint from '$lib/views/EmptyHint.svelte';
@@ -26,7 +26,7 @@
 
 	const sections = $derived.by<GanttSection[]>(() =>
 		data.initiatives.map((initiative) => ({
-			label: initiative.root.title ?? prettifyId(initiative.root.id),
+			label: cardLabel(initiative.root),
 			bars: initiative.bars
 		}))
 	);

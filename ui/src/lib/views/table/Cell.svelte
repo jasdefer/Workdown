@@ -20,7 +20,7 @@
 	import type { ItemRef } from '$lib/api/generated/ItemRef';
 	import type { WorkItemId } from '$lib/api/generated/WorkItemId';
 	import Chip from '$lib/ui/Chip.svelte';
-	import { prettifyId } from '$lib/views/prettify';
+	import { itemRefLabel } from '$lib/views/prettify';
 
 	interface Props {
 		value: FieldValue | null;
@@ -31,11 +31,9 @@
 	let { value, fieldType, items }: Props = $props();
 
 	function linkLabel(id: WorkItemId): string {
-		const resolved = items[id];
-		if (resolved === undefined) {
-			return id;
-		}
-		return resolved.title ?? prettifyId(id);
+		// Broken links (absent from the sidecar) deliberately render as
+		// the raw id; resolved ids take the shared title fallback.
+		return items[id] === undefined ? id : itemRefLabel(items, id);
 	}
 </script>
 

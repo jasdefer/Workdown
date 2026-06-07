@@ -18,7 +18,7 @@
 	import type { TreeNode } from '$lib/api/generated/TreeNode';
 	import { SvelteSet } from 'svelte/reactivity';
 	import Cell from '$lib/views/table/Cell.svelte';
-	import { prettifyId } from '$lib/views/prettify';
+	import { cardLabel } from '$lib/views/prettify';
 	import Self from './TreeNode.svelte';
 
 	interface Props {
@@ -34,7 +34,7 @@
 	const id = $derived(node.card.id);
 	const expanded = $derived(expandedIds.has(id));
 	const hasChildren = $derived(node.children.length > 0);
-	const displayTitle = $derived(node.card.title ?? prettifyId(id));
+	const displayTitle = $derived(cardLabel(node.card));
 	const indentStyle = $derived(`--indent: ${(depth * 1.25).toString()}rem`);
 </script>
 

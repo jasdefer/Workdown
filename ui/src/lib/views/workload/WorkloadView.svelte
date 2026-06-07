@@ -22,7 +22,7 @@
 <script lang="ts">
 	import type { WorkloadData } from '$lib/api/generated/WorkloadData';
 	import type { WorkloadBucket } from '$lib/api/generated/WorkloadBucket';
-	import { formatDurationSeconds, formatNumber, pickDurationUnit } from '$lib/views/format';
+	import { formatNumber, formatScalar, pickDurationUnit } from '$lib/views/format';
 	import { mountPlot, PLOT_STYLE } from '$lib/views/plot';
 	import { prettifyId } from '$lib/views/prettify';
 	import EmptyHint from '$lib/views/EmptyHint.svelte';
@@ -42,8 +42,7 @@
 	const bucketCount = $derived(data.buckets.length);
 
 	function formatTotal(total: number): string {
-		if (data.unit === 'duration') return formatDurationSeconds(total);
-		return formatNumber(total);
+		return formatScalar(total, data.unit === 'duration');
 	}
 
 	$effect(() => {

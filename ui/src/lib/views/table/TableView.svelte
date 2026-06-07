@@ -28,7 +28,7 @@
 	import type { TableData } from '$lib/api/generated/TableData';
 	import type { WorkItemId } from '$lib/api/generated/WorkItemId';
 	import { SvelteMap } from 'svelte/reactivity';
-	import { prettifyId } from '$lib/views/prettify';
+	import { itemRefLabel, prettifyId } from '$lib/views/prettify';
 	import ColumnResizeHandle from '$lib/views/ColumnResizeHandle.svelte';
 	import EmptyHint from '$lib/views/EmptyHint.svelte';
 	import RowCount from '$lib/views/RowCount.svelte';
@@ -107,7 +107,7 @@
 	}
 
 	function linkLabel(id: WorkItemId): string {
-		return data.items[id]?.title ?? prettifyId(id);
+		return itemRefLabel(data.items, id);
 	}
 
 	// Compare two non-null field values per the column's FieldType.
