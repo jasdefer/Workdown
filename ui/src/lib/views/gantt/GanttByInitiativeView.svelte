@@ -9,10 +9,8 @@
 <script lang="ts">
 	import type { GanttByInitiativeData } from '$lib/api/generated/GanttByInitiativeData';
 	import { cardLabel } from '$lib/views/prettify';
-	import GanttChart, { type GanttSection } from './GanttChart.svelte';
-	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
-	import EmptyHint from '$lib/views/EmptyHint.svelte';
-	import RowCount from '$lib/views/RowCount.svelte';
+	import type { GanttSection } from './GanttChart.svelte';
+	import GanttShell from './GanttShell.svelte';
 
 	interface Props {
 		data: GanttByInitiativeData;
@@ -32,14 +30,4 @@
 	);
 </script>
 
-{#if totalBars === 0}
-	{#if data.unplaced.length === 0}
-		<EmptyHint />
-	{/if}
-{:else}
-	<GanttChart {sections} />
-{/if}
-
-<UnplacedFooter unplaced={data.unplaced} />
-
-<RowCount count={totalBars} />
+<GanttShell {sections} count={totalBars} unplaced={data.unplaced} />

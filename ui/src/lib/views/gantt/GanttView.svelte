@@ -1,7 +1,7 @@
 <!--
   Basic gantt view. Groups the bars into the view's sections (the `group`
-  field) and feeds them to the shared <GanttChart>, then renders the
-  uniform empty / count / unplaced chrome.
+  field) and feeds them to <GanttShell>, which owns the shared chart +
+  empty / count / unplaced chrome.
 
   Bars arrive pre-sorted by (section, start, id) — the missing-group bucket
   last — so grouping by first appearance preserves the server's section
@@ -16,10 +16,8 @@
 	import type { GanttData } from '$lib/api/generated/GanttData';
 	import type { GanttBar } from '$lib/api/generated/GanttBar';
 	import { prettifyId } from '$lib/views/prettify';
-	import GanttChart, { type GanttSection } from './GanttChart.svelte';
-	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
-	import EmptyHint from '$lib/views/EmptyHint.svelte';
-	import RowCount from '$lib/views/RowCount.svelte';
+	import type { GanttSection } from './GanttChart.svelte';
+	import GanttShell from './GanttShell.svelte';
 
 	interface Props {
 		data: GanttData;
@@ -49,14 +47,4 @@
 	});
 </script>
 
-{#if data.bars.length === 0}
-	{#if data.unplaced.length === 0}
-		<EmptyHint />
-	{/if}
-{:else}
-	<GanttChart {sections} />
-{/if}
-
-<UnplacedFooter unplaced={data.unplaced} />
-
-<RowCount count={data.bars.length} />
+<GanttShell {sections} count={data.bars.length} unplaced={data.unplaced} />
