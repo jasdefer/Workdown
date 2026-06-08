@@ -15,9 +15,10 @@
   to the item-page slice, the same as the graph view.
 
   `sections` is the one input shape: a flat gantt passes a single
-  label-less section; the by-depth / by-initiative variants will pass one
-  labelled section per level / initiative and a shared `rangeOverride` so
-  every band lines up on one global scale.
+  label-less section; the by-depth / by-initiative variants pass one
+  labelled section per level / initiative. Every section renders in this
+  single chart, so the range is computed once across all sections' bars
+  and every band lines up on one global scale.
 -->
 <script module lang="ts">
 	import type { GanttBar } from '$lib/api/generated/GanttBar';
@@ -34,24 +35,13 @@
 	import Card from '$lib/views/board/Card.svelte';
 	import { formatIsoDate } from '$lib/views/format';
 	import { cardLabel } from '$lib/views/prettify';
-	import {
-		type DateRange,
-		barGeometry,
-		buildAxis,
-		chooseGranularity,
-		computeRange,
-		offsetForDate,
-		spanDays
-	} from './scale';
+	import { barGeometry, buildAxis, computeRange, offsetForDate } from './scale';
 
 	interface Props {
 		sections: GanttSection[];
-		/** Force a date range (shared axis across charts). Omit to derive
-		 *  the range from this chart's own bars. */
-		rangeOverride?: DateRange;
 	}
 
-	let { sections, rangeOverride }: Props = $props();
+	let { sections }: Props = $props();
 
 	// Layout constants (px). Tuned by eye; the chart is read-only so these
 	// are the only sizing knobs.
@@ -72,15 +62,7 @@
 	let availableWidth = $state(0);
 	const effectiveWidth = $derived(Math.max(0, availableWidth - LABEL_WIDTH));
 
-	const resolved = $derived.by(() => {
-		if (rangeOverride !== undefined) {
-			return {
-				range: rangeOverride,
-				granularity: chooseGranularity(spanDays(rangeOverride), effectiveWidth)
-			};
-		}
-		return computeRange(allBars, effectiveWidth);
-	});
+	const resolved = $derived(computeRange(allBars, effectiveWidth));
 
 	const axis = $derived(resolved ? buildAxis(resolved.range, resolved.granularity) : null);
 
