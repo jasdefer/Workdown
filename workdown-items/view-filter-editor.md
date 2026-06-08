@@ -2,35 +2,33 @@
 id: view-filter-editor
 type: issue
 status: to_do
-title: Interactive `where:` clause editor in the view UI
-parent: phase-04-visualization
-depends_on: [remaining-read-views]
+title: Build and edit a view's where filter from the UI
+parent: view-authoring
+depends_on: [remaining-read-views, schema-metadata-api, view-write-backend]
+effort: "16h"
 ---
 
-Today a view's `where:` clauses are static in `views.yaml`. Adjusting filters means editing the YAML and reloading. Once multiple view kinds exist and users routinely narrow boards/tables/etc. to "items I'm working on this week", "items for team X", and so on, a UI affordance for filters becomes a real need.
+A view's `where:` clauses are static in `views.yaml` — adjusting what a view shows means editing YAML and reloading. Once users routinely want "items I'm working on this week", "items for team X", and so on, they need to narrow a view from the app.
 
-Picture a filter chip bar above each view: each chip is one clause (`type=issue`, `assignee=alice`, …), clicking opens an editor that picks the field, operator, and value from the schema; an `+` button adds a new chip. The bar reads and writes the same `where:` grammar the CLI uses.
+This issue delivers a filter-building experience that does double duty, and is the reusable piece [[view-creation]] composes a new view's filter with — built once here, used in both places.
 
-Belongs alongside [[view-display-config]] — both are "per-view UI controls" with the same open questions:
+## What we want
 
-- **Persistence:** per-view in `views.yaml` (declarative, shared) vs per-user via localStorage (personal, transient) vs hybrid?
-- **UI surface:** inline chip bar, separate dialog, URL params (good for sharing), or a mix?
-- **Grammar coverage:** all `parse_where` operators (regex, ranges, set membership) or a subset for the chip UI with an "advanced" raw-text escape hatch?
-
-## Scope
-
-- Filter chip bar above the view, populated from the view's current `where_clauses`.
-- Per-chip editor that respects the schema (choice fields → dropdown, dates → picker, strings → text).
-- Add / remove / edit chips with immediate re-render against the current view data.
-- Persistence shape settled here and shared with `view-display-config`.
+- From any view, a user can add, change, and remove filter conditions and see the view re-narrow immediately.
+- Conditions are built against the schema, not free text: the field, the operator, and (where the field constrains them) the value are chosen from what's valid, drawing on [[schema-metadata-api]]. An escape hatch for expressing a raw condition covers anything the guided builder doesn't.
+- Two ways to keep a filter, both supported:
+  - **For right now** — a personal, throwaway narrowing that doesn't change `views.yaml` and isn't shared.
+  - **Saved** — written back into the view's `where:` in `views.yaml` via [[view-write-backend]], so it persists and is shared with the project.
+- Whatever the builder produces means exactly what the same expression would mean when typed into `views.yaml` by hand — one filter grammar, one behavior.
 
 ## Acceptance
 
-- A user can narrow any view by adding chips without touching `views.yaml`.
-- Chips serialize/deserialize against the same `parse_where` grammar the CLI uses.
-- Choice persists across navigations.
+- A user can narrow any view without touching `views.yaml`, and choose whether that narrowing is just-for-now or saved into the view.
+- A saved filter shows up in `views.yaml` and survives a reload; a for-now filter does not alter the file.
+- A filter built in the UI and the same filter hand-written in `views.yaml` produce identical results.
 
 ## Out of scope
 
-- Full SQL-like query builder — chips cover the 80% case; complex predicates remain edit-the-YAML.
-- Saved-filter library / shared filter presets — defer.
+- A full SQL-like query builder — the guided builder plus a raw escape hatch covers the common cases; arbitrarily complex predicates remain a text-editor job.
+- A saved-filter library / shared presets beyond a view's own `where:` — defer.
+- Per-view display configuration (which fields show where) — that's [[view-display-config]].

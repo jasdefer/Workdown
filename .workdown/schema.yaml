@@ -83,7 +83,7 @@ fields:
 rules:
   - name: milestone-in-progress-when-child-in-progress
     match:
-      type: milestone
+      type: [milestone, epic]
       children.status:
         any: in_progress
     require:
@@ -91,7 +91,7 @@ rules:
         values: [in_progress]
   - name: milestone-to-do-when-all-children-to-do
     match:
-      type: milestone
+      type: [milestone, epic]
       children.status:
         all: to_do
     require:
@@ -99,10 +99,40 @@ rules:
         values: [to_do]
   - name: milestone-done-when-all-children-done-or-removed
     match:
-      type: milestone
+      type: [milestone, epic]
       children.status:
         all: [done, removed]
         any: [done, removed]   # forces ≥1 child — prevents vacuous-truth on empty milestones
     require:
       status:
         values: [done]
+
+  # ── Date sanity ────────────────────────────────────────────
+  # An inverted span (end before start) is always a data-entry error.
+  # The comparison is skipped when either date is absent, so items
+  # without dates — and items with only one date set — never trip it.
+  - name: start-before-end
+    description: An item's start_date must not be after its end_date.
+    match:
+      end_date:
+        is_set: true
+    require:
+      start_date:
+        lte_field: end_date
+
+  # Milestones are scheduled by hand (start/end set on the milestone
+  # itself), unlike epics, which derive their span by aggregating their
+  # children — so this is scoped to milestones. The `parent` guard means
+  # the rule activates only once a milestone is placed on the roadmap
+  # (under an epic): a parked, not-yet-slotted milestone is exempt until
+  # it's given a parent, at which point it must also be scheduled.
+  - name: milestone-needs-dates
+    description: Milestones should be scheduled with a start_date and end_date.
+    severity: warning
+    match:
+      type: milestone
+      parent:
+        is_set: true
+    require:
+      start_date: required
+      end_date: required

@@ -3,7 +3,7 @@ id: view-display-config
 type: issue
 status: to_do
 title: Per-view-kind display configuration (which fields show where)
-parent: phase-04-visualization
+parent: view-authoring
 depends_on: [remaining-read-views]
 ---
 
