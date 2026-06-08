@@ -19,8 +19,8 @@ use thiserror::Error;
 
 use crate::model::calendar::WorkingCalendar;
 use crate::model::config::Config;
-use crate::model::diagnostic::Diagnostic;
-use crate::model::schema::Schema;
+use crate::model::diagnostic::{Diagnostic, FileDiagnosticKind};
+use crate::model::schema::{Schema, Severity};
 use crate::model::views::Views;
 use crate::parser;
 use crate::store::Store;
@@ -57,6 +57,27 @@ pub enum LoadError {
 
     #[error("failed to read items directory {path}: {detail}")]
     Items { path: PathBuf, detail: String },
+}
+
+impl LoadError {
+    /// Translate this hard load failure into the equivalent core
+    /// [`Diagnostic`]: a file-scoped read error pinned to the path that
+    /// failed. Lets any front-end (the HTTP server today, others later)
+    /// surface a load failure through the same diagnostic channel as the
+    /// soft per-item findings, without reaching into the diagnostic
+    /// internals itself.
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        let (path, detail) = match self {
+            LoadError::Schema { path, detail } | LoadError::Items { path, detail } => {
+                (path.clone(), detail.clone())
+            }
+        };
+        Diagnostic::file(
+            Severity::Error,
+            path,
+            FileDiagnosticKind::ReadError { detail },
+        )
+    }
 }
 
 /// Load every part of the project from disk into memory.

@@ -7,6 +7,8 @@ use anyhow::{Context, Result};
 use workdown_core::model::config::Config;
 use workdown_server::AppState;
 
+use crate::cli::output;
+
 const DEFAULT_PORT: u16 = 3141;
 const SCAN_FALLBACK_COUNT: u16 = 10;
 
@@ -60,7 +62,10 @@ async fn run_serve(resolution: PortResolution, state: AppState, open: bool) -> R
         pid = std::process::id(),
         "workdown serve ready",
     );
-    println!("  workdown serving at {url}  (pid {})", std::process::id());
+    output::info(&format!(
+        "workdown serving at {url}  (pid {})",
+        std::process::id()
+    ));
 
     if open {
         if let Err(err) = open::that_detached(&url) {

@@ -11,7 +11,6 @@
 
 pub mod api;
 pub mod envelope;
-pub mod error;
 pub mod state;
 
 use std::net::SocketAddr;

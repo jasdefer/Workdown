@@ -16,10 +16,8 @@ use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::Router;
 
-use workdown_core::model::diagnostic::{Diagnostic, FileDiagnosticKind};
-use workdown_core::model::schema::Severity;
 use workdown_core::model::views::ViewSummary;
-use workdown_core::project::{load_project, LoadError};
+use workdown_core::project::load_project;
 use workdown_core::view_data::{self, ViewData};
 
 use crate::envelope::ApiResponse;
@@ -34,7 +32,7 @@ pub fn router() -> Router<AppState> {
 
 async fn list_views(State(state): State<AppState>) -> ApiResponse<Vec<ViewSummary>> {
     match load_project(&state.config, &state.project_root) {
-        Err(error) => ApiResponse::rejected(vec![load_error_to_diagnostic(&error)]),
+        Err(error) => ApiResponse::rejected(vec![error.to_diagnostic()]),
         Ok(project) => {
             let summaries: Vec<ViewSummary> = project
                 .views
@@ -48,7 +46,7 @@ async fn list_views(State(state): State<AppState>) -> ApiResponse<Vec<ViewSummar
 
 async fn get_view(State(state): State<AppState>, Path(id): Path<String>) -> ApiResponse<ViewData> {
     let project = match load_project(&state.config, &state.project_root) {
-        Err(error) => return ApiResponse::rejected(vec![load_error_to_diagnostic(&error)]),
+        Err(error) => return ApiResponse::rejected(vec![error.to_diagnostic()]),
         Ok(project) => project,
     };
 
@@ -75,21 +73,4 @@ async fn get_view(State(state): State<AppState>, Path(id): Path<String>) -> ApiR
     // Tier 3: extract and return view data.
     let data = view_data::extract(view, &project.store, &project.schema, &project.calendar);
     ApiResponse::ok_with(data, project.diagnostics)
-}
-
-/// Wrap a [`LoadError`] as a `File`-scope diagnostic with the failing
-/// path as `source_path` and the underlying error message as `detail`.
-/// Reuses the existing `ReadError` variant rather than inventing a new
-/// kind for HTTP-side concerns.
-fn load_error_to_diagnostic(error: &LoadError) -> Diagnostic {
-    let (path, detail) = match error {
-        LoadError::Schema { path, detail } | LoadError::Items { path, detail } => {
-            (path.clone(), detail.clone())
-        }
-    };
-    Diagnostic::file(
-        Severity::Error,
-        path,
-        FileDiagnosticKind::ReadError { detail },
-    )
 }
