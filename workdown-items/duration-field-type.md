@@ -4,6 +4,7 @@ type: issue
 status: done
 title: Add `duration` field type
 parent: renderers
+effort: "8h"
 ---
 
 Introduce `duration` as the 11th built-in field type, for time-quantity

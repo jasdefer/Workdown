@@ -189,7 +189,12 @@ fn extract_exercises_every_variant() {
                 assert_eq!(total, 4);
             }
             ("item-table", ViewData::Table(table)) => {
-                assert_eq!(table.columns, vec!["id", "title", "status", "points"]);
+                let column_names: Vec<&str> = table
+                    .columns
+                    .iter()
+                    .map(|column| column.name.as_str())
+                    .collect();
+                assert_eq!(column_names, vec!["id", "title", "status", "points"]);
                 assert_eq!(table.rows.len(), 4);
                 // id column always produces a non-None cell.
                 for row in &table.rows {

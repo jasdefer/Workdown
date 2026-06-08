@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use workdown_core::model::diagnostic::{Diagnostic, DiagnosticBody};
+use workdown_core::model::diagnostic::Diagnostic;
 use workdown_core::model::schema::Severity;
 
 use crate::cli;
@@ -42,10 +42,9 @@ fn render_human(diagnostics: &[Diagnostic]) {
 
         cli::output::header(&path.display().to_string());
         for diagnostic in &file_diagnostics {
-            let line = format_diagnostic_line(diagnostic);
             match diagnostic.severity {
-                Severity::Warning => cli::output::warning(&line),
-                Severity::Error => cli::output::error(&line),
+                Severity::Warning => cli::output::warning(&diagnostic.message),
+                Severity::Error => cli::output::error(&diagnostic.message),
             }
         }
     }
@@ -59,10 +58,9 @@ fn render_human(diagnostics: &[Diagnostic]) {
         }
 
         for diagnostic in &ungrouped {
-            let line = format_diagnostic_line(diagnostic);
             match diagnostic.severity {
-                Severity::Warning => cli::output::warning(&line),
-                Severity::Error => cli::output::error(&line),
+                Severity::Warning => cli::output::warning(&diagnostic.message),
+                Severity::Error => cli::output::error(&diagnostic.message),
             }
         }
     }
@@ -117,16 +115,4 @@ fn sort_by_severity(diagnostics: &mut [&Diagnostic]) {
         Severity::Warning => 0,
         Severity::Error => 1,
     });
-}
-
-/// Format the message part of a diagnostic (without the severity icon).
-///
-/// Item-scoped diagnostics use the inner kind's compact Display (no item_id
-/// prefix — the file header already shows the file). Everything else uses
-/// the full outer Display.
-fn format_diagnostic_line(diagnostic: &Diagnostic) -> String {
-    match &diagnostic.body {
-        DiagnosticBody::Item(item) => item.kind.to_string(),
-        _ => diagnostic.to_string(),
-    }
 }

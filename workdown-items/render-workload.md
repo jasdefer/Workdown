@@ -5,6 +5,7 @@ status: done
 title: Workload renderer
 parent: renderers
 depends_on: [view-data-intermediate]
+effort: "8h"
 ---
 
 Render `WorkloadView` as a Markdown file written to `views/<id>.md`. Items distribute their `effort` uniformly across `start`→`end`, summed by date bucket.

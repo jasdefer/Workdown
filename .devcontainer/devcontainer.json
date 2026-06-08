@@ -2,20 +2,30 @@
   "name": "Workdown",
   "image": "mcr.microsoft.com/devcontainers/rust:latest",
   "features": {
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    }
   },
   "customizations": {
     "vscode": {
       "extensions": [
         "rust-lang.rust-analyzer",
         "tamasfe.even-better-toml",
-        "serayuzgur.crates"
+        "serayuzgur.crates",
+        "svelte.svelte-vscode",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint"
       ]
     }
   },
   "mounts": [
-    "source=workdown-target,target=${containerWorkspaceFolder}/target,type=volume"
+    "source=workdown-target,target=${containerWorkspaceFolder}/target,type=volume",
+    "source=workdown-node-modules,target=${containerWorkspaceFolder}/ui/node_modules,type=volume"
   ],
-  "postCreateCommand": "cargo --version && rustc --version",
-  "postStartCommand": "sudo chown -R $(whoami) ${containerWorkspaceFolder}/target"
+  "//": "postCreate runs once. The find catches root-owned files left behind by host-side editors (relevant on Windows + WSL2 + Docker Desktop, no-op on Linux/macOS). The volumes start empty so walking them here is free.",
+  "postCreateCommand": "sudo find ${containerWorkspaceFolder} -not -user $(id -u) -exec chown $(whoami) {} + && cargo --version && rustc --version && npm --prefix ui ci && cargo xtask gen-types",
+  "//2": "postStart/postAttach run frequently. Same heal, but prune the build-artifact volumes — those are container-managed once postCreate has chowned them, so re-walking them on every attach is wasted I/O.",
+  "postStartCommand": "sudo find ${containerWorkspaceFolder} -path ${containerWorkspaceFolder}/target -prune -o -path ${containerWorkspaceFolder}/ui/node_modules -prune -o -not -user $(id -u) -exec chown $(whoami) {} +",
+  "postAttachCommand": "sudo find ${containerWorkspaceFolder} -path ${containerWorkspaceFolder}/target -prune -o -path ${containerWorkspaceFolder}/ui/node_modules -prune -o -not -user $(id -u) -exec chown $(whoami) {} +"
 }

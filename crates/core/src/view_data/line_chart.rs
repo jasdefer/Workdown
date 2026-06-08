@@ -12,6 +12,7 @@
 //! (`views_check`).
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 use serde::Serialize;
 
@@ -22,11 +23,12 @@ use crate::model::WorkItemId;
 use crate::store::Store;
 
 use super::common::{
-    as_axis, as_size, build_card, AxisValue, SizeValue, UnplacedCard, UnplacedReason,
+    as_axis, as_size, build_card, resolve_title, sort_unplaced, AxisValue, ItemRef, SizeValue,
+    UnplacedCard, UnplacedReason,
 };
 use super::filter::filtered_items;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct LineChartData {
     pub x_field: String,
     pub y_field: String,
@@ -34,10 +36,16 @@ pub struct LineChartData {
     /// `None` means single-series; the renderer skips the legend.
     pub group_field: Option<String>,
     pub points: Vec<LinePoint>,
+    /// Resolution map for the ids carried by `points`. Title is taken
+    /// from the view's `title:` slot; `None` when unset or absent on
+    /// the item — UI falls back to `prettifyId(id)`. Mirrors the Table
+    /// pattern, since hover tooltips on points need item titles and
+    /// `LinePoint` carries only the raw id.
+    pub items: HashMap<WorkItemId, ItemRef>,
     pub unplaced: Vec<UnplacedCard>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct LinePoint {
     pub id: WorkItemId,
     pub x: AxisValue,
@@ -55,6 +63,7 @@ pub fn extract_line_chart(view: &View, store: &Store, schema: &Schema) -> LineCh
     let items = filtered_items(view, store, schema);
 
     let mut points: Vec<LinePoint> = Vec::new();
+    let mut items_sidecar: HashMap<WorkItemId, ItemRef> = HashMap::new();
     let mut unplaced: Vec<UnplacedCard> = Vec::new();
 
     for item in &items {
@@ -66,6 +75,12 @@ pub fn extract_line_chart(view: &View, store: &Store, schema: &Schema) -> LineCh
                 let group_value = group
                     .as_deref()
                     .and_then(|name| item.fields.get(name).map(format_field_value));
+                items_sidecar.insert(
+                    item.id.clone(),
+                    ItemRef {
+                        title: resolve_title(item, view),
+                    },
+                );
                 points.push(LinePoint {
                     id: item.id.clone(),
                     x: x_value,
@@ -87,13 +102,14 @@ pub fn extract_line_chart(view: &View, store: &Store, schema: &Schema) -> LineCh
     points.sort_by(|left, right| {
         compare_axis(&left.x, &right.x).then_with(|| left.id.as_str().cmp(right.id.as_str()))
     });
-    unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
+    sort_unplaced(&mut unplaced);
 
     LineChartData {
         x_field: x.clone(),
         y_field: y.clone(),
         group_field: group.clone(),
         points,
+        items: items_sidecar,
         unplaced,
     }
 }

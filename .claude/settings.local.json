@@ -86,7 +86,30 @@
       "Bash(xargs -I {} find {} -name \"*.rs\")",
       "Bash(workdown query *)",
       "Bash(cat)",
-      "Bash(docker cp *)"
+      "Bash(docker cp *)",
+      "Bash(npx --prefix ui prettier --check ui/src/lib/views/tree/TreeView.svelte)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "PowerShell(git fetch *)",
+      "PowerShell(gh pr *)",
+      "PowerShell(gh run *)",
+      "PowerShell(git status -sb; \"---DIFF STAT---\"; git diff --stat; \"---UNTRACKED settings---\"; git status --porcelain .claude/settings.local.json)",
+      "PowerShell(git add *)",
+      "PowerShell(git *)",
+      "Bash(Out-String)",
+      "Bash(node -e \"const s=require\\('./package.json'\\).scripts; console.log\\(JSON.stringify\\(s,null,2\\)\\)\")",
+      "PowerShell($s = \\(Get-Content ui/package.json -Raw | ConvertFrom-Json\\).scripts; $s | Format-List; \"node: \" + \\(Get-Command node -ErrorAction SilentlyContinue\\).Source; \"npm: \" + \\(Get-Command npm -ErrorAction SilentlyContinue\\).Source)",
+      "Bash(sed -n '/fn keys_for_group/,/^}/p' bar_chart.rs)",
+      "Bash(sed -n '/fn axis_labels_for/,/^}/p' heatmap.rs)",
+      "Bash(docker start *)",
+      "Bash(sed -n '1,40p' crates/cli/src/output.rs)",
+      "Bash(sed -n '1,40p' crates/cli/src/cli/output.rs)",
+      "Bash(findstr /R \"ui/dist\")",
+      "Bash(dir ui\\\\dist)",
+      "Bash(xxd)",
+      "Read(//tmp/**)",
+      "Bash(perl -ne 'print \"$.: \", join\\(\",\", map { sprintf \"0x%02x@col%d\", ord\\($_\\), pos\\(\\) } \\($_ =~ /\\(\\\\x00\\)/g\\)\\), \"\\\\n\" if /\\\\x00/' /tmp/gantt.svelte)",
+      "Bash(xargs -0 grep -Hn \"gitkeep\\\\|dist\")",
+      "Bash(perl -i -pe 's/\\\\x00/ /g' ui/src/lib/views/gantt/GanttChart.svelte)"
     ]
   }
 }

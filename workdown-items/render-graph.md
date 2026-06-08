@@ -5,6 +5,7 @@ status: done
 title: Graph renderer
 parent: renderers
 depends_on: [view-data-intermediate]
+effort: "8h"
 ---
 
 Render `GraphData` as a Markdown file written to `views/<id>.md` as a

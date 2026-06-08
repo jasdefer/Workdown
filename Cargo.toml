@@ -4,7 +4,11 @@ members = [
     "crates/core",
     "crates/cli",
     "crates/server",
+    "crates/xtask",
 ]
+# `cargo run` (without -p) targets the CLI. xtask is dev tooling
+# invoked via the `cargo xtask` alias, never as the default binary.
+default-members = ["crates/cli"]
 
 [workspace.package]
 version = "0.1.0-alpha.1"
@@ -12,6 +16,22 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/jasdefer/Workdown"
 authors = ["Justus Bonz <justus.bonz@gmail.com>"]
+
+# Shared dependency versions for crates used by more than one workspace
+# member. Members inherit with `dep.workspace = true` and add their own
+# features locally (features union across members). Single-consumer deps
+# stay declared in the owning crate.
+[workspace.dependencies]
+anyhow = "1"
+chrono = { version = "0.4", default-features = false }
+clap = "4"
+csv = "1"
+indexmap = { version = "2", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+tokio = "1"
+tracing = "0.1"
 
 [profile.release]
 strip = true

@@ -1,0 +1,66 @@
+/* Design tokens — the file touched most often as the design grows.
+ *
+ * Light theme defaults live on `:root`. `[data-theme="dark"]` overrides
+ * the color tokens; every `var(--color-*)` descendant updates when the
+ * attribute flips. Theme switching is wired in
+ * `ui/src/lib/stores/theme.svelte.ts`.
+ *
+ * Deferred until first needed: semantic colors (success/warning/danger),
+ * z-index scale, full type scale, shadow tiers, animation tokens. Add
+ * them inline here when the first surface needs them.
+ */
+
+:root {
+	color-scheme: light dark;
+
+	/* Colors — light theme defaults */
+	--color-bg: #ffffff;
+	--color-surface: #f7f7f8;
+	--color-fg: #18181b;
+	--color-fg-muted: #71717a;
+	--color-border: #e4e4e7;
+	--color-accent: #3b82f6;
+
+	/* Semantic colors — warning and error pairs. First surface to need
+	   them is the DiagnosticBanner; success/info follow later. */
+	--color-warning-fg: #92400e;
+	--color-warning-bg: #fef3c7;
+	--color-error-fg: #991b1b;
+	--color-error-bg: #fee2e2;
+
+	/* Spacing — 4px scale */
+	--space-1: 0.25rem;
+	--space-2: 0.5rem;
+	--space-3: 0.75rem;
+	--space-4: 1rem;
+	--space-6: 1.5rem;
+	--space-8: 2rem;
+
+	/* Radii */
+	--radius-md: 0.375rem;
+	--radius-full: 9999px;
+
+	/* Shadows */
+	--shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06);
+
+	/* Typography */
+	--font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+	--text-sm: 0.875rem;
+	--text-base: 1rem;
+	--text-lg: 1.125rem;
+}
+
+[data-theme='dark'] {
+	--color-bg: #09090b;
+	--color-surface: #18181b;
+	--color-fg: #e4e4e7;
+	--color-fg-muted: #a1a1aa;
+	--color-border: #27272a;
+	--color-accent: #60a5fa;
+
+	--color-warning-fg: #fcd34d;
+	--color-warning-bg: #451a03;
+	--color-error-fg: #fca5a5;
+	--color-error-bg: #450a0a;
+}

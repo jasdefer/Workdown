@@ -4,6 +4,7 @@ type: issue
 status: done
 title: Consolidate duplication and tighten types before more foundation work
 parent: foundation
+effort: "4h"
 ---
 
 Address maintainability findings from the 2026-04-21 code review before landing `views-validate-integration`. Tightly scoped — items that aren't worth fixing now are captured under "Considered but deferred" so they aren't lost.

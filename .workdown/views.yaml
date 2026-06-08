@@ -6,10 +6,14 @@ views:
   - id: status-board
     type: board
     field: status
+    where:
+        - type=issue
 
   - id: hierarchy
     type: tree
     field: parent
+    title: title
+    columns: [type, status]
 
   - id: dependencies
     type: graph
@@ -70,7 +74,7 @@ views:
   - id: effort-treemap
     type: treemap
     group: parent
-    size: duration
+    size: effort
     title: title
     where:
       - "status!=removed"
@@ -79,7 +83,7 @@ views:
     type: workload
     start: start_date
     end: end_date
-    effort: duration
+    effort: effort
     title: title
     where:
       - "type=milestone"

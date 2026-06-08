@@ -1,12 +1,17 @@
-//! Validation orchestration: load, check, and return structured results.
+//! Validation orchestration: load the project, return structured results.
+//!
+//! Thin wrapper over [`crate::project::load_project`] — that function is
+//! the single source of truth for loading + collecting diagnostics
+//! across CLI and HTTP server. This module adds the `has_errors` flag
+//! the CLI uses to set its exit code, plus the `ValidationResult` shape
+//! callers already depend on.
 
 use std::path::Path;
 
 use crate::model::config::Config;
 use crate::model::diagnostic::Diagnostic;
 use crate::model::schema::Severity;
-use crate::parser;
-use crate::parser::schema::SchemaLoadError;
+use crate::project::{load_project, LoadError};
 use crate::store::Store;
 
 // ── Public types ────────────────────────────────────────────────────
@@ -21,46 +26,22 @@ pub struct ValidationResult {
     pub store: Store,
 }
 
-/// Errors from the validation operation.
-#[derive(Debug, thiserror::Error)]
-pub enum ValidateError {
-    #[error("failed to load schema: {0}")]
-    SchemaLoad(#[from] SchemaLoadError),
-
-    #[error("failed to read items directory: {0}")]
-    StoreLoad(#[from] std::io::Error),
-}
+/// Errors from the validation operation. Re-export of [`LoadError`] so
+/// existing call sites keep their type name; the variants are the same.
+pub type ValidateError = LoadError;
 
 // ── Public API ──────────────────────────────────────────────────────
 
-/// Run validation: load schema and store, collect all diagnostics.
-///
-/// Returns a [`ValidationResult`] with the full diagnostic list,
-/// whether any errors were found, and the loaded store.
+/// Run validation: load schema, store, and views, collect all diagnostics.
 pub fn validate(config: &Config, project_root: &Path) -> Result<ValidationResult, ValidateError> {
-    let schema_path = project_root.join(&config.schema);
-    let items_path = project_root.join(&config.paths.work_items);
-
-    tracing::debug!(schema = %schema_path.display(), "loading schema");
-    let schema = parser::schema::load_schema(&schema_path)?;
-
-    tracing::debug!(items = %items_path.display(), "loading work items");
-    let store = Store::load(&items_path, &schema)?;
-
-    let mut diagnostics = store.diagnostics().to_vec();
-    diagnostics.extend(store.detect_cycles(&schema));
-    diagnostics.extend(crate::rules::evaluate(&store, &schema));
-
-    let views_path = project_root.join(&config.paths.views);
-    diagnostics.extend(crate::views_check::load_and_check(&views_path, &schema));
-
-    let has_errors = diagnostics
+    let project = load_project(config, project_root)?;
+    let has_errors = project
+        .diagnostics
         .iter()
         .any(|diagnostic| diagnostic.severity == Severity::Error);
-
     Ok(ValidationResult {
-        diagnostics,
+        diagnostics: project.diagnostics,
         has_errors,
-        store,
+        store: project.store,
     })
 }

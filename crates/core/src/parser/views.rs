@@ -218,6 +218,7 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
         },
         ViewType::Tree => ViewKind::Tree {
             field: require(raw.field, &id, view_type, "field")?,
+            columns: raw.columns.unwrap_or_default(),
         },
         ViewType::Graph => ViewKind::Graph {
             field: require(raw.field, &id, view_type, "field")?,
@@ -379,7 +380,24 @@ mod tests {
     #[test]
     fn parse_tree() {
         let view = parse_single("views:\n  - id: h\n    type: tree\n    field: parent\n");
-        assert!(matches!(view.kind, ViewKind::Tree { .. }));
+        match view.kind {
+            ViewKind::Tree { field, columns } => {
+                assert_eq!(field, "parent");
+                assert!(columns.is_empty(), "no `columns:` slot → empty list");
+            }
+            other => panic!("expected Tree, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_tree_with_columns() {
+        let view = parse_single(
+            "views:\n  - id: h\n    type: tree\n    field: parent\n    columns: [status, points]\n",
+        );
+        match view.kind {
+            ViewKind::Tree { columns, .. } => assert_eq!(columns, vec!["status", "points"]),
+            other => panic!("expected Tree, got {other:?}"),
+        }
     }
 
     #[test]

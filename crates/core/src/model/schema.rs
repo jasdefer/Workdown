@@ -236,7 +236,7 @@ pub(crate) struct RawFieldDefinition {
 }
 
 /// The 11 built-in field types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
 pub enum FieldType {
     String,

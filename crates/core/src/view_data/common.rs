@@ -15,12 +15,58 @@ use serde::Serialize;
 
 use crate::model::field_value::format_field_value;
 use crate::model::schema::{FieldType, Schema};
-use crate::model::views::View;
+use crate::model::views::{Bucket, View};
 use crate::model::{FieldValue, WorkItem, WorkItemId};
+
+// ── Column (shared by table and tree) ───────────────────────────────
+
+/// One user-configured column in a column-bearing view (table, tree).
+///
+/// Carries the schema field name and its [`FieldType`] so renderers can
+/// align and format cells deterministically even when every cell in the
+/// column is `None`. The virtual `id` column is represented with
+/// [`FieldType::String`].
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct Column {
+    pub name: String,
+    pub field_type: FieldType,
+}
+
+/// Resolve a user-configured column name to its [`Column`] payload.
+///
+/// `views_check` guarantees every non-`id` name resolves in
+/// `schema.fields`; the lookup is `expect`-safe here.
+pub fn build_column(name: &str, schema: &Schema) -> Column {
+    let field_type = if name == "id" {
+        FieldType::String
+    } else {
+        schema
+            .fields
+            .get(name)
+            .expect("views_check validates column references")
+            .field_type()
+    };
+    Column {
+        name: name.to_owned(),
+        field_type,
+    }
+}
+
+/// Resolve a single cell value for a given column and item.
+///
+/// The virtual `id` column emits the item id as a String cell; real
+/// fields emit their typed [`FieldValue`] when set, `None` otherwise.
+pub fn column_cell(column_name: &str, item: &WorkItem) -> Option<FieldValue> {
+    if column_name == "id" {
+        Some(FieldValue::String(item.id.as_str().to_owned()))
+    } else {
+        item.fields.get(column_name).cloned()
+    }
+}
 
 // ── Card ────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct Card {
     pub id: WorkItemId,
     pub title: Option<String>,
@@ -28,10 +74,22 @@ pub struct Card {
     pub body: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct CardField {
     pub name: String,
     pub value: FieldValue,
+}
+
+/// A lightweight resolved reference to a work item — just its display
+/// title, keyed by id in a view's `items` sidecar map. Link/Links cells
+/// (table) and point ids (line chart) resolve through it so renderers can
+/// show a linked item by name rather than raw id.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+pub struct ItemRef {
+    /// Resolved via the view's `title:` slot. `None` when the view has
+    /// no title slot configured or the linked item lacks that field —
+    /// the UI falls back to `prettifyId(id)` in that case.
+    pub title: Option<String>,
 }
 
 /// Build a Card from a work item, resolving the view's title slot.
@@ -74,13 +132,13 @@ pub fn resolve_title(item: &WorkItem, view: &View) -> Option<String> {
 
 // ── Unplaced items ──────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct UnplacedCard {
     pub card: Card,
     pub reason: UnplacedReason,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum UnplacedReason {
     MissingValue {
@@ -121,6 +179,12 @@ pub enum UnplacedReason {
     },
 }
 
+/// Sort unplaced cards by work-item id ascending — the stable order every
+/// view presents its "couldn't place these" list in.
+pub(super) fn sort_unplaced(unplaced: &mut [UnplacedCard]) {
+    unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
+}
+
 // ── Aggregate / axis values ─────────────────────────────────────────
 
 /// Result of an aggregate (sum/avg/min/max) on a numeric, date, or
@@ -131,21 +195,31 @@ pub enum UnplacedReason {
 /// fields. `Duration` is returned (rather than `Number(seconds_as_f64)`)
 /// when the input field is a duration field, so renderers can format
 /// `5d` instead of `432000`.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-#[serde(untagged)]
+///
+/// Wire shape is tagged (`{type, value}`) so the frontend can recover
+/// the variant. JSON has no bigint and an untagged i64 would land as a
+/// JS number, indistinguishable from a `Number(seconds_as_f64)` —
+/// renderers couldn't tell `5d` from raw `432000`. The Duration's i64
+/// fits inside JS number's safe range for any human time scale, so the
+/// value is typed as `number` on the TS side.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, ts_rs::TS)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum AggregateValue {
     Number(f64),
     Date(NaiveDate),
-    Duration(i64),
+    Duration(#[ts(type = "number")] i64),
 }
 
 /// A point coordinate on a chart's x-axis (or similar).
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-#[serde(untagged)]
+///
+/// Wire shape is tagged (`{type, value}`) for the same variant-recovery
+/// reason as [`AggregateValue`].
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, ts_rs::TS)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum AxisValue {
     Number(f64),
     Date(NaiveDate),
-    Duration(i64),
+    Duration(#[ts(type = "number")] i64),
 }
 
 /// A magnitude carried by a non-aggregated leaf field — the size column
@@ -155,11 +229,11 @@ pub enum AxisValue {
 /// the `Date` arm (sizes can't be dates). Carrying the variant through
 /// the data structure lets downstream renderers format `5d` instead of
 /// raw seconds — same role `AggregateValue` plays for metric/heatmap.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, ts_rs::TS)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum SizeValue {
     Number(f64),
-    Duration(i64),
+    Duration(#[ts(type = "number")] i64),
 }
 
 impl SizeValue {
@@ -188,6 +262,18 @@ impl Add for SizeValue {
             }
             _ => panic!("SizeValue::add called with mismatched variants"),
         }
+    }
+}
+
+/// The zero [`SizeValue`] for a size field — `Duration(0)` for a duration
+/// field, `Number(0.0)` otherwise — so a treemap frame can start an empty
+/// accumulator in the field's own variant. `views_check` guarantees the
+/// field resolves to an allowed numeric type; an unexpected type falls
+/// back to `Number(0)` defensively.
+pub(super) fn zero_for_size_field(field: &str, schema: &Schema) -> SizeValue {
+    match schema.fields.get(field).map(|config| config.field_type()) {
+        Some(FieldType::Duration) => SizeValue::Duration(0),
+        _ => SizeValue::Number(0.0),
     }
 }
 
@@ -232,5 +318,32 @@ pub(super) fn as_axis(value: Option<&FieldValue>) -> Option<AxisValue> {
         Some(FieldValue::Duration(seconds)) => Some(AxisValue::Duration(*seconds)),
         Some(FieldValue::Date(date)) => Some(AxisValue::Date(*date)),
         _ => None,
+    }
+}
+
+// ── Grouping / axis keys ────────────────────────────────────────────
+
+/// Stringify a field's value into the group keys (bar chart) or axis
+/// labels (heatmap) it contributes. Multichoice/list/links spread across
+/// multiple keys; a `Date` formats via `bucket` (day = `YYYY-MM-DD`, week
+/// = ISO `YYYY-Www`, month = `YYYY-MM`); everything else stringifies via
+/// [`format_field_value`]. `bucket` is `None` for views without date
+/// bucketing (bar chart), where a date takes the day format — identical
+/// to `format_field_value`'s date output, so the behaviour is unchanged.
+pub(super) fn group_keys(item: &WorkItem, field: &str, bucket: Option<Bucket>) -> Vec<String> {
+    match item.fields.get(field) {
+        None => Vec::new(),
+        Some(FieldValue::Multichoice(values)) => values.clone(),
+        Some(FieldValue::List(values)) => values.clone(),
+        Some(FieldValue::Links(ids)) => ids.iter().map(|id| id.as_str().to_owned()).collect(),
+        Some(FieldValue::Date(date)) => {
+            let formatted = match bucket {
+                Some(Bucket::Week) => date.format("%G-W%V").to_string(),
+                Some(Bucket::Month) => date.format("%Y-%m").to_string(),
+                Some(Bucket::Day) | None => date.format("%Y-%m-%d").to_string(),
+            };
+            vec![formatted]
+        }
+        Some(other) => vec![format_field_value(other)],
     }
 }

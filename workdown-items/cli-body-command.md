@@ -4,6 +4,7 @@ type: issue
 status: done
 title: workdown body — replace the Markdown body
 parent: item-mutations
+effort: "4h"
 ---
 
 Frontmatter mutations cover structured fields. The Markdown body below the frontmatter is freeform and needs its own command — the UI's card detail view will write the description through it, and scripts will occasionally want to overwrite the body programmatically. For interactive editing the user opens the `.md` file directly; the CLI command exists for the non-interactive cases.

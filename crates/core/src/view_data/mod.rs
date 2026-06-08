@@ -47,8 +47,8 @@ use crate::store::Store;
 pub use bar_chart::{BarChartBar, BarChartData};
 pub use board::{BoardColumn, BoardData};
 pub use common::{
-    build_card, resolve_title, AggregateValue, AxisValue, Card, CardField, SizeValue, UnplacedCard,
-    UnplacedReason,
+    build_card, resolve_title, AggregateValue, AxisValue, Card, CardField, Column, ItemRef,
+    SizeValue, UnplacedCard, UnplacedReason,
 };
 pub use gantt::{GanttBar, GanttData};
 pub use gantt_by_depth::{GanttByDepthData, Level};
@@ -63,7 +63,7 @@ pub use treemap::{TreemapData, TreemapNode};
 pub use workload::{WorkloadBucket, WorkloadData, WorkloadUnit};
 
 /// Extracted, fully-resolved data for a single view.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ViewData {
     BarChart(BarChartData),

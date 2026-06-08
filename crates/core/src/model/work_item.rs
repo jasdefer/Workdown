@@ -15,7 +15,8 @@ use super::FieldValue;
 /// Wraps a `String` to distinguish work item IDs from arbitrary strings
 /// at the type level. Construction is open (`From<String>`); validation
 /// happens in the parser before wrapping.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS)]
+#[ts(type = "string")]
 pub struct WorkItemId(String);
 
 impl WorkItemId {

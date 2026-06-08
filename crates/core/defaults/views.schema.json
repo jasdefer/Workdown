@@ -100,13 +100,18 @@
 
     "tree": {
       "type": "object",
-      "description": "Hierarchical tree following a single link field (e.g. parent).",
+      "description": "Hierarchical tree following a single link field (e.g. parent). Optionally pairs the hierarchy with table-style columns shown alongside each row.",
       "properties": {
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "tree" },
         "where": { "$ref": "#/$defs/where_clauses" },
         "title": { "$ref": "#/$defs/field_name" },
-        "field": { "$ref": "#/$defs/field_name" }
+        "field": { "$ref": "#/$defs/field_name" },
+        "columns": {
+          "type": "array",
+          "description": "Optional ordered field names to render as columns alongside each row's hierarchy cell. Same semantics as the table view's columns. Empty or omitted produces a title-only outline.",
+          "items": { "$ref": "#/$defs/field_name" }
+        }
       },
       "required": ["id", "type", "field"],
       "additionalProperties": false

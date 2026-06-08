@@ -4,6 +4,9 @@ type: milestone
 status: done
 title: Code-quality cleanup
 parent: phase-04-visualization
+start_date: 2026-05-04
+end_date: 2026-05-06
+duration: "3d"
 ---
 
 Targeted cleanup pass collecting maintainability findings that surfaced after the renderer set landed. Scope grows as items are added; nothing time-boxed.

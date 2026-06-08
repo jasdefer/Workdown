@@ -1,6 +1,6 @@
 //! Typed field values plus their human-readable formatters.
 
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 
 use super::duration::format_duration_seconds;
 use super::WorkItemId;
@@ -13,7 +13,7 @@ use super::WorkItemId;
 /// that emits the formatted string (`"5d"`) — same convention `Date`
 /// follows for human-readable output. Deserialize is not derived —
 /// values are produced by the coercion layer, not parsed from JSON.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
 #[serde(untagged)]
 pub enum FieldValue {
     /// A free-form string.
@@ -30,7 +30,17 @@ pub enum FieldValue {
     Date(chrono::NaiveDate),
     /// A signed duration in canonical seconds. Formatted as suffix
     /// shorthand (`"5d"`, `"1w 2d 3h"`) for human-readable output.
-    Duration(#[serde(serialize_with = "serialize_duration_seconds")] i64),
+    /// JSON-typed as `string` to match the custom serializer; raw `i64`
+    /// in Rust would mismatch the wire shape.
+    Duration(
+        // `with` (not `serialize_with`) so ts-rs's serde-compat parser
+        // recognizes the attribute instead of warning on it; the
+        // `#[ts(type)]` override below is then required by ts-rs, not
+        // merely advisory. See the `duration_seconds` module.
+        #[serde(with = "duration_seconds")]
+        #[ts(type = "string")]
+        i64,
+    ),
     /// A boolean flag.
     Boolean(bool),
     /// A list of free-form strings.
@@ -41,14 +51,23 @@ pub enum FieldValue {
     Links(Vec<WorkItemId>),
 }
 
-/// Serializer for `FieldValue::Duration`: emits the formatted string
+/// Serde adapter for `FieldValue::Duration`: emits the formatted string
 /// (`"5d"`) rather than the raw i64, matching how `Date` emits
-/// `"YYYY-MM-DD"` rather than its internal representation.
-fn serialize_duration_seconds<S>(seconds: &i64, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    serializer.serialize_str(&format_duration_seconds(*seconds))
+/// `"YYYY-MM-DD"` rather than its internal representation. Only
+/// `serialize` is defined — `FieldValue` derives `Serialize` but not
+/// `Deserialize`, so the `with` module's `deserialize` half is never
+/// referenced.
+mod duration_seconds {
+    use serde::Serializer;
+
+    use super::format_duration_seconds;
+
+    pub fn serialize<S>(seconds: &i64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&format_duration_seconds(*seconds))
+    }
 }
 
 // ── Display formatting ──────────────────────────────────────────────

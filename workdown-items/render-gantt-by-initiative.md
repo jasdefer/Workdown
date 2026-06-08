@@ -5,6 +5,7 @@ status: done
 title: Gantt by initiative view
 parent: renderers
 depends_on: [render-gantt]
+effort: "4h"
 ---
 
 New view type `gantt_by_initiative` (option F from the Gantt design

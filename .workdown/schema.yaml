@@ -67,6 +67,16 @@ fields:
       function: sum
       error_on_missing: false
 
+  # Per-issue work estimate, independent of the calendar span carried by
+  # start_date/end_date/duration. Set on leaf issues; rolls up as a total
+  # to milestones and the epic.
+  effort:
+    type: duration
+    required: false
+    aggregate:
+      function: sum
+      error_on_missing: false
+
 # ── Rules ──────────────────────────────────────────────────
 # Cross-field, cross-item, and collection-wide validation.
 # See schema.schema.json for the formal rule syntax definition.

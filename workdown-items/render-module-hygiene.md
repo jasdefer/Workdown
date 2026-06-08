@@ -4,6 +4,7 @@ type: issue
 status: done
 title: Render module hygiene — escape helpers, test fixtures, common.rs naming
 parent: code-quality
+effort: "4h"
 ---
 
 The renderer set under `crates/cli/src/render/` accumulated quickly. Several rough edges surfaced once it stabilized:

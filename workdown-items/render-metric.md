@@ -5,6 +5,7 @@ status: done
 title: Metric renderer
 parent: renderers
 depends_on: [view-data-intermediate]
+effort: "4h"
 ---
 
 Render `MetricView` as a Markdown stat-row table written to

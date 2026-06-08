@@ -1,13 +1,13 @@
 ---
 id: item-mutations
 type: milestone
-status: in_progress
+status: done
 title: Item mutations
 parent: phase-04-visualization
 depends_on: [foundation]
-start_date: 2026-05-02
-end_date: 2026-05-29
-duration: "4w"
+start_date: 2026-05-13
+end_date: 2026-05-17
+duration: "5d"
 ---
 
 Add the CLI subcommands that mutate items — exercised by the UI and usable standalone. Every UI mutation maps 1:1 to a command here, and every command calls a pure function in `core` so the future server can use the same code path.

@@ -1,0 +1,60 @@
+views:
+  - id: status-board
+    type: board
+    field: status
+
+  - id: hierarchy
+    type: tree
+    field: parent
+    title: title
+    columns: [status]
+
+  - id: items-table
+    type: table
+    title: title
+    columns: [id, title, status, parent]
+
+  - id: project-stats
+    type: metric
+    metrics:
+      - label: Total items
+        aggregate: count
+      - label: Open
+        aggregate: count
+        where: ["status=open"]
+      - label: In progress
+        aggregate: count
+        where: ["status=in_progress"]
+      - label: Done
+        aggregate: count
+        where: ["status=done"]
+
+  - id: items-by-status
+    type: bar_chart
+    group_by: status
+    aggregate: count
+
+  - id: effort-over-time
+    type: line_chart
+    x: deadline
+    y: effort
+    title: title
+
+  - id: weekly-load
+    type: workload
+    start: start_date
+    end: deadline
+    effort: effort
+    title: title
+
+  - id: load-by-status-team
+    type: heatmap
+    x: status
+    y: team
+    aggregate: count
+
+  - id: effort-treemap
+    type: treemap
+    group: parent
+    size: effort
+    title: title

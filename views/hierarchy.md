@@ -2,6 +2,8 @@
 
 Hierarchical outline following `parent` upward to roots.
 
+- [multi-project-support](../workdown-items/multi-project-support.md)
+  - [multi-project-design](../workdown-items/multi-project-design.md)
 - [phase-04-visualization](../workdown-items/phase-04-visualization.md)
   - [code-quality](../workdown-items/code-quality.md)
     - [cross-cutting-helpers](../workdown-items/cross-cutting-helpers.md)
@@ -19,7 +21,6 @@ Hierarchical outline following `parent` upward to roots.
     - [views-validate-integration](../workdown-items/views-validate-integration.md)
     - [views-yaml-design](../workdown-items/views-yaml-design.md)
     - [workspace-refactor](../workdown-items/workspace-refactor.md)
-  - [frontend](../workdown-items/frontend.md)
   - [item-mutations](../workdown-items/item-mutations.md)
     - [cli-add-audit](../workdown-items/cli-add-audit.md)
     - [cli-body-command](../workdown-items/cli-body-command.md)
@@ -53,10 +54,11 @@ Hierarchical outline following `parent` upward to roots.
     - [view-data-intermediate](../workdown-items/view-data-intermediate.md)
     - [views-title-slot](../workdown-items/views-title-slot.md)
   - [server](../workdown-items/server.md)
-    - [serve-command-skeleton](../workdown-items/serve-command-skeleton.md)
-    - [server-endpoints-and-mutations](../workdown-items/server-endpoints-and-mutations.md)
-    - [server-sse-file-watching](../workdown-items/server-sse-file-watching.md)
-    - [ui-build-integration](../workdown-items/ui-build-integration.md)
+    - [first-view-end-to-end](../workdown-items/first-view-end-to-end.md)
+    - [live-updates](../workdown-items/live-updates.md)
+    - [mutations-slice](../workdown-items/mutations-slice.md)
+    - [remaining-read-views](../workdown-items/remaining-read-views.md)
+    - [walking-skeleton](../workdown-items/walking-skeleton.md)
 - [time-tracking](../workdown-items/time-tracking.md)
   - [duration-comparison-rule](../workdown-items/duration-comparison-rule.md)
   - [git-derived-default-generator](../workdown-items/git-derived-default-generator.md)

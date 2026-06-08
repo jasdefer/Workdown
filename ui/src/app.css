@@ -1,0 +1,9 @@
+/* Global stylesheet entry. Imported once in +layout.svelte.
+ *
+ * Order matters: reset first (so tokens override its baselines), then
+ * tokens (so base.css can reference --color-*), then base.
+ */
+
+@import './lib/styles/reset.css';
+@import './lib/styles/tokens.css';
+@import './lib/styles/base.css';

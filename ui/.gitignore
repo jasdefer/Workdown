@@ -1,0 +1,27 @@
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+# Ignore build output but keep the dir so rust-embed always has a
+# folder to embed (see .gitkeep). Bare `/dist` would exclude the
+# directory itself, defeating the root .gitignore's !.gitkeep rule.
+/dist/*
+!/dist/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+!.env.test
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*

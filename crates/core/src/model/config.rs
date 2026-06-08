@@ -24,6 +24,10 @@ pub struct Config {
     /// built-in Monday–Friday default; consume via [`Self::working_calendar`].
     #[serde(default)]
     pub working_days: Option<Vec<Weekday>>,
+    /// Settings for `workdown serve`. Absent in older project configs;
+    /// the CLI applies its own defaults when fields are missing.
+    #[serde(default)]
+    pub serve: Option<ServeConfig>,
 }
 
 impl Config {
@@ -63,6 +67,18 @@ pub struct Paths {
     pub resources: PathBuf,
     /// Path to the views file.
     pub views: PathBuf,
+}
+
+/// Settings for `workdown serve`. Optional fields let projects pin
+/// just what they care about; the CLI applies built-in defaults for
+/// anything omitted.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ServeConfig {
+    /// Port to bind. `None` means use the CLI's built-in default (3141)
+    /// and scan upward on conflict.
+    #[serde(default)]
+    pub port: Option<u16>,
 }
 
 /// Default field selections for CLI views.

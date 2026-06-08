@@ -12,15 +12,17 @@
 
 use serde::Serialize;
 
-use crate::model::schema::{FieldType, Schema};
+use crate::model::schema::Schema;
 use crate::model::views::{View, ViewKind};
 use crate::store::Store;
 
-use super::common::{as_size, build_card, Card, SizeValue, UnplacedCard, UnplacedReason};
+use super::common::{
+    as_size, build_card, zero_for_size_field, Card, SizeValue, UnplacedCard, UnplacedReason,
+};
 use super::filter::filtered_items;
 use super::traverse::{walk_forest, Traversal};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TreemapData {
     pub group_field: String,
     pub size_field: String,
@@ -28,7 +30,7 @@ pub struct TreemapData {
     pub unplaced: Vec<UnplacedCard>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TreemapNode {
     /// `None` on the synthetic top-level root; `Some` on every real item.
     pub card: Option<Card>,
@@ -117,20 +119,6 @@ fn to_treemap_node(
         size,
         children,
     })
-}
-
-/// Picks the `SizeValue` zero matching the size field's schema type.
-///
-/// Used to seed sums (synthetic root, internal-node rollups) with the
-/// right variant so children of a duration field don't accidentally
-/// add into a `Number` accumulator. `views_check` guarantees the field
-/// resolves to one of the allowed numeric types; an unexpected type is
-/// a programming error and falls back to `Number(0)` defensively.
-fn zero_for_size_field(field: &str, schema: &Schema) -> SizeValue {
-    match schema.fields.get(field).map(|config| config.field_type()) {
-        Some(FieldType::Duration) => SizeValue::Duration(0),
-        _ => SizeValue::Number(0.0),
-    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────

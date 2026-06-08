@@ -4,6 +4,7 @@ pub mod mutation_output;
 pub mod query;
 pub mod rename;
 pub mod render;
+pub mod serve;
 pub mod set;
 pub mod templates;
 pub mod unset;

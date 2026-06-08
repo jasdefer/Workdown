@@ -25,15 +25,15 @@ use crate::model::FieldValue;
 use crate::store::Store;
 
 use super::aggregate::compute_aggregate;
-use super::common::{build_card, AggregateValue, UnplacedCard, UnplacedReason};
+use super::common::{build_card, sort_unplaced, AggregateValue, UnplacedCard, UnplacedReason};
 use super::filter::filtered_items_with_extras;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct MetricData {
     pub rows: Vec<MetricRowData>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct MetricRowData {
     pub label: String,
     pub aggregate: Aggregate,
@@ -80,7 +80,7 @@ fn extract_row(view: &View, row: &MetricRow, store: &Store, schema: &Schema) -> 
         }
     };
 
-    unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
+    sort_unplaced(&mut unplaced);
 
     MetricRowData {
         label: resolve_label(row),

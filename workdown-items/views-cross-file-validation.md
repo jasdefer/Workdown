@@ -4,6 +4,7 @@ type: issue
 status: done
 title: Cross-file validation for views.yaml
 parent: foundation
+effort: "8h"
 ---
 
 Add the Rust cross-file validation logic that catches bad view configs at validate time instead of at render time. This issue produces the diagnostic types, the validation module, and the CLI's diagnostic-to-file mapping update. It does NOT wire validation into `workdown validate` — that's `views-validate-integration`.

@@ -1,0 +1,3 @@
+# Local dev tool — not indexed.
+User-agent: *
+Disallow: /

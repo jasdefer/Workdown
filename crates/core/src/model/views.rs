@@ -50,6 +50,11 @@ pub enum ViewKind {
     },
     Tree {
         field: String,
+        /// Ordered list of schema field names to display as columns next
+        /// to each row's hierarchy cell. Empty = title-only outline.
+        /// Same rules as `Table { columns }`: the virtual `id` field is
+        /// allowed; every other entry must resolve in `schema.fields`.
+        columns: Vec<String>,
     },
     Graph {
         field: String,
@@ -174,6 +179,34 @@ pub struct MetricRow {
     pub where_clauses: Vec<String>,
 }
 
+/// Compact descriptor for a configured view — the wire shape
+/// `GET /api/views` returns. Carries only what a navigation list needs:
+/// the id, an optional display title (for the view itself, distinct
+/// from the title slot on [`View`]), and the [`ViewType`] discriminant.
+/// Excludes per-kind config so the wire response doesn't track internal
+/// model evolution.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct ViewSummary {
+    pub id: String,
+    /// View-level display title. Currently always `None` — no source
+    /// in `views.yaml` yet; UI prettifies `id` when this is unset. A
+    /// future `display_title:` field could populate it without changing
+    /// the wire shape.
+    pub title: Option<String>,
+    pub kind: ViewType,
+}
+
+impl View {
+    /// Compact summary of this view for navigation-list responses.
+    pub fn summary(&self) -> ViewSummary {
+        ViewSummary {
+            id: self.id.clone(),
+            title: None,
+            kind: self.kind.view_type(),
+        }
+    }
+}
+
 impl ViewKind {
     /// The [`ViewType`] discriminant for this view configuration.
     pub fn view_type(&self) -> ViewType {
@@ -196,7 +229,7 @@ impl ViewKind {
 }
 
 /// The v1 view types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(rename_all = "snake_case")]
 pub enum ViewType {
     Board,
@@ -236,7 +269,7 @@ impl std::fmt::Display for ViewType {
 }
 
 /// Aggregation functions used by chart / metric views.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
 pub enum Aggregate {
     Count,
@@ -260,7 +293,7 @@ impl std::fmt::Display for Aggregate {
 }
 
 /// Date bucketing for heatmap axes bound to date fields.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
 pub enum Bucket {
     Day,

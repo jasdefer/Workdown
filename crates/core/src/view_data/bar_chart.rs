@@ -14,17 +14,18 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use crate::model::field_value::format_field_value;
 use crate::model::schema::Schema;
 use crate::model::views::{Aggregate, View, ViewKind};
-use crate::model::{FieldValue, WorkItem};
+use crate::model::WorkItem;
 use crate::store::Store;
 
-use super::aggregate::compute_aggregate;
-use super::common::{build_card, AggregateValue, UnplacedCard, UnplacedReason};
+use super::aggregate::aggregate_bucket;
+use super::common::{
+    build_card, group_keys, sort_unplaced, AggregateValue, UnplacedCard, UnplacedReason,
+};
 use super::filter::filtered_items;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct BarChartData {
     pub group_by: String,
     pub value_field: Option<String>,
@@ -33,7 +34,7 @@ pub struct BarChartData {
     pub unplaced: Vec<UnplacedCard>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct BarChartBar {
     pub group: String,
     pub value: AggregateValue,
@@ -54,7 +55,7 @@ pub fn extract_bar_chart(view: &View, store: &Store, schema: &Schema) -> BarChar
     let mut unplaced: Vec<UnplacedCard> = Vec::new();
 
     for item in &items {
-        let keys = keys_for_group(item, group_by);
+        let keys = group_keys(item, group_by, None);
         if keys.is_empty() {
             unplaced.push(UnplacedCard {
                 card: build_card(item, schema, view),
@@ -86,20 +87,7 @@ pub fn extract_bar_chart(view: &View, store: &Store, schema: &Schema) -> BarChar
 
     let mut bars: Vec<BarChartBar> = Vec::new();
     for (group, group_items) in groups {
-        let result = match aggregate {
-            Aggregate::Count => Some(AggregateValue::Number(group_items.len() as f64)),
-            _ => {
-                let field_values: Vec<&FieldValue> = match value.as_ref() {
-                    Some(value_field) => group_items
-                        .iter()
-                        .filter_map(|item| item.fields.get(value_field))
-                        .collect(),
-                    None => Vec::new(),
-                };
-                compute_aggregate(&field_values, *aggregate)
-            }
-        };
-        if let Some(result) = result {
+        if let Some(result) = aggregate_bucket(&group_items, value.as_deref(), *aggregate) {
             bars.push(BarChartBar {
                 group,
                 value: result,
@@ -107,7 +95,7 @@ pub fn extract_bar_chart(view: &View, store: &Store, schema: &Schema) -> BarChar
         }
     }
 
-    unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
+    sort_unplaced(&mut unplaced);
 
     BarChartData {
         group_by: group_by.clone(),
@@ -115,16 +103,6 @@ pub fn extract_bar_chart(view: &View, store: &Store, schema: &Schema) -> BarChar
         aggregate: *aggregate,
         bars,
         unplaced,
-    }
-}
-
-fn keys_for_group(item: &WorkItem, field: &str) -> Vec<String> {
-    match item.fields.get(field) {
-        None => Vec::new(),
-        Some(FieldValue::Multichoice(values)) => values.clone(),
-        Some(FieldValue::List(values)) => values.clone(),
-        Some(FieldValue::Links(ids)) => ids.iter().map(|id| id.as_str().to_owned()).collect(),
-        Some(other) => vec![format_field_value(other)],
     }
 }
 
@@ -137,6 +115,7 @@ mod tests {
 
     use crate::model::schema::{FieldTypeConfig, Schema};
     use crate::model::views::{View, ViewKind};
+    use crate::model::FieldValue;
     use crate::view_data::test_support::{make_item, make_schema, make_store};
 
     fn bar_chart_view(group_by: &str, value: Option<&str>, aggregate: Aggregate) -> View {

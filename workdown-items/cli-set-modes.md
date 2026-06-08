@@ -5,6 +5,7 @@ status: done
 title: workdown set — type-aware modes (append, remove, delta)
 parent: item-mutations
 depends_on: [cli-set-command]
+effort: "8h"
 ---
 
 Adds mode flags to `workdown set` so each field type gets natural operations beyond plain replace.

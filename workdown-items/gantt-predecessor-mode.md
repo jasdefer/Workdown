@@ -5,6 +5,7 @@ status: done
 title: Gantt predecessor input mode
 parent: renderers
 depends_on: [gantt-duration-mode]
+effort: "4h"
 ---
 
 Extend the Gantt converter with an `after + duration` input mode. The

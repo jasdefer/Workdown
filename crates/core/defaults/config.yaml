@@ -23,3 +23,10 @@ defaults:
 # views to spread effort across the right days. Individual workload
 # views can override this with their own `working_days:` key.
 # working_days: [monday, tuesday, wednesday, thursday, friday]
+
+# Settings for `workdown serve` (the local web UI).
+# Override the port here so contributors on this project all get the
+# same URL. Omit the entire section (or just `port:`) to accept the
+# CLI default (3141) with scan-on-conflict.
+serve:
+  port: 3141

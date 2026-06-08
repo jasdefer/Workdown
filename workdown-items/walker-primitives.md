@@ -4,6 +4,7 @@ type: issue
 status: done
 title: Unify the upward chain walks and link-target reads
 parent: code-quality
+effort: "4h"
 ---
 
 Two related patterns repeated across the codebase — both prerequisites of any graph operation, both reimplemented at every call site.

@@ -1,8 +1,8 @@
 //! `workdown render` — writes view files to `views/<id>.md`.
 //!
-//! Orchestration only: loads schema, items, and views.yaml; runs cross-file
-//! validation; dispatches each view to the matching renderer; writes the
-//! result to disk. The actual Markdown formatting lives in `crate::render`.
+//! Orchestration: loads the project via `core::load_project`, dispatches
+//! each view to the matching renderer, writes the result to disk. The
+//! actual Markdown formatting lives in `crate::render`.
 //!
 //! Error policy (per project decisions):
 //! - Missing `views.yaml` → info log, exit 0.
@@ -18,10 +18,9 @@ use workdown_core::model::calendar::WorkingCalendar;
 use workdown_core::model::config::Config;
 use workdown_core::model::diagnostic::Diagnostic;
 use workdown_core::model::views::{View, Views};
-use workdown_core::parser;
+use workdown_core::project::load_project;
 use workdown_core::store::Store;
 use workdown_core::view_data::{self, ViewData};
-use workdown_core::views_check;
 
 use crate::cli::output;
 use crate::render;
@@ -31,32 +30,22 @@ pub fn run_render(
     project_root: &Path,
     view_id: Option<&str>,
 ) -> anyhow::Result<ExitCode> {
-    let schema_path = project_root.join(&config.schema);
-    let items_path = project_root.join(&config.paths.work_items);
-    let views_path = project_root.join(&config.paths.views);
+    let project = load_project(config, project_root).map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    let schema = parser::schema::load_schema(&schema_path)
-        .map_err(|e| anyhow::anyhow!("failed to load schema: {e}"))?;
-
-    let store = Store::load(&items_path, &schema)
-        .map_err(|e| anyhow::anyhow!("failed to read items directory: {e}"))?;
-    for diagnostic in store.diagnostics() {
+    // Surface every collected diagnostic as a warning, matching the
+    // pre-refactor behavior. Order preserved: store diagnostics first
+    // (broken links, missing fields), then cycles + rules, then views.
+    for diagnostic in &project.diagnostics {
         output::warning(&diagnostic.to_string());
     }
 
-    if !views_path.exists() {
+    let Some(views) = project.views.as_ref() else {
+        let views_path = project_root.join(&config.paths.views);
         tracing::info!(path = %views_path.display(), "no views.yaml — nothing to render");
         return Ok(ExitCode::SUCCESS);
-    }
+    };
 
-    let views = parser::views::load_views(&views_path)
-        .map_err(|e| anyhow::anyhow!("failed to load views: {e}"))?;
-
-    let views_check_diagnostics = views_check::evaluate(&views, &schema, &views_path);
-    let invalid_view_ids = invalid_view_ids(&views_check_diagnostics);
-    for diagnostic in &views_check_diagnostics {
-        output::warning(&diagnostic.to_string());
-    }
+    let invalid_view_ids = invalid_view_ids(&project.diagnostics);
 
     // Climb out of the output directory back to project root, then down
     // into the work items dir. Each component of `output_dir` adds one
@@ -69,25 +58,24 @@ pub fn run_render(
         config.paths.work_items.display()
     );
     let output_dir = project_root.join(&views.output_dir);
-    let calendar = config.working_calendar();
 
     match view_id {
         Some(id) => render_single(
-            &views,
+            views,
             id,
             &invalid_view_ids,
-            &store,
-            &schema,
-            &calendar,
+            &project.store,
+            &project.schema,
+            &project.calendar,
             &output_dir,
             &link_base,
         ),
         None => render_all(
-            &views,
+            views,
             &invalid_view_ids,
-            &store,
-            &schema,
-            &calendar,
+            &project.store,
+            &project.schema,
+            &project.calendar,
             &output_dir,
             &link_base,
         ),
