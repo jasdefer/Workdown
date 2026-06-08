@@ -15,7 +15,8 @@ struct Cli {
 enum SubCmd {
     /// Emit TypeScript type bindings from the Rust wire-level types.
     GenTypes,
-    /// Build the UI bundle (gen-types + npm ci + npm run check + npm run build).
+    /// Build the UI bundle (gen-types + npm ci + npm run check + npm run
+    /// test + npm run build).
     BuildUi,
     /// Full release build: build the UI bundle, then `cargo build --release`.
     Build,
@@ -60,7 +61,18 @@ fn build_ui(workspace_root: &Path) -> Result<()> {
     gen_types(workspace_root)?;
     run("npm ci", &npm, &["ci"], &ui_dir)?;
     run("npm run check", &npm, &["run", "check"], &ui_dir)?;
+    // Unit tests (vitest) — gates the bundle on the gantt scale math
+    // and format helpers so a regression fails the build, in CI and in
+    // local release builds alike.
+    run("npm run test", &npm, &["run", "test"], &ui_dir)?;
     run("npm run build", &npm, &["run", "build"], &ui_dir)?;
+    // The static adapter empties ui/dist/ on build, deleting the
+    // committed .gitkeep. Recreate it so the placeholder survives local
+    // builds (rust-embed needs the dir to exist on a fresh clone) and
+    // never shows up as a spurious deletion in `git status`.
+    let gitkeep = ui_dir.join("dist").join(".gitkeep");
+    std::fs::write(&gitkeep, "")
+        .with_context(|| format!("failed to recreate {}", gitkeep.display()))?;
     Ok(())
 }
 
