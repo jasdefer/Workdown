@@ -133,10 +133,8 @@ jobs:
           "cache": "npm"
           "cache-dependency-path": "ui/package-lock.json"
           "node-version": "20"
-      - name: "Install UI deps"
-        run: "cd ui && npm ci"
       - name: "Build UI bundle"
-        run: "cd ui && npm run build"
+        run: "cargo xtask build-ui"
       - name: Install dist
         run: ${{ matrix.install_dist.run }}
       # Get the dist-manifest

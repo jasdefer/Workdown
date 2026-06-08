@@ -9,17 +9,17 @@ description = "Workdown domain library — model, parser, store, query, rules, o
 publish = false
 
 [dependencies]
-indexmap = { version = "2", features = ["serde"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-serde_yaml = "0.9"
+indexmap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
 thiserror = "2"
-tracing = "0.1"
+tracing.workspace = true
 regex = "1"
 walkdir = "2"
-csv = "1"
+csv.workspace = true
 uuid = { version = "1", features = ["v4"] }
-chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+chrono = { workspace = true, features = ["clock", "serde"] }
 ts-rs = { version = "10", features = ["serde-compat", "chrono-impl"] }
 
 [dev-dependencies]

@@ -14,19 +14,21 @@ path = "src/main.rs"
 [dependencies]
 workdown-core = { path = "../core" }
 workdown-server = { path = "../server" }
-anyhow = "1"
-clap = { version = "4", features = ["derive", "wrap_help", "env"] }
+anyhow.workspace = true
+clap = { workspace = true, features = ["derive", "wrap_help", "env"] }
 console = "0.15"
 comfy-table = "7"
 open = "5"
-serde_json = "1"
-serde_yaml = "0.9"
-tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal"] }
-tracing = "0.1"
+serde_json.workspace = true
+serde_yaml.workspace = true
+# serve.rs builds the runtime via `runtime::Builder` (no `#[tokio::main]`)
+# and binds a `TcpListener`; no `macros`/`signal` (no shutdown handler yet).
+tokio = { workspace = true, features = ["rt-multi-thread", "net"] }
+tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-csv = "1"
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+csv.workspace = true
+chrono = { workspace = true, features = ["clock"] }
 plotters = { version = "0.3", default-features = false, features = ["svg_backend", "chrono", "line_series", "point_series", "full_palette"] }
 
 [dev-dependencies]
-indexmap = { version = "2", features = ["serde"] }
+indexmap.workspace = true

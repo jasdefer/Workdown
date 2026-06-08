@@ -3,15 +3,16 @@
 # `cargo build` so `ui/dist/` is populated and rust-embed can bake it
 # into the release binary.
 #
-# Note: cargo-dist's template does not pass through `working-directory`,
-# so we use `cd ui && ...` instead.
+# The UI build goes through `cargo xtask build-ui` — the single source
+# of truth for how the bundle is built (gen-types + npm ci + check +
+# build), shared with ci.yml. Rust is already installed by this point in
+# the release job, so `cargo` is on PATH; Node still needs setting up
+# because xtask shells out to `npm`.
 - name: Set up Node
   uses: actions/setup-node@v4
   with:
     node-version: '20'
     cache: 'npm'
     cache-dependency-path: ui/package-lock.json
-- name: Install UI deps
-  run: cd ui && npm ci
 - name: Build UI bundle
-  run: cd ui && npm run build
+  run: cargo xtask build-ui

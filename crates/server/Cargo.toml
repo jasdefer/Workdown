@@ -10,15 +10,21 @@ publish = false
 
 [dependencies]
 workdown-core = { path = "../core" }
-anyhow = "1"
+anyhow.workspace = true
 axum = "0.8"
 mime_guess = "2"
 # debug-embed feature is OFF by default — debug builds read ui/dist/ from
 # disk at runtime, release builds bake it in. Keeps `cargo check` / `cargo
 # test` fast and pure-Rust during dev.
 rust-embed = "8"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal"] }
+serde.workspace = true
+serde_json.workspace = true
+# Runtime only needs `net` (the `TcpListener`); the runtime itself is
+# built by the CLI. `macros`/`rt` are test-only — see dev-dependencies.
+tokio = { workspace = true, features = ["net"] }
 tower = "0.5"
-tracing = "0.1"
+tracing.workspace = true
+
+[dev-dependencies]
+# `#[tokio::test]` uses the current-thread runtime.
+tokio = { workspace = true, features = ["rt", "macros"] }
