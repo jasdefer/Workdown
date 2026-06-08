@@ -24,6 +24,7 @@ use axum::{
 };
 use rust_embed::{Embed, EmbeddedFile};
 use tokio::net::TcpListener;
+use tower_http::catch_panic::CatchPanicLayer;
 
 pub use state::AppState;
 
@@ -61,6 +62,10 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .nest("/api", api::router())
         .fallback(asset_handler)
+        // Convert any handler panic into a 500 instead of dropping the
+        // connection. view_data::extract panics on invariants the
+        // validator is expected to have caught; this is the safety net.
+        .layer(CatchPanicLayer::new())
         .with_state(state)
 }
 

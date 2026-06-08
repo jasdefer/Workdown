@@ -23,6 +23,10 @@ serde_json.workspace = true
 # built by the CLI. `macros`/`rt` are test-only — see dev-dependencies.
 tokio = { workspace = true, features = ["net"] }
 tower = "0.5"
+# catch-panic turns a handler panic into a 500 instead of a dropped
+# connection — view_data::extract is documented to panic on invariants
+# the validator is expected to have caught.
+tower-http = { version = "0.6", features = ["catch-panic"] }
 tracing.workspace = true
 
 [dev-dependencies]
