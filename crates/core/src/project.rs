@@ -99,15 +99,12 @@ pub fn load_project(config: &Config, project_root: &Path) -> Result<Project, Loa
     let mut diagnostics: Vec<Diagnostic> = store.diagnostics().to_vec();
     diagnostics.extend(store.detect_cycles(&schema));
     diagnostics.extend(crate::rules::evaluate(&store, &schema));
-    diagnostics.extend(views_check::load_and_check(&views_path, &schema));
 
-    // Try to load views; on failure the parse-error diagnostics are
-    // already in the list above via load_and_check.
-    let views = if views_path.exists() {
-        parser::views::load_views(&views_path).ok()
-    } else {
-        None
-    };
+    // Parse views.yaml exactly once: load_and_check returns the parsed
+    // views (None when absent or unparseable) together with its check
+    // diagnostics, so we never re-read the file to populate `views`.
+    let (views, views_diagnostics) = views_check::load_and_check(&views_path, &schema);
+    diagnostics.extend(views_diagnostics);
 
     let calendar = config.working_calendar();
 

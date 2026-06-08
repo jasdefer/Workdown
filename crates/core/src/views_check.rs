@@ -60,19 +60,26 @@ pub fn evaluate(views: &Views, schema: &Schema, views_path: &Path) -> Vec<Diagno
     out
 }
 
-/// Load `views.yaml` from disk and run cross-file checks, routing any
-/// load-time error through [`parse_errors_to_diagnostics`].
+/// Load `views.yaml` from disk, run cross-file checks, and return both
+/// the parsed views and every diagnostic produced — parsing the file
+/// exactly once so callers that also need the [`Views`] (the project
+/// loader) don't have to re-read it.
 ///
-/// Returns an empty `Vec` when the file is absent — `views.yaml` is
-/// optional. All other failures (I/O, YAML parse, semantic validation)
-/// are reported as diagnostics rather than propagating.
-pub fn load_and_check(views_path: &Path, schema: &Schema) -> Vec<Diagnostic> {
+/// Returns `(None, [])` when the file is absent — `views.yaml` is
+/// optional. On I/O or YAML-parse failure returns `(None, diagnostics)`
+/// with the load error routed through [`parse_errors_to_diagnostics`].
+/// On a successful parse returns `(Some(views), diagnostics)`, where the
+/// diagnostics are the semantic check results (often empty).
+pub fn load_and_check(views_path: &Path, schema: &Schema) -> (Option<Views>, Vec<Diagnostic>) {
     if !views_path.exists() {
-        return Vec::new();
+        return (None, Vec::new());
     }
     match crate::parser::views::load_views(views_path) {
-        Ok(views) => evaluate(&views, schema, views_path),
-        Err(err) => parse_errors_to_diagnostics(err, views_path),
+        Ok(views) => {
+            let diagnostics = evaluate(&views, schema, views_path);
+            (Some(views), diagnostics)
+        }
+        Err(err) => (None, parse_errors_to_diagnostics(err, views_path)),
     }
 }
 
