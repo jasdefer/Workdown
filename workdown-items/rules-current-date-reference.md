@@ -3,7 +3,7 @@ id: rules-current-date-reference
 type: issue
 status: to_do
 title: Rules can't reference the current date
-parent: code-quality
+parent: polish
 ---
 
 ## Problem
