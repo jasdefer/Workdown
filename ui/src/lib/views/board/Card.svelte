@@ -5,6 +5,8 @@
 -->
 <script lang="ts">
 	import type { Card } from '$lib/api/generated/Card';
+	import { draggable } from '$lib/dnd/dnd';
+	import { openItem } from '$lib/items/itemLink';
 	import Markdown from '$lib/ui/Markdown.svelte';
 	import { cardLabel } from '$lib/views/prettify';
 
@@ -15,9 +17,27 @@
 	let { card }: Props = $props();
 
 	const displayTitle = $derived(cardLabel(card));
+
+	// Click (when not a drag) opens the detail panel via `?item=`. The
+	// card is draggable, so it can't be an anchor — navigate in JS.
+	function open(): void {
+		openItem(card.id);
+	}
 </script>
 
-<article class="card">
+<div
+	class="card"
+	use:draggable={card.id}
+	role="button"
+	tabindex="0"
+	onclick={open}
+	onkeydown={(event) => {
+		if (event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault();
+			open();
+		}
+	}}
+>
 	<header class="card-header">
 		<span class="title">{displayTitle}</span>
 		<span class="id" aria-label="Item id" title={card.id}>{card.id}</span>
@@ -27,7 +47,7 @@
 			<Markdown content={card.body} compact />
 		</div>
 	{/if}
-</article>
+</div>
 
 <style>
 	.card {
@@ -39,6 +59,17 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-2);
+		cursor: pointer;
+		text-align: left;
+	}
+
+	.card:hover {
+		border-color: var(--color-fg-muted);
+	}
+
+	.card:focus-visible {
+		outline: 2px solid var(--color-fg-muted);
+		outline-offset: 1px;
 	}
 
 	.card-header {

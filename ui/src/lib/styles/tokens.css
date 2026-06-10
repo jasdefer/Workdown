@@ -21,6 +21,12 @@
 	--color-border: #e4e4e7;
 	--color-accent: #3b82f6;
 
+	/* Editing surfaces: raised cards on a tinted canvas. In light the
+	   card is white and the canvas a soft grey; dark inverts the relation
+	   (card lighter than canvas) so cards still read as raised. */
+	--color-canvas: #f4f4f5;
+	--color-card: #ffffff;
+
 	/* Semantic colors — warning and error pairs. First surface to need
 	   them is the DiagnosticBanner; success/info follow later. */
 	--color-warning-fg: #92400e;
@@ -58,6 +64,9 @@
 	--color-fg-muted: #a1a1aa;
 	--color-border: #27272a;
 	--color-accent: #60a5fa;
+
+	--color-canvas: #09090b;
+	--color-card: #18181b;
 
 	--color-warning-fg: #fcd34d;
 	--color-warning-bg: #451a03;

@@ -28,6 +28,7 @@
 	import type { TableData } from '$lib/api/generated/TableData';
 	import type { WorkItemId } from '$lib/api/generated/WorkItemId';
 	import { SvelteMap } from 'svelte/reactivity';
+	import { itemHref } from '$lib/items/itemLink';
 	import { itemRefLabel, prettifyId } from '$lib/views/prettify';
 	import ColumnResizeHandle from '$lib/views/ColumnResizeHandle.svelte';
 	import EmptyHint from '$lib/views/EmptyHint.svelte';
@@ -204,9 +205,15 @@
 		<tbody>
 			{#each sortedRows as row (row.id)}
 				<tr>
-					{#each row.cells as cell (cell.column.name)}
+					{#each row.cells as cell, cellIndex (cell.column.name)}
 						<td>
-							<Cell value={cell.value} fieldType={cell.column.field_type} items={data.items} />
+							{#if cellIndex === 0}
+								<a class="row-link" href={itemHref(row.id)} title="Open {row.id}">
+									<Cell value={cell.value} fieldType={cell.column.field_type} items={data.items} />
+								</a>
+							{:else}
+								<Cell value={cell.value} fieldType={cell.column.field_type} items={data.items} />
+							{/if}
 						</td>
 					{/each}
 				</tr>
@@ -231,6 +238,21 @@
 		border-collapse: separate;
 		border-spacing: 0;
 		width: 100%;
+	}
+
+	.row-link {
+		color: inherit;
+		text-decoration: none;
+		cursor: pointer;
+	}
+
+	.row-link:hover {
+		text-decoration: underline;
+	}
+
+	.row-link:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: -2px;
 	}
 
 	/* Engaged once any column has a user-set width. Forces strict

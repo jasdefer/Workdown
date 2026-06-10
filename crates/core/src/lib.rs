@@ -4,13 +4,16 @@
 //! The repo is the single source of truth.
 
 pub mod generators;
+pub mod item_data;
 pub mod model;
+pub mod mutation_data;
 pub mod operations;
 pub mod parser;
 pub mod project;
 pub mod query;
 pub mod resolve;
 pub mod rules;
+pub mod schema_data;
 pub mod store;
 pub mod view_data;
 pub mod views_check;

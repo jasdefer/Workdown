@@ -32,3 +32,6 @@ tracing.workspace = true
 [dev-dependencies]
 # `#[tokio::test]` uses the current-thread runtime.
 tokio = { workspace = true, features = ["rt", "macros"] }
+# Mutation endpoint tests write to disk, so they run against a throwaway
+# project copied into a tempdir — never the committed read-only fixture.
+tempfile = "3"

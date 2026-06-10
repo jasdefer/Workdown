@@ -3,7 +3,7 @@
 //! Shape:
 //!
 //! ```json
-//! { "data": <T>, "diagnostics": [<Diagnostic>...] }
+//! { "data": <T>, "diagnostics": [<Diagnostic>...], "error": "<string>" }
 //! ```
 //!
 //! - `data` is omitted (not `null`) when the response carries no
@@ -11,14 +11,21 @@
 //!   Absent-vs-null disambiguates "rejected" from "explicit null".
 //! - `diagnostics` is **always present**, often `[]`. The UI never
 //!   needs to optional-chain it: `response.diagnostics.length` always
-//!   works. Same shape as `workdown check --json` produces.
+//!   works. Same shape as `workdown check --json` produces. These are
+//!   *project-validation findings* — including the save-with-warning
+//!   warnings a successful mutation returns on a `200`.
+//! - `error` is omitted unless a *hard operational failure* occurred —
+//!   the request was understood but couldn't be carried out (unknown
+//!   item, an op invalid for the field's type, a write I/O error) and
+//!   nothing was written. One human-readable line. Kept distinct from
+//!   `diagnostics` because a request-level failure is not a project
+//!   finding and doesn't fit the structured per-item diagnostic model.
 //!
 //! HTTP status answers "did the thing happen?"; `diagnostics` answers
-//! "what should the user know?". See the issue body for the full
-//! status-code table — `200` for success (warnings still possible),
-//! `422` for well-formed-but-rejected with diagnostics explaining why,
-//! `400` for malformed request shapes, `404` for unknown routes/IDs,
-//! `500` for panics.
+//! "what should the user know about the project?"; `error` answers "why
+//! did this request fail?". `200` for success (warnings still possible),
+//! `422` for well-formed-but-rejected, `404` for unknown routes/IDs,
+//! `500` for I/O failures and panics.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -36,6 +43,11 @@ pub struct ApiResponse<T: Serialize> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<T>,
     pub diagnostics: Vec<Diagnostic>,
+    /// A single human-readable line for a hard operational failure;
+    /// omitted (not `null`) on success. See the module docs for how this
+    /// differs from `diagnostics`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     #[serde(skip)]
     pub status: StatusCode,
     /// When `true`, the response sends just the status code with no
@@ -53,6 +65,7 @@ impl<T: Serialize> ApiResponse<T> {
         Self {
             data: Some(data),
             diagnostics: Vec::new(),
+            error: None,
             status: StatusCode::OK,
             omit_body: false,
         }
@@ -63,7 +76,22 @@ impl<T: Serialize> ApiResponse<T> {
         Self {
             data: Some(data),
             diagnostics,
+            error: None,
             status: StatusCode::OK,
+            omit_body: false,
+        }
+    }
+
+    /// 201 Created with the new resource's payload, plus any
+    /// save-with-warning diagnostics. Used by item creation — the
+    /// resource came into existence, so the status differs from a plain
+    /// `200` field mutation.
+    pub fn created(data: T, diagnostics: Vec<Diagnostic>) -> Self {
+        Self {
+            data: Some(data),
+            diagnostics,
+            error: None,
+            status: StatusCode::CREATED,
             omit_body: false,
         }
     }
@@ -76,6 +104,7 @@ impl<T: Serialize> ApiResponse<T> {
         Self {
             data: None,
             diagnostics,
+            error: None,
             status: StatusCode::OK,
             omit_body: false,
         }
@@ -90,7 +119,23 @@ impl<T: Serialize> ApiResponse<T> {
         Self {
             data: None,
             diagnostics,
+            error: None,
             status: StatusCode::UNPROCESSABLE_ENTITY,
+            omit_body: false,
+        }
+    }
+
+    /// A hard operational failure: the request was understood but the
+    /// action couldn't be carried out and nothing was written. `error`
+    /// carries one human-readable line; `data` and `diagnostics` are
+    /// empty. The caller picks the status (`404` unknown item, `422`
+    /// semantic rejection, `500` I/O failure).
+    pub fn failed(status: StatusCode, error: String) -> Self {
+        Self {
+            data: None,
+            diagnostics: Vec::new(),
+            error: Some(error),
+            status,
             omit_body: false,
         }
     }
@@ -103,6 +148,7 @@ impl<T: Serialize> ApiResponse<T> {
         Self {
             data: None,
             diagnostics: Vec::new(),
+            error: None,
             status: StatusCode::NOT_FOUND,
             omit_body: true,
         }
@@ -126,6 +172,8 @@ struct EnvelopeBody<'a, T: Serialize> {
     #[serde(skip_serializing_if = "Option::is_none")]
     data: Option<&'a T>,
     diagnostics: &'a [Diagnostic],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<&'a str>,
 }
 
 impl<'a, T: Serialize> From<&'a ApiResponse<T>> for EnvelopeBody<'a, T> {
@@ -133,6 +181,7 @@ impl<'a, T: Serialize> From<&'a ApiResponse<T>> for EnvelopeBody<'a, T> {
         Self {
             data: response.data.as_ref(),
             diagnostics: &response.diagnostics,
+            error: response.error.as_deref(),
         }
     }
 }

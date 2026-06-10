@@ -1,27 +1,30 @@
 <script lang="ts">
+	import ItemEditor from '$lib/items/ItemEditor.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 </script>
 
-<section>
-	<h1>Item: {data.itemId}</h1>
-	<p>Standalone item detail/edit lands with the first interactive editing surface.</p>
+<section class="standalone">
+	<div class="content">
+		<ItemEditor itemId={data.itemId} />
+	</div>
 </section>
 
 <style>
-	section {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-2);
+	.standalone {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		width: 100%;
+		background: var(--color-canvas);
 	}
 
-	h1 {
-		font-size: var(--text-lg);
-		font-weight: 600;
-	}
-
-	p {
-		color: var(--color-fg-muted);
+	.content {
+		max-width: 42rem;
+		margin: 0 auto;
+		/* Counteract app-main's padding so the canvas reaches the edges,
+		   then pad the content back in. */
+		padding: var(--space-2) 0;
 	}
 </style>

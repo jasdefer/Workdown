@@ -20,6 +20,7 @@
 	<header class="app-header">
 		<a class="brand" href="/">Workdown</a>
 		<div class="header-actions">
+			<a class="new-item" href="/items/new">+ New item</a>
 			<ThemeToggle />
 		</div>
 	</header>
@@ -54,7 +55,17 @@
 	.header-actions {
 		display: flex;
 		align-items: center;
-		gap: var(--space-2);
+		gap: var(--space-3);
+	}
+
+	.new-item {
+		font-size: var(--text-sm);
+		color: var(--color-fg-muted);
+		text-decoration: none;
+	}
+
+	.new-item:hover {
+		color: var(--color-fg);
 	}
 
 	/* Flex container so view-page's `flex: 1` can constrain against

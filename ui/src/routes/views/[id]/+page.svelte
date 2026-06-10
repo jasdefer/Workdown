@@ -4,12 +4,19 @@
   `?item=...` in the URL mounts the (stub) ItemPanel.
 -->
 <script lang="ts">
+	import { goto, invalidateAll } from '$app/navigation';
 	import type { PageData } from './$types';
 	import DiagnosticBanner from '$lib/ui/DiagnosticBanner.svelte';
 	import ViewRenderer from '$lib/views/ViewRenderer.svelte';
 	import ItemPanel from './ItemPanel.svelte';
 
 	let { data }: { data: PageData } = $props();
+
+	// Closing the panel drops `?item=` — load() depends on the query
+	// param, so this re-runs and unmounts the panel.
+	function closePanel(): void {
+		void goto(`/views/${encodeURIComponent(data.viewId)}`, { keepFocus: true, noScroll: true });
+	}
 </script>
 
 <div class="view-page">
@@ -31,7 +38,7 @@
 </div>
 
 {#if data.itemId}
-	<ItemPanel itemId={data.itemId} />
+	<ItemPanel itemId={data.itemId} onclose={closePanel} onmutate={() => invalidateAll()} />
 {/if}
 
 <style>
