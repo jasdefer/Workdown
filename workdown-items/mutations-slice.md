@@ -1,10 +1,11 @@
 ---
 id: mutations-slice
-type: issue
-status: to_do
 title: Mutations end-to-end
+type: issue
+status: done
 parent: server
-depends_on: [first-view-end-to-end]
+depends_on:
+- first-view-end-to-end
 ---
 
 The mutation half of the UI. Every UI mutation maps to a `core` function — the same code path the CLI uses — wrapped in a thin HTTP handler. Save-with-warning surfaces in the UI.
