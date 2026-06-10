@@ -14,8 +14,9 @@
   - 422: project loaded with a fatal problem (missing schema,
          unparseable views.yaml). Diagnostics ride along in
          `$page.error.diagnostics`.
-  - 404: unknown view id. Layout-loaded views list provides
-         "try one of these" links.
+  - 404: unknown view id. The message names the bad id; the header's
+         view nav (rendered above this boundary) already lists the
+         valid views, so we just point at it rather than repeat them.
   - everything else: network failure or unexpected throw.
 -->
 <script lang="ts">
@@ -35,18 +36,14 @@
 		<p class="message">{message}</p>
 	</header>
 
-	{#if status === 404 && views.length > 0}
-		<section class="suggestions">
-			<h2>Try one of these views:</h2>
-			<ul>
-				{#each views as view (view.id)}
-					<li>
-						<a href="/views/{encodeURIComponent(view.id)}">{view.title ?? view.id}</a>
-						<span class="view-kind">{view.kind}</span>
-					</li>
-				{/each}
-			</ul>
-		</section>
+	{#if status === 404}
+		<p class="hint">
+			{#if views.length > 0}
+				Pick a view from the navigation above.
+			{:else}
+				No views are configured yet — add one to <code>.workdown/views.yaml</code>.
+			{/if}
+		</p>
 	{/if}
 
 	{#if errorDiagnostics.length > 0}
@@ -92,14 +89,12 @@
 		margin: 0;
 	}
 
-	.suggestions h2,
 	.diagnostics h2 {
 		font-size: var(--text-base);
 		font-weight: 600;
 		margin: 0 0 var(--space-2);
 	}
 
-	.suggestions ul,
 	.diagnostics ul {
 		list-style: none;
 		padding: 0;
@@ -109,15 +104,9 @@
 		gap: var(--space-2);
 	}
 
-	.suggestions a {
-		color: var(--color-accent);
-	}
-
-	.view-kind {
-		font-family: var(--font-mono);
+	.hint {
 		color: var(--color-fg-muted);
-		font-size: 0.85em;
-		margin-left: var(--space-2);
+		margin: 0;
 	}
 
 	.diagnostics li {

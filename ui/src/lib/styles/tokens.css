@@ -20,6 +20,7 @@
 	--color-fg-muted: #71717a;
 	--color-border: #e4e4e7;
 	--color-accent: #3b82f6;
+	--color-accent-fg: #ffffff;
 
 	/* Editing surfaces: raised cards on a tinted canvas. In light the
 	   card is white and the canvas a soft grey; dark inverts the relation
@@ -64,6 +65,8 @@
 	--color-fg-muted: #a1a1aa;
 	--color-border: #27272a;
 	--color-accent: #60a5fa;
+	/* Dark accent is light — use the near-black canvas for readable text. */
+	--color-accent-fg: #09090b;
 
 	--color-canvas: #09090b;
 	--color-card: #18181b;
