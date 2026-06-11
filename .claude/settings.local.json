@@ -110,7 +110,12 @@
       "Bash(perl -ne 'print \"$.: \", join\\(\",\", map { sprintf \"0x%02x@col%d\", ord\\($_\\), pos\\(\\) } \\($_ =~ /\\(\\\\x00\\)/g\\)\\), \"\\\\n\" if /\\\\x00/' /tmp/gantt.svelte)",
       "Bash(xargs -0 grep -Hn \"gitkeep\\\\|dist\")",
       "Bash(perl -i -pe 's/\\\\x00/ /g' ui/src/lib/views/gantt/GanttChart.svelte)",
-      "Bash(npm --version)"
+      "Bash(npm --version)",
+      "PowerShell(npm *)",
+      "PowerShell(docker exec 8c06c78f8738 *)",
+      "PowerShell(Test-Path *)",
+      "PowerShell(gh release *)",
+      "PowerShell(docker exec *)"
     ]
   }
 }
