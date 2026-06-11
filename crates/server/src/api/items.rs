@@ -45,7 +45,10 @@ pub fn router() -> Router<AppState> {
 
 /// Read one item's current field values and body — the data source for
 /// the editing surface (detail panel and standalone item page).
-async fn get_item(State(state): State<AppState>, Path(id): Path<String>) -> ApiResponse<ItemDetail> {
+async fn get_item(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResponse<ItemDetail> {
     let project = match load_project(&state.config, &state.project_root) {
         Err(error) => return ApiResponse::rejected(vec![error.to_diagnostic()]),
         Ok(project) => project,

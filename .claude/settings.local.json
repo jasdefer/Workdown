@@ -115,7 +115,13 @@
       "PowerShell(docker exec 8c06c78f8738 *)",
       "PowerShell(Test-Path *)",
       "PowerShell(gh release *)",
-      "PowerShell(docker exec *)"
+      "PowerShell(docker exec *)",
+      "Bash(sed -n '/\\\\[workspace.dependencies\\\\]/,/^\\\\[/p' Cargo.toml)",
+      "Bash(sed -n '/\\\\[workspace\\\\]/,/^\\\\[/p' Cargo.toml)",
+      "Read(//c/Users/justu/AppData/Local/Temp/claude/C--Users-justu-source-repos-workdown/ca70bf96-e57a-4f51-9d86-57916174839f/tasks/**)",
+      "Bash(:)",
+      "PowerShell($cmd = Get-Command workdown -ErrorAction SilentlyContinue; if \\($cmd\\) { \"workdown path: $\\($cmd.Source\\)\"; \"version: $\\(& $cmd.Source --version 2>&1\\)\" } else { \"workdown NOT found on PATH\" }; \"--- Rust toolchain on Windows? ---\"; $cargo = Get-Command cargo -ErrorAction SilentlyContinue; if \\($cargo\\) { \"cargo: $\\($cargo.Source\\) -> $\\(& cargo --version 2>&1\\)\" } else { \"cargo NOT found \\(no local Rust\\)\" }; \"--- WSL present? ---\"; $wsl = Get-Command wsl -ErrorAction SilentlyContinue; if \\($wsl\\) { \"wsl available\" } else { \"no wsl\" })",
+      "PowerShell(\"--- .cargo/bin contents ---\"; Get-ChildItem C:\\\\Users\\\\justu\\\\.cargo\\\\bin -ErrorAction SilentlyContinue | Select-Object Name; \"--- rustup present? ---\"; Test-Path C:\\\\Users\\\\justu\\\\.rustup; \"--- cargo.exe runnable? ---\"; $c = \"C:\\\\Users\\\\justu\\\\.cargo\\\\bin\\\\cargo.exe\"; if \\(Test-Path $c\\) { & $c --version 2>&1 } else { \"no cargo.exe in .cargo/bin\" })"
     ]
   }
 }

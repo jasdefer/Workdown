@@ -18,12 +18,12 @@ use std::path::Path;
 
 use ts_rs::TS;
 
+use workdown_core::item_data::ItemDetail;
 use workdown_core::model::diagnostic::{
     CollectionDiagnostic, CollectionDiagnosticKind, ConfigDiagnostic, ConfigDiagnosticKind,
     Diagnostic, DiagnosticBody, FieldValueError, FileDiagnostic, FileDiagnosticKind,
     FilesDiagnostic, FilesDiagnosticKind, ItemDiagnostic, ItemDiagnosticKind,
 };
-use workdown_core::item_data::ItemDetail;
 use workdown_core::model::field_value::FieldValue;
 use workdown_core::model::schema::{FieldType, Severity};
 use workdown_core::model::views::{Aggregate, Bucket, ViewSummary, ViewType};
