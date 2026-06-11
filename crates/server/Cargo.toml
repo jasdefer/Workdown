@@ -19,9 +19,19 @@ mime_guess = "2"
 rust-embed = "8"
 serde.workspace = true
 serde_json.workspace = true
-# Runtime only needs `net` (the `TcpListener`); the runtime itself is
-# built by the CLI. `macros`/`rt` are test-only — see dev-dependencies.
-tokio = { workspace = true, features = ["net"] }
+# Runtime needs `net` (the `TcpListener`) and `sync` (the broadcast
+# channel behind live updates). The runtime itself is built by the CLI;
+# `macros`/`rt` stay test-only — see dev-dependencies.
+tokio = { workspace = true, features = ["net", "sync"] }
+# Adapts a broadcast receiver into the `Stream` axum's SSE response
+# consumes (`wrappers::BroadcastStream`, gated behind the `sync` feature).
+tokio-stream = { version = "0.1", features = ["sync"] }
+# Filesystem watcher behind live updates. `notify-debouncer-full`
+# coalesces the burst of raw OS events one save produces (editors do
+# write-temp-then-rename, vim deletes-and-recreates, `git pull` rewrites
+# many files at once) into a single settled batch, and re-exports
+# `notify` so we don't depend on it separately.
+notify-debouncer-full = "0.5"
 tower = "0.5"
 # catch-panic turns a handler panic into a 500 instead of a dropped
 # connection — view_data::extract is documented to panic on invariants
@@ -30,8 +40,9 @@ tower-http = { version = "0.6", features = ["catch-panic"] }
 tracing.workspace = true
 
 [dev-dependencies]
-# `#[tokio::test]` uses the current-thread runtime.
-tokio = { workspace = true, features = ["rt", "macros"] }
+# `#[tokio::test]` uses the current-thread runtime; `time` powers the
+# `sleep`/`timeout` the live watcher test uses to bound its wait.
+tokio = { workspace = true, features = ["rt", "macros", "time"] }
 # Mutation endpoint tests write to disk, so they run against a throwaway
 # project copied into a tempdir — never the committed read-only fixture.
 tempfile = "3"

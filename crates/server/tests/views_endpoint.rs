@@ -27,10 +27,7 @@ fn fixture_state() -> AppState {
     let config_yaml = std::fs::read_to_string(project_root.join(".workdown/config.yaml"))
         .expect("read fixture config.yaml");
     let config = parse_config(&config_yaml).expect("parse fixture config.yaml");
-    AppState {
-        project_root,
-        config,
-    }
+    AppState::new(project_root, config)
 }
 
 async fn body_json(response: axum::http::Response<Body>) -> Value {

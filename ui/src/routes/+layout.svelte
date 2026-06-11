@@ -1,5 +1,7 @@
 <script lang="ts">
 	import '../app.css';
+	import { onMount } from 'svelte';
+	import { invalidateAll } from '$app/navigation';
 	import type { Snippet } from 'svelte';
 	import type { LayoutData } from './$types';
 	import favicon from '$lib/assets/favicon.svg';
@@ -12,6 +14,23 @@
 	}
 
 	let { data, children }: Props = $props();
+
+	// One live-update pipe per tab. The server pushes a contentless ping
+	// on any work-item or config file change (editor save, CLI mutation,
+	// `git pull`, another tab's edit). We respond by re-running every load
+	// function for the current page, which re-fetches and re-renders the
+	// view in place — no full-page reload. `EventSource` reconnects on its
+	// own if the stream drops; the cleanup closes it when the tab unmounts.
+	// `onMount` runs only in the browser, so the `EventSource` global is safe.
+	onMount(() => {
+		const source = new EventSource('/api/events');
+		source.onmessage = () => {
+			void invalidateAll();
+		};
+		return () => {
+			source.close();
+		};
+	});
 </script>
 
 <svelte:head>

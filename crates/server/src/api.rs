@@ -14,6 +14,7 @@ use axum::Router;
 
 use crate::state::AppState;
 
+pub mod events;
 pub mod items;
 pub mod schema;
 pub mod views;
@@ -25,4 +26,5 @@ pub fn router() -> Router<AppState> {
         .merge(views::router())
         .merge(schema::router())
         .merge(items::router())
+        .merge(events::router())
 }
