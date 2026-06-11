@@ -1,0 +1,146 @@
+//! HTTP mutation contracts — the request and response wire types for
+//! the server's write endpoints, plus the mapping to the `operations`
+//! layer.
+//!
+//! Like [`crate::view_data`] and [`crate::schema_data`], these carry a
+//! `ts_rs` derive so `cargo xtask gen-types` emits matching TypeScript.
+//! The op→[`SetOperation`] mapping lives here (next to the wire shape it
+//! decodes) so the server handler stays a thin deserialize-and-dispatch
+//! wrapper and the contract is unit-testable in core.
+//!
+//! Values cross the wire as opaque JSON (`unknown` in TS): the UI knows
+//! each field's type from `GET /api/schema` and sends the right JSON
+//! shape, while `core`'s coercion remains the source of truth
+//! (save-with-warning per ADR-001). `serde_yaml::Value` deserializes
+//! straight from a JSON body — its `Deserialize` impl is deserializer-
+//! agnostic — so no JSON→YAML conversion step is needed.
+
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+
+use crate::model::WorkItemId;
+use crate::operations::add::AddOutcome;
+use crate::operations::set::{BooleanMode, CollectionMode, SetOperation, SetOutcome};
+
+/// A single field mutation as sent by the client, tagged by `op`.
+///
+/// Mirrors the field-type-independent subset of [`SetOperation`]:
+/// `replace`, `unset`, `append`, `remove`, `toggle`. The type-aware
+/// `delta` modes are intentionally CLI-only — the UI edits numbers,
+/// durations, and dates by setting an absolute value (`replace`), so
+/// the server never has to pick a delta variant from the field type.
+#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum FieldMutation {
+    /// Set (or overwrite) the field's value. Valid for every field type.
+    Replace {
+        #[ts(type = "unknown")]
+        value: serde_yaml::Value,
+    },
+    /// Clear the field entirely. Valid for every field type.
+    Unset,
+    /// Add one or more entries to a `list` / `links` / `multichoice` field.
+    Append {
+        #[ts(type = "Array<unknown>")]
+        values: Vec<serde_yaml::Value>,
+    },
+    /// Remove every occurrence of each value from a collection field.
+    Remove {
+        #[ts(type = "Array<unknown>")]
+        values: Vec<serde_yaml::Value>,
+    },
+    /// Flip a `boolean` field.
+    Toggle,
+}
+
+impl FieldMutation {
+    /// Map the wire request to the core [`SetOperation`]. Validity of the
+    /// op against the field's type is enforced downstream by `run_set`
+    /// (`SetError::ModeNotValidForFieldType`), not here — this is a pure
+    /// structural translation.
+    pub fn into_operation(self) -> SetOperation {
+        match self {
+            FieldMutation::Replace { value } => SetOperation::Replace(value),
+            FieldMutation::Unset => SetOperation::Unset,
+            FieldMutation::Append { values } => {
+                SetOperation::Collection(CollectionMode::Append(values))
+            }
+            FieldMutation::Remove { values } => {
+                SetOperation::Collection(CollectionMode::Remove(values))
+            }
+            FieldMutation::Toggle => SetOperation::Boolean(BooleanMode::Toggle),
+        }
+    }
+}
+
+/// The result of a successful field mutation — the projection of
+/// [`SetOutcome`] the client receives in the envelope's `data`. Warnings
+/// from the post-write reload ride in the envelope's `diagnostics`, not
+/// here. `null` for `previous_value` means the field was absent before;
+/// `null` for `new_value` means it was cleared.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct FieldMutationResult {
+    pub id: WorkItemId,
+    pub field: String,
+    #[ts(type = "unknown")]
+    pub previous_value: Option<serde_yaml::Value>,
+    #[ts(type = "unknown")]
+    pub new_value: Option<serde_yaml::Value>,
+    /// `true` when this mutation introduced a diagnostic that wasn't
+    /// present before — lets the UI emphasize "your change caused this"
+    /// among the (always-complete) diagnostics list.
+    pub mutation_caused_warning: bool,
+    /// Operation-level notes that aren't problems (e.g. appending a value
+    /// that was already present). Shown as informational feedback.
+    pub info_messages: Vec<String>,
+}
+
+impl FieldMutationResult {
+    pub fn from_outcome(id: WorkItemId, field: String, outcome: &SetOutcome) -> Self {
+        Self {
+            id,
+            field,
+            previous_value: outcome.previous_value.clone(),
+            new_value: outcome.new_value.clone(),
+            mutation_caused_warning: outcome.mutation_caused_warning,
+            info_messages: outcome.info_messages.clone(),
+        }
+    }
+}
+
+/// A request to create a new work item. `core::run_add` derives the
+/// slug/filename from an explicit `id` in `fields`, or — falling back —
+/// from `title`; schema defaults fill any field the form left unset.
+///
+/// The UI's create form sends `title` (auto-slugged) plus whichever
+/// fields it gathered, and may set an explicit `id` for the override
+/// path. If neither `id` nor `title` is present, `run_add` returns
+/// `MissingFilenameSource`.
+#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
+pub struct CreateItem {
+    #[ts(type = "Record<string, unknown>")]
+    pub fields: HashMap<String, serde_yaml::Value>,
+    /// Optional template to seed frontmatter and body from. Form values
+    /// in `fields` override the template per-field.
+    #[serde(default)]
+    pub template: Option<String>,
+}
+
+/// The result of a successful create — the new item's id (so the UI can
+/// navigate to it) and whether the create introduced a warning. Warnings
+/// themselves ride in the envelope's `diagnostics`.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct CreateItemResult {
+    pub id: WorkItemId,
+    pub mutation_caused_warning: bool,
+}
+
+impl CreateItemResult {
+    pub fn from_outcome(outcome: &AddOutcome) -> Self {
+        Self {
+            id: outcome.id.clone(),
+            mutation_caused_warning: outcome.mutation_caused_warning,
+        }
+    }
+}

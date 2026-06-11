@@ -23,10 +23,7 @@ pub fn run_serve_command(
     open: bool,
 ) -> Result<ExitCode> {
     let port_resolution = resolve_port(config, port);
-    let state = AppState {
-        project_root: project_root.to_path_buf(),
-        config: config.clone(),
-    };
+    let state = AppState::new(project_root.to_path_buf(), config.clone());
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -76,6 +73,27 @@ async fn run_serve(resolution: PortResolution, state: AppState, open: bool) -> R
             );
         }
     }
+
+    // Start the filesystem watcher so files changed by an editor, the
+    // CLI, or `git pull` push live updates to connected browsers. The
+    // returned guard must outlive the serve loop — dropping it stops
+    // watching — so it's bound here and held until `serve` returns.
+    let _watch_guard = match workdown_server::watcher::start(
+        &state.config,
+        &state.project_root,
+        state.events.clone(),
+    ) {
+        Ok(guard) => Some(guard),
+        Err(error) => {
+            // A watcher failure shouldn't sink the server: the UI
+            // still works, it just won't auto-refresh. Warn and serve.
+            tracing::warn!(
+                error = %format!("{error:#}"),
+                "live updates disabled: could not start file watcher",
+            );
+            None
+        }
+    };
 
     let router = workdown_server::router(state);
     workdown_server::serve(listener, router).await?;

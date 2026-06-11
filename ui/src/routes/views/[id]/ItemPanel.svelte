@@ -1,27 +1,29 @@
 <!--
-	Stub slide-over panel.
-
-	The URL convention `/views/:id?item=:itemId` is settled; the visual
-	form (slide-over from the right, Linear/Jira-style) is the leading
-	candidate but defers until the real editing surface lands with
-	first-view-end-to-end. For now this is just a marker that the view
-	page noticed the query param.
+  Slide-over panel: chrome (position, close, open-standalone) around the
+  shared `ItemEditor`. Opened by `/views/:id?item=:itemId`; closing
+  removes the query param (handled by the host page via `onclose`).
+  `onmutate` lets the host refetch the underlying view after an edit.
 -->
-
 <script lang="ts">
+	import ItemEditor from '$lib/items/ItemEditor.svelte';
+
 	interface Props {
 		itemId: string;
+		onclose: () => void;
+		onmutate: () => void;
 	}
 
-	let { itemId }: Props = $props();
+	let { itemId, onclose, onmutate }: Props = $props();
 </script>
 
-<aside class="panel">
+<aside class="panel" aria-label="Item detail">
 	<header>
-		<strong>Item: {itemId}</strong>
-		<a href="/items/{itemId}">open standalone</a>
+		<a class="standalone" href="/items/{itemId}">Open standalone ↗</a>
+		<button type="button" class="close" aria-label="Close panel" onclick={onclose}>×</button>
 	</header>
-	<p>The real item panel lands with the first interactive editing surface.</p>
+	<div class="panel-body">
+		<ItemEditor {itemId} {onmutate} />
+	</div>
 </aside>
 
 <style>
@@ -31,13 +33,12 @@
 		right: 0;
 		bottom: 0;
 		width: min(28rem, 100%);
-		padding: var(--space-4);
 		background-color: var(--color-surface);
 		border-left: 1px solid var(--color-border);
 		box-shadow: var(--shadow-sm);
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-3);
+		z-index: 10;
 	}
 
 	header {
@@ -45,10 +46,34 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--space-3);
+		padding: var(--space-2) var(--space-3);
+		border-bottom: 1px solid var(--color-border);
 	}
 
-	p {
-		color: var(--color-fg-muted);
+	.standalone {
 		font-size: var(--text-sm);
+		color: var(--color-fg-muted);
+	}
+
+	.close {
+		background: none;
+		border: none;
+		font-size: var(--text-lg);
+		line-height: 1;
+		cursor: pointer;
+		color: var(--color-fg-muted);
+		padding: 0 var(--space-1);
+	}
+
+	.close:hover {
+		color: var(--color-fg);
+	}
+
+	.panel-body {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		padding: var(--space-4);
+		background: var(--color-canvas);
 	}
 </style>

@@ -14,10 +14,17 @@ use axum::Router;
 
 use crate::state::AppState;
 
+pub mod events;
+pub mod items;
+pub mod schema;
 pub mod views;
 
 /// Build the `/api` router. State-typed `Router<AppState>` so child
 /// handlers can extract `State<AppState>` and call `core::load_project`.
 pub fn router() -> Router<AppState> {
-    Router::new().merge(views::router())
+    Router::new()
+        .merge(views::router())
+        .merge(schema::router())
+        .merge(items::router())
+        .merge(events::router())
 }

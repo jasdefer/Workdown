@@ -17,6 +17,7 @@
 	import type { Column } from '$lib/api/generated/Column';
 	import type { TreeNode } from '$lib/api/generated/TreeNode';
 	import { SvelteSet } from 'svelte/reactivity';
+	import { itemHref } from '$lib/items/itemLink';
 	import Cell from '$lib/views/table/Cell.svelte';
 	import { cardLabel } from '$lib/views/prettify';
 	import Self from './TreeNode.svelte';
@@ -56,7 +57,7 @@
 			<span class="caret leaf" aria-hidden="true">·</span>
 		{/if}
 		<span class="id" title={id}>{id}</span>
-		<span class="title-text">{displayTitle}</span>
+		<a class="title-text" href={itemHref(id)}>{displayTitle}</a>
 	</div>
 	{#each columns as column, index (column.name)}
 		<div class="cell">
@@ -115,5 +116,17 @@
 		line-height: 1.3;
 		min-width: 0;
 		overflow-wrap: anywhere;
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.title-text:hover {
+		text-decoration: underline;
+	}
+
+	.title-text:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 2px;
+		border-radius: var(--radius-md);
 	}
 </style>

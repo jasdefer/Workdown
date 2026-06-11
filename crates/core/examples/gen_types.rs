@@ -18,6 +18,7 @@ use std::path::Path;
 
 use ts_rs::TS;
 
+use workdown_core::item_data::ItemDetail;
 use workdown_core::model::diagnostic::{
     CollectionDiagnostic, CollectionDiagnosticKind, ConfigDiagnostic, ConfigDiagnosticKind,
     Diagnostic, DiagnosticBody, FieldValueError, FileDiagnostic, FileDiagnosticKind,
@@ -27,6 +28,10 @@ use workdown_core::model::field_value::FieldValue;
 use workdown_core::model::schema::{FieldType, Severity};
 use workdown_core::model::views::{Aggregate, Bucket, ViewSummary, ViewType};
 use workdown_core::model::WorkItemId;
+use workdown_core::mutation_data::{
+    CreateItem, CreateItemResult, FieldMutation, FieldMutationResult,
+};
+use workdown_core::schema_data::{FieldSchema, SchemaData};
 use workdown_core::view_data::{
     AggregateValue, AxisValue, BarChartBar, BarChartData, BoardColumn, BoardData, Card, CardField,
     Column, Edge, GanttBar, GanttByDepthData, GanttByInitiativeData, GanttData, GraphData,
@@ -67,6 +72,13 @@ const ALL_TYPES: &[&str] = &[
     "ViewSummary",
     "Aggregate",
     "Bucket",
+    "SchemaData",
+    "FieldSchema",
+    "FieldMutation",
+    "FieldMutationResult",
+    "CreateItem",
+    "CreateItemResult",
+    "ItemDetail",
     "ViewData",
     "Card",
     "CardField",
@@ -137,6 +149,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_type::<ViewSummary>(&target_dir)?;
     write_type::<Aggregate>(&target_dir)?;
     write_type::<Bucket>(&target_dir)?;
+
+    // Editing vocabulary (GET /api/schema).
+    write_type::<SchemaData>(&target_dir)?;
+    write_type::<FieldSchema>(&target_dir)?;
+
+    // Mutation contracts (POST /api/items/:id/fields/:field, POST /api/items).
+    write_type::<FieldMutation>(&target_dir)?;
+    write_type::<FieldMutationResult>(&target_dir)?;
+    write_type::<CreateItem>(&target_dir)?;
+    write_type::<CreateItemResult>(&target_dir)?;
+
+    // Single-item read projection (GET /api/items/:id).
+    write_type::<ItemDetail>(&target_dir)?;
 
     // ViewData enum and common building blocks.
     write_type::<ViewData>(&target_dir)?;

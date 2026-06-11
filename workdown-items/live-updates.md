@@ -1,10 +1,11 @@
 ---
 id: live-updates
-type: issue
-status: to_do
 title: File watcher and SSE for live updates
+type: issue
+status: done
 parent: server
-depends_on: [walking-skeleton]
+depends_on:
+- walking-skeleton
 ---
 
 Push updates to connected browsers when work item files change on disk (editor save, git pull, CLI mutation, server mutation). Independent of the read and mutation slices — can land any time after the skeleton, though most demoable once at least one view exists.

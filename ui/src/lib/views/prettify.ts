@@ -5,6 +5,7 @@
 
 import type { Card } from '$lib/api/generated/Card';
 import type { ItemRef } from '$lib/api/generated/ItemRef';
+import type { ViewSummary } from '$lib/api/generated/ViewSummary';
 import type { WorkItemId } from '$lib/api/generated/WorkItemId';
 
 export function prettifyId(id: string): string {
@@ -35,4 +36,15 @@ export function cardLabel(card: Pick<Card, 'id' | 'title'>): string {
  */
 export function itemRefLabel(items: Partial<Record<WorkItemId, ItemRef>>, id: WorkItemId): string {
 	return items[id]?.title ?? prettifyId(id);
+}
+
+/**
+ * Display label for a view-navigation link: its title, falling back to
+ * the prettified id. `ViewSummary.title` is always `None` today (no
+ * `display_title:` source in `views.yaml` yet), so this currently always
+ * prettifies the id — kept here so the nav switches to real titles for
+ * free once that field lands.
+ */
+export function viewLabel(view: Pick<ViewSummary, 'id' | 'title'>): string {
+	return view.title ?? prettifyId(view.id);
 }

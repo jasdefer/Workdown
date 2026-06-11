@@ -11,8 +11,9 @@
 
   Bars carry resolved `[start, end]` dates already (the three input recipes
   collapse server-side), so there's nothing to resolve here. Hovering a bar
-  shows its full card by reusing the board <Card>; click-to-open is deferred
-  to the item-page slice, the same as the graph view.
+  shows its full card by reusing the board <Card>; the sticky label column
+  links to the item's detail panel via `?item=` (same pattern as the table's
+  first column). The graph view's nodes still defer, being cytoscape-drawn.
 
   `sections` is the one input shape: a flat gantt passes a single
   label-less section; the by-depth / by-initiative variants pass one
@@ -32,6 +33,7 @@
 
 <script lang="ts">
 	import type { Card as CardData } from '$lib/api/generated/Card';
+	import { itemHref } from '$lib/items/itemLink';
 	import Card from '$lib/views/board/Card.svelte';
 	import { formatIsoDate } from '$lib/views/format';
 	import { cardLabel } from '$lib/views/prettify';
@@ -173,7 +175,9 @@
 					{/if}
 					{#each section.bars as bar (bar.card.id)}
 						<div class="row" style="height: {ROW_HEIGHT}px;">
-							<div class="row-label" title={barLabel(bar)}>{barLabel(bar)}</div>
+							<a class="row-label" href={itemHref(bar.card.id)} title={barLabel(bar)}
+								>{barLabel(bar)}</a
+							>
 							<div class="track">
 								<div
 									class="bar"
@@ -358,6 +362,17 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.row-label:hover {
+		text-decoration: underline;
+	}
+
+	.row-label:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: -2px;
 	}
 
 	.track {

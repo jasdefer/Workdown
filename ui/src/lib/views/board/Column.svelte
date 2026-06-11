@@ -5,16 +5,25 @@
 -->
 <script lang="ts">
 	import type { BoardColumn } from '$lib/api/generated/BoardColumn';
+	import { dropTarget } from '$lib/dnd/dnd';
 	import Card from './Card.svelte';
 
 	interface Props {
 		column: BoardColumn;
+		/** Move a dropped card to this column's value (the board field). */
+		onmove: (cardId: string, toValue: string | null) => void;
 	}
 
-	let { column }: Props = $props();
+	let { column, onmove }: Props = $props();
 </script>
 
-<section class="column" class:synthetic={column.value === null}>
+<section
+	class="column"
+	class:synthetic={column.value === null}
+	use:dropTarget={(cardId) => {
+		onmove(cardId, column.value);
+	}}
+>
 	<header class="header">
 		<span class="value">{column.value ?? '(none)'}</span>
 		<span class="count" aria-label="Card count">{column.cards.length}</span>

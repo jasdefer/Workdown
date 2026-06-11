@@ -12,6 +12,7 @@
 pub mod api;
 pub mod envelope;
 pub mod state;
+pub mod watcher;
 
 use std::net::SocketAddr;
 
@@ -129,37 +130,13 @@ fn serve_file(path: &str, file: EmbeddedFile) -> Response {
 mod tests {
     use super::*;
     use axum::http::Request;
-    use std::path::PathBuf;
     use tower::ServiceExt;
-    use workdown_core::model::config::{Config, Paths, ProjectMeta, ViewDefaults};
 
     /// Minimal `AppState` for asset-handler tests — these tests don't
     /// exercise any handler that uses the project loader, so the paths
     /// don't have to resolve to a real project.
     fn test_state() -> AppState {
-        AppState {
-            project_root: PathBuf::from("/tmp/workdown-test-stub"),
-            config: Config {
-                project: ProjectMeta {
-                    name: "test".into(),
-                    description: String::new(),
-                },
-                paths: Paths {
-                    work_items: PathBuf::from("workdown-items"),
-                    templates: PathBuf::from(".workdown/templates"),
-                    resources: PathBuf::from(".workdown/resources.yaml"),
-                    views: PathBuf::from(".workdown/views.yaml"),
-                },
-                schema: PathBuf::from(".workdown/schema.yaml"),
-                defaults: ViewDefaults {
-                    board_field: "status".into(),
-                    tree_field: "parent".into(),
-                    graph_field: "depends_on".into(),
-                },
-                working_days: None,
-                serve: None,
-            },
-        }
+        AppState::test_stub()
     }
 
     async fn body_bytes(response: Response) -> Vec<u8> {
