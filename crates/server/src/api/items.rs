@@ -15,7 +15,7 @@
 //!   `data`. Per ADR-001 a schema violation still *saves* — it is not a
 //!   failure here.
 //! - `Err(SetError)` → a hard failure mapped to a status (see
-//!   [`set_error_status`]). Nothing was written; the message goes in the
+//!   `set_error_status`). Nothing was written; the message goes in the
 //!   envelope's `error`.
 
 use axum::extract::{Path, State};

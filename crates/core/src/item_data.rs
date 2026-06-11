@@ -6,7 +6,7 @@
 //! detail panel and the standalone item page both need an item's current
 //! values without a view in context, so this serves them directly.
 //!
-//! Reuses [`CardField`](crate::view_data::CardField) for each field —
+//! Reuses [`CardField`] for each field —
 //! the typed, coerced value, in schema-declaration order. The `id` field
 //! is the parser-stripped identity and is returned separately as `id`,
 //! not among `fields` (it isn't mutable via `set`).

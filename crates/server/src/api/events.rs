@@ -2,7 +2,7 @@
 //!
 //! The browser opens one of these per tab (see the root layout). Every
 //! debounced file change posts a unit value to the broadcast channel on
-//! [`AppState`](crate::state::AppState); this handler subscribes a fresh
+//! [`AppState`]; this handler subscribes a fresh
 //! receiver per connection and forwards each as a contentless
 //! `data: changed` SSE event. The payload carries no detail on purpose:
 //! per the live-updates decisions the client simply re-fetches the
