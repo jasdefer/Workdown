@@ -1,6 +1,7 @@
 //! Parsers for work item files (frontmatter + Markdown), schema, and config.
 
 pub mod config;
+pub mod resources;
 pub mod schema;
 pub mod template;
 pub mod views;

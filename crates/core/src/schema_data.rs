@@ -11,16 +11,35 @@
 //! Served by `GET /api/schema`. Fetched once by the client and reused
 //! across the detail panel and the create form.
 //!
-//! Note: resource-backed fields (`resource: <name>` in `schema.yaml`)
-//! carry the resource name as a hint, but no option list — `core` does
-//! not load or validate `resources.yaml` yet, so the UI edits these as
-//! free text for now.
+//! A resource-backed field (`resource: <name>` in `schema.yaml`) still
+//! carries its resource name; the resource's entries are reported once, in
+//! [`SchemaData::resources`], so a value picker can be populated from the
+//! resource rather than free text. The UI joins a field's `resource` name
+//! to the matching [`ResourceList`].
 
 use serde::Serialize;
 
+use crate::model::resources::Resources;
 use crate::model::schema::{FieldDefinition, FieldType, FieldTypeConfig, Schema};
 use crate::model::WorkItemId;
+use crate::query::types::{operators_for, Operator};
 use crate::store::Store;
+
+/// Every field type, in a stable order — the domain of
+/// [`SchemaData::operators_by_type`].
+const ALL_FIELD_TYPES: [FieldType; 11] = [
+    FieldType::String,
+    FieldType::Choice,
+    FieldType::Multichoice,
+    FieldType::Integer,
+    FieldType::Float,
+    FieldType::Date,
+    FieldType::Duration,
+    FieldType::Boolean,
+    FieldType::List,
+    FieldType::Link,
+    FieldType::Links,
+];
 
 /// Everything the UI needs to build editors for a project.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
@@ -32,6 +51,42 @@ pub struct SchemaData {
     /// prettifies each id for its label (there is no global title field
     /// to resolve against outside a view).
     pub items: Vec<WorkItemId>,
+    /// Resource lists in `resources.yaml` declaration order. A field whose
+    /// `resource` names a list here can offer that list's entries as a
+    /// value picker. Reported once and joined by name rather than copied
+    /// onto every field that references it.
+    pub resources: Vec<ResourceList>,
+    /// Which comparison operators each field type allows. Keyed by type
+    /// (not repeated per field) since the operator set is purely a function
+    /// of type — the UI reads a field's `field_type` and looks it up here.
+    pub operators_by_type: Vec<FieldTypeOperators>,
+}
+
+/// One resource section and its selectable entries.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct ResourceList {
+    /// Section name, e.g. `people` — matches a field's `resource` value.
+    pub name: String,
+    /// The entries a value picker offers, in `resources.yaml` order.
+    pub options: Vec<ResourceOption>,
+}
+
+/// A single selectable resource entry: the stored value plus its label.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct ResourceOption {
+    /// The value stored on an item (the entry's `id`).
+    pub id: String,
+    /// Human-readable label (`name ?? id`).
+    pub label: String,
+}
+
+/// The operators valid for one field type.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct FieldTypeOperators {
+    /// The field type these operators apply to.
+    pub field_type: FieldType,
+    /// Operators the evaluator treats as meaningful for this type.
+    pub operators: Vec<Operator>,
 }
 
 /// A single field's editing metadata — enough to pick the right editor
@@ -107,8 +162,8 @@ impl FieldSchema {
     }
 }
 
-/// Build the editing vocabulary from a loaded schema and store.
-pub fn build(schema: &Schema, store: &Store) -> SchemaData {
+/// Build the editing vocabulary from a loaded schema, store, and resources.
+pub fn build(schema: &Schema, store: &Store, resources: &Resources) -> SchemaData {
     let fields = schema
         .fields
         .iter()
@@ -118,5 +173,119 @@ pub fn build(schema: &Schema, store: &Store) -> SchemaData {
     let mut items: Vec<WorkItemId> = store.all_items().map(|item| item.id.clone()).collect();
     items.sort_by(|left, right| left.as_str().cmp(right.as_str()));
 
-    SchemaData { fields, items }
+    let resources = resources
+        .sections
+        .iter()
+        .map(|(name, entries)| ResourceList {
+            name: name.clone(),
+            options: entries
+                .iter()
+                .map(|entry| ResourceOption {
+                    id: entry.id.clone(),
+                    label: entry.label().to_owned(),
+                })
+                .collect(),
+        })
+        .collect();
+
+    let operators_by_type = ALL_FIELD_TYPES
+        .into_iter()
+        .map(|field_type| FieldTypeOperators {
+            field_type,
+            operators: operators_for(field_type),
+        })
+        .collect();
+
+    SchemaData {
+        fields,
+        items,
+        resources,
+        operators_by_type,
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::resources::ResourceEntry;
+    use crate::model::schema::{FieldDefinition, FieldTypeConfig};
+    use indexmap::IndexMap;
+
+    /// A schema with one plain field; enough to exercise `build`.
+    fn schema_with_assignee() -> Schema {
+        let mut fields = IndexMap::new();
+        let mut assignee = FieldDefinition::new(FieldTypeConfig::String { pattern: None });
+        assignee.resource = Some("people".to_owned());
+        fields.insert("assignee".to_owned(), assignee);
+        let inverse_table = Schema::build_inverse_table(&fields);
+        Schema {
+            fields,
+            rules: vec![],
+            inverse_table,
+        }
+    }
+
+    fn empty_store(schema: &Schema) -> Store {
+        let dir = tempfile::tempdir().unwrap();
+        Store::load(dir.path(), schema).unwrap()
+    }
+
+    fn people_resources() -> Resources {
+        let mut sections = IndexMap::new();
+        sections.insert(
+            "people".to_owned(),
+            vec![
+                ResourceEntry {
+                    id: "alice".to_owned(),
+                    name: Some("Alice Smith".to_owned()),
+                },
+                ResourceEntry {
+                    id: "bob".to_owned(),
+                    name: None,
+                },
+            ],
+        );
+        Resources { sections }
+    }
+
+    #[test]
+    fn build_reports_resource_options_with_labels() {
+        let schema = schema_with_assignee();
+        let store = empty_store(&schema);
+        let data = build(&schema, &store, &people_resources());
+
+        assert_eq!(data.resources.len(), 1);
+        let people = &data.resources[0];
+        assert_eq!(people.name, "people");
+        assert_eq!(people.options.len(), 2);
+        // name present → label is the name
+        assert_eq!(people.options[0].id, "alice");
+        assert_eq!(people.options[0].label, "Alice Smith");
+        // name absent → label falls back to id
+        assert_eq!(people.options[1].id, "bob");
+        assert_eq!(people.options[1].label, "bob");
+    }
+
+    #[test]
+    fn build_with_no_resources_reports_empty_list() {
+        let schema = schema_with_assignee();
+        let store = empty_store(&schema);
+        let data = build(&schema, &store, &Resources::default());
+        assert!(data.resources.is_empty());
+    }
+
+    #[test]
+    fn build_reports_operators_for_every_field_type() {
+        let schema = schema_with_assignee();
+        let store = empty_store(&schema);
+        let data = build(&schema, &store, &Resources::default());
+
+        assert_eq!(data.operators_by_type.len(), ALL_FIELD_TYPES.len());
+        // Each entry's operators match the canonical mapping.
+        for entry in &data.operators_by_type {
+            assert_eq!(entry.operators, operators_for(entry.field_type));
+        }
+    }
 }

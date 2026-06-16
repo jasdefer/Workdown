@@ -31,7 +31,10 @@ use workdown_core::model::WorkItemId;
 use workdown_core::mutation_data::{
     CreateItem, CreateItemResult, FieldMutation, FieldMutationResult,
 };
-use workdown_core::schema_data::{FieldSchema, SchemaData};
+use workdown_core::query::types::Operator;
+use workdown_core::schema_data::{
+    FieldSchema, FieldTypeOperators, ResourceList, ResourceOption, SchemaData,
+};
 use workdown_core::view_data::{
     AggregateValue, AxisValue, BarChartBar, BarChartData, BoardColumn, BoardData, Card, CardField,
     Column, Edge, GanttBar, GanttByDepthData, GanttByInitiativeData, GanttData, GraphData,
@@ -74,6 +77,10 @@ const ALL_TYPES: &[&str] = &[
     "Bucket",
     "SchemaData",
     "FieldSchema",
+    "ResourceList",
+    "ResourceOption",
+    "FieldTypeOperators",
+    "Operator",
     "FieldMutation",
     "FieldMutationResult",
     "CreateItem",
@@ -153,6 +160,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Editing vocabulary (GET /api/schema).
     write_type::<SchemaData>(&target_dir)?;
     write_type::<FieldSchema>(&target_dir)?;
+    write_type::<ResourceList>(&target_dir)?;
+    write_type::<ResourceOption>(&target_dir)?;
+    write_type::<FieldTypeOperators>(&target_dir)?;
+    write_type::<Operator>(&target_dir)?;
 
     // Mutation contracts (POST /api/items/:id/fields/:field, POST /api/items).
     write_type::<FieldMutation>(&target_dir)?;

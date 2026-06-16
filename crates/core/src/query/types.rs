@@ -5,6 +5,8 @@
 //! tree, graph). The [`QueryRequest`] bundles a predicate with sort and
 //! column specifications. The engine evaluates it and returns a [`QueryResult`].
 
+use crate::model::schema::FieldType;
+
 // ── Predicate model ─────────────────────────────────────────────────
 
 /// A composable filter expression.
@@ -43,7 +45,12 @@ pub enum FieldReference {
 }
 
 /// Comparison operators supported by the query engine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Serializes in `snake_case` (`"equal"`, `"not_equal"`, `"is_set"`, …) —
+/// this is the wire form the editing-vocabulary endpoint reports so the UI
+/// knows which comparisons a field allows. See [`operators_for`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
 pub enum Operator {
     Equal,
     NotEqual,
@@ -59,6 +66,52 @@ pub enum Operator {
     IsSet,
     /// Field is absent (no value).
     IsNotSet,
+}
+
+/// The operators that produce a meaningful comparison for a given field
+/// type, mirroring how [`crate::query::eval`] dispatches on type. Reported
+/// by the editing-vocabulary endpoint so a filter builder never offers an
+/// operator the evaluator would treat as a no-op (e.g. `>` on a boolean).
+///
+/// `IsSet` / `IsNotSet` test presence and so apply to every type. The rest
+/// follow the evaluator:
+/// - string / choice / date / link use lexicographic comparison plus
+///   substring (`contains`) and regex (`matches`);
+/// - integer / float / duration are ordered scalars — comparison only;
+/// - boolean supports equality only;
+/// - multichoice / list / links are collections — membership (`equal` /
+///   `not_equal`) plus per-element `contains` / `matches`.
+pub fn operators_for(field_type: FieldType) -> Vec<Operator> {
+    use FieldType::*;
+    use Operator::*;
+
+    let mut operators = match field_type {
+        String | Choice | Date | Link => vec![
+            Equal,
+            NotEqual,
+            GreaterThan,
+            LessThan,
+            GreaterOrEqual,
+            LessOrEqual,
+            Contains,
+            Matches,
+        ],
+        Integer | Float | Duration => vec![
+            Equal,
+            NotEqual,
+            GreaterThan,
+            LessThan,
+            GreaterOrEqual,
+            LessOrEqual,
+        ],
+        Boolean => vec![Equal, NotEqual],
+        Multichoice | List | Links => vec![Equal, NotEqual, Contains, Matches],
+    };
+    // Presence checks are type-agnostic — the evaluator answers them before
+    // it ever looks at the field's type.
+    operators.push(IsSet);
+    operators.push(IsNotSet);
+    operators
 }
 
 // ── Query request ───────────────────────────────────────────────────
@@ -108,4 +161,84 @@ pub struct QueryRow {
     pub id: String,
     /// One value per column (same length and order as [`QueryResult::columns`]).
     pub values: Vec<String>,
+}
+
+// ── Tests ────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn operator_serializes_snake_case() {
+        let json = serde_json::to_string(&Operator::GreaterOrEqual).unwrap();
+        assert_eq!(json, "\"greater_or_equal\"");
+        let json = serde_json::to_string(&Operator::IsNotSet).unwrap();
+        assert_eq!(json, "\"is_not_set\"");
+    }
+
+    #[test]
+    fn presence_operators_apply_to_every_type() {
+        for field_type in [
+            FieldType::String,
+            FieldType::Choice,
+            FieldType::Multichoice,
+            FieldType::Integer,
+            FieldType::Float,
+            FieldType::Date,
+            FieldType::Duration,
+            FieldType::Boolean,
+            FieldType::List,
+            FieldType::Link,
+            FieldType::Links,
+        ] {
+            let operators = operators_for(field_type);
+            assert!(operators.contains(&Operator::IsSet), "{field_type}");
+            assert!(operators.contains(&Operator::IsNotSet), "{field_type}");
+        }
+    }
+
+    #[test]
+    fn boolean_supports_equality_only() {
+        let operators = operators_for(FieldType::Boolean);
+        assert_eq!(
+            operators,
+            vec![Operator::Equal, Operator::NotEqual, Operator::IsSet, Operator::IsNotSet]
+        );
+    }
+
+    #[test]
+    fn numeric_types_support_ordering_but_not_substring() {
+        for field_type in [FieldType::Integer, FieldType::Float, FieldType::Duration] {
+            let operators = operators_for(field_type);
+            assert!(operators.contains(&Operator::GreaterThan), "{field_type}");
+            assert!(!operators.contains(&Operator::Contains), "{field_type}");
+            assert!(!operators.contains(&Operator::Matches), "{field_type}");
+        }
+    }
+
+    #[test]
+    fn collection_types_support_membership_and_element_match_not_ordering() {
+        for field_type in [FieldType::Multichoice, FieldType::List, FieldType::Links] {
+            let operators = operators_for(field_type);
+            assert!(operators.contains(&Operator::Contains), "{field_type}");
+            assert!(operators.contains(&Operator::Matches), "{field_type}");
+            assert!(!operators.contains(&Operator::GreaterThan), "{field_type}");
+        }
+    }
+
+    #[test]
+    fn string_like_types_support_comparison_and_match() {
+        for field_type in [
+            FieldType::String,
+            FieldType::Choice,
+            FieldType::Date,
+            FieldType::Link,
+        ] {
+            let operators = operators_for(field_type);
+            assert!(operators.contains(&Operator::LessThan), "{field_type}");
+            assert!(operators.contains(&Operator::Contains), "{field_type}");
+            assert!(operators.contains(&Operator::Matches), "{field_type}");
+        }
+    }
 }

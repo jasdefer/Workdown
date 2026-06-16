@@ -20,11 +20,12 @@ use thiserror::Error;
 use crate::model::calendar::WorkingCalendar;
 use crate::model::config::Config;
 use crate::model::diagnostic::{Diagnostic, FileDiagnosticKind};
+use crate::model::resources::Resources;
 use crate::model::schema::{Schema, Severity};
 use crate::model::views::Views;
 use crate::parser;
 use crate::store::Store;
-use crate::views_check;
+use crate::{resources_check, views_check};
 
 /// A fully loaded workdown project.
 ///
@@ -35,6 +36,10 @@ pub struct Project {
     pub store: Store,
     pub schema: Schema,
     pub views: Option<Views>,
+    /// Resource lists from `resources.yaml`. Empty when the project has no
+    /// `resources.yaml` (a valid "no resources" configuration) or when the
+    /// file failed to load — in the latter case a diagnostic explains why.
+    pub resources: Resources,
     pub calendar: WorkingCalendar,
     /// Every diagnostic collected during loading: per-item and
     /// cross-item findings from [`Store::load`], plus `views_check`
@@ -85,6 +90,7 @@ pub fn load_project(config: &Config, project_root: &Path) -> Result<Project, Loa
     let schema_path = project_root.join(&config.schema);
     let items_path = project_root.join(&config.paths.work_items);
     let views_path = project_root.join(&config.paths.views);
+    let resources_path = project_root.join(&config.paths.resources);
 
     let schema = parser::schema::load_schema(&schema_path).map_err(|e| LoadError::Schema {
         path: schema_path.clone(),
@@ -106,12 +112,18 @@ pub fn load_project(config: &Config, project_root: &Path) -> Result<Project, Loa
     let (views, views_diagnostics) = views_check::load_and_check(&views_path, &schema);
     diagnostics.extend(views_diagnostics);
 
+    // Load resources.yaml the same way: absent is fine, a malformed file
+    // becomes a diagnostic rather than a hard load failure.
+    let (resources, resources_diagnostics) = resources_check::load_and_check(&resources_path);
+    diagnostics.extend(resources_diagnostics);
+
     let calendar = config.working_calendar();
 
     Ok(Project {
         store,
         schema,
         views,
+        resources,
         calendar,
         diagnostics,
     })

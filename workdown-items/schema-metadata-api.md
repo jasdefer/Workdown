@@ -1,7 +1,7 @@
 ---
 id: schema-metadata-api
 type: issue
-status: in_progress
+status: done
 title: Expose schema metadata so the UI can offer valid choices
 parent: view-authoring
 depends_on: []
