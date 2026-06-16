@@ -1,16 +1,18 @@
 ---
 id: schema-metadata-api
 type: issue
-status: to_do
+status: in_progress
 title: Expose schema metadata so the UI can offer valid choices
 parent: view-authoring
 depends_on: []
-effort: "8h"
+effort: "2d"
 ---
 
 Any UI that lets a user pick a field, an operator, or a value needs to know the shape of the project's schema: which fields exist, what type each is, which values a choice field allows, and which resources a field references. The serve API exposes view data but nothing about the schema itself, so today a builder UI would have no source of truth to populate its pickers — it could only let the user type raw strings and hope they're valid.
 
 This issue makes the schema's structure available to the UI so that field, operator, and value selection can be constrained to what's actually valid, without the frontend hardcoding any field names or types (only `id` is privileged).
+
+This includes loading `resources.yaml` into `core` (which it does not do today) and exposing each resource's entries, so a `resource:`-backed field can offer a real value picker. Validating that an item's stored value actually matches a resource id — and rendering the pickers in the editor — stays in [[resource-option-lists]], which now builds on the loader and option lists this issue introduces.
 
 ## What we want
 
@@ -23,8 +25,11 @@ This issue makes the schema's structure available to the UI so that field, opera
 
 - Given a project, the UI can render a field picker, an operator picker, and (where applicable) a value picker populated entirely from this metadata — no field names baked into the frontend.
 - The available operators for a field match what the existing `where:` grammar accepts for that field's type.
+- A `resource:`-backed field reports its allowed values (the resource section's entries) in the schema metadata, so the value picker is populated from the resource rather than free text.
 
 ## Out of scope
 
 - Editing the schema from the UI — schema changes stay a text-editor job.
 - Validation rules and aggregate configuration — only what's needed to build and constrain filters.
+- Validating that an item's field value matches a known resource id — that warning lives in [[resource-option-lists]].
+- Filtering on a related item's fields (`parent.status`-style cross-relation conditions) — v1 offers only the item's own fields; the raw escape hatch covers the rest.
