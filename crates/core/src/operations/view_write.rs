@@ -33,6 +33,7 @@ use crate::operations::frontmatter_io::write_file_atomically;
 use crate::parser;
 use crate::parser::schema::SchemaLoadError;
 use crate::parser::views::{serialize_views, view_from_value};
+use crate::query::clause::{clauses_to_strings, Clause};
 
 // ── Public types ─────────────────────────────────────────────────────
 
@@ -128,15 +129,17 @@ pub fn add_view(
 
 /// Replace the `where:` filter of an existing view and persist it.
 ///
-/// The clauses are stored verbatim; their meaning is whatever
-/// [`crate::query::parse::parse_where`] makes of them — the same grammar
-/// the rest of the tool uses. A clause that fails to parse or references
-/// an unknown field is written and reported as a warning, not rejected.
+/// `core` serializes the structured [`Clause`]s to clause strings (raw
+/// clauses pass through), so the filter grammar stays owned here, not in
+/// the UI. The result is stored verbatim; its meaning is whatever
+/// [`crate::query::parse::parse_where`] makes of it — the same grammar the
+/// rest of the tool uses. A clause that fails to parse or references an
+/// unknown field is written and reported as a warning, not rejected.
 pub fn set_view_filter(
     config: &Config,
     project_root: &Path,
     view_id: &str,
-    where_clauses: Vec<String>,
+    clauses: &[Clause],
 ) -> Result<ViewWriteOutcome, ViewWriteError> {
     let schema = load_schema(config, project_root)?;
     let path = views_path(config, project_root);
@@ -151,7 +154,7 @@ pub fn set_view_filter(
         .ok_or_else(|| ViewWriteError::ViewNotFound {
             id: view_id.to_owned(),
         })?;
-    view.where_clauses = where_clauses;
+    view.where_clauses = clauses_to_strings(clauses);
 
     finalize(views, &path, &schema, pre_diagnostics, view_id.to_owned())
 }
@@ -233,6 +236,24 @@ mod tests {
 
     use crate::parser::config::load_config;
     use crate::parser::views::load_views;
+    use crate::query::clause::Condition;
+    use crate::query::types::Operator;
+
+    /// A raw passthrough clause — used where a test only cares that the
+    /// clause string lands in the file, not how it was built.
+    fn raw(clause: &str) -> Clause {
+        Clause::Raw {
+            raw: clause.to_owned(),
+        }
+    }
+
+    fn condition(field: &str, operator: Operator, value: Option<&str>) -> Clause {
+        Clause::Comparison(Condition {
+            field: field.to_owned(),
+            operator,
+            value: value.map(str::to_owned),
+        })
+    }
 
     const CONFIG: &str = "\
 project:
@@ -385,11 +406,15 @@ fields:
         let (_dir, root, config) = setup();
         write_views(&root, "views:\n  - id: board\n    type: board\n    field: status\n");
 
+        // Structured conditions, to exercise the serializer end to end.
         let outcome = set_view_filter(
             &config,
             &root,
             "board",
-            vec!["status=open".to_owned(), "title~fix".to_owned()],
+            &[
+                condition("status", Operator::Equal, Some("open")),
+                condition("title", Operator::Contains, Some("fix")),
+            ],
         )
         .unwrap();
 
@@ -407,7 +432,7 @@ fields:
             "views:\n  - id: board\n    type: board\n    field: status\n    where:\n      - \"status=done\"\n",
         );
 
-        set_view_filter(&config, &root, "board", vec!["status=open".to_owned()]).unwrap();
+        set_view_filter(&config, &root, "board", &[raw("status=open")]).unwrap();
 
         let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
         assert_eq!(reloaded.views[0].where_clauses, vec!["status=open"]);
@@ -421,7 +446,7 @@ fields:
             "views:\n  - id: board\n    type: board\n    field: status\n    where:\n      - \"status=done\"\n",
         );
 
-        set_view_filter(&config, &root, "board", vec![]).unwrap();
+        set_view_filter(&config, &root, "board", &[]).unwrap();
 
         let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
         assert!(reloaded.views[0].where_clauses.is_empty());
@@ -435,7 +460,7 @@ fields:
         write_views(&root, original);
 
         let error =
-            set_view_filter(&config, &root, "nope", vec!["status=open".to_owned()]).unwrap_err();
+            set_view_filter(&config, &root, "nope", &[raw("status=open")]).unwrap_err();
 
         assert!(matches!(error, ViewWriteError::ViewNotFound { id } if id == "nope"));
         assert_eq!(read_views(&root), original, "file must be untouched");
@@ -449,7 +474,7 @@ fields:
         // References a field not in the schema: parses, but fails cross-file
         // validation. Save-with-warning — written and surfaced.
         let outcome =
-            set_view_filter(&config, &root, "board", vec!["nonexistent=x".to_owned()]).unwrap();
+            set_view_filter(&config, &root, "board", &[raw("nonexistent=x")]).unwrap();
 
         assert!(outcome.mutation_caused_warning);
         assert!(!outcome.warnings.is_empty());
@@ -465,7 +490,7 @@ fields:
             "views:\n  - id: a\n    type: board\n    field: status\n  - id: b\n    type: tree\n    field: parent\n",
         );
 
-        set_view_filter(&config, &root, "a", vec!["status=open".to_owned()]).unwrap();
+        set_view_filter(&config, &root, "a", &[raw("status=open")]).unwrap();
 
         let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
         assert_eq!(reloaded.views.len(), 2);

@@ -49,7 +49,7 @@ pub enum FieldReference {
 /// Serializes in `snake_case` (`"equal"`, `"not_equal"`, `"is_set"`, …) —
 /// this is the wire form the editing-vocabulary endpoint reports so the UI
 /// knows which comparisons a field allows. See [`operators_for`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, ts_rs::TS)]
 #[serde(rename_all = "snake_case")]
 pub enum Operator {
     Equal,
