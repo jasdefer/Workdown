@@ -93,11 +93,45 @@ async fn patch(state: AppState, uri: &str, body: Value) -> axum::http::Response<
     router(state).oneshot(request).await.unwrap()
 }
 
+async fn get(state: AppState, uri: &str) -> axum::http::Response<Body> {
+    let request = Request::builder()
+        .method("GET")
+        .uri(uri)
+        .body(Body::empty())
+        .unwrap();
+    router(state).oneshot(request).await.unwrap()
+}
+
 async fn body_json(response: axum::http::Response<Body>) -> Value {
     let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("collect body");
     serde_json::from_slice(&bytes).expect("body parses as JSON")
+}
+
+fn write_item(root: &Path, id: &str, content: &str) {
+    fs::write(root.join(format!("workdown-items/{id}.md")), content).unwrap();
+}
+
+/// Percent-encode a query-param value (used to put a JSON filter in a URL).
+/// Encodes everything outside the unreserved set, so the JSON survives the
+/// round trip through `axum`'s query parser.
+fn encode(input: &str) -> String {
+    let mut out = String::new();
+    for byte in input.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
+            other => out.push_str(&format!("%{other:02X}")),
+        }
+    }
+    out
+}
+
+/// Build a `?filter=` query string from a JSON clause array.
+fn filter_param(clauses: Value) -> String {
+    format!("?filter={}", encode(&clauses.to_string()))
 }
 
 // ── Create (POST /api/views) ─────────────────────────────────────────
@@ -191,10 +225,14 @@ async fn patch_filter_updates_where_and_returns_200() {
     let root = directory.path().to_path_buf();
     write_views(&root, "views:\n  - id: board\n    type: board\n    field: status\n");
 
+    // A guided comparison plus a raw passthrough clause.
     let response = patch(
         state,
         "/api/views/board",
-        json!({ "where_clauses": ["status=open", "title~fix"] }),
+        json!({ "clauses": [
+            { "kind": "comparison", "field": "status", "operator": "equal", "value": "open" },
+            { "kind": "raw", "raw": "title~fix" }
+        ] }),
     )
     .await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -218,7 +256,7 @@ async fn patch_filter_unknown_view_returns_404_with_error() {
     let response = patch(
         state,
         "/api/views/no-such-view",
-        json!({ "where_clauses": ["status=open"] }),
+        json!({ "clauses": [{ "kind": "raw", "raw": "status=open" }] }),
     )
     .await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -239,7 +277,9 @@ async fn patch_filter_with_unknown_field_saves_with_warning() {
     let response = patch(
         state,
         "/api/views/board",
-        json!({ "where_clauses": ["nonexistent=x"] }),
+        json!({ "clauses": [
+            { "kind": "comparison", "field": "nonexistent", "operator": "equal", "value": "x" }
+        ] }),
     )
     .await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -248,4 +288,105 @@ async fn patch_filter_with_unknown_field_saves_with_warning() {
     assert_eq!(envelope["data"]["mutation_caused_warning"], true);
     assert!(!envelope["diagnostics"].as_array().unwrap().is_empty());
     assert!(read_views(&root).contains("nonexistent=x"));
+}
+
+// ── Preview (GET /api/views/:id?filter=) ─────────────────────────────
+
+#[tokio::test]
+async fn preview_filters_view_without_writing() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_item(&root, "task-open", "---\nstatus: open\n---\n");
+    write_item(&root, "task-done", "---\nstatus: done\n---\n");
+    write_views(&root, "views:\n  - id: t\n    type: table\n    columns: [id, status]\n");
+    let before = read_views(&root);
+
+    let uri = format!(
+        "/api/views/t{}",
+        filter_param(json!([
+            { "kind": "comparison", "field": "status", "operator": "equal", "value": "done" }
+        ]))
+    );
+    let response = get(state, &uri).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    let rows = envelope["data"]["rows"].as_array().expect("rows array");
+    assert_eq!(rows.len(), 1, "ad-hoc filter should keep only done items");
+    assert_eq!(rows[0]["id"], "task-done");
+
+    // Preview never persists — the file is untouched.
+    assert_eq!(read_views(&root), before);
+}
+
+#[tokio::test]
+async fn preview_with_unknown_field_is_unrenderable() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(&root, "views:\n  - id: t\n    type: table\n    columns: [id, status]\n");
+
+    let uri = format!(
+        "/api/views/t{}",
+        filter_param(json!([
+            { "kind": "comparison", "field": "nope", "operator": "equal", "value": "x" }
+        ]))
+    );
+    let response = get(state, &uri).await;
+    // Unrenderable (tier 2) is a 200 with no data + the diagnostic.
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    assert!(envelope.get("data").is_none());
+    assert!(!envelope["diagnostics"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn preview_with_malformed_filter_returns_422() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(&root, "views:\n  - id: t\n    type: table\n    columns: [id, status]\n");
+
+    let uri = format!("/api/views/t?filter={}", encode("not json"));
+    let response = get(state, &uri).await;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+    let envelope = body_json(response).await;
+    assert!(envelope["error"].is_string());
+}
+
+// ── Seed (GET /api/views/:id/filter) ─────────────────────────────────
+
+#[tokio::test]
+async fn get_view_filter_decomposes_persisted_clauses() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(
+        &root,
+        "views:\n  - id: board\n    type: board\n    field: status\n    where:\n      - \"status=open\"\n      - \"status=open,in_progress\"\n",
+    );
+
+    let response = get(state, "/api/views/board/filter").await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    let clauses = envelope["data"].as_array().expect("clauses array");
+    assert_eq!(clauses.len(), 2);
+    // A single comparison decomposes to a guided condition.
+    assert_eq!(clauses[0]["kind"], "comparison");
+    assert_eq!(clauses[0]["field"], "status");
+    assert_eq!(clauses[0]["operator"], "equal");
+    assert_eq!(clauses[0]["value"], "open");
+    // IN (multi-value) falls back to a raw clause.
+    assert_eq!(clauses[1]["kind"], "raw");
+    assert_eq!(clauses[1]["raw"], "status=open,in_progress");
+}
+
+#[tokio::test]
+async fn get_view_filter_unknown_view_returns_404() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(&root, "views:\n  - id: board\n    type: board\n    field: status\n");
+
+    let response = get(state, "/api/views/no-such-view/filter").await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }

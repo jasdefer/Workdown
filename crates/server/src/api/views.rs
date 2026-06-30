@@ -11,26 +11,45 @@
 //!   (tier 2). The view can't render; the banner explains.
 //! - Project loaded, view is valid → 200 with `ViewData` and the full
 //!   project diagnostic list (tier 3). The UI groups primary/secondary.
+//!
+//! `GET /api/views/{id}` also accepts an optional `?filter=` param — a
+//! URL-encoded JSON array of structured clauses — for the filter editor's
+//! "for right now" preview: the view is extracted using those clauses
+//! *instead of* the persisted `where:`, without writing anything. The
+//! companion `GET /api/views/{id}/filter` returns the persisted filter
+//! decomposed into the editor's clause shape, for seeding the builder.
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Json, Router};
+use serde::Deserialize;
 
-use workdown_core::model::views::ViewSummary;
+use workdown_core::model::views::{View, ViewSummary, Views};
 use workdown_core::mutation_data::{CreateView, SetViewFilter, ViewMutationResult};
 use workdown_core::operations::view_write::{add_view, set_view_filter, ViewWriteError};
 use workdown_core::project::load_project;
+use workdown_core::query::clause::{clauses_to_strings, decompose_clauses, Clause};
 use workdown_core::view_data::{self, ViewData};
+use workdown_core::views_check;
 
 use crate::envelope::ApiResponse;
 use crate::state::AppState;
 
-/// Router for `/views` and `/views/{id}` under `/api`.
+/// Router for `/views`, `/views/{id}`, and `/views/{id}/filter` under `/api`.
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/views", get(list_views).post(create_view))
         .route("/views/{id}", get(get_view).patch(update_view_filter))
+        .route("/views/{id}/filter", get(get_view_filter))
+}
+
+/// Query string for `GET /api/views/{id}`.
+#[derive(Deserialize)]
+struct ViewQuery {
+    /// URL-encoded JSON array of structured clauses for an ad-hoc,
+    /// non-persisted preview. Absent → render with the persisted filter.
+    filter: Option<String>,
 }
 
 async fn list_views(State(state): State<AppState>) -> ApiResponse<Vec<ViewSummary>> {
@@ -47,20 +66,57 @@ async fn list_views(State(state): State<AppState>) -> ApiResponse<Vec<ViewSummar
     }
 }
 
-async fn get_view(State(state): State<AppState>, Path(id): Path<String>) -> ApiResponse<ViewData> {
+async fn get_view(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Query(query): Query<ViewQuery>,
+) -> ApiResponse<ViewData> {
     let project = match load_project(&state.config, &state.project_root) {
         Err(error) => return ApiResponse::rejected(vec![error.to_diagnostic()]),
         Ok(project) => project,
     };
 
-    let view = match project
-        .views
-        .as_ref()
-        .and_then(|views| views.views.iter().find(|view| view.id == id))
-    {
+    let views = match project.views.as_ref() {
+        None => return ApiResponse::not_found(),
+        Some(views) => views,
+    };
+    let view = match views.views.iter().find(|view| view.id == id) {
         None => return ApiResponse::not_found(),
         Some(view) => view,
     };
+
+    // Preview path: render with an ad-hoc, non-persisted filter supplied
+    // by the editor, instead of the view's saved `where:`.
+    if let Some(filter_json) = query.filter.as_deref() {
+        let clauses: Vec<Clause> = match serde_json::from_str(filter_json) {
+            Ok(clauses) => clauses,
+            Err(error) => {
+                return ApiResponse::failed(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    format!("invalid filter parameter: {error}"),
+                )
+            }
+        };
+        let effective = View {
+            where_clauses: clauses_to_strings(&clauses),
+            ..view.clone()
+        };
+        // Validate the ad-hoc filter the same way a persisted one is
+        // checked. Any diagnostic means it can't render — surface it so
+        // the editor can show the problem (tier 2), without writing.
+        let views_path = state.project_root.join(&state.config.paths.views);
+        let candidate = Views {
+            output_dir: views.output_dir.clone(),
+            views: vec![effective.clone()],
+        };
+        let diagnostics = views_check::evaluate(&candidate, &project.schema, &views_path);
+        if !diagnostics.is_empty() {
+            return ApiResponse::unrenderable(diagnostics);
+        }
+        let data =
+            view_data::extract(&effective, &project.store, &project.schema, &project.calendar);
+        return ApiResponse::ok_with(data, diagnostics);
+    }
 
     // Tier 2: this specific view has a config diagnostic pinned to it
     // (e.g. references a missing field, gantt config conflict). The
@@ -76,6 +132,31 @@ async fn get_view(State(state): State<AppState>, Path(id): Path<String>) -> ApiR
     // Tier 3: extract and return view data.
     let data = view_data::extract(view, &project.store, &project.schema, &project.calendar);
     ApiResponse::ok_with(data, project.diagnostics)
+}
+
+/// `GET /api/views/{id}/filter` — the view's persisted `where:` decomposed
+/// into the editor's clause shape, for seeding the filter builder.
+///
+/// Independent of whether the view renders: a view with a broken filter
+/// still returns its clauses (unparseable ones come back as `Raw`), so the
+/// editor can always show and fix what's there.
+async fn get_view_filter(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResponse<Vec<Clause>> {
+    let project = match load_project(&state.config, &state.project_root) {
+        Err(error) => return ApiResponse::rejected(vec![error.to_diagnostic()]),
+        Ok(project) => project,
+    };
+
+    match project
+        .views
+        .as_ref()
+        .and_then(|views| views.views.iter().find(|view| view.id == id))
+    {
+        None => ApiResponse::not_found(),
+        Some(view) => ApiResponse::ok(decompose_clauses(&view.where_clauses)),
+    }
 }
 
 /// `POST /api/views` — create a new view and persist it to `views.yaml`.
@@ -108,12 +189,7 @@ async fn update_view_filter(
     Path(id): Path<String>,
     Json(request): Json<SetViewFilter>,
 ) -> ApiResponse<ViewMutationResult> {
-    match set_view_filter(
-        &state.config,
-        &state.project_root,
-        &id,
-        request.where_clauses,
-    ) {
+    match set_view_filter(&state.config, &state.project_root, &id, &request.clauses) {
         Ok(outcome) => {
             let result = ViewMutationResult::from_outcome(&outcome);
             ApiResponse::ok_with(result, outcome.warnings)

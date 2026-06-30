@@ -32,6 +32,7 @@ use workdown_core::mutation_data::{
     CreateItem, CreateItemResult, CreateView, FieldMutation, FieldMutationResult, SetViewFilter,
     ViewMutationResult,
 };
+use workdown_core::query::clause::{Clause, Condition};
 use workdown_core::query::types::Operator;
 use workdown_core::schema_data::{
     FieldSchema, FieldTypeOperators, ResourceList, ResourceOption, SchemaData,
@@ -82,6 +83,8 @@ const ALL_TYPES: &[&str] = &[
     "ResourceOption",
     "FieldTypeOperators",
     "Operator",
+    "Condition",
+    "Clause",
     "FieldMutation",
     "FieldMutationResult",
     "CreateItem",
@@ -168,6 +171,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_type::<ResourceOption>(&target_dir)?;
     write_type::<FieldTypeOperators>(&target_dir)?;
     write_type::<Operator>(&target_dir)?;
+    write_type::<Condition>(&target_dir)?;
+    write_type::<Clause>(&target_dir)?;
 
     // Mutation contracts (POST /api/items/:id/fields/:field, POST /api/items).
     write_type::<FieldMutation>(&target_dir)?;

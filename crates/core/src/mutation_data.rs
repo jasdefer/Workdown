@@ -23,6 +23,7 @@ use crate::model::WorkItemId;
 use crate::operations::add::AddOutcome;
 use crate::operations::set::{BooleanMode, CollectionMode, SetOperation, SetOutcome};
 use crate::operations::view_write::ViewWriteOutcome;
+use crate::query::clause::Clause;
 
 /// A single field mutation as sent by the client, tagged by `op`.
 ///
@@ -158,14 +159,14 @@ pub struct CreateView {
     pub definition: serde_yaml::Value,
 }
 
-/// A request to replace a view's `where:` filter. The clauses are stored
-/// verbatim and interpreted by the same grammar
-/// ([`crate::query::parse::parse_where`]) the rest of the tool uses; a
-/// clause that fails to parse or references an unknown field is written
-/// and reported as a warning, not rejected.
+/// A request to replace a view's `where:` filter. Each [`Clause`] is either
+/// a guided condition or a raw passthrough string; `core` serializes them
+/// to clause strings (so the UI never builds filter syntax) and stores them
+/// verbatim. A clause that fails to parse or references an unknown field is
+/// written and reported as a warning, not rejected.
 #[derive(Debug, Clone, Deserialize, ts_rs::TS)]
 pub struct SetViewFilter {
-    pub where_clauses: Vec<String>,
+    pub clauses: Vec<Clause>,
 }
 
 /// The result of a successful view create or filter change — the view's
