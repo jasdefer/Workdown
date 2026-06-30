@@ -1,7 +1,7 @@
 ---
 id: view-write-backend
 type: issue
-status: in_progress
+status: done
 title: Persist view definitions to views.yaml
 parent: view-authoring
 depends_on: []

@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::WorkItemId;
 use crate::operations::add::AddOutcome;
 use crate::operations::set::{BooleanMode, CollectionMode, SetOperation, SetOutcome};
+use crate::operations::view_write::ViewWriteOutcome;
 
 /// A single field mutation as sent by the client, tagged by `op`.
 ///
@@ -140,6 +141,47 @@ impl CreateItemResult {
     pub fn from_outcome(outcome: &AddOutcome) -> Self {
         Self {
             id: outcome.id.clone(),
+            mutation_caused_warning: outcome.mutation_caused_warning,
+        }
+    }
+}
+
+/// A request to create a new view. `definition` is the flat view shape —
+/// `id`, `type`, optional `where`, and the type-specific slots — the same
+/// layout as one entry in `views.yaml`'s `views:` list. It crosses the
+/// wire as opaque JSON (`Record<string, unknown>` in TS) because the valid
+/// slots depend on the chosen `type`; `core` validates it against the
+/// schema (see [`crate::parser::views::view_from_value`]).
+#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
+pub struct CreateView {
+    #[ts(type = "Record<string, unknown>")]
+    pub definition: serde_yaml::Value,
+}
+
+/// A request to replace a view's `where:` filter. The clauses are stored
+/// verbatim and interpreted by the same grammar
+/// ([`crate::query::parse::parse_where`]) the rest of the tool uses; a
+/// clause that fails to parse or references an unknown field is written
+/// and reported as a warning, not rejected.
+#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
+pub struct SetViewFilter {
+    pub where_clauses: Vec<String>,
+}
+
+/// The result of a successful view create or filter change — the view's
+/// id (so the UI can navigate to / re-fetch it) and whether the write
+/// introduced a diagnostic. Warnings themselves ride in the envelope's
+/// `diagnostics`.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct ViewMutationResult {
+    pub view_id: String,
+    pub mutation_caused_warning: bool,
+}
+
+impl ViewMutationResult {
+    pub fn from_outcome(outcome: &ViewWriteOutcome) -> Self {
+        Self {
+            view_id: outcome.view_id.clone(),
             mutation_caused_warning: outcome.mutation_caused_warning,
         }
     }
