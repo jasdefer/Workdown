@@ -3,7 +3,7 @@ id: resource-option-lists
 type: issue
 status: to_do
 title: Validate resource references and render resource pickers
-parent: view-authoring
+parent: polish
 depends_on: [mutations-slice, schema-metadata-api]
 effort: "4h"
 ---

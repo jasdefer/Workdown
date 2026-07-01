@@ -1,7 +1,7 @@
 ---
 id: view-authoring
 type: milestone
-status: in_progress
+status: done
 title: Author and edit views from the UI
 parent: phase-04-visualization
 depends_on: [server]
