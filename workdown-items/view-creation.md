@@ -1,7 +1,7 @@
 ---
 id: view-creation
 type: issue
-status: in_progress
+status: done
 title: Create a new view from the UI
 parent: view-authoring
 depends_on: [view-write-backend, schema-metadata-api, view-filter-editor, app-shell-navigation]
