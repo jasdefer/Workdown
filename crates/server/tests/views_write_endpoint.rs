@@ -144,12 +144,13 @@ async fn create_view_writes_file_and_returns_201() {
     let response = post(
         state,
         "/api/views",
-        json!({ "definition": { "id": "status-board", "type": "board", "field": "status" } }),
+        json!({ "name": "Status Board", "definition": { "type": "board", "field": "status" } }),
     )
     .await;
     assert_eq!(response.status(), StatusCode::CREATED);
 
     let envelope = body_json(response).await;
+    // Name slugged to the id.
     assert_eq!(envelope["data"]["view_id"], "status-board");
     assert_eq!(envelope["data"]["mutation_caused_warning"], false);
     assert!(envelope.get("error").is_none());
@@ -166,10 +167,11 @@ async fn create_view_with_existing_id_returns_409() {
     let original = "views:\n  - id: dup\n    type: board\n    field: status\n";
     write_views(&root, original);
 
+    // "Dup" slugs to "dup", which already exists.
     let response = post(
         state,
         "/api/views",
-        json!({ "definition": { "id": "dup", "type": "board", "field": "status" } }),
+        json!({ "name": "Dup", "definition": { "type": "board", "field": "status" } }),
     )
     .await;
     assert_eq!(response.status(), StatusCode::CONFLICT);
@@ -187,7 +189,23 @@ async fn create_view_missing_required_slot_returns_422() {
     let response = post(
         state,
         "/api/views",
-        json!({ "definition": { "id": "b", "type": "board" } }),
+        json!({ "name": "Bare", "definition": { "type": "board" } }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+    let envelope = body_json(response).await;
+    assert!(envelope["error"].is_string());
+}
+
+#[tokio::test]
+async fn create_view_blank_name_returns_422() {
+    let (_directory, state) = temp_project();
+
+    let response = post(
+        state,
+        "/api/views",
+        json!({ "name": "  ", "definition": { "type": "board", "field": "status" } }),
     )
     .await;
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
@@ -206,7 +224,7 @@ async fn create_view_with_bad_field_reference_saves_with_warning() {
     let response = post(
         state,
         "/api/views",
-        json!({ "definition": { "id": "b", "type": "board", "field": "nope" } }),
+        json!({ "name": "Bad Field", "definition": { "type": "board", "field": "nope" } }),
     )
     .await;
     assert_eq!(response.status(), StatusCode::CREATED);
@@ -214,7 +232,7 @@ async fn create_view_with_bad_field_reference_saves_with_warning() {
     let envelope = body_json(response).await;
     assert_eq!(envelope["data"]["mutation_caused_warning"], true);
     assert!(!envelope["diagnostics"].as_array().unwrap().is_empty());
-    assert!(read_views(&root).contains("id: b"));
+    assert!(read_views(&root).contains("id: bad-field"));
 }
 
 // ── Filter change (PATCH /api/views/:id) ─────────────────────────────

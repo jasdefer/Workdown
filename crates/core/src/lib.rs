@@ -14,6 +14,7 @@ pub mod query;
 pub mod resolve;
 pub mod resources_check;
 pub mod rules;
+pub mod slug;
 pub mod schema_data;
 pub mod store;
 pub mod view_data;

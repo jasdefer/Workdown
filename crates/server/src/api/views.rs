@@ -27,7 +27,7 @@ use serde::Deserialize;
 
 use workdown_core::model::views::{View, ViewSummary, Views};
 use workdown_core::mutation_data::{CreateView, SetViewFilter, ViewMutationResult};
-use workdown_core::operations::view_write::{add_view, set_view_filter, ViewWriteError};
+use workdown_core::operations::view_write::{create_view, set_view_filter, ViewWriteError};
 use workdown_core::project::load_project;
 use workdown_core::query::clause::{clauses_to_strings, decompose_clauses, Clause};
 use workdown_core::view_data::{self, ViewData};
@@ -39,7 +39,7 @@ use crate::state::AppState;
 /// Router for `/views`, `/views/{id}`, and `/views/{id}/filter` under `/api`.
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/views", get(list_views).post(create_view))
+        .route("/views", get(list_views).post(create_view_handler))
         .route("/views/{id}", get(get_view).patch(update_view_filter))
         .route("/views/{id}/filter", get(get_view_filter))
 }
@@ -166,11 +166,17 @@ async fn get_view_filter(
 /// Save-with-warning applies: a view that persists but fails cross-file
 /// validation returns `201` with the problem in `diagnostics`; only a
 /// write that would make the file unloadable is a hard failure.
-async fn create_view(
+async fn create_view_handler(
     State(state): State<AppState>,
     Json(request): Json<CreateView>,
 ) -> ApiResponse<ViewMutationResult> {
-    match add_view(&state.config, &state.project_root, request.definition) {
+    match create_view(
+        &state.config,
+        &state.project_root,
+        &request.name,
+        request.definition,
+        &request.filter,
+    ) {
         Ok(outcome) => {
             let result = ViewMutationResult::from_outcome(&outcome);
             ApiResponse::created(result, outcome.warnings)
@@ -216,7 +222,8 @@ fn view_write_error_status(error: &ViewWriteError) -> StatusCode {
 
         ViewWriteError::SchemaLoad(_)
         | ViewWriteError::ExistingInvalid { .. }
-        | ViewWriteError::InvalidDefinition { .. } => StatusCode::UNPROCESSABLE_ENTITY,
+        | ViewWriteError::InvalidDefinition { .. }
+        | ViewWriteError::InvalidName { .. } => StatusCode::UNPROCESSABLE_ENTITY,
 
         ViewWriteError::Serialize(_)
         | ViewWriteError::ProducedInvalid { .. }

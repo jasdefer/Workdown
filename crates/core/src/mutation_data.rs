@@ -147,16 +147,24 @@ impl CreateItemResult {
     }
 }
 
-/// A request to create a new view. `definition` is the flat view shape —
-/// `id`, `type`, optional `where`, and the type-specific slots — the same
-/// layout as one entry in `views.yaml`'s `views:` list. It crosses the
-/// wire as opaque JSON (`Record<string, unknown>` in TS) because the valid
-/// slots depend on the chosen `type`; `core` validates it against the
-/// schema (see [`crate::parser::views::view_from_value`]).
+/// A request to create a new view. `name` is a human label slugged to the
+/// view's id server-side (the same rule work-item ids use). `definition` is
+/// the flat view shape — `type`, optional `where`, and the type-specific
+/// slots, **without** an `id` — the rest of one entry in `views.yaml`'s
+/// `views:` list. It crosses the wire as opaque JSON (`Record<string,
+/// unknown>` in TS) because the valid slots depend on the chosen `type`;
+/// `core` validates it against the schema (see
+/// [`crate::parser::views::view_from_value`]).
 #[derive(Debug, Clone, Deserialize, ts_rs::TS)]
 pub struct CreateView {
+    pub name: String,
     #[ts(type = "Record<string, unknown>")]
     pub definition: serde_yaml::Value,
+    /// Optional filter to attach at creation, as structured clauses (same
+    /// shape the filter editor uses). `core` serializes them into the
+    /// view's `where:`. Omitted → no filter.
+    #[serde(default)]
+    pub filter: Vec<Clause>,
 }
 
 /// A request to replace a view's `where:` filter. Each [`Clause`] is either

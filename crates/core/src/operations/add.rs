@@ -219,56 +219,13 @@ fn derive_slug(field_values: &HashMap<String, serde_yaml::Value>) -> Result<Stri
             title: format!("{title_value:?}"),
             reason: "title must be a string".to_owned(),
         })?;
-        return slugify(title);
-    }
-
-    Err(AddError::MissingFilenameSource)
-}
-
-/// Convert a title into a valid kebab-case filename slug.
-///
-/// Rules: lowercase, non-alphanumeric replaced with hyphens, consecutive
-/// hyphens collapsed, leading non-letters stripped, trailing hyphens stripped.
-fn slugify(title: &str) -> Result<String, AddError> {
-    let slug: String = title
-        .to_lowercase()
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() {
-                character
-            } else {
-                '-'
-            }
-        })
-        .collect();
-
-    // Collapse consecutive hyphens.
-    let mut collapsed = String::with_capacity(slug.len());
-    let mut previous_was_hyphen = false;
-    for character in slug.chars() {
-        if character == '-' {
-            if !previous_was_hyphen {
-                collapsed.push('-');
-            }
-            previous_was_hyphen = true;
-        } else {
-            collapsed.push(character);
-            previous_was_hyphen = false;
-        }
-    }
-
-    // Strip leading and trailing hyphens. Leading digits are preserved —
-    // `is_valid_id` now accepts digit-first ids.
-    let trimmed = collapsed.trim_start_matches('-').trim_end_matches('-');
-
-    if trimmed.is_empty() || !is_valid_id(trimmed) {
-        return Err(AddError::InvalidSlug {
-            title: title.to_owned(),
-            reason: "title must contain at least one alphanumeric character".to_owned(),
+        return crate::slug::slugify(title).map_err(|error| AddError::InvalidSlug {
+            title: error.input,
+            reason: error.reason,
         });
     }
 
-    Ok(trimmed.to_owned())
+    Err(AddError::MissingFilenameSource)
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -276,43 +233,6 @@ fn slugify(title: &str) -> Result<String, AddError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ── slugify ──────────────────────────────────────────────────────
-
-    #[test]
-    fn slugify_simple_title() {
-        assert_eq!(slugify("My Cool Task").unwrap(), "my-cool-task");
-    }
-
-    #[test]
-    fn slugify_special_characters() {
-        assert_eq!(slugify("Fix Bug #123!").unwrap(), "fix-bug-123");
-    }
-
-    #[test]
-    fn slugify_extra_spaces_and_symbols() {
-        assert_eq!(slugify("  Hello,  World!  ").unwrap(), "hello-world");
-    }
-
-    #[test]
-    fn slugify_preserves_leading_digits() {
-        assert_eq!(slugify("123 Task").unwrap(), "123-task");
-    }
-
-    #[test]
-    fn slugify_only_special_characters_fails() {
-        assert!(slugify("###!!!").is_err());
-    }
-
-    #[test]
-    fn slugify_only_digits_succeeds() {
-        assert_eq!(slugify("12345").unwrap(), "12345");
-    }
-
-    #[test]
-    fn slugify_preserves_internal_digits() {
-        assert_eq!(slugify("Task 42 Done").unwrap(), "task-42-done");
-    }
 
     // ── derive_slug ──────────────────────────────────────────────────
 

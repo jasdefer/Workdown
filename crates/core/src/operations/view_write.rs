@@ -71,6 +71,9 @@ pub enum ViewWriteError {
     #[error("invalid view definition: {detail}")]
     InvalidDefinition { detail: String },
 
+    #[error("invalid view name '{name}': {reason}")]
+    InvalidName { name: String, reason: String },
+
     #[error("a view with id '{id}' already exists")]
     DuplicateId { id: String },
 
@@ -125,6 +128,57 @@ pub fn add_view(
     views.views.push(new_view);
 
     finalize(views, &path, &schema, pre_diagnostics, view_id)
+}
+
+/// Create a view from a human *name* plus a flat definition (kind + slots +
+/// optional `where`, with **no** `id`). The name is slugged to the view's
+/// id using the shared [`crate::slug`] rule — the same one work-item ids
+/// use — then persisted through [`add_view`]. Any `id` in the definition is
+/// overwritten by the slug (the name is authoritative). A name with no
+/// alphanumeric characters is rejected.
+pub fn create_view(
+    config: &Config,
+    project_root: &Path,
+    name: &str,
+    definition: serde_yaml::Value,
+    filter: &[Clause],
+) -> Result<ViewWriteOutcome, ViewWriteError> {
+    let id = crate::slug::slugify(name).map_err(|error| ViewWriteError::InvalidName {
+        name: error.input,
+        reason: error.reason,
+    })?;
+    let definition = prepare_definition(definition, &id, filter)?;
+    add_view(config, project_root, definition)
+}
+
+/// Inject the slugged `id` and, when non-empty, the serialized `where`
+/// clauses into a definition mapping. The filter arrives structured and is
+/// serialized here (via [`clauses_to_strings`]) so the clause grammar stays
+/// in `core`, not the UI.
+fn prepare_definition(
+    definition: serde_yaml::Value,
+    id: &str,
+    filter: &[Clause],
+) -> Result<serde_yaml::Value, ViewWriteError> {
+    let serde_yaml::Value::Mapping(mut mapping) = definition else {
+        return Err(ViewWriteError::InvalidDefinition {
+            detail: "view definition must be a mapping".to_owned(),
+        });
+    };
+    mapping.insert(
+        serde_yaml::Value::String("id".to_owned()),
+        serde_yaml::Value::String(id.to_owned()),
+    );
+    let where_clauses = clauses_to_strings(filter);
+    if !where_clauses.is_empty() {
+        mapping.insert(
+            serde_yaml::Value::String("where".to_owned()),
+            serde_yaml::Value::Sequence(
+                where_clauses.into_iter().map(serde_yaml::Value::String).collect(),
+            ),
+        );
+    }
+    Ok(serde_yaml::Value::Mapping(mapping))
 }
 
 /// Replace the `where:` filter of an existing view and persist it.
@@ -397,6 +451,64 @@ fields:
         let error = add_view(&config, &root, board("new")).unwrap_err();
 
         assert!(matches!(error, ViewWriteError::ExistingInvalid { .. }));
+    }
+
+    // ── create_view (name → slug) ────────────────────────────────────
+
+    #[test]
+    fn create_view_slugs_name_to_id() {
+        let (_dir, root, config) = setup();
+        let definition: serde_yaml::Value =
+            serde_yaml::from_str("type: board\nfield: status\n").unwrap();
+
+        let outcome = create_view(&config, &root, "My Status Board", definition, &[]).unwrap();
+
+        assert_eq!(outcome.view_id, "my-status-board");
+        let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
+        assert_eq!(reloaded.views[0].id, "my-status-board");
+    }
+
+    #[test]
+    fn create_view_injects_the_filter_clauses() {
+        let (_dir, root, config) = setup();
+        let definition: serde_yaml::Value =
+            serde_yaml::from_str("type: board\nfield: status\n").unwrap();
+
+        create_view(
+            &config,
+            &root,
+            "Open Board",
+            definition,
+            &[raw("status=open")],
+        )
+        .unwrap();
+
+        let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
+        assert_eq!(reloaded.views[0].where_clauses, vec!["status=open"]);
+    }
+
+    #[test]
+    fn create_view_overwrites_supplied_id_with_the_slug() {
+        let (_dir, root, config) = setup();
+        // A stray `id` in the definition is ignored — the name is authoritative.
+        let definition: serde_yaml::Value =
+            serde_yaml::from_str("id: ignored\ntype: board\nfield: status\n").unwrap();
+
+        let outcome = create_view(&config, &root, "Real Name", definition, &[]).unwrap();
+
+        assert_eq!(outcome.view_id, "real-name");
+    }
+
+    #[test]
+    fn create_view_blank_name_errors_without_writing() {
+        let (_dir, root, config) = setup();
+        let definition: serde_yaml::Value =
+            serde_yaml::from_str("type: board\nfield: status\n").unwrap();
+
+        let error = create_view(&config, &root, "   ", definition, &[]).unwrap_err();
+
+        assert!(matches!(error, ViewWriteError::InvalidName { .. }));
+        assert!(!root.join(".workdown/views.yaml").exists());
     }
 
     // ── set_view_filter ──────────────────────────────────────────────
