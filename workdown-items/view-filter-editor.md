@@ -60,6 +60,20 @@ This issue delivers a filter-building experience that does double duty, and is t
 6. **`GET /api/views/{id}`** — accept an optional `?filter=` param (URL-encoded JSON clause list). When present, extract with it (ad-hoc, not persisted) and surface its diagnostics; when absent, use the persisted `where`. Either way, **echo the effective clauses back, decomposed**, so the editor can seed itself.
 7. Integration tests: preview with `?filter=` doesn't mutate the file; save round-trips; the read response carries decomposed clauses; an invalid ad-hoc/raw clause surfaces a diagnostic without persisting.
 
+### UX decisions (settled)
+
+- **Surface:** one reusable filter-bar component that **slides down beneath the nav**, above the view content, so the result stays full-width and live while editing. Reused on every view page (and later by `view-creation`). Chosen over a right slide-over (collides with the item panel) and a modal (hides the result).
+- **Live preview:** filters apply instantly as conditions complete (debounced ~300ms, written to the URL with `replaceState` so it doesn't spam history). No "Apply" button — matches Linear/Airtable/Jira/etc.
+- **Saved vs for-now:** the live draft *is* the for-now filter. An unsaved-state affordance (`Filtered · unsaved` with **Save** / **Reset**) appears only when the draft differs from the persisted filter. Save persists via `PATCH`; Reset drops the URL param.
+- **Operator labels:** hybrid — word plus a symbol hint (e.g. "is at least (≥)"), the word chosen per field type where it reads better (dates: "is on/after").
+- **Multi-value (`is` / `is not`) on choice/multichoice:** checkboxes that build an IN clause (`status=open,in_progress`), round-tripped properly (see the core `decompose` extension below). Other operators stay single-value.
+- **Raw escape hatch:** an "Add raw condition" affordance (not a per-row toggle) for OR across fields, regex, `parent.status`, etc. Decomposed-complex clauses also render as raw rows.
+- **Validation feedback:** a banner in the filter bar (server diagnostics are view-scoped, not per-row).
+
+### Core (Option Z extension)
+
+7b. **Multi-value decomposition** — extend `query::clause::decompose_clause` to fold an `Or` whose branches are all `field = value` on the *same local field* into a single guided `Condition` whose `value` is the comma-joined list (`serialize_condition` already emits the IN form, so saving is unchanged). Round-trip test for the IN case.
+
 ### UI (`ui`)
 
 8. **`schemaStore`** — expose `operators_by_type` (already in `SchemaData`, just not surfaced).

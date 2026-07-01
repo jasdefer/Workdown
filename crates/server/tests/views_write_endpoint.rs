@@ -362,7 +362,7 @@ async fn get_view_filter_decomposes_persisted_clauses() {
     let root = directory.path().to_path_buf();
     write_views(
         &root,
-        "views:\n  - id: board\n    type: board\n    field: status\n    where:\n      - \"status=open\"\n      - \"status=open,in_progress\"\n",
+        "views:\n  - id: board\n    type: board\n    field: status\n    where:\n      - \"status=open\"\n      - \"status=open,in_progress\"\n      - \"parent.status=done\"\n",
     );
 
     let response = get(state, "/api/views/board/filter").await;
@@ -370,15 +370,20 @@ async fn get_view_filter_decomposes_persisted_clauses() {
 
     let envelope = body_json(response).await;
     let clauses = envelope["data"].as_array().expect("clauses array");
-    assert_eq!(clauses.len(), 2);
+    assert_eq!(clauses.len(), 3);
     // A single comparison decomposes to a guided condition.
     assert_eq!(clauses[0]["kind"], "comparison");
     assert_eq!(clauses[0]["field"], "status");
     assert_eq!(clauses[0]["operator"], "equal");
     assert_eq!(clauses[0]["value"], "open");
-    // IN (multi-value) falls back to a raw clause.
-    assert_eq!(clauses[1]["kind"], "raw");
-    assert_eq!(clauses[1]["raw"], "status=open,in_progress");
+    // IN (multi-value) folds into one multi-value comparison.
+    assert_eq!(clauses[1]["kind"], "comparison");
+    assert_eq!(clauses[1]["field"], "status");
+    assert_eq!(clauses[1]["operator"], "equal");
+    assert_eq!(clauses[1]["value"], "open,in_progress");
+    // A cross-relation reference stays raw (guided rows are local-only).
+    assert_eq!(clauses[2]["kind"], "raw");
+    assert_eq!(clauses[2]["raw"], "parent.status=done");
 }
 
 #[tokio::test]

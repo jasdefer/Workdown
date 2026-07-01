@@ -12,11 +12,13 @@
 //! carry the `ts_rs` derive so `gen_types` emits matching TypeScript.
 //!
 //! Scope mirrors the guided builder's: a clause decomposes to a
-//! [`Condition`] only when it is a single comparison on a *local* field.
-//! Boolean trees, IN with multiple values, regex written as `field/…/`,
-//! and cross-relation references (`parent.status`) all fall back to
-//! [`Clause::Raw`] — consistent with [`crate::schema_data`] keeping
-//! cross-relation filters in the raw escape hatch.
+//! [`Condition`] when it is a single comparison on a *local* field, or an
+//! IN filter (`field=a,b`) on one local field — which folds back to a
+//! multi-value `Equal` condition so a multi-select round-trips. Everything
+//! else (other boolean trees, cross-field ORs, regex written as `field/…/`
+//! that isn't a lone comparison, cross-relation references like
+//! `parent.status`) falls back to [`Clause::Raw`] — consistent with
+//! [`crate::schema_data`] keeping cross-relation filters in the raw hatch.
 
 use serde::{Deserialize, Serialize};
 
@@ -130,8 +132,43 @@ fn condition_from_predicate(predicate: &Predicate) -> Option<Condition> {
             }
             _ => None,
         },
-        Predicate::And(_) | Predicate::Or(_) => None,
+        // `field=a,b` parses to an Or of same-field equals; fold it back to
+        // one multi-value `Equal` condition so a multi-select round-trips.
+        Predicate::Or(branches) => condition_from_or(branches),
+        Predicate::And(_) => None,
     }
+}
+
+/// Fold an `Or` whose branches are all `field = value` on the *same* local
+/// field into a single `Equal` condition whose value is the comma-joined
+/// list. Any other `Or` shape (mixed fields, non-equal operators,
+/// cross-relation) returns `None` → raw.
+fn condition_from_or(branches: &[Predicate]) -> Option<Condition> {
+    if branches.is_empty() {
+        return None;
+    }
+    let mut field: Option<String> = None;
+    let mut values = Vec::with_capacity(branches.len());
+    for branch in branches {
+        let Predicate::Comparison(comparison) = branch else {
+            return None;
+        };
+        if comparison.operator != Operator::Equal {
+            return None;
+        }
+        let name = local_field(&comparison.field)?;
+        match &field {
+            None => field = Some(name),
+            Some(existing) if *existing == name => {}
+            Some(_) => return None, // mixed fields → raw
+        }
+        values.push(comparison.value.clone());
+    }
+    Some(Condition {
+        field: field?,
+        operator: Operator::Equal,
+        value: Some(values.join(",")),
+    })
 }
 
 fn condition_from_comparison(comparison: &Comparison) -> Option<Condition> {
@@ -238,15 +275,27 @@ mod tests {
     // ── Decomposition: complex → raw ────────────────────────────────
 
     #[test]
-    fn decompose_in_syntax_falls_back_to_raw() {
-        // `status=open,in_progress` parses to an Or — not a single row.
+    fn decompose_in_syntax_folds_to_multi_value_condition() {
+        // `status=open,in_progress` (an Or of same-field equals) folds back
+        // into one multi-value `Equal` condition for the multi-select.
         assert_eq!(
             decompose_clause("status=open,in_progress"),
-            Clause::Raw {
-                raw: "status=open,in_progress".to_owned()
-            }
+            Clause::Comparison(comparison(
+                "status",
+                Operator::Equal,
+                Some("open,in_progress")
+            ))
         );
     }
+
+    #[test]
+    fn in_syntax_round_trips() {
+        let condition = comparison("status", Operator::Equal, Some("open,in_progress,done"));
+        let serialized = serialize_condition(&condition);
+        assert_eq!(serialized, "status=open,in_progress,done");
+        assert_eq!(decompose_clause(&serialized), Clause::Comparison(condition));
+    }
+
 
     #[test]
     fn decompose_cross_relation_falls_back_to_raw() {
