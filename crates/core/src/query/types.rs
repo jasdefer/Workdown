@@ -68,33 +68,41 @@ pub enum Operator {
     IsNotSet,
 }
 
-/// The operators that produce a meaningful comparison for a given field
-/// type, mirroring how [`crate::query::eval`] dispatches on type. Reported
-/// by the editing-vocabulary endpoint so a filter builder never offers an
-/// operator the evaluator would treat as a no-op (e.g. `>` on a boolean).
+/// The operators the filter builder should *offer* for a field type — a
+/// curated subset chosen for what reads meaningfully to a user, not the
+/// full set the evaluator can compute. [`crate::query::eval`] is more
+/// permissive (it will lexicographically compare any string-like field for
+/// `>` / `<`, etc.); that path stays reachable via a hand-written clause or
+/// the raw escape hatch, it just isn't surfaced in the guided builder.
 ///
-/// `IsSet` / `IsNotSet` test presence and so apply to every type. The rest
-/// follow the evaluator:
-/// - string / choice / date / link use lexicographic comparison plus
-///   substring (`contains`) and regex (`matches`);
-/// - integer / float / duration are ordered scalars — comparison only;
-/// - boolean supports equality only;
-/// - multichoice / list / links are collections — membership (`equal` /
+/// `IsSet` / `IsNotSet` test presence and apply to every type. Otherwise:
+/// - `string` — equality plus substring (`contains`) and regex (`matches`).
+///   Ordering is omitted: byte-wise string comparison surprises users
+///   (case-sensitive, and `"10" < "9"`).
+/// - `choice` — equality only. Categories are matched whole, and
+///   lexicographic ordering of category names is meaningless.
+/// - `date` — equality and ordering (ISO dates sort chronologically as
+///   text); substring / regex omitted.
+/// - `link` — equality only; a link is an id reference.
+/// - `integer` / `float` / `duration` — ordered scalars: equality and
+///   comparison.
+/// - `boolean` — equality only.
+/// - `multichoice` / `list` / `links` — collections: membership (`equal` /
 ///   `not_equal`) plus per-element `contains` / `matches`.
 pub fn operators_for(field_type: FieldType) -> Vec<Operator> {
     use FieldType::*;
     use Operator::*;
 
     let mut operators = match field_type {
-        String | Choice | Date | Link => vec![
+        String => vec![Equal, NotEqual, Contains, Matches],
+        Choice | Link => vec![Equal, NotEqual],
+        Date => vec![
             Equal,
             NotEqual,
             GreaterThan,
             LessThan,
             GreaterOrEqual,
             LessOrEqual,
-            Contains,
-            Matches,
         ],
         Integer | Float | Duration => vec![
             Equal,
@@ -228,17 +236,41 @@ mod tests {
     }
 
     #[test]
-    fn string_like_types_support_comparison_and_match() {
-        for field_type in [
-            FieldType::String,
-            FieldType::Choice,
-            FieldType::Date,
-            FieldType::Link,
-        ] {
+    fn string_supports_substring_and_regex_but_not_ordering() {
+        let operators = operators_for(FieldType::String);
+        assert!(operators.contains(&Operator::Contains));
+        assert!(operators.contains(&Operator::Matches));
+        assert!(operators.contains(&Operator::Equal));
+        // Ordering is a byte-wise footgun for free text — not offered.
+        assert!(!operators.contains(&Operator::GreaterThan));
+        assert!(!operators.contains(&Operator::LessThan));
+    }
+
+    #[test]
+    fn choice_and_link_offer_equality_only() {
+        for field_type in [FieldType::Choice, FieldType::Link] {
             let operators = operators_for(field_type);
-            assert!(operators.contains(&Operator::LessThan), "{field_type}");
-            assert!(operators.contains(&Operator::Contains), "{field_type}");
-            assert!(operators.contains(&Operator::Matches), "{field_type}");
+            assert_eq!(
+                operators,
+                vec![
+                    Operator::Equal,
+                    Operator::NotEqual,
+                    Operator::IsSet,
+                    Operator::IsNotSet
+                ],
+                "{field_type}"
+            );
         }
+    }
+
+    #[test]
+    fn date_supports_ordering_but_not_substring() {
+        let operators = operators_for(FieldType::Date);
+        assert!(operators.contains(&Operator::GreaterThan));
+        assert!(operators.contains(&Operator::LessOrEqual));
+        // Chronological ordering is meaningful; substring/regex on a date
+        // is not offered.
+        assert!(!operators.contains(&Operator::Contains));
+        assert!(!operators.contains(&Operator::Matches));
     }
 }

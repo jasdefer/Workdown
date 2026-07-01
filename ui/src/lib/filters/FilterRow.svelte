@@ -28,11 +28,22 @@
 
 	const fieldDef = $derived(schemaStore.field(row.field));
 	const fieldType = $derived<FieldType | undefined>(fieldDef?.field_type);
-	const operators = $derived<Operator[]>(fieldType ? schemaStore.operatorsFor(fieldType) : []);
+	// Offered operators for this field type, plus the row's current operator
+	// if it isn't one of them — so a filter that was hand-written (or saved
+	// before the offered set narrowed) still displays and stays editable,
+	// rather than the select rendering blank and silently changing it.
+	const operators = $derived<Operator[]>(
+		withCurrentOperator(fieldType ? schemaStore.operatorsFor(fieldType) : [], row.operator)
+	);
 	const showValue = $derived(row.operator !== '' && !isPresenceOperator(row.operator));
 	const isMulti = $derived(fieldType === 'choice' && isMultiValueOperator(row.operator));
 	const selectedValues = $derived(row.value ? row.value.split(',') : []);
 	const scalarValue = $derived(row.value ?? '');
+
+	function withCurrentOperator(offered: Operator[], current: Operator | ''): Operator[] {
+		if (current === '' || offered.includes(current)) return offered;
+		return [...offered, current];
+	}
 
 	function chooseField(name: string): void {
 		const nextType = schemaStore.field(name)?.field_type;
