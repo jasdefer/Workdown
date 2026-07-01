@@ -13,6 +13,7 @@
 import type { Clause } from './generated/Clause';
 import type { CreateItem } from './generated/CreateItem';
 import type { CreateItemResult } from './generated/CreateItemResult';
+import type { CreateView } from './generated/CreateView';
 import type { Diagnostic } from './generated/Diagnostic';
 import type { FieldMutation } from './generated/FieldMutation';
 import type { FieldMutationResult } from './generated/FieldMutationResult';
@@ -92,6 +93,11 @@ export const api = {
 		request<ViewMutationResult>('PATCH', `/api/views/${encodeURIComponent(id)}`, {
 			clauses
 		} satisfies SetViewFilter),
+	/**
+	 * Create a view. `name` is slugged to the id server-side; `definition`
+	 * is the kind + slots (no id); `filter` is the optional structured filter.
+	 */
+	createView: (body: CreateView) => request<ViewMutationResult>('POST', '/api/views', body),
 	getSchema: () => request<SchemaData>('GET', '/api/schema'),
 	getItem: (id: string) => request<ItemDetail>('GET', `/api/items/${encodeURIComponent(id)}`),
 	setField: (id: string, field: string, mutation: FieldMutation) =>
