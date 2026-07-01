@@ -1,7 +1,7 @@
 ---
 id: view-filter-editor
 type: issue
-status: in_progress
+status: done
 title: Build and edit a view's where filter from the UI
 parent: view-authoring
 depends_on: [remaining-read-views, schema-metadata-api, view-write-backend]
