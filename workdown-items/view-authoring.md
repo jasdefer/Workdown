@@ -6,8 +6,8 @@ title: Author and edit views from the UI
 parent: phase-04-visualization
 depends_on: [server]
 start_date: 2026-06-26
-end_date: 2026-07-10
-duration: "2w 1d"
+end_date: 2026-07-01
+duration: "1w"
 ---
 
 Today views can only be created or changed by editing `views.yaml` by hand. The serve UI can render every view kind and navigate between them, but it cannot bring a new view into existence or adjust an existing one's filter. This milestone closes that gap: a user working in the browser can compose a new view and narrow any view's items without leaving the app — while `views.yaml` stays the source of truth and the user still commits on their own schedule.

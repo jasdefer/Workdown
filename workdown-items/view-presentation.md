@@ -5,8 +5,8 @@ status: to_do
 title: View & item presentation
 parent: phase-04-visualization
 depends_on: [server]
-start_date: 2026-07-20
-end_date: 2026-07-31
+start_date: 2026-07-02
+end_date: 2026-07-15
 duration: "2w"
 ---
 
