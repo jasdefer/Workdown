@@ -22,7 +22,7 @@ export type Control =
 	// The chart aggregate function.
 	| { control: 'aggregate'; key: string; label: string }
 	// Optional date-bucketing for heatmap axes.
-	| { control: 'bucket'; key: string; label: string }
+	| { control: 'bucket'; key: string; label: string; optional?: boolean }
 	// Gantt's start field plus its mutually-exclusive end/duration/after mode.
 	| { control: 'ganttInput' }
 	// Metric's repeatable rows (label? + aggregate + value?).
@@ -96,7 +96,7 @@ export const VIEW_KIND_CONTROLS: Record<ViewType, Control[]> = {
 		{ control: 'field', key: 'y', label: 'Y axis', accepts: [] },
 		{ control: 'aggregate', key: 'aggregate', label: 'Aggregate' },
 		{ control: 'field', key: 'value', label: 'Value', accepts: SCALAR, optional: true },
-		{ control: 'bucket', key: 'bucket', label: 'Bucket', optional: true } as Control
+		{ control: 'bucket', key: 'bucket', label: 'Bucket', optional: true }
 	]
 };
 

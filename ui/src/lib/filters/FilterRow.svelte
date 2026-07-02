@@ -4,7 +4,8 @@
   Reads the editing vocabulary from `schemaStore` (fields, per-type
   operators, item ids for link pickers). Owns no state — it renders the
   `row` prop and reports every edit up via `onchange` with a fresh row, so
-  the parent (`FilterBar`) stays the single source of truth for the draft.
+  the parent (`FilterBuilder`) stays the single source of truth for the
+  draft.
 -->
 <script lang="ts">
 	import type { FieldType } from '$lib/api/generated/FieldType';
