@@ -37,8 +37,10 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
+      # --all-targets so test code is linted too — without it, warnings
+      # in #[cfg(test)] modules and tests/ accumulate invisibly.
       - name: Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Build
         run: cargo build
