@@ -15,7 +15,9 @@
 //! `GET /api/views/{id}` also accepts an optional `?filter=` param — a
 //! URL-encoded JSON array of structured clauses — for the filter editor's
 //! "for right now" preview: the view is extracted using those clauses
-//! *instead of* the persisted `where:`, without writing anything. The
+//! *instead of* the persisted `where:`, without writing anything. Its
+//! diagnostics are computed as if the draft were saved, so the preview's
+//! banner matches what a save would produce. The
 //! companion `GET /api/views/{id}/filter` returns the persisted filter
 //! decomposed into the editor's clause shape, for seeding the builder.
 
@@ -25,6 +27,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde::Deserialize;
 
+use workdown_core::model::diagnostic::Diagnostic;
 use workdown_core::model::views::{View, ViewSummary, Views};
 use workdown_core::mutation_data::{CreateView, SetViewFilter, ViewMutationResult};
 use workdown_core::operations::view_write::{create_view, set_view_filter, ViewWriteError};
@@ -86,8 +89,13 @@ async fn get_view(
     };
 
     // Preview path: render with an ad-hoc, non-persisted filter supplied
-    // by the editor, instead of the view's saved `where:`.
-    if let Some(filter_json) = query.filter.as_deref() {
+    // by the editor, instead of the view's saved `where:`. The diagnostics
+    // are recomputed as if the draft were saved: the whole views file is
+    // re-checked with this view's filter substituted, so stale findings
+    // about the persisted filter drop out while findings about other views
+    // stay (the "always show all" convention) — and nothing is written.
+    // From here both paths share the same tier logic.
+    let (render_view, diagnostics) = if let Some(filter_json) = query.filter.as_deref() {
         let clauses: Vec<Clause> = match serde_json::from_str(filter_json) {
             Ok(clauses) => clauses,
             Err(error) => {
@@ -101,41 +109,59 @@ async fn get_view(
             where_clauses: clauses_to_strings(&clauses),
             ..view.clone()
         };
-        // Validate the ad-hoc filter the same way a persisted one is
-        // checked. Any diagnostic means it can't render — surface it so
-        // the editor can show the problem (tier 2), without writing.
         let views_path = state.project_root.join(&state.config.paths.views);
         let candidate = Views {
             output_dir: views.output_dir.clone(),
-            views: vec![effective.clone()],
+            views: views
+                .views
+                .iter()
+                .map(|existing| {
+                    if existing.id == view.id {
+                        effective.clone()
+                    } else {
+                        existing.clone()
+                    }
+                })
+                .collect(),
         };
-        let diagnostics = views_check::evaluate(&candidate, &project.schema, &views_path);
-        if !diagnostics.is_empty() {
-            return ApiResponse::unrenderable(diagnostics);
-        }
-        let data = view_data::extract(
-            &effective,
-            &project.store,
+        // Every view-config diagnostic in `project.diagnostics` came from
+        // checking the *persisted* file; replace them all with the
+        // candidate's (which re-derives the other views' findings too).
+        let mut diagnostics: Vec<Diagnostic> = project
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.view_id().is_none())
+            .cloned()
+            .collect();
+        diagnostics.extend(views_check::evaluate(
+            &candidate,
             &project.schema,
-            &project.calendar,
-        );
-        return ApiResponse::ok_with(data, diagnostics);
-    }
+            &views_path,
+        ));
+        (effective, diagnostics)
+    } else {
+        (view.clone(), project.diagnostics.clone())
+    };
 
     // Tier 2: this specific view has a config diagnostic pinned to it
-    // (e.g. references a missing field, gantt config conflict). The
-    // view can't render; surface the diagnostics instead of data.
-    let has_view_config_issue = project
-        .diagnostics
+    // (e.g. references a missing field, gantt config conflict) — with the
+    // effective filter in place. The view can't render; surface the
+    // diagnostics instead of data.
+    let has_view_config_issue = diagnostics
         .iter()
         .any(|diagnostic| diagnostic.view_id() == Some(view.id.as_str()));
     if has_view_config_issue {
-        return ApiResponse::unrenderable(project.diagnostics);
+        return ApiResponse::unrenderable(diagnostics);
     }
 
     // Tier 3: extract and return view data.
-    let data = view_data::extract(view, &project.store, &project.schema, &project.calendar);
-    ApiResponse::ok_with(data, project.diagnostics)
+    let data = view_data::extract(
+        &render_view,
+        &project.store,
+        &project.schema,
+        &project.calendar,
+    );
+    ApiResponse::ok_with(data, diagnostics)
 }
 
 /// `GET /api/views/{id}/filter` — the view's persisted `where:` decomposed

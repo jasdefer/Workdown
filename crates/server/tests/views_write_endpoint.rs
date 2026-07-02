@@ -371,6 +371,71 @@ async fn preview_with_unknown_field_is_unrenderable() {
 }
 
 #[tokio::test]
+async fn preview_keeps_other_views_diagnostics() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_item(&root, "task-open", "---\nstatus: open\n---\n");
+    // A second view with a broken field reference: its diagnostic must
+    // survive the preview ("always show all"), pinned to `broken`, not `t`.
+    write_views(
+        &root,
+        "views:\n  - id: t\n    type: table\n    columns: [id, status]\n  - id: broken\n    type: board\n    field: nope\n",
+    );
+
+    let uri = format!(
+        "/api/views/t{}",
+        filter_param(json!([
+            { "kind": "comparison", "field": "status", "operator": "equal", "value": "open" }
+        ]))
+    );
+    let response = get(state, &uri).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    assert!(envelope.get("data").is_some(), "previewed view renders");
+    let diagnostics = envelope["diagnostics"].as_array().unwrap();
+    assert!(
+        !diagnostics.is_empty(),
+        "the other view's diagnostic must not vanish during preview"
+    );
+}
+
+#[tokio::test]
+async fn preview_replaces_stale_persisted_filter_diagnostics() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_item(&root, "task-open", "---\nstatus: open\n---\n");
+    // The persisted filter is broken (unknown field) — normally tier-2
+    // unrenderable. A valid draft replaces it, so the preview renders and
+    // the stale diagnostic about the persisted clause is gone.
+    write_views(
+        &root,
+        "views:\n  - id: t\n    type: table\n    columns: [id, status]\n    where:\n      - \"nonexistent=x\"\n",
+    );
+
+    let uri = format!(
+        "/api/views/t{}",
+        filter_param(json!([
+            { "kind": "comparison", "field": "status", "operator": "equal", "value": "open" }
+        ]))
+    );
+    let response = get(state, &uri).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    let rows = envelope["data"]["rows"].as_array().expect("rows array");
+    assert_eq!(
+        rows.len(),
+        1,
+        "draft filter applies in place of the broken one"
+    );
+    assert!(
+        envelope["diagnostics"].as_array().unwrap().is_empty(),
+        "no stale diagnostic about the replaced persisted clause"
+    );
+}
+
+#[tokio::test]
 async fn preview_with_malformed_filter_returns_422() {
     let (directory, state) = temp_project();
     let root = directory.path().to_path_buf();
