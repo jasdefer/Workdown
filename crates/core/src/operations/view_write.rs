@@ -115,8 +115,8 @@ pub fn add_view(
 
     let pre_diagnostics = crate::views_check::evaluate(&views, &schema, &path);
 
-    let new_view = view_from_value(definition)
-        .map_err(|error| ViewWriteError::InvalidDefinition {
+    let new_view =
+        view_from_value(definition).map_err(|error| ViewWriteError::InvalidDefinition {
             detail: error.to_string(),
         })?;
 
@@ -174,7 +174,10 @@ fn prepare_definition(
         mapping.insert(
             serde_yaml::Value::String("where".to_owned()),
             serde_yaml::Value::Sequence(
-                where_clauses.into_iter().map(serde_yaml::Value::String).collect(),
+                where_clauses
+                    .into_iter()
+                    .map(serde_yaml::Value::String)
+                    .collect(),
             ),
         );
     }
@@ -232,8 +235,7 @@ fn load_current_views(path: &Path) -> Result<Views, ViewWriteError> {
     if !path.exists() {
         // Parsing an empty list yields the default `output_dir`, so the
         // created file matches a hand-authored one with no `directory:`.
-        return Ok(parser::views::parse_views("views: []\n")
-            .expect("empty views list parses"));
+        return Ok(parser::views::parse_views("views: []\n").expect("empty views list parses"));
     }
     parser::views::load_views(path).map_err(|error| ViewWriteError::ExistingInvalid {
         path: path.to_path_buf(),
@@ -382,7 +384,10 @@ fields:
     #[test]
     fn add_view_appends_to_existing() {
         let (_dir, root, config) = setup();
-        write_views(&root, "views:\n  - id: first\n    type: board\n    field: status\n");
+        write_views(
+            &root,
+            "views:\n  - id: first\n    type: board\n    field: status\n",
+        );
 
         add_view(&config, &root, board("second")).unwrap();
 
@@ -406,8 +411,7 @@ fields:
     #[test]
     fn add_view_missing_required_slot_errors_without_writing() {
         let (_dir, root, config) = setup();
-        let definition: serde_yaml::Value =
-            serde_yaml::from_str("id: b\ntype: board\n").unwrap();
+        let definition: serde_yaml::Value = serde_yaml::from_str("id: b\ntype: board\n").unwrap();
 
         let error = add_view(&config, &root, definition).unwrap_err();
 
@@ -516,7 +520,10 @@ fields:
     #[test]
     fn set_view_filter_updates_where() {
         let (_dir, root, config) = setup();
-        write_views(&root, "views:\n  - id: board\n    type: board\n    field: status\n");
+        write_views(
+            &root,
+            "views:\n  - id: board\n    type: board\n    field: status\n",
+        );
 
         // Structured conditions, to exercise the serializer end to end.
         let outcome = set_view_filter(
@@ -533,7 +540,10 @@ fields:
         assert_eq!(outcome.view_id, "board");
         assert!(!outcome.mutation_caused_warning);
         let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
-        assert_eq!(reloaded.views[0].where_clauses, vec!["status=open", "title~fix"]);
+        assert_eq!(
+            reloaded.views[0].where_clauses,
+            vec!["status=open", "title~fix"]
+        );
     }
 
     #[test]
@@ -562,7 +572,10 @@ fields:
 
         let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
         assert!(reloaded.views[0].where_clauses.is_empty());
-        assert!(!read_views(&root).contains("where:"), "empty where should not be emitted");
+        assert!(
+            !read_views(&root).contains("where:"),
+            "empty where should not be emitted"
+        );
     }
 
     #[test]
@@ -571,8 +584,7 @@ fields:
         let original = "views:\n  - id: board\n    type: board\n    field: status\n";
         write_views(&root, original);
 
-        let error =
-            set_view_filter(&config, &root, "nope", &[raw("status=open")]).unwrap_err();
+        let error = set_view_filter(&config, &root, "nope", &[raw("status=open")]).unwrap_err();
 
         assert!(matches!(error, ViewWriteError::ViewNotFound { id } if id == "nope"));
         assert_eq!(read_views(&root), original, "file must be untouched");
@@ -581,12 +593,14 @@ fields:
     #[test]
     fn set_view_filter_with_unknown_field_writes_with_warning() {
         let (_dir, root, config) = setup();
-        write_views(&root, "views:\n  - id: board\n    type: board\n    field: status\n");
+        write_views(
+            &root,
+            "views:\n  - id: board\n    type: board\n    field: status\n",
+        );
 
         // References a field not in the schema: parses, but fails cross-file
         // validation. Save-with-warning — written and surfaced.
-        let outcome =
-            set_view_filter(&config, &root, "board", &[raw("nonexistent=x")]).unwrap();
+        let outcome = set_view_filter(&config, &root, "board", &[raw("nonexistent=x")]).unwrap();
 
         assert!(outcome.mutation_caused_warning);
         assert!(!outcome.warnings.is_empty());

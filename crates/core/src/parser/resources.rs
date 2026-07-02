@@ -144,7 +144,10 @@ sprints:
     fn label_prefers_name_over_id() {
         let yaml = "people:\n  - id: alice\n    name: Alice Smith\n";
         let resources = parse_resources(yaml).unwrap();
-        assert_eq!(resources.section("people").unwrap()[0].label(), "Alice Smith");
+        assert_eq!(
+            resources.section("people").unwrap()[0].label(),
+            "Alice Smith"
+        );
     }
 
     #[test]

@@ -106,8 +106,12 @@ pub fn decompose_clause(raw: &str) -> Clause {
     match parse_where(raw) {
         Ok(predicate) => condition_from_predicate(&predicate)
             .map(Clause::Comparison)
-            .unwrap_or_else(|| Clause::Raw { raw: raw.to_owned() }),
-        Err(_) => Clause::Raw { raw: raw.to_owned() },
+            .unwrap_or_else(|| Clause::Raw {
+                raw: raw.to_owned(),
+            }),
+        Err(_) => Clause::Raw {
+            raw: raw.to_owned(),
+        },
     }
 }
 
@@ -296,7 +300,6 @@ mod tests {
         assert_eq!(decompose_clause(&serialized), Clause::Comparison(condition));
     }
 
-
     #[test]
     fn decompose_cross_relation_falls_back_to_raw() {
         // The guided builder is local-field only.
@@ -330,7 +333,10 @@ mod tests {
         ];
         assert_eq!(
             clauses_to_strings(&clauses),
-            vec!["status=open".to_owned(), "status=open,in_progress".to_owned()]
+            vec![
+                "status=open".to_owned(),
+                "status=open,in_progress".to_owned()
+            ]
         );
     }
 

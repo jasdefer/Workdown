@@ -241,7 +241,10 @@ async fn create_view_with_bad_field_reference_saves_with_warning() {
 async fn patch_filter_updates_where_and_returns_200() {
     let (directory, state) = temp_project();
     let root = directory.path().to_path_buf();
-    write_views(&root, "views:\n  - id: board\n    type: board\n    field: status\n");
+    write_views(
+        &root,
+        "views:\n  - id: board\n    type: board\n    field: status\n",
+    );
 
     // A guided comparison plus a raw passthrough clause.
     let response = patch(
@@ -288,7 +291,10 @@ async fn patch_filter_unknown_view_returns_404_with_error() {
 async fn patch_filter_with_unknown_field_saves_with_warning() {
     let (directory, state) = temp_project();
     let root = directory.path().to_path_buf();
-    write_views(&root, "views:\n  - id: board\n    type: board\n    field: status\n");
+    write_views(
+        &root,
+        "views:\n  - id: board\n    type: board\n    field: status\n",
+    );
 
     // References a field absent from the schema: parses, fails cross-file
     // validation — save-with-warning, written and surfaced.
@@ -316,7 +322,10 @@ async fn preview_filters_view_without_writing() {
     let root = directory.path().to_path_buf();
     write_item(&root, "task-open", "---\nstatus: open\n---\n");
     write_item(&root, "task-done", "---\nstatus: done\n---\n");
-    write_views(&root, "views:\n  - id: t\n    type: table\n    columns: [id, status]\n");
+    write_views(
+        &root,
+        "views:\n  - id: t\n    type: table\n    columns: [id, status]\n",
+    );
     let before = read_views(&root);
 
     let uri = format!(
@@ -341,7 +350,10 @@ async fn preview_filters_view_without_writing() {
 async fn preview_with_unknown_field_is_unrenderable() {
     let (directory, state) = temp_project();
     let root = directory.path().to_path_buf();
-    write_views(&root, "views:\n  - id: t\n    type: table\n    columns: [id, status]\n");
+    write_views(
+        &root,
+        "views:\n  - id: t\n    type: table\n    columns: [id, status]\n",
+    );
 
     let uri = format!(
         "/api/views/t{}",
@@ -362,7 +374,10 @@ async fn preview_with_unknown_field_is_unrenderable() {
 async fn preview_with_malformed_filter_returns_422() {
     let (directory, state) = temp_project();
     let root = directory.path().to_path_buf();
-    write_views(&root, "views:\n  - id: t\n    type: table\n    columns: [id, status]\n");
+    write_views(
+        &root,
+        "views:\n  - id: t\n    type: table\n    columns: [id, status]\n",
+    );
 
     let uri = format!("/api/views/t?filter={}", encode("not json"));
     let response = get(state, &uri).await;
@@ -408,7 +423,10 @@ async fn get_view_filter_decomposes_persisted_clauses() {
 async fn get_view_filter_unknown_view_returns_404() {
     let (directory, state) = temp_project();
     let root = directory.path().to_path_buf();
-    write_views(&root, "views:\n  - id: board\n    type: board\n    field: status\n");
+    write_views(
+        &root,
+        "views:\n  - id: board\n    type: board\n    field: status\n",
+    );
 
     let response = get(state, "/api/views/no-such-view/filter").await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);

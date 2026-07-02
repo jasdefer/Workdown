@@ -211,7 +211,12 @@ mod tests {
         let operators = operators_for(FieldType::Boolean);
         assert_eq!(
             operators,
-            vec![Operator::Equal, Operator::NotEqual, Operator::IsSet, Operator::IsNotSet]
+            vec![
+                Operator::Equal,
+                Operator::NotEqual,
+                Operator::IsSet,
+                Operator::IsNotSet
+            ]
         );
     }
 

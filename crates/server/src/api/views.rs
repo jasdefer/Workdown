@@ -113,8 +113,12 @@ async fn get_view(
         if !diagnostics.is_empty() {
             return ApiResponse::unrenderable(diagnostics);
         }
-        let data =
-            view_data::extract(&effective, &project.store, &project.schema, &project.calendar);
+        let data = view_data::extract(
+            &effective,
+            &project.store,
+            &project.schema,
+            &project.calendar,
+        );
         return ApiResponse::ok_with(data, diagnostics);
     }
 

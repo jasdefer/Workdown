@@ -1393,7 +1393,10 @@ views:
     fn view_from_value_rejects_missing_required_slot() {
         let value: serde_yaml::Value = serde_yaml::from_str("id: b\ntype: board\n").unwrap();
         let error = view_from_value(value).unwrap_err();
-        assert!(matches!(error, ViewsLoadError::Validation(_)), "got {error:?}");
+        assert!(
+            matches!(error, ViewsLoadError::Validation(_)),
+            "got {error:?}"
+        );
     }
 
     #[test]
@@ -1401,6 +1404,9 @@ views:
         let value: serde_yaml::Value =
             serde_yaml::from_str("id: b\ntype: board\nfield: status\nbogus: x\n").unwrap();
         let error = view_from_value(value).unwrap_err();
-        assert!(matches!(error, ViewsLoadError::InvalidYaml(_)), "got {error:?}");
+        assert!(
+            matches!(error, ViewsLoadError::InvalidYaml(_)),
+            "got {error:?}"
+        );
     }
 }
