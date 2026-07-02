@@ -60,8 +60,12 @@ pub enum Clause {
 ///
 /// For `Matches`, `value` already carries the full `/pattern/flags` form
 /// (that is how the parser stores it), so it is appended directly.
-/// `Equal` assumes a comma-free value — a comma would re-parse as IN; the
-/// guided builder never produces a multi-value `Equal` (those are raw).
+/// An `Equal` value containing commas serializes to the IN form
+/// (`field=a,b`), which re-parses as an Or of same-field equals and folds
+/// back to the same multi-value condition — this is how the guided
+/// multi-select round-trips. The grammar has no escaping, so a literal
+/// comma inside a single `Equal` value is not representable; such a value
+/// silently becomes an IN filter.
 pub fn serialize_condition(condition: &Condition) -> String {
     let field = &condition.field;
     let value = condition.value.as_deref().unwrap_or("");
