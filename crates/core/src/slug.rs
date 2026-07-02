@@ -2,7 +2,7 @@
 //!
 //! Shared so a work item's filename slug (`workdown add`) and a view's id
 //! (created from the UI) follow the *same* rule — one definition, no drift.
-//! The result is always a valid id per [`crate::model::work_item::is_valid_id`].
+//! The result is always a valid id per `crate::model::work_item::is_valid_id`.
 
 use crate::model::work_item::is_valid_id;
 

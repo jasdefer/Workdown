@@ -74,7 +74,7 @@ pub fn load_views(path: &Path) -> Result<Views, ViewsLoadError> {
 /// `id`, `type`, optional `where`, and the type-specific slots. Validates
 /// exactly as a hand-edited file would — unknown slots are rejected
 /// (`deny_unknown_fields`) and per-type required slots are enforced by
-/// [`convert_view`]. Used by the view-write path to turn a UI/API view
+/// `convert_view`. Used by the view-write path to turn a UI/API view
 /// definition into a validated model before persisting.
 pub fn view_from_value(value: serde_yaml::Value) -> Result<View, ViewsLoadError> {
     let raw: RawView = serde_yaml::from_value(value).map_err(ViewsLoadError::InvalidYaml)?;
