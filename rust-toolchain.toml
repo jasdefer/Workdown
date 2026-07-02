@@ -1,0 +1,7 @@
+# Pins the Rust toolchain for every rustup-managed environment — the
+# devcontainer and CI build with the identical compiler and clippy, so a
+# new stable release can't break CI (`-D warnings`) until we bump this
+# deliberately. Keep in sync with the devcontainer's installed version.
+[toolchain]
+channel = "1.94.0"
+components = ["rustfmt", "clippy"]
