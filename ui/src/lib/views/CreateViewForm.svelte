@@ -13,6 +13,8 @@
 	import { api } from '$lib/api/client';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import FilterBuilder from '$lib/filters/FilterBuilder.svelte';
+	import GanttInput from './GanttInput.svelte';
+	import MetricRowsEditor from './MetricRowsEditor.svelte';
 	import {
 		AGGREGATES,
 		BUCKETS,
@@ -24,18 +26,10 @@
 		kindLabel
 	} from './viewKinds';
 
-	interface MetricRow {
-		label: string;
-		aggregate: string;
-		value: string;
-	}
-
 	let name = $state('');
 	let kind = $state<ViewType>('board');
 	let definition = $state<Record<string, unknown>>({});
 	let filterClauses = $state<Clause[]>([]);
-	let ganttMode = $state<'end' | 'duration' | 'after'>('end');
-	let metricRows = $state<MetricRow[]>([{ label: '', aggregate: 'count', value: '' }]);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 
@@ -73,51 +67,11 @@
 		return schemaStore.fields.filter((field) => fieldFits(field.field_type, accepts));
 	}
 
+	// A kind switch resets the slots; a freshly mounted `MetricRowsEditor`
+	// or `GanttInput` re-seeds its own part of the definition.
 	function chooseKind(next: ViewType): void {
 		kind = next;
 		definition = {};
-		ganttMode = 'end';
-		metricRows = [{ label: '', aggregate: 'count', value: '' }];
-		syncMetrics();
-	}
-
-	// ── Gantt input mode ────────────────────────────────────────────────
-
-	function setGanttMode(mode: 'end' | 'duration' | 'after'): void {
-		ganttMode = mode;
-		const next = { ...definition };
-		delete next.end;
-		delete next.duration;
-		delete next.after;
-		definition = next;
-	}
-
-	// ── Metric rows ─────────────────────────────────────────────────────
-
-	function syncMetrics(): void {
-		if (kind !== 'metric') return;
-		const rows = metricRows.map((row) => {
-			const entry: Record<string, unknown> = { aggregate: row.aggregate };
-			if (row.label.trim() !== '') entry.label = row.label.trim();
-			if (row.value !== '') entry.value = row.value;
-			return entry;
-		});
-		definition = { ...definition, metrics: rows };
-	}
-
-	function updateMetric(index: number, patch: Partial<MetricRow>): void {
-		metricRows = metricRows.map((row, i) => (i === index ? { ...row, ...patch } : row));
-		syncMetrics();
-	}
-
-	function addMetric(): void {
-		metricRows = [...metricRows, { label: '', aggregate: 'count', value: '' }];
-		syncMetrics();
-	}
-
-	function removeMetric(index: number): void {
-		metricRows = metricRows.filter((_, i) => i !== index);
-		syncMetrics();
 	}
 
 	// ── Working days ────────────────────────────────────────────────────
@@ -232,99 +186,7 @@
 				</select>
 			</label>
 		{:else if control.control === 'ganttInput'}
-			<label class="row">
-				<span class="label">Start *</span>
-				<select
-					value={scalar('start')}
-					onchange={(event) => {
-						setSlot('start', event.currentTarget.value);
-					}}
-				>
-					<option value="">Select field…</option>
-					{#each fieldOptions(['date']) as field (field.name)}
-						<option value={field.name}>{field.name}</option>
-					{/each}
-				</select>
-			</label>
-			<div class="row">
-				<span class="label">End by *</span>
-				<div class="modes">
-					<label
-						><input
-							type="radio"
-							checked={ganttMode === 'end'}
-							onchange={() => {
-								setGanttMode('end');
-							}}
-						/> End date</label
-					>
-					<label
-						><input
-							type="radio"
-							checked={ganttMode === 'duration'}
-							onchange={() => {
-								setGanttMode('duration');
-							}}
-						/> Duration</label
-					>
-					<label
-						><input
-							type="radio"
-							checked={ganttMode === 'after'}
-							onchange={() => {
-								setGanttMode('after');
-							}}
-						/> After predecessors</label
-					>
-				</div>
-			</div>
-			{#if ganttMode === 'end'}
-				<label class="row">
-					<span class="label">End field *</span>
-					<select
-						value={scalar('end')}
-						onchange={(event) => {
-							setSlot('end', event.currentTarget.value);
-						}}
-					>
-						<option value="">Select field…</option>
-						{#each fieldOptions(['date']) as field (field.name)}
-							<option value={field.name}>{field.name}</option>
-						{/each}
-					</select>
-				</label>
-			{:else}
-				<label class="row">
-					<span class="label">Duration field *</span>
-					<select
-						value={scalar('duration')}
-						onchange={(event) => {
-							setSlot('duration', event.currentTarget.value);
-						}}
-					>
-						<option value="">Select field…</option>
-						{#each fieldOptions(['duration']) as field (field.name)}
-							<option value={field.name}>{field.name}</option>
-						{/each}
-					</select>
-				</label>
-				{#if ganttMode === 'after'}
-					<label class="row">
-						<span class="label">Predecessor link *</span>
-						<select
-							value={scalar('after')}
-							onchange={(event) => {
-								setSlot('after', event.currentTarget.value);
-							}}
-						>
-							<option value="">Select field…</option>
-							{#each fieldOptions(['link', 'links']) as field (field.name)}
-								<option value={field.name}>{field.name}</option>
-							{/each}
-						</select>
-					</label>
-				{/if}
-			{/if}
+			<GanttInput {definition} onslot={setSlot} />
 		{:else if control.control === 'workingDays'}
 			<div class="row">
 				<span class="label">{control.label}</span>
@@ -346,50 +208,11 @@
 		{:else if control.control === 'metrics'}
 			<div class="row">
 				<span class="label">Metrics *</span>
-				<div class="metrics">
-					{#each metricRows as row, index (index)}
-						<div class="metric-row">
-							<input
-								type="text"
-								placeholder="label (optional)"
-								value={row.label}
-								onchange={(event) => {
-									updateMetric(index, { label: event.currentTarget.value });
-								}}
-							/>
-							<select
-								value={row.aggregate}
-								onchange={(event) => {
-									updateMetric(index, { aggregate: event.currentTarget.value });
-								}}
-							>
-								{#each AGGREGATES as aggregate (aggregate)}
-									<option value={aggregate}>{aggregate}</option>
-								{/each}
-							</select>
-							<select
-								value={row.value}
-								onchange={(event) => {
-									updateMetric(index, { value: event.currentTarget.value });
-								}}
-							>
-								<option value="">— no value —</option>
-								{#each fieldOptions(['integer', 'float', 'duration', 'date']) as field (field.name)}
-									<option value={field.name}>{field.name}</option>
-								{/each}
-							</select>
-							<button
-								type="button"
-								class="remove"
-								aria-label="Remove metric"
-								onclick={() => {
-									removeMetric(index);
-								}}>×</button
-							>
-						</div>
-					{/each}
-					<button type="button" class="ghost" onclick={addMetric}>+ Add metric</button>
-				</div>
+				<MetricRowsEditor
+					onchange={(metrics) => {
+						definition = { ...definition, metrics };
+					}}
+				/>
 			</div>
 		{/if}
 	{/each}
@@ -452,13 +275,6 @@
 		font-size: var(--text-sm);
 	}
 
-	.modes {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-3);
-		font-size: var(--text-sm);
-	}
-
 	.checks {
 		display: flex;
 		flex-wrap: wrap;
@@ -470,24 +286,6 @@
 		align-items: center;
 		gap: 0.25rem;
 		font-size: var(--text-sm);
-	}
-
-	.metrics {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-2);
-	}
-
-	.metric-row {
-		display: flex;
-		gap: var(--space-2);
-		align-items: center;
-	}
-
-	.metric-row input,
-	.metric-row select {
-		flex: 1;
-		min-width: 0;
 	}
 
 	.filter-section {
@@ -521,17 +319,6 @@
 		cursor: default;
 	}
 
-	.ghost {
-		align-self: flex-start;
-		background: none;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
-		color: var(--color-fg-muted);
-		padding: 0.25rem var(--space-2);
-		font-size: var(--text-sm);
-		cursor: pointer;
-	}
-
 	.cancel {
 		color: var(--color-fg-muted);
 		font-size: var(--text-sm);
@@ -544,19 +331,5 @@
 		border-radius: var(--radius-sm);
 		font-size: var(--text-sm);
 		margin: 0;
-	}
-
-	.remove {
-		background: none;
-		border: none;
-		color: var(--color-fg-muted);
-		cursor: pointer;
-		font-size: var(--text-lg);
-		line-height: 1;
-		padding: 0 0.25rem;
-	}
-
-	.remove:hover {
-		color: var(--color-error-fg);
 	}
 </style>
