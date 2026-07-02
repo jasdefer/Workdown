@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 use workdown_core::model::diagnostic::{DiagnosticBody, ItemDiagnosticKind};
@@ -90,11 +90,11 @@ fn setup_project() -> (TempDir, PathBuf) {
 }
 
 /// Write a template file under `.workdown/templates/<name>.md`.
-fn write_template(root: &PathBuf, name: &str, content: &str) {
+fn write_template(root: &Path, name: &str, content: &str) {
     fs::write(root.join(format!(".workdown/templates/{name}.md")), content).unwrap();
 }
 
-fn load_test_config(root: &PathBuf) -> workdown_core::model::config::Config {
+fn load_test_config(root: &Path) -> workdown_core::model::config::Config {
     load_config(&root.join(".workdown/config.yaml")).unwrap()
 }
 

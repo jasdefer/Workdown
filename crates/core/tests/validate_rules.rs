@@ -434,7 +434,7 @@ rules:
     let store = Store::load(&path, &schema).unwrap();
     let diags = evaluate(&store, &schema);
 
-    assert!(!diags.iter().any(|d| is_count_violation(d)));
+    assert!(!diags.iter().any(is_count_violation));
 }
 
 // ── Combined require + count ────────────────────────────────────────
@@ -481,7 +481,7 @@ rules:
     }));
 
     // 3 items in_progress, max 2 -> CountViolation
-    assert!(diags.iter().any(|d| is_count_violation(d)));
+    assert!(diags.iter().any(is_count_violation));
 }
 
 // ── Warning severity ────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 //! Integration tests for `workdown query`.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 use workdown_core::model::config::Config;
@@ -106,13 +106,13 @@ fn setup_project() -> (TempDir, PathBuf) {
     (directory, root)
 }
 
-fn load_test_config(root: &PathBuf) -> Config {
+fn load_test_config(root: &Path) -> Config {
     load_config(&root.join(".workdown/config.yaml")).unwrap()
 }
 
 /// Helper: execute a query with the given where clauses, sort, and fields.
 fn run_query(
-    root: &PathBuf,
+    root: &Path,
     where_clauses: &[&str],
     sort: &[SortSpec],
     fields: &[&str],
@@ -344,7 +344,7 @@ fn query_default_columns_include_id_and_required() {
 // ── Delimited output (CSV/TSV) ──────────────────────────────────────
 
 fn filtered(
-    root: &PathBuf,
+    root: &Path,
     where_clauses: &[&str],
     sort: &[SortSpec],
     fields: &[&str],

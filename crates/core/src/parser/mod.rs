@@ -455,7 +455,7 @@ tags: [a, b, c]
         let item = parse_work_item(content, Path::new("fix-login.md")).unwrap();
         assert_eq!(item.id, "custom-id");
         // `id` should be stripped from frontmatter
-        assert!(item.frontmatter.get("id").is_none());
+        assert!(!item.frontmatter.contains_key("id"));
     }
 
     #[test]

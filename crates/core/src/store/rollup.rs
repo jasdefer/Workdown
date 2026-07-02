@@ -833,7 +833,7 @@ mod tests {
         // mid keeps its manual value; root aggregates from mid (the value-provider).
         assert_eq!(items["mid"].fields.get("effort"), Some(&int(7)));
         assert_eq!(items["root"].fields.get("effort"), Some(&int(7)));
-        assert!(items["leaf"].fields.get("effort").is_none());
+        assert!(!items["leaf"].fields.contains_key("effort"));
     }
 
     #[test]

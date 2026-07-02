@@ -231,11 +231,11 @@ mod tests {
             vec!["id", "ratio"],
             vec![row(
                 "a",
-                vec![id_cell("a"), Some(FieldValue::Float(3.14159))],
+                vec![id_cell("a"), Some(FieldValue::Float(1.23456))],
             )],
         );
         let output = render_table(&data, "../workdown-items", "");
-        assert!(output.contains("| 3.14159 |\n"));
+        assert!(output.contains("| 1.23456 |\n"));
     }
 
     #[test]

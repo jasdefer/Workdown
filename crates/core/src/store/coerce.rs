@@ -487,7 +487,7 @@ mod tests {
         let raw = raw_item("t", vec![("title", yaml_int(42))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
-        assert!(fields.get("title").is_none());
+        assert!(!fields.contains_key("title"));
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::TypeMismatch { .. })
         });
@@ -507,7 +507,7 @@ mod tests {
 
         let raw_bad = raw_item("t", vec![("code", yaml_str("abc"))]);
         let (fields, diagnostics) = coerce_fields(&raw_bad, &s);
-        assert!(fields.get("code").is_none());
+        assert!(!fields.contains_key("code"));
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::PatternMismatch { .. })
         });
@@ -537,7 +537,7 @@ mod tests {
         let raw = raw_item("t", vec![("status", yaml_str("unknown"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
-        assert!(fields.get("status").is_none());
+        assert!(!fields.contains_key("status"));
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::InvalidChoice { .. })
         });
@@ -1121,7 +1121,7 @@ mod tests {
         let raw = raw_item("t", vec![("title", serde_yaml::Value::Null)]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
-        assert!(fields.get("title").is_none());
+        assert!(!fields.contains_key("title"));
         assert!(diagnostics.iter().any(|diagnostic| matches_item_kind(
             diagnostic,
             |kind| matches!(kind, ItemDiagnosticKind::MissingRequired { field } if field == "title")
@@ -1144,7 +1144,7 @@ mod tests {
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
-        assert!(fields.get("id").is_none());
+        assert!(!fields.contains_key("id"));
         assert_eq!(fields["title"], FieldValue::String("Hi".into()));
     }
 
