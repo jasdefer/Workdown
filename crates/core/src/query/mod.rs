@@ -4,6 +4,7 @@
 //! The CLI `query` command is one consumer; future commands (board, tree,
 //! graph) reuse the engine programmatically.
 
+pub mod clause;
 pub mod engine;
 pub mod eval;
 pub mod format;

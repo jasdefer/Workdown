@@ -5,8 +5,8 @@ status: to_do
 title: Polish & dogfood
 parent: phase-04-visualization
 depends_on: [view-authoring]
-start_date: 2026-07-13
-end_date: 2026-07-17
+start_date: 2026-07-16
+end_date: 2026-07-22
 duration: "1w"
 ---
 

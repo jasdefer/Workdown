@@ -473,6 +473,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn data(
         x_field: &str,
         y_field: &str,

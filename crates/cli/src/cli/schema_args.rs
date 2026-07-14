@@ -272,7 +272,7 @@ mod tests {
         let matches = parse(&schema, &[]);
         let field_map = matches_to_field_map(&matches, &schema);
 
-        assert!(field_map.get("title").is_none());
+        assert!(!field_map.contains_key("title"));
     }
 
     // ── Integer ──────────────────────────────────────────────────────
@@ -530,7 +530,7 @@ mod tests {
             field_map.get("title").unwrap(),
             &serde_yaml::Value::String("Foo".into())
         );
-        assert!(field_map.get("template").is_none());
+        assert!(!field_map.contains_key("template"));
     }
 
     #[test]

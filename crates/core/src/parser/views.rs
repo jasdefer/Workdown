@@ -14,7 +14,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::model::views::{Aggregate, Bucket, MetricRow, View, ViewKind, ViewType, Views};
 use crate::model::weekday::Weekday;
@@ -68,6 +68,33 @@ pub fn load_views(path: &Path) -> Result<Views, ViewsLoadError> {
     parse_views(&content)
 }
 
+/// Build a single [`View`] from a YAML value carrying one view's slots.
+///
+/// The value uses the same flat shape as one entry in the `views:` list:
+/// `id`, `type`, optional `where`, and the type-specific slots. Validates
+/// exactly as a hand-edited file would — unknown slots are rejected
+/// (`deny_unknown_fields`) and per-type required slots are enforced by
+/// `convert_view`. Used by the view-write path to turn a UI/API view
+/// definition into a validated model before persisting.
+pub fn view_from_value(value: serde_yaml::Value) -> Result<View, ViewsLoadError> {
+    let raw: RawView = serde_yaml::from_value(value).map_err(ViewsLoadError::InvalidYaml)?;
+    convert_view(raw).map_err(|error| ViewsLoadError::Validation(vec![error]))
+}
+
+/// Serialize a [`Views`] model back to `views.yaml` text.
+///
+/// The inverse of [`parse_views`]: emits a file that re-parses to an
+/// equal [`Views`] (covered by the round-trip test). Only slots the view
+/// kind actually uses are written, empty `where` lists are omitted, and
+/// the `directory:` key is emitted only when it differs from the default.
+///
+/// This rebuilds the file from the model, so a user's comments and key
+/// ordering in the original `views.yaml` are not preserved — see the
+/// `view-write-backend` design notes.
+pub fn serialize_views(views: &Views) -> Result<String, serde_yaml::Error> {
+    serde_yaml::to_string(&to_raw_views_file(views))
+}
+
 // ── Errors ────────────────────────────────────────────────────────────
 
 /// Errors from loading or validating a views file.
@@ -107,12 +134,12 @@ fn format_errors(errors: &[ViewsValidationError]) -> String {
 
 // ── Raw deserialization target ────────────────────────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawViewsFile {
     /// Output directory for rendered view files, relative to project
     /// root. Optional; defaults to [`DEFAULT_OUTPUT_DIR`].
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     directory: Option<String>,
     views: Vec<RawView>,
 }
@@ -120,7 +147,7 @@ struct RawViewsFile {
 /// Flat deserialization struct that mirrors the YAML layout. All
 /// type-specific slots are optional here; [`convert_view`] enforces the
 /// per-type required-slot rules. Unknown slots are rejected by serde.
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawView {
     id: String,
@@ -128,81 +155,81 @@ struct RawView {
     #[serde(rename = "type")]
     view_type: ViewType,
 
-    #[serde(default, rename = "where")]
+    #[serde(default, rename = "where", skip_serializing_if = "Vec::is_empty")]
     where_clauses: Vec<String>,
 
     // Cross-cutting: the schema field whose value each rendered item
     // uses as its display title. Allowed on every view type.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     title: Option<String>,
 
     // Single-field views (board / tree / graph)
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     field: Option<String>,
 
     // Table
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     columns: Option<Vec<String>>,
 
     // Gantt / Workload
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     start: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     end: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     duration: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     after: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     root_link: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     depth_link: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     effort: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     group: Option<String>,
 
     // Bar chart / Heatmap
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     group_by: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     value: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     aggregate: Option<Aggregate>,
 
     // Metric
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     metrics: Option<Vec<RawMetricRow>>,
 
     // Line chart / Heatmap
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     x: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     y: Option<String>,
 
     // Treemap
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     size: Option<String>,
 
     // Heatmap
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     bucket: Option<Bucket>,
 
     // Workload
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     working_days: Option<Vec<Weekday>>,
 }
 
 /// One row inside a metric view's `metrics:` list.
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawMetricRow {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     label: Option<String>,
     aggregate: Aggregate,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     value: Option<String>,
-    #[serde(default, rename = "where")]
+    #[serde(default, rename = "where", skip_serializing_if = "Vec::is_empty")]
     where_clauses: Vec<String>,
 }
 
@@ -307,6 +334,174 @@ fn require<T>(
         view_type,
         slot: slot_name,
     })
+}
+
+// ── Conversion: validated → raw (serialization) ───────────────────────
+
+/// Build the raw, serde-serializable file mirror from a validated model.
+fn to_raw_views_file(views: &Views) -> RawViewsFile {
+    // Emit `directory:` only when it differs from the implicit default,
+    // so files that never set it stay free of the redundant key.
+    let directory = if views.output_dir.as_path() == Path::new(DEFAULT_OUTPUT_DIR) {
+        None
+    } else {
+        Some(views.output_dir.to_string_lossy().into_owned())
+    };
+    RawViewsFile {
+        directory,
+        views: views.views.iter().map(raw_view_from).collect(),
+    }
+}
+
+/// Inverse of [`convert_view`]: spread a validated [`View`] across the flat
+/// raw struct, populating only the slots its kind uses.
+///
+/// Slots that are optional *and* empty in the model are left `None` so
+/// they don't serialize (e.g. a tree with no extra columns). Slots that
+/// are required for the kind are always populated — even when empty (a
+/// table's `columns: []`, a metric's `metrics: []`) — so the output
+/// re-parses without tripping the required-slot check.
+fn raw_view_from(view: &View) -> RawView {
+    let mut raw = RawView {
+        id: view.id.clone(),
+        view_type: view.kind.view_type(),
+        where_clauses: view.where_clauses.clone(),
+        title: view.title.clone(),
+        field: None,
+        columns: None,
+        start: None,
+        end: None,
+        duration: None,
+        after: None,
+        root_link: None,
+        depth_link: None,
+        effort: None,
+        group: None,
+        group_by: None,
+        value: None,
+        aggregate: None,
+        metrics: None,
+        x: None,
+        y: None,
+        size: None,
+        bucket: None,
+        working_days: None,
+    };
+
+    match &view.kind {
+        ViewKind::Board { field } => raw.field = Some(field.clone()),
+        ViewKind::Tree { field, columns } => {
+            raw.field = Some(field.clone());
+            // Optional slot: omit when empty so we don't emit `columns: []`.
+            if !columns.is_empty() {
+                raw.columns = Some(columns.clone());
+            }
+        }
+        ViewKind::Graph { field, group_by } => {
+            raw.field = Some(field.clone());
+            raw.group_by = group_by.clone();
+        }
+        ViewKind::Table { columns } => {
+            // Required slot: always emit, even when empty.
+            raw.columns = Some(columns.clone());
+        }
+        ViewKind::Gantt {
+            start,
+            end,
+            duration,
+            after,
+            group,
+        } => {
+            raw.start = Some(start.clone());
+            raw.end = end.clone();
+            raw.duration = duration.clone();
+            raw.after = after.clone();
+            raw.group = group.clone();
+        }
+        ViewKind::GanttByInitiative {
+            start,
+            end,
+            duration,
+            after,
+            root_link,
+        } => {
+            raw.start = Some(start.clone());
+            raw.end = end.clone();
+            raw.duration = duration.clone();
+            raw.after = after.clone();
+            raw.root_link = Some(root_link.clone());
+        }
+        ViewKind::GanttByDepth {
+            start,
+            end,
+            duration,
+            after,
+            depth_link,
+        } => {
+            raw.start = Some(start.clone());
+            raw.end = end.clone();
+            raw.duration = duration.clone();
+            raw.after = after.clone();
+            raw.depth_link = Some(depth_link.clone());
+        }
+        ViewKind::BarChart {
+            group_by,
+            value,
+            aggregate,
+        } => {
+            raw.group_by = Some(group_by.clone());
+            raw.value = value.clone();
+            raw.aggregate = Some(*aggregate);
+        }
+        ViewKind::LineChart { x, y, group } => {
+            raw.x = Some(x.clone());
+            raw.y = Some(y.clone());
+            raw.group = group.clone();
+        }
+        ViewKind::Workload {
+            start,
+            end,
+            effort,
+            working_days,
+        } => {
+            raw.start = Some(start.clone());
+            raw.end = Some(end.clone());
+            raw.effort = Some(effort.clone());
+            raw.working_days = working_days.clone();
+        }
+        ViewKind::Metric { metrics } => {
+            // Required slot: always emit, even when empty.
+            raw.metrics = Some(metrics.iter().map(raw_metric_row_from).collect());
+        }
+        ViewKind::Treemap { group, size } => {
+            raw.group = Some(group.clone());
+            raw.size = Some(size.clone());
+        }
+        ViewKind::Heatmap {
+            x,
+            y,
+            value,
+            aggregate,
+            bucket,
+        } => {
+            raw.x = Some(x.clone());
+            raw.y = Some(y.clone());
+            raw.value = value.clone();
+            raw.aggregate = Some(*aggregate);
+            raw.bucket = *bucket;
+        }
+    }
+
+    raw
+}
+
+fn raw_metric_row_from(row: &MetricRow) -> RawMetricRow {
+    RawMetricRow {
+        label: row.label.clone(),
+        aggregate: row.aggregate,
+        value: row.value.clone(),
+        where_clauses: row.where_clauses.clone(),
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
@@ -1070,5 +1265,148 @@ views:
 "#;
         let parsed = parse_views(yaml).unwrap();
         assert_eq!(parsed.views.len(), 12);
+    }
+
+    // ── Serialization round-trip ───────────────────────────────────
+
+    /// The same broad fixture as `parses_full_example`, plus the slots
+    /// that example omits (gantt_by_depth, metric `where`, workload
+    /// `working_days`, heatmap with a non-default directory) so the
+    /// round-trip exercises every kind and every optional slot.
+    const ROUND_TRIP_FIXTURE: &str = r#"
+directory: rendered/views
+views:
+  - id: status-board
+    type: board
+    field: status
+    title: title
+    where:
+      - "type=issue"
+      - "status!=removed"
+  - id: hierarchy
+    type: tree
+    field: parent
+    columns: [status, points]
+  - id: bare-tree
+    type: tree
+    field: parent
+  - id: deps
+    type: graph
+    field: depends_on
+    group_by: parent
+  - id: all-items
+    type: table
+    columns: [id, title, status]
+  - id: roadmap
+    type: gantt
+    start: start_date
+    duration: estimate
+    after: depends_on
+  - id: roadmap-by-initiative
+    type: gantt_by_initiative
+    start: start_date
+    end: end_date
+    root_link: parent
+  - id: roadmap-by-depth
+    type: gantt_by_depth
+    start: start_date
+    duration: estimate
+    depth_link: parent
+  - id: effort-by-status
+    type: bar_chart
+    group_by: status
+    value: effort
+    aggregate: sum
+  - id: estimate-vs-actual
+    type: line_chart
+    x: estimate
+    y: actual_effort
+    group: assignee
+  - id: capacity
+    type: workload
+    start: start_date
+    end: end_date
+    effort: effort
+    working_days: [monday, wednesday, friday]
+  - id: stats
+    type: metric
+    metrics:
+      - label: Total
+        aggregate: count
+      - label: In progress
+        aggregate: sum
+        value: points
+        where: ["status=in_progress"]
+  - id: effort-by-milestone
+    type: treemap
+    group: parent
+    size: effort
+  - id: activity
+    type: heatmap
+    x: end_date
+    y: assignee
+    aggregate: count
+    bucket: week
+"#;
+
+    #[test]
+    fn serialize_then_parse_yields_equal_model() {
+        let original = parse_views(ROUND_TRIP_FIXTURE).unwrap();
+        let serialized = serialize_views(&original).unwrap();
+        let reparsed = parse_views(&serialized).unwrap();
+        assert_eq!(
+            original, reparsed,
+            "round-trip changed the model.\n--- serialized ---\n{serialized}"
+        );
+    }
+
+    #[test]
+    fn serialize_omits_default_directory() {
+        let views = parse_views("views:\n  - id: b\n    type: board\n    field: status\n").unwrap();
+        let serialized = serialize_views(&views).unwrap();
+        assert!(
+            !serialized.contains("directory:"),
+            "default directory should not be emitted, got:\n{serialized}"
+        );
+    }
+
+    #[test]
+    fn serialize_omits_empty_where() {
+        let views = parse_views("views:\n  - id: b\n    type: board\n    field: status\n").unwrap();
+        let serialized = serialize_views(&views).unwrap();
+        assert!(
+            !serialized.contains("where:"),
+            "empty where should not be emitted, got:\n{serialized}"
+        );
+    }
+
+    #[test]
+    fn view_from_value_builds_validated_view() {
+        let value: serde_yaml::Value =
+            serde_yaml::from_str("id: b\ntype: board\nfield: status\n").unwrap();
+        let view = view_from_value(value).unwrap();
+        assert_eq!(view.id, "b");
+        assert!(matches!(view.kind, ViewKind::Board { field } if field == "status"));
+    }
+
+    #[test]
+    fn view_from_value_rejects_missing_required_slot() {
+        let value: serde_yaml::Value = serde_yaml::from_str("id: b\ntype: board\n").unwrap();
+        let error = view_from_value(value).unwrap_err();
+        assert!(
+            matches!(error, ViewsLoadError::Validation(_)),
+            "got {error:?}"
+        );
+    }
+
+    #[test]
+    fn view_from_value_rejects_unknown_slot() {
+        let value: serde_yaml::Value =
+            serde_yaml::from_str("id: b\ntype: board\nfield: status\nbogus: x\n").unwrap();
+        let error = view_from_value(value).unwrap_err();
+        assert!(
+            matches!(error, ViewsLoadError::InvalidYaml(_)),
+            "got {error:?}"
+        );
     }
 }

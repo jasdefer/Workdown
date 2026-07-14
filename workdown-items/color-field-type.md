@@ -3,7 +3,7 @@ id: color-field-type
 title: Add `color` field type with background tinting
 type: issue
 status: to_do
-parent: view-authoring
+parent: view-presentation
 depends_on:
 - mutations-slice
 effort: 2d
@@ -81,7 +81,7 @@ ordinary card background, so dark/light still applies normally there.
 ## Note on scheduling
 
 No `start_date`/`end_date`/`duration` here on purpose: the parent
-milestone [[view-authoring]] sets those manually as aggregates, so
+milestone [[view-presentation]] sets those manually as aggregates, so
 repeating them on a child would raise an `AggregateChainConflict`. The
 milestone owns the calendar span; this leaf carries only `effort`, which
 rolls up as a sum.

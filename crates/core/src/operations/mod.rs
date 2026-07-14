@@ -7,3 +7,4 @@ pub mod rename;
 pub mod set;
 pub mod templates;
 pub mod validate;
+pub mod view_write;

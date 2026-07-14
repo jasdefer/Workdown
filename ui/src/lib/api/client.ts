@@ -10,14 +10,18 @@
 // error). Save-with-warning successes return `data` + `diagnostics` with
 // no `error`. See the server's `envelope.rs` for the full contract.
 
+import type { Clause } from './generated/Clause';
 import type { CreateItem } from './generated/CreateItem';
 import type { CreateItemResult } from './generated/CreateItemResult';
+import type { CreateView } from './generated/CreateView';
 import type { Diagnostic } from './generated/Diagnostic';
 import type { FieldMutation } from './generated/FieldMutation';
 import type { FieldMutationResult } from './generated/FieldMutationResult';
 import type { ItemDetail } from './generated/ItemDetail';
 import type { SchemaData } from './generated/SchemaData';
+import type { SetViewFilter } from './generated/SetViewFilter';
 import type { ViewData } from './generated/ViewData';
+import type { ViewMutationResult } from './generated/ViewMutationResult';
 import type { ViewSummary } from './generated/ViewSummary';
 
 export interface ApiResult<T> {
@@ -68,7 +72,32 @@ export async function request<T>(
 
 export const api = {
 	getViews: () => request<ViewSummary[]>('GET', '/api/views'),
-	getView: (id: string) => request<ViewData>('GET', `/api/views/${encodeURIComponent(id)}`),
+	/**
+	 * Fetch a view's data. `filter` is a JSON array of structured clauses
+	 * (already serialized) for a "for right now" preview: the server
+	 * extracts with those clauses instead of the persisted `where:`, and
+	 * writes nothing.
+	 */
+	getView: (id: string, filter?: string) =>
+		request<ViewData>(
+			'GET',
+			`/api/views/${encodeURIComponent(id)}${
+				filter !== undefined ? `?filter=${encodeURIComponent(filter)}` : ''
+			}`
+		),
+	/** The view's persisted filter, decomposed into the editor's clause shape. */
+	getViewFilter: (id: string) =>
+		request<Clause[]>('GET', `/api/views/${encodeURIComponent(id)}/filter`),
+	/** Persist a view's filter (structured clauses) to `views.yaml`. */
+	patchViewFilter: (id: string, clauses: Clause[]) =>
+		request<ViewMutationResult>('PATCH', `/api/views/${encodeURIComponent(id)}`, {
+			clauses
+		} satisfies SetViewFilter),
+	/**
+	 * Create a view. `name` is slugged to the id server-side; `definition`
+	 * is the kind + slots (no id); `filter` is the optional structured filter.
+	 */
+	createView: (body: CreateView) => request<ViewMutationResult>('POST', '/api/views', body),
 	getSchema: () => request<SchemaData>('GET', '/api/schema'),
 	getItem: (id: string) => request<ItemDetail>('GET', `/api/items/${encodeURIComponent(id)}`),
 	setField: (id: string, field: string, mutation: FieldMutation) =>

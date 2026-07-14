@@ -24,3 +24,6 @@ ui/src/lib/api/generated/
 
 # Environment
 .env
+
+# Claude Code per-machine permission grants — local by design
+.claude/settings.local.json

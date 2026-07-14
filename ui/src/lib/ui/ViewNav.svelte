@@ -25,27 +25,33 @@
 	let { views }: Props = $props();
 
 	let activeId = $derived(page.params.id);
+	let creating = $derived(page.url.pathname === '/views/new');
 </script>
 
-{#if views.length > 0}
-	<nav class="view-nav" aria-label="Views">
-		{#each views as view (view.id)}
-			{@const isActive = view.id === activeId}
-			<a
-				class="view-link"
-				href={`/views/${encodeURIComponent(view.id)}`}
-				aria-current={isActive ? 'page' : undefined}
-			>
-				<Chip active={isActive} interactive>
-					<span class="link-content">
-						<ViewKindIcon kind={view.kind} />
-						{viewLabel(view)}
-					</span>
-				</Chip>
-			</a>
-		{/each}
-	</nav>
-{/if}
+<nav class="view-nav" aria-label="Views">
+	{#each views as view (view.id)}
+		{@const isActive = view.id === activeId}
+		<a
+			class="view-link"
+			href={`/views/${encodeURIComponent(view.id)}`}
+			aria-current={isActive ? 'page' : undefined}
+		>
+			<Chip active={isActive} interactive>
+				<span class="link-content">
+					<ViewKindIcon kind={view.kind} />
+					{viewLabel(view)}
+				</span>
+			</Chip>
+		</a>
+	{/each}
+
+	<!-- The "Create view" entry point deferred by app-shell-navigation. -->
+	<a class="view-link" href="/views/new" aria-current={creating ? 'page' : undefined}>
+		<Chip active={creating} interactive>
+			<span class="link-content">＋ New view</span>
+		</Chip>
+	</a>
+</nav>
 
 <style>
 	/* `display: contents` dissolves the <nav> box so its view links

@@ -14,7 +14,7 @@ use super::weekday::Weekday;
 ///
 /// Produced by [`crate::parser::views::parse_views`]. Invalid shapes
 /// (missing required slots, duplicate ids) are rejected at parse time.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Views {
     /// Directory (relative to project root) where `workdown render`
     /// writes the rendered view files. Sourced from the optional
@@ -24,7 +24,7 @@ pub struct Views {
 }
 
 /// A single view entry: id, optional filters, and type-specific config.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct View {
     pub id: String,
 
@@ -43,7 +43,7 @@ pub struct View {
 
 /// Type-specific configuration. Each variant carries only the slots valid
 /// for that view type — invalid combinations are unrepresentable.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ViewKind {
     Board {
         field: String,
@@ -164,7 +164,7 @@ pub enum ViewKind {
 
 /// One row within a metric view: a labelled aggregate over a (possibly
 /// further-filtered) subset of the view's items.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MetricRow {
     /// Display label for the row. When `None`, the extractor generates
     /// one from the aggregate and value field (e.g. `"Sum of points"`,

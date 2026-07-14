@@ -22,6 +22,8 @@ use serde::{Deserialize, Serialize};
 use crate::model::WorkItemId;
 use crate::operations::add::AddOutcome;
 use crate::operations::set::{BooleanMode, CollectionMode, SetOperation, SetOutcome};
+use crate::operations::view_write::ViewWriteOutcome;
+use crate::query::clause::Clause;
 
 /// A single field mutation as sent by the client, tagged by `op`.
 ///
@@ -140,6 +142,55 @@ impl CreateItemResult {
     pub fn from_outcome(outcome: &AddOutcome) -> Self {
         Self {
             id: outcome.id.clone(),
+            mutation_caused_warning: outcome.mutation_caused_warning,
+        }
+    }
+}
+
+/// A request to create a new view. `name` is a human label slugged to the
+/// view's id server-side (the same rule work-item ids use). `definition` is
+/// the flat view shape — `type`, optional `where`, and the type-specific
+/// slots, **without** an `id` — the rest of one entry in `views.yaml`'s
+/// `views:` list. It crosses the wire as opaque JSON (`Record<string,
+/// unknown>` in TS) because the valid slots depend on the chosen `type`;
+/// `core` validates it against the schema (see
+/// [`crate::parser::views::view_from_value`]).
+#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
+pub struct CreateView {
+    pub name: String,
+    #[ts(type = "Record<string, unknown>")]
+    pub definition: serde_yaml::Value,
+    /// Optional filter to attach at creation, as structured clauses (same
+    /// shape the filter editor uses). `core` serializes them into the
+    /// view's `where:`. Omitted → no filter.
+    #[serde(default)]
+    pub filter: Vec<Clause>,
+}
+
+/// A request to replace a view's `where:` filter. Each [`Clause`] is either
+/// a guided condition or a raw passthrough string; `core` serializes them
+/// to clause strings (so the UI never builds filter syntax) and stores them
+/// verbatim. A clause that fails to parse or references an unknown field is
+/// written and reported as a warning, not rejected.
+#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
+pub struct SetViewFilter {
+    pub clauses: Vec<Clause>,
+}
+
+/// The result of a successful view create or filter change — the view's
+/// id (so the UI can navigate to / re-fetch it) and whether the write
+/// introduced a diagnostic. Warnings themselves ride in the envelope's
+/// `diagnostics`.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct ViewMutationResult {
+    pub view_id: String,
+    pub mutation_caused_warning: bool,
+}
+
+impl ViewMutationResult {
+    pub fn from_outcome(outcome: &ViewWriteOutcome) -> Self {
+        Self {
+            view_id: outcome.view_id.clone(),
             mutation_caused_warning: outcome.mutation_caused_warning,
         }
     }

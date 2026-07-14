@@ -10,6 +10,8 @@
 
 import { api } from '$lib/api/client';
 import type { FieldSchema } from '$lib/api/generated/FieldSchema';
+import type { FieldType } from '$lib/api/generated/FieldType';
+import type { Operator } from '$lib/api/generated/Operator';
 import type { SchemaData } from '$lib/api/generated/SchemaData';
 
 let data = $state<SchemaData | null>(null);
@@ -46,6 +48,14 @@ export const schemaStore = {
 	/** Look up a single field's editing metadata by name. */
 	field(name: string): FieldSchema | undefined {
 		return data?.fields.find((field) => field.name === name);
+	},
+	/**
+	 * Operators the filter builder may offer for a field type — the set the
+	 * evaluator treats as meaningful. Empty until loaded, or for an unknown
+	 * type.
+	 */
+	operatorsFor(fieldType: FieldType): Operator[] {
+		return data?.operators_by_type.find((entry) => entry.field_type === fieldType)?.operators ?? [];
 	},
 	/** Fetch once and cache. Idempotent; safe to call from many components. */
 	async load(): Promise<void> {

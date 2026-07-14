@@ -6,7 +6,11 @@ import { api } from '$lib/api/client';
 import type { PageLoad } from './$types';
 
 export const load: PageLoad = async ({ params, url }) => {
-	const result = await api.getView(params.id);
+	// `?filter=` carries a JSON clause array for a "for right now" preview.
+	// Passing it through to the view fetch re-narrows the result without
+	// persisting; absent, the view renders with its saved filter.
+	const filter = url.searchParams.get('filter');
+	const result = await api.getView(params.id, filter ?? undefined);
 
 	if (result.status === 422) {
 		error(422, {
@@ -24,6 +28,7 @@ export const load: PageLoad = async ({ params, url }) => {
 	return {
 		viewId: params.id,
 		itemId: url.searchParams.get('item'),
+		filter,
 		result
 	};
 };

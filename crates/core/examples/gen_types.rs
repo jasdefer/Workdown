@@ -29,9 +29,14 @@ use workdown_core::model::schema::{FieldType, Severity};
 use workdown_core::model::views::{Aggregate, Bucket, ViewSummary, ViewType};
 use workdown_core::model::WorkItemId;
 use workdown_core::mutation_data::{
-    CreateItem, CreateItemResult, FieldMutation, FieldMutationResult,
+    CreateItem, CreateItemResult, CreateView, FieldMutation, FieldMutationResult, SetViewFilter,
+    ViewMutationResult,
 };
-use workdown_core::schema_data::{FieldSchema, SchemaData};
+use workdown_core::query::clause::{Clause, Condition};
+use workdown_core::query::types::Operator;
+use workdown_core::schema_data::{
+    FieldSchema, FieldTypeOperators, ResourceList, ResourceOption, SchemaData,
+};
 use workdown_core::view_data::{
     AggregateValue, AxisValue, BarChartBar, BarChartData, BoardColumn, BoardData, Card, CardField,
     Column, Edge, GanttBar, GanttByDepthData, GanttByInitiativeData, GanttData, GraphData,
@@ -74,10 +79,19 @@ const ALL_TYPES: &[&str] = &[
     "Bucket",
     "SchemaData",
     "FieldSchema",
+    "ResourceList",
+    "ResourceOption",
+    "FieldTypeOperators",
+    "Operator",
+    "Condition",
+    "Clause",
     "FieldMutation",
     "FieldMutationResult",
     "CreateItem",
     "CreateItemResult",
+    "CreateView",
+    "SetViewFilter",
+    "ViewMutationResult",
     "ItemDetail",
     "ViewData",
     "Card",
@@ -153,12 +167,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Editing vocabulary (GET /api/schema).
     write_type::<SchemaData>(&target_dir)?;
     write_type::<FieldSchema>(&target_dir)?;
+    write_type::<ResourceList>(&target_dir)?;
+    write_type::<ResourceOption>(&target_dir)?;
+    write_type::<FieldTypeOperators>(&target_dir)?;
+    write_type::<Operator>(&target_dir)?;
+    write_type::<Condition>(&target_dir)?;
+    write_type::<Clause>(&target_dir)?;
 
     // Mutation contracts (POST /api/items/:id/fields/:field, POST /api/items).
     write_type::<FieldMutation>(&target_dir)?;
     write_type::<FieldMutationResult>(&target_dir)?;
     write_type::<CreateItem>(&target_dir)?;
     write_type::<CreateItemResult>(&target_dir)?;
+
+    // View-write contracts (POST /api/views, PATCH /api/views/:id).
+    write_type::<CreateView>(&target_dir)?;
+    write_type::<SetViewFilter>(&target_dir)?;
+    write_type::<ViewMutationResult>(&target_dir)?;
 
     // Single-item read projection (GET /api/items/:id).
     write_type::<ItemDetail>(&target_dir)?;

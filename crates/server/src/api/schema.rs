@@ -28,6 +28,10 @@ pub fn router() -> Router<AppState> {
 async fn get_schema(State(state): State<AppState>) -> ApiResponse<SchemaData> {
     match load_project(&state.config, &state.project_root) {
         Err(error) => ApiResponse::rejected(vec![error.to_diagnostic()]),
-        Ok(project) => ApiResponse::ok(schema_data::build(&project.schema, &project.store)),
+        Ok(project) => ApiResponse::ok(schema_data::build(
+            &project.schema,
+            &project.store,
+            &project.resources,
+        )),
     }
 }

@@ -16,7 +16,7 @@ enum SubCmd {
     /// Emit TypeScript type bindings from the Rust wire-level types.
     GenTypes,
     /// Build the UI bundle (gen-types + npm ci + npm run check + npm run
-    /// test + npm run build).
+    /// lint + npm run test + npm run build).
     BuildUi,
     /// Full release build: build the UI bundle, then `cargo build --release`.
     Build,
@@ -61,6 +61,9 @@ fn build_ui(workspace_root: &Path) -> Result<()> {
     gen_types(workspace_root)?;
     run("npm ci", &npm, &["ci"], &ui_dir)?;
     run("npm run check", &npm, &["run", "check"], &ui_dir)?;
+    // Prettier + eslint — the same gate a developer runs locally, so CI
+    // (which builds the bundle through here) enforces it too.
+    run("npm run lint", &npm, &["run", "lint"], &ui_dir)?;
     // Unit tests (vitest) — gates the bundle on the gantt scale math
     // and format helpers so a regression fails the build, in CI and in
     // local release builds alike.

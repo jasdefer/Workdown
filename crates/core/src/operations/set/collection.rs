@@ -431,8 +431,8 @@ mod tests {
         let error = result.unwrap_err();
         assert!(matches!(
             error,
-            SetError::ModeNotValidForFieldType { ref mode, ref field, .. }
-                if *mode == "append" && field == "status"
+            SetError::ModeNotValidForFieldType { mode, ref field, .. }
+                if mode == "append" && field == "status"
         ));
         let message = error.to_string();
         assert!(message.contains("--append"));
@@ -462,8 +462,8 @@ mod tests {
         let error = result.unwrap_err();
         assert!(matches!(
             error,
-            SetError::ModeNotValidForFieldType { ref mode, ref field, .. }
-                if *mode == "remove" && field == "points"
+            SetError::ModeNotValidForFieldType { mode, ref field, .. }
+                if mode == "remove" && field == "points"
         ));
     }
 

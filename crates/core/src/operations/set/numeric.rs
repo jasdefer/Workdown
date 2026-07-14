@@ -170,8 +170,8 @@ mod tests {
         let error = result.unwrap_err();
         assert!(matches!(
             error,
-            SetError::MutationRequiresExistingValue { ref mode, ref field }
-                if *mode == "delta" && field == "points"
+            SetError::MutationRequiresExistingValue { mode, ref field }
+                if mode == "delta" && field == "points"
         ));
     }
 
@@ -196,8 +196,8 @@ mod tests {
         let error = result.unwrap_err();
         assert!(matches!(
             error,
-            SetError::MutationCurrentValueMalformed { ref mode, ref field, .. }
-                if *mode == "delta" && field == "points"
+            SetError::MutationCurrentValueMalformed { mode, ref field, .. }
+                if mode == "delta" && field == "points"
         ));
     }
 
@@ -218,8 +218,8 @@ mod tests {
         let error = result.unwrap_err();
         assert!(matches!(
             error,
-            SetError::ModeNotValidForFieldType { ref mode, ref field, .. }
-                if *mode == "delta" && field == "status"
+            SetError::ModeNotValidForFieldType { mode, ref field, .. }
+                if mode == "delta" && field == "status"
         ));
     }
 }

@@ -49,7 +49,7 @@ priority: medium
             template.frontmatter.get("type").unwrap(),
             &serde_yaml::Value::String("bug".into())
         );
-        assert!(template.frontmatter.get("id").is_none());
+        assert!(!template.frontmatter.contains_key("id"));
         assert!(template.body.contains("## Steps"));
     }
 

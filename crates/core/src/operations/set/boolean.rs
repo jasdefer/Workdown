@@ -71,8 +71,8 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(outcome.previous_value.unwrap().as_bool().unwrap(), false);
-        assert_eq!(outcome.new_value.unwrap().as_bool().unwrap(), true);
+        assert!(!outcome.previous_value.unwrap().as_bool().unwrap());
+        assert!(outcome.new_value.unwrap().as_bool().unwrap());
         let file = read_item(&root, "task-1");
         assert!(file.contains("archived: true"));
     }
@@ -96,7 +96,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(outcome.new_value.unwrap().as_bool().unwrap(), false);
+        assert!(!outcome.new_value.unwrap().as_bool().unwrap());
     }
 
     #[test]
@@ -115,8 +115,8 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(SetError::MutationRequiresExistingValue { ref mode, ref field })
-                if *mode == "toggle" && field == "archived"
+            Err(SetError::MutationRequiresExistingValue { mode, ref field })
+                if mode == "toggle" && field == "archived"
         ));
     }
 
@@ -137,8 +137,8 @@ mod tests {
         let error = result.unwrap_err();
         assert!(matches!(
             error,
-            SetError::ModeNotValidForFieldType { ref mode, ref field, .. }
-                if *mode == "toggle" && field == "status"
+            SetError::ModeNotValidForFieldType { mode, ref field, .. }
+                if mode == "toggle" && field == "status"
         ));
     }
 
@@ -163,8 +163,8 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(SetError::MutationCurrentValueMalformed { ref mode, ref field, .. })
-                if *mode == "toggle" && field == "archived"
+            Err(SetError::MutationCurrentValueMalformed { mode, ref field, .. })
+                if mode == "toggle" && field == "archived"
         ));
     }
 }
