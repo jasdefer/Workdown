@@ -1,7 +1,7 @@
 ---
 id: view-display-config
 type: issue
-status: to_do
+status: in_progress
 title: Per-view-kind display configuration (which fields show where)
 parent: view-presentation
 depends_on: [remaining-read-views]

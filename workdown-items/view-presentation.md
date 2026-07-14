@@ -1,12 +1,12 @@
 ---
 id: view-presentation
 type: milestone
-status: to_do
+status: in_progress
 title: View & item presentation
 parent: phase-04-visualization
 depends_on: [server]
-start_date: 2026-07-02
-end_date: 2026-07-15
+start_date: 2026-07-13
+end_date: 2026-07-24
 duration: "2w"
 ---
 
