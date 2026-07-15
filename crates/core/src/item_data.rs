@@ -35,11 +35,12 @@ pub struct ItemDetail {
 pub fn build(item: &WorkItem, schema: &Schema) -> ItemDetail {
     let fields = schema
         .fields
-        .keys()
-        .filter_map(|name| {
+        .iter()
+        .filter_map(|(name, config)| {
             item.fields.get(name).map(|value| CardField {
                 name: name.clone(),
                 value: value.clone(),
+                field_type: config.field_type(),
             })
         })
         .collect();

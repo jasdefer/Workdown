@@ -78,6 +78,11 @@ pub struct Card {
 pub struct CardField {
     pub name: String,
     pub value: FieldValue,
+    /// The field's [`FieldType`], carried alongside the value so
+    /// card/tooltip renderers can format a date, choice, or link
+    /// correctly from the value alone — as the table/tree column
+    /// payload already does.
+    pub field_type: FieldType,
 }
 
 /// A lightweight resolved reference to a work item — just its display
@@ -101,11 +106,12 @@ pub struct ItemRef {
 pub fn build_card(item: &WorkItem, schema: &Schema, view: &View) -> Card {
     let title = resolve_title(item, view);
     let mut fields = Vec::new();
-    for field_name in schema.fields.keys() {
+    for (field_name, config) in &schema.fields {
         if let Some(value) = item.fields.get(field_name) {
             fields.push(CardField {
                 name: field_name.clone(),
                 value: value.clone(),
+                field_type: config.field_type(),
             });
         }
     }
