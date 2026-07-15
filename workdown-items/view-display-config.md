@@ -7,38 +7,39 @@ parent: view-presentation
 depends_on: [remaining-read-views]
 ---
 
-Every view kind makes implicit choices about which fields display where: which fields show on a board card, which columns appear in a table, what labels gantt bars carry, which fields populate graph node tooltips, which fields show in item previews. The `server` milestone hardcodes these per view kind. This issue establishes the pattern for letting users customize them — one design that applies across every view kind, with a consistent shape for persistence and UI.
+Every view kind makes implicit choices about which fields display where: which fields show on a board card, which columns appear in a table, what labels gantt bars carry, which fields populate graph node tooltips. The `server` milestone hardcodes these per view kind. This issue establishes one pattern for customizing them across every kind. Design settled in [[adr-008-display-configuration]].
 
-## Open design questions
+## Design (settled)
 
-- **Where does the config live?**
-  - Per-view in `views.yaml` (declarative, project-scoped, source-controlled).
-  - Per-user via localStorage (personal, transient).
-  - Hybrid: per-view defaults + per-user runtime overrides.
+A small **closed vocabulary of display roles** — `title`, `subtitle`, `fields` (ordered list), `color` (reserved; filled by [[color-field-type]]) — applies uniformly to the **item-presenting** kinds (board, tree, table, graph, gantt + variants). Aggregate/chart kinds take no display roles. The markdown body stays always-rendered; it is not a role.
 
-- **Config shape:**
-  - Each view kind declares named display slots (e.g. `card.title`, `card.subtitle`, `tooltip.summary`, `bar.label`). Config picks which schema field fills each slot.
-  - Slots are typed — some want strings, some want dates, some accept any field.
-  - **Wire prerequisite:** rendering a *typed value* in a card/tooltip slot needs the field's type alongside its value (a bare wire value can't distinguish a date from a choice from a link). Table/tree `Column` already carries `field_type`; `CardField` (board cards, graph nodes) does not. Add `field_type` to `CardField` in `view_data::common` before slot-driven card/tooltip rendering can format dates/choices/links correctly and reuse `Cell.svelte`. (Surfaced by the graph node tooltip in [[remaining-read-views]], which shows the rendered body but no typed fields for exactly this reason.)
+Each role resolves by precedence — **runtime override › per-view `display:` (views.yaml) › `defaults:` (config.yaml) › per-kind hardcoded fallback** (today's behavior, so an absent `display:` renders exactly as now). Each kind renders the roles in its own idiom (card badges / table columns / graph tooltip / bar label); a role a kind cannot place is ignored.
 
-- **UI affordance for runtime override:**
-  - Inline pickers per view page.
-  - Per-view settings dialog.
-  - URL params (good for sharing, awkward for many fields).
+Boundaries: field *type* stays in `schema.yaml` (already enforced by `views_check`); *structural* inputs (board `field`, gantt `start`/`end`, chart `x`/`y`) stay on `ViewKind`; `title` folds into the vocabulary but stays resolvable cross-view for `ItemRef`.
 
-- **Interaction with `live-updates`:**
-  - User-side overrides survive SSE invalidation.
-  - `views.yaml` changes trigger a re-render.
+Decisions:
+- **`columns` migrates to `display.fields`** — one vocabulary. Hard cutover (this repo is the only consumer).
+- **Wire:** add `field_type` to `CardField` (as `Column` has), so card/tooltip roles render typed values via the shared `Cell.svelte`. (Surfaced by the graph node tooltip in [[remaining-read-views]].)
+- **Validation:** an unknown/unresolvable role field is rejected at `views_check` (consistent with `columns`/gantt `start`); text roles accept any stringifiable field.
 
 ## Acceptance
 
-- Each view kind declares its display slots in `crates/core/src/view_data/<kind>.rs`.
-- `views.yaml` schema gains an optional `display:` block per view, with shape derived from each kind's slots.
+Delivered in two commits under this issue:
+
+**(a) Declarative model**
+- Display roles resolved in core `view_data` (`title`/`subtitle`/`fields`), so `render` and `serve` produce identical output.
+- `views.yaml` gains an optional per-view `display:` block; `config.yaml` `defaults:` gains role keys; `views.schema.json` updated.
+- `CardField` carries `field_type`.
+- `columns:` cut over to `display.fields:` in the model and this repo's `views.yaml`.
+- Hardcoded board/graph/etc. choices become role-driven, with today's behavior as the fallback.
+
+**(b) Interactive override**
 - A UI control lets the user override the configured fields per session.
-- Choice persists across navigations (localStorage for v1; URL/session-scoped revisit later).
-- The hardcoded board/table/etc. choices from the `server` milestone migrate to slot-driven.
+- Choice persists across navigations (localStorage for v1; URL/session-scoped later).
+- Overrides survive SSE invalidation; a `views.yaml` change still triggers a re-render.
 
 ## Out of scope
 
 - Computed/derived display fields (e.g., "item's age from `created_at`") — defer.
 - Field formatting customization (date format, number formatting) — separate concern.
+- `color` field *type* itself — [[color-field-type]]; this issue only reserves the role.
