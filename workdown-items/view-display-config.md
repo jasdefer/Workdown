@@ -1,7 +1,7 @@
 ---
 id: view-display-config
 type: issue
-status: in_progress
+status: done
 title: Per-view-kind display configuration (which fields show where)
 parent: view-presentation
 depends_on: [remaining-read-views]
@@ -33,11 +33,8 @@ Delivered in two commits under this issue:
 - `columns:` cut over to `display.fields:` in the model and this repo's `views.yaml`.
 - Hardcoded board/graph/etc. choices become role-driven, with today's behavior as the fallback.
 
-**Known follow-up (from (a)):** `defaults.display` in config.yaml is not
-validated against the schema — unresolvable role fields are silently
-skipped at render time (`effective_fields` filters them defensively).
-Needs a config-scoped diagnostic; requires threading the config path
-into `load_project`.
+**Known follow-up (from (a)):** validating `defaults.display` against
+the schema — split out as [[display-defaults-validation]].
 
 **(b) Interactive override**
 - A UI control lets the user override the configured fields per session.

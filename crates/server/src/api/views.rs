@@ -28,7 +28,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 
 use workdown_core::model::diagnostic::Diagnostic;
-use workdown_core::model::views::{View, ViewSummary, Views};
+use workdown_core::model::views::{DisplayConfig, View, ViewSummary, Views};
 use workdown_core::mutation_data::{CreateView, SetViewFilter, ViewMutationResult};
 use workdown_core::operations::view_write::{create_view, set_view_filter, ViewWriteError};
 use workdown_core::project::load_project;
@@ -53,6 +53,11 @@ struct ViewQuery {
     /// URL-encoded JSON array of structured clauses for an ad-hoc,
     /// non-persisted preview. Absent → render with the persisted filter.
     filter: Option<String>,
+    /// URL-encoded JSON object of display roles (`title`, `subtitle`,
+    /// `fields`) for a per-session override. Set roles take highest
+    /// precedence — over the view's `display:` block and the config
+    /// defaults; unset roles inherit as usual. Nothing is persisted.
+    display: Option<String>,
 }
 
 async fn list_views(State(state): State<AppState>) -> ApiResponse<Vec<ViewSummary>> {
@@ -154,9 +159,22 @@ async fn get_view(
         return ApiResponse::unrenderable(diagnostics);
     }
 
-    // Tier 3: extract and return view data. Unset display roles inherit
-    // the project-wide defaults from config.yaml at this point — after
-    // validation, so diagnostics keep pointing at what views.yaml says.
+    // Tier 3: extract and return view data. Display roles resolve here —
+    // after validation, so diagnostics keep pointing at what views.yaml
+    // says: per-session override › view `display:` › config defaults.
+    let mut render_view = render_view;
+    if let Some(display_json) = query.display.as_deref() {
+        let override_config: DisplayConfig = match serde_json::from_str(display_json) {
+            Ok(config) => config,
+            Err(error) => {
+                return ApiResponse::failed(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    format!("invalid display parameter: {error}"),
+                )
+            }
+        };
+        render_view.display = override_config.or_inherit(&render_view.display);
+    }
     let render_view = render_view.with_display_defaults(&state.config.defaults.display);
     let data = view_data::extract(
         &render_view,

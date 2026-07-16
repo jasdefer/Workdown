@@ -8,10 +8,10 @@
 //! schema agrees with the parser on what is and is not legal.
 //!
 //! The schema is intentionally stricter than the parser in a few places —
-//! view `id` must match a kebab-style pattern (parser accepts any string),
-//! per-type slots are exclusive (parser silently ignores wrong slots), and
-//! `columns: []` is rejected. These tests cover the overlap; the asymmetric
-//! gap is intentional and not exercised here.
+//! view `id` must match a kebab-style pattern (parser accepts any string)
+//! and per-type slots are exclusive (parser silently ignores wrong slots).
+//! These tests cover the overlap; the asymmetric gap is intentional and
+//! not exercised here.
 
 use jsonschema::{Draft, JSONSchema};
 
@@ -34,7 +34,8 @@ views:
     field: depends_on
   - id: all-items
     type: table
-    columns: [id, title, type, status, start_date, end_date]
+    display:
+      fields: [id, title, type, status, start_date, end_date]
   - id: roadmap
     type: gantt
     start: start_date
@@ -195,17 +196,17 @@ views:
 
 #[test]
 fn known_slot_on_wrong_view_type_rejected() {
-    // `columns` is valid for `table` but not for `board`. The Rust parser
+    // `size` is valid for `treemap` but not for `board`. The Rust parser
     // silently ignores it; the schema must catch it for editor warnings.
     let schema = compile_schema();
     assert_invalid(
         &schema,
         "\
 views:
-  - id: board-with-columns
+  - id: board-with-size
     type: board
     field: status
-    columns: [id, title]
+    size: effort
 ",
     );
 }
@@ -351,17 +352,27 @@ views:
 }
 
 #[test]
-fn empty_table_columns_rejected() {
+fn legacy_top_level_columns_rejected() {
+    // `columns:` migrated into the `fields` display role — the old
+    // top-level key must be rejected so editors flag stale files.
     let schema = compile_schema();
     assert_invalid(
         &schema,
         "\
 views:
-  - id: empty-cols
+  - id: legacy-cols
     type: table
-    columns: []
+    columns: [id, status]
 ",
     );
+}
+
+#[test]
+fn bare_table_validates() {
+    // A table needs no slots: columns come from the `fields` display
+    // role, config defaults, or the all-schema-fields fallback.
+    let schema = compile_schema();
+    assert_valid(&schema, "views:\n  - id: bare\n    type: table\n");
 }
 
 #[test]
@@ -376,82 +387,99 @@ extra: nope
     );
 }
 
-// ── Title slot (cross-cutting) ───────────────────────────────────────────
+// ── Display block (cross-cutting) ────────────────────────────────────────
 
 #[test]
-fn title_slot_on_every_view_type_validates() {
+fn display_block_on_every_view_type_validates() {
     // Same fixture as `full_example_with_all_view_types_validates` but
-    // every entry carries `title: title`. Ensures each per-type branch
-    // accepts the shared slot.
+    // every entry carries a display block. Ensures each per-type branch
+    // accepts the shared block.
     let schema = compile_schema();
     let yaml = r#"
 views:
   - id: status-board
     type: board
     field: status
-    title: title
+    display: { title: title, subtitle: status, fields: [type, effort] }
   - id: hierarchy
     type: tree
     field: parent
-    title: title
+    display: { title: title, fields: [status] }
   - id: deps
     type: graph
     field: depends_on
-    title: title
+    display: { title: title }
   - id: all-items
     type: table
-    columns: [id, title]
-    title: title
+    display: { fields: [id, title] }
   - id: roadmap
     type: gantt
     start: start_date
     end: end_date
-    title: title
+    display: { title: title }
   - id: roadmap-by-initiative
     type: gantt_by_initiative
     start: start_date
     end: end_date
     root_link: parent
-    title: title
+    display: { title: title }
   - id: effort-by-status
     type: bar_chart
     group_by: status
     aggregate: count
-    title: title
+    display: { title: title }
   - id: estimate-vs-actual
     type: line_chart
     x: estimate
     y: actual_effort
-    title: title
+    display: { title: title }
   - id: capacity
     type: workload
     start: start_date
     end: end_date
     effort: effort
-    title: title
+    display: { title: title }
   - id: open-count
     type: metric
     metrics:
       - aggregate: count
-    title: title
+    display: { title: title }
   - id: effort-by-milestone
     type: treemap
     group: parent
     size: effort
-    title: title
+    display: { title: title }
   - id: activity
     type: heatmap
     x: end_date
     y: assignee
     aggregate: count
-    title: title
+    display: { title: title }
 "#;
     assert_valid(&schema, yaml);
 }
 
 #[test]
-fn title_with_wrong_yaml_type_rejected() {
-    // `title` must be a field-name string. A number is not a valid identifier.
+fn legacy_top_level_title_rejected() {
+    // `title:` migrated into the display block — the old top-level key
+    // must be rejected so editors flag stale files.
+    let schema = compile_schema();
+    assert_invalid(
+        &schema,
+        "\
+views:
+  - id: legacy-title
+    type: board
+    field: status
+    title: title
+",
+    );
+}
+
+#[test]
+fn display_title_with_wrong_yaml_type_rejected() {
+    // `display.title` must be a field-name string. A number is not a
+    // valid identifier.
     let schema = compile_schema();
     assert_invalid(
         &schema,
@@ -460,7 +488,26 @@ views:
   - id: bad-title
     type: board
     field: status
-    title: 42
+    display:
+      title: 42
+",
+    );
+}
+
+#[test]
+fn unknown_display_role_rejected() {
+    // `color` is reserved for later — until it ships, an unknown role
+    // inside the display block is rejected.
+    let schema = compile_schema();
+    assert_invalid(
+        &schema,
+        "\
+views:
+  - id: bad-role
+    type: board
+    field: status
+    display:
+      color: severity
 ",
     );
 }

@@ -3,6 +3,7 @@
 
 import { error } from '@sveltejs/kit';
 import { api } from '$lib/api/client';
+import { displayOverrideParam, loadDisplayOverride } from '$lib/views/displayOverride';
 import type { PageLoad } from './$types';
 
 export const load: PageLoad = async ({ params, url }) => {
@@ -10,7 +11,14 @@ export const load: PageLoad = async ({ params, url }) => {
 	// Passing it through to the view fetch re-narrows the result without
 	// persisting; absent, the view renders with its saved filter.
 	const filter = url.searchParams.get('filter');
-	const result = await api.getView(params.id, filter ?? undefined);
+	// The per-session display override lives in localStorage, not the URL —
+	// re-read on every invalidation so it survives SSE-triggered reloads.
+	const displayOverride = loadDisplayOverride(params.id);
+	const result = await api.getView(
+		params.id,
+		filter ?? undefined,
+		displayOverride !== null ? displayOverrideParam(displayOverride) : undefined
+	);
 
 	if (result.status === 422) {
 		error(422, {
@@ -29,6 +37,7 @@ export const load: PageLoad = async ({ params, url }) => {
 		viewId: params.id,
 		itemId: url.searchParams.get('item'),
 		filter,
+		displayOverride,
 		result
 	};
 };

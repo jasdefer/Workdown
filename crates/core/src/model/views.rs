@@ -76,14 +76,25 @@ impl View {
     /// back into `views.yaml`.
     #[must_use]
     pub fn with_display_defaults(mut self, defaults: &DisplayConfig) -> Self {
-        if self.display.title.is_none() {
-            self.display.title = defaults.title.clone();
+        self.display = self.display.or_inherit(defaults);
+        self
+    }
+}
+
+impl DisplayConfig {
+    /// Per-role merge: roles set on `self` win, unset roles inherit
+    /// from `base`. The building block of the resolution chain —
+    /// runtime override › view `display:` › config defaults.
+    #[must_use]
+    pub fn or_inherit(mut self, base: &DisplayConfig) -> Self {
+        if self.title.is_none() {
+            self.title = base.title.clone();
         }
-        if self.display.subtitle.is_none() {
-            self.display.subtitle = defaults.subtitle.clone();
+        if self.subtitle.is_none() {
+            self.subtitle = base.subtitle.clone();
         }
-        if self.display.fields.is_empty() {
-            self.display.fields = defaults.fields.clone();
+        if self.fields.is_empty() {
+            self.fields = base.fields.clone();
         }
         self
     }

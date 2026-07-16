@@ -8,6 +8,7 @@
 	import type { PageData } from './$types';
 	import DiagnosticBanner from '$lib/ui/DiagnosticBanner.svelte';
 	import FilterBar from '$lib/filters/FilterBar.svelte';
+	import DisplayBar from '$lib/views/DisplayBar.svelte';
 	import ViewRenderer from '$lib/views/ViewRenderer.svelte';
 	import ItemPanel from './ItemPanel.svelte';
 
@@ -23,6 +24,7 @@
 <div class="view-page">
 	{#key data.viewId}
 		<FilterBar viewId={data.viewId} initialFilter={data.filter} itemId={data.itemId} />
+		<DisplayBar viewId={data.viewId} initialOverride={data.displayOverride} />
 	{/key}
 
 	<DiagnosticBanner

@@ -227,3 +227,71 @@ async fn unknown_view_id_returns_404_with_empty_body() {
     // loaded for navigation.
     assert!(bytes.is_empty(), "404 body should be empty, got {bytes:?}");
 }
+
+#[tokio::test]
+async fn display_override_replaces_table_columns() {
+    let app = router(fixture_state());
+    // {"fields":["id","status"]} — overrides the view's configured columns.
+    let encoded = "%7B%22fields%22%3A%5B%22id%22%2C%22status%22%5D%7D";
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/views/items-table?display={encoded}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    let columns = envelope["data"]["columns"].as_array().expect("columns");
+    let column_names: Vec<&str> = columns
+        .iter()
+        .map(|column| column["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(column_names, vec!["id", "status"]);
+}
+
+#[tokio::test]
+async fn display_override_unset_roles_inherit_from_view() {
+    let app = router(fixture_state());
+    // Override only the title; the view's own columns must survive.
+    let encoded = "%7B%22title%22%3A%22status%22%7D"; // {"title":"status"}
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/views/items-table?display={encoded}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    let columns = envelope["data"]["columns"].as_array().expect("columns");
+    assert_eq!(columns.len(), 4, "view's own fields role must survive");
+
+    // task-b's parent resolves task-a via the overridden title role —
+    // its status value instead of its title field.
+    let items = envelope["data"]["items"].as_object().expect("items");
+    assert_eq!(items["task-a"]["title"], "in_progress");
+}
+
+#[tokio::test]
+async fn malformed_display_parameter_returns_422() {
+    let app = router(fixture_state());
+    // `bogus` is not a display role — deny_unknown_fields rejects it.
+    let encoded = "%7B%22bogus%22%3A%22x%22%7D"; // {"bogus":"x"}
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/views/items-table?display={encoded}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
