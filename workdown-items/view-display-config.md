@@ -33,6 +33,12 @@ Delivered in two commits under this issue:
 - `columns:` cut over to `display.fields:` in the model and this repo's `views.yaml`.
 - Hardcoded board/graph/etc. choices become role-driven, with today's behavior as the fallback.
 
+**Known follow-up (from (a)):** `defaults.display` in config.yaml is not
+validated against the schema — unresolvable role fields are silently
+skipped at render time (`effective_fields` filters them defensively).
+Needs a config-scoped diagnostic; requires threading the config path
+into `load_project`.
+
 **(b) Interactive override**
 - A UI control lets the user override the configured fields per session.
 - Choice persists across navigations (localStorage for v1; URL/session-scoped later).

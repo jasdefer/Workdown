@@ -2,63 +2,75 @@
 
 Hierarchical outline following `parent` upward to roots.
 
-- [multi-project-support](../workdown-items/multi-project-support.md)
-  - [multi-project-design](../workdown-items/multi-project-design.md)
-- [phase-04-visualization](../workdown-items/phase-04-visualization.md)
-  - [code-quality](../workdown-items/code-quality.md)
-    - [cross-cutting-helpers](../workdown-items/cross-cutting-helpers.md)
-    - [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md)
-    - [diagnostic-variant-cleanup](../workdown-items/diagnostic-variant-cleanup.md)
-    - [render-module-hygiene](../workdown-items/render-module-hygiene.md)
-    - [rules-current-date-reference](../workdown-items/rules-current-date-reference.md)
-    - [walker-primitives](../workdown-items/walker-primitives.md)
-  - [foundation](../workdown-items/foundation.md)
-    - [adr-phase-04-architecture](../workdown-items/adr-phase-04-architecture.md)
-    - [foundation-cleanup](../workdown-items/foundation-cleanup.md)
-    - [views-config-path](../workdown-items/views-config-path.md)
-    - [views-cross-file-validation](../workdown-items/views-cross-file-validation.md)
-    - [views-json-schema](../workdown-items/views-json-schema.md)
-    - [views-validate-integration](../workdown-items/views-validate-integration.md)
-    - [views-yaml-design](../workdown-items/views-yaml-design.md)
-    - [workspace-refactor](../workdown-items/workspace-refactor.md)
-  - [item-mutations](../workdown-items/item-mutations.md)
-    - [cli-add-audit](../workdown-items/cli-add-audit.md)
-    - [cli-body-command](../workdown-items/cli-body-command.md)
-    - [cli-move-command](../workdown-items/cli-move-command.md)
-    - [cli-rename-command](../workdown-items/cli-rename-command.md)
-    - [cli-set-command](../workdown-items/cli-set-command.md)
-    - [cli-set-modes](../workdown-items/cli-set-modes.md)
-    - [cli-unset-command](../workdown-items/cli-unset-command.md)
-  - [polish](../workdown-items/polish.md)
-    - [store-diagnostics-consistency](../workdown-items/store-diagnostics-consistency.md)
-  - [renderers](../workdown-items/renderers.md)
-    - [aggregate-rollup](../workdown-items/aggregate-rollup.md)
-    - [duration-field-type](../workdown-items/duration-field-type.md)
-    - [field-value-native-date](../workdown-items/field-value-native-date.md)
-    - [gantt-duration-mode](../workdown-items/gantt-duration-mode.md)
-    - [gantt-predecessor-mode](../workdown-items/gantt-predecessor-mode.md)
-    - [render-bar-chart](../workdown-items/render-bar-chart.md)
-    - [render-board](../workdown-items/render-board.md)
-    - [render-command](../workdown-items/render-command.md)
-    - [render-gantt](../workdown-items/render-gantt.md)
-    - [render-gantt-by-depth](../workdown-items/render-gantt-by-depth.md)
-    - [render-gantt-by-initiative](../workdown-items/render-gantt-by-initiative.md)
-    - [render-graph](../workdown-items/render-graph.md)
-    - [render-heatmap](../workdown-items/render-heatmap.md)
-    - [render-line-chart](../workdown-items/render-line-chart.md)
-    - [render-metric](../workdown-items/render-metric.md)
-    - [render-table](../workdown-items/render-table.md)
-    - [render-tree](../workdown-items/render-tree.md)
-    - [render-treemap](../workdown-items/render-treemap.md)
-    - [render-workload](../workdown-items/render-workload.md)
-    - [view-data-intermediate](../workdown-items/view-data-intermediate.md)
-    - [views-title-slot](../workdown-items/views-title-slot.md)
-  - [server](../workdown-items/server.md)
-    - [first-view-end-to-end](../workdown-items/first-view-end-to-end.md)
-    - [live-updates](../workdown-items/live-updates.md)
-    - [mutations-slice](../workdown-items/mutations-slice.md)
-    - [remaining-read-views](../workdown-items/remaining-read-views.md)
-    - [walking-skeleton](../workdown-items/walking-skeleton.md)
-- [time-tracking](../workdown-items/time-tracking.md)
-  - [duration-comparison-rule](../workdown-items/duration-comparison-rule.md)
-  - [git-derived-default-generator](../workdown-items/git-derived-default-generator.md)
+- [Multi-project support](../workdown-items/multi-project-support.md) — type: epic · status: to_do
+  - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — type: issue · status: to_do
+- [Phase 04: Visualization](../workdown-items/phase-04-visualization.md) — type: epic · status: in_progress
+  - [Code-quality cleanup](../workdown-items/code-quality.md) — type: milestone · status: done
+    - [Relocate cross-cutting helpers out of feature modules](../workdown-items/cross-cutting-helpers.md) — type: issue · status: done
+    - [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md) — type: issue · status: done
+    - [Collapse parallel View* slot variants and unify their validation helpers](../workdown-items/diagnostic-variant-cleanup.md) — type: issue · status: done
+    - [Render module hygiene — escape helpers, test fixtures, common.rs naming](../workdown-items/render-module-hygiene.md) — type: issue · status: done
+    - [Unify the upward chain walks and link-target reads](../workdown-items/walker-primitives.md) — type: issue · status: done
+  - [Foundation](../workdown-items/foundation.md) — type: milestone · status: done
+    - [ADR — visualization architecture](../workdown-items/adr-phase-04-architecture.md) — type: issue · status: done
+    - [Consolidate duplication and tighten types before more foundation work](../workdown-items/foundation-cleanup.md) — type: issue · status: done
+    - [Add views path to config; ship default views.yaml](../workdown-items/views-config-path.md) — type: issue · status: done
+    - [Cross-file validation for views.yaml](../workdown-items/views-cross-file-validation.md) — type: issue · status: done
+    - [Editor-only JSON Schema for views.yaml](../workdown-items/views-json-schema.md) — type: issue · status: done
+    - [Wire views validation into workdown validate](../workdown-items/views-validate-integration.md) — type: issue · status: done
+    - [Design views.yaml shape](../workdown-items/views-yaml-design.md) — type: issue · status: done
+    - [Split into core / cli / server workspace](../workdown-items/workspace-refactor.md) — type: issue · status: done
+  - [Item mutations](../workdown-items/item-mutations.md) — type: milestone · status: done
+    - [Audit workdown add for UI-driven creation](../workdown-items/cli-add-audit.md) — type: issue · status: done
+    - [workdown body — replace the Markdown body](../workdown-items/cli-body-command.md) — type: issue · status: done
+    - [workdown move — shortcut for the board field](../workdown-items/cli-move-command.md) — type: issue · status: done
+    - [workdown rename — change an item's id](../workdown-items/cli-rename-command.md) — type: issue · status: done
+    - [workdown set — replace a field value](../workdown-items/cli-set-command.md) — type: issue · status: done
+    - [workdown set — type-aware modes (append, remove, delta)](../workdown-items/cli-set-modes.md) — type: issue · status: done
+    - [workdown unset — clear a field](../workdown-items/cli-unset-command.md) — type: issue · status: done
+  - [Polish & dogfood](../workdown-items/polish.md) — type: milestone · status: to_do
+    - [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md) — type: issue · status: to_do
+    - [Validate resource references and render resource pickers](../workdown-items/resource-option-lists.md) — type: issue · status: to_do
+    - [Rules can't reference the current date](../workdown-items/rules-current-date-reference.md) — type: issue · status: to_do
+    - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md) — type: issue · status: to_do
+  - [Renderers](../workdown-items/renderers.md) — type: milestone · status: done
+    - [Compute schema-declared aggregate fields up the parent chain](../workdown-items/aggregate-rollup.md) — type: issue · status: done
+    - [Add `duration` field type](../workdown-items/duration-field-type.md) — type: issue · status: done
+    - [Store FieldValue::Date as chrono::NaiveDate](../workdown-items/field-value-native-date.md) — type: issue · status: done
+    - [Gantt duration input mode](../workdown-items/gantt-duration-mode.md) — type: issue · status: done
+    - [Gantt predecessor input mode](../workdown-items/gantt-predecessor-mode.md) — type: issue · status: done
+    - [Bar chart renderer](../workdown-items/render-bar-chart.md) — type: issue · status: done
+    - [Board renderer](../workdown-items/render-board.md) — type: issue · status: done
+    - [workdown render command](../workdown-items/render-command.md) — type: issue · status: done
+    - [Gantt renderer](../workdown-items/render-gantt.md) — type: issue · status: done
+    - [Gantt by depth view](../workdown-items/render-gantt-by-depth.md) — type: issue · status: done
+    - [Gantt by initiative view](../workdown-items/render-gantt-by-initiative.md) — type: issue · status: done
+    - [Graph renderer](../workdown-items/render-graph.md) — type: issue · status: done
+    - [Heatmap renderer](../workdown-items/render-heatmap.md) — type: issue · status: done
+    - [Line chart renderer](../workdown-items/render-line-chart.md) — type: issue · status: done
+    - [Metric renderer](../workdown-items/render-metric.md) — type: issue · status: done
+    - [Table renderer](../workdown-items/render-table.md) — type: issue · status: done
+    - [Tree renderer](../workdown-items/render-tree.md) — type: issue · status: done
+    - [Treemap renderer](../workdown-items/render-treemap.md) — type: issue · status: done
+    - [Workload renderer](../workdown-items/render-workload.md) — type: issue · status: done
+    - [Design ViewData and extractors](../workdown-items/view-data-intermediate.md) — type: issue · status: done
+    - [Add per-view `title:` slot to views.yaml](../workdown-items/views-title-slot.md) — type: issue · status: done
+  - [Interactive UI (workdown serve)](../workdown-items/server.md) — type: milestone · status: done
+    - [App shell navigation (views menu + future link slots)](../workdown-items/app-shell-navigation.md) — type: issue · status: done
+    - [First view end-to-end (board, read-only)](../workdown-items/first-view-end-to-end.md) — type: issue · status: done
+    - [File watcher and SSE for live updates](../workdown-items/live-updates.md) — type: issue · status: done
+    - [Mutations end-to-end](../workdown-items/mutations-slice.md) — type: issue · status: done
+    - [Remaining read-only views](../workdown-items/remaining-read-views.md) — type: issue · status: done
+    - [UI foundation — conventions and scaffolding before the first view](../workdown-items/ui-foundation.md) — type: issue · status: done
+    - [workdown serve skeleton with embedded UI](../workdown-items/walking-skeleton.md) — type: issue · status: done
+  - [Author and edit views from the UI](../workdown-items/view-authoring.md) — type: milestone · status: done
+    - [Expose schema metadata so the UI can offer valid choices](../workdown-items/schema-metadata-api.md) — type: issue · status: done
+    - [Create a new view from the UI](../workdown-items/view-creation.md) — type: issue · status: done
+    - [Build and edit a view's where filter from the UI](../workdown-items/view-filter-editor.md) — type: issue · status: done
+    - [Persist view definitions to views.yaml](../workdown-items/view-write-backend.md) — type: issue · status: done
+  - [View & item presentation](../workdown-items/view-presentation.md) — type: milestone · status: in_progress
+    - [Add `color` field type with background tinting](../workdown-items/color-field-type.md) — type: issue · status: to_do
+    - [Per-view-kind display configuration (which fields show where)](../workdown-items/view-display-config.md) — type: issue · status: in_progress
+- [Time tracking](../workdown-items/time-tracking.md) — type: milestone · status: to_do
+  - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md) — type: issue · status: to_do
+  - [Default generator that reads dates from git history](../workdown-items/git-derived-default-generator.md) — type: issue · status: to_do

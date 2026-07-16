@@ -6,11 +6,11 @@
 //! are sorted by id ascending.
 //!
 //! Each node carries a [`Card`] (with title pre-resolved via the view's
-//! `title:` slot) plus a `cells` list parallel to the view's `columns:`
-//! configuration. When `columns:` is empty (or absent in `views.yaml`)
-//! the tree degenerates to a pure outline — `cells` is empty on every
-//! node. Same column semantics as the table view: virtual `id` column,
-//! `None` cells when the item lacks that field.
+//! `title` display role) plus a `cells` list parallel to the columns
+//! derived from the `fields` display role — unset falls back to every
+//! schema field, like the table view. Same column semantics as the
+//! table view: virtual `id` column, `None` cells when the item lacks
+//! that field.
 
 use serde::Serialize;
 
@@ -19,16 +19,15 @@ use crate::model::views::{View, ViewKind};
 use crate::model::{FieldValue, WorkItem};
 use crate::store::Store;
 
-use super::common::{build_card, build_column, column_cell, Card, Column};
+use super::common::{build_card, build_column, column_cell, effective_fields, Card, Column};
 use super::filter::filtered_items;
 use super::traverse::{walk_forest, Traversal};
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TreeData {
     pub field: String,
-    /// User-configured columns shown alongside the hierarchy. Empty when
-    /// `views.yaml` omits `columns:` — the renderer falls back to a
-    /// title-only outline.
+    /// Columns shown alongside the hierarchy, from the `fields` display
+    /// role (or the all-schema-fields fallback when the role is unset).
     pub columns: Vec<Column>,
     pub roots: Vec<TreeNode>,
 }
@@ -43,11 +42,12 @@ pub struct TreeNode {
 }
 
 pub fn extract_tree(view: &View, store: &Store, schema: &Schema) -> TreeData {
-    let ViewKind::Tree { field, columns } = &view.kind else {
+    let ViewKind::Tree { field } = &view.kind else {
         panic!("extract_tree called with non-tree view kind");
     };
     let items = filtered_items(view, store, schema);
-    build_tree_data(&items, field, columns, store, schema, view)
+    let columns = effective_fields(view, schema);
+    build_tree_data(&items, field, &columns, store, schema, view)
 }
 
 /// Build a [`TreeData`] from an already-filtered set of items by walking a
@@ -108,7 +108,7 @@ fn to_tree_node(
 mod tests {
     use super::*;
     use crate::model::schema::{FieldTypeConfig, Schema};
-    use crate::model::views::{View, ViewKind};
+    use crate::model::views::{DisplayConfig, View, ViewKind};
     use crate::view_data::test_support::{make_schema, make_store_with_files};
 
     fn tree_view(field: &str, where_clauses: Vec<&str>) -> View {
@@ -119,10 +119,13 @@ mod tests {
         View {
             id: "my-tree".into(),
             where_clauses: where_clauses.into_iter().map(str::to_owned).collect(),
-            title: None,
+            display: DisplayConfig {
+                title: None,
+                subtitle: None,
+                fields: columns.into_iter().map(str::to_owned).collect(),
+            },
             kind: ViewKind::Tree {
                 field: field.to_owned(),
-                columns: columns.into_iter().map(str::to_owned).collect(),
             },
         }
     }
@@ -263,7 +266,7 @@ mod tests {
     // ── Columns + cells ─────────────────────────────────────────────
 
     #[test]
-    fn empty_columns_yields_empty_cells_on_every_node() {
+    fn unset_fields_role_falls_back_to_all_schema_fields() {
         let schema = parent_schema();
         let (_tmp, store) = make_store_with_files(
             &schema,
@@ -276,9 +279,14 @@ mod tests {
 
         let data = extract_tree(&view, &store, &schema);
 
-        assert!(data.columns.is_empty());
-        assert!(data.roots[0].cells.is_empty());
-        assert!(data.roots[0].children[0].cells.is_empty());
+        let names: Vec<&str> = data
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["parent", "status"]);
+        assert_eq!(data.roots[0].cells.len(), 2);
+        assert_eq!(data.roots[0].children[0].cells.len(), 2);
     }
 
     #[test]

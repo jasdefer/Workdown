@@ -61,6 +61,7 @@ impl AppState {
     /// real project on disk. The paths don't have to resolve.
     pub(crate) fn test_stub() -> Self {
         use workdown_core::model::config::{Config, Paths, ProjectMeta, ViewDefaults};
+        use workdown_core::model::views::DisplayConfig;
 
         let config = Config {
             project: ProjectMeta {
@@ -78,6 +79,7 @@ impl AppState {
                 board_field: "status".into(),
                 tree_field: "parent".into(),
                 graph_field: "depends_on".into(),
+                display: DisplayConfig::default(),
             },
             working_days: None,
             serve: None,

@@ -32,7 +32,7 @@ pub fn description_for(view: &View) -> String {
             }
             None => format!("Directed graph of items connected through `{field}`."),
         },
-        ViewKind::Table { .. } | ViewKind::Metric { .. } => String::new(),
+        ViewKind::Table | ViewKind::Metric { .. } => String::new(),
         ViewKind::Gantt {
             start,
             end,
@@ -160,13 +160,13 @@ fn gantt_input_mode_prefix(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use workdown_core::model::views::{View, ViewKind};
+    use workdown_core::model::views::{DisplayConfig, View, ViewKind};
 
     fn view(kind: ViewKind) -> View {
         View {
             id: "v".into(),
             where_clauses: vec![],
-            title: None,
+            display: DisplayConfig::default(),
             kind,
         }
     }
@@ -186,7 +186,6 @@ mod tests {
     fn tree_describes_link_field() {
         let v = view(ViewKind::Tree {
             field: "parent".into(),
-            columns: vec![],
         });
         assert_eq!(
             description_for(&v),
@@ -220,9 +219,7 @@ mod tests {
 
     #[test]
     fn table_returns_empty() {
-        let v = view(ViewKind::Table {
-            columns: vec!["id".into(), "title".into()],
-        });
+        let v = view(ViewKind::Table);
         assert_eq!(description_for(&v), "");
     }
 

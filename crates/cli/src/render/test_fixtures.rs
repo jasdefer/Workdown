@@ -17,6 +17,7 @@ pub fn card(id: &str, title: Option<&str>) -> Card {
     Card {
         id: WorkItemId::from(id.to_owned()),
         title: title.map(str::to_owned),
+        subtitle: None,
         fields: vec![],
         body: String::new(),
     }

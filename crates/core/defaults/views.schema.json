@@ -65,6 +65,27 @@
       "uniqueItems": true
     },
 
+    "display": {
+      "type": "object",
+      "description": "Cross-cutting display roles: which schema field fills each presentation role. Roles left unset inherit `defaults.display` from config.yaml, then fall back to per-kind defaults (title → item id, fields → every schema field). Item-presenting kinds render the roles in their own idiom (card lines, table/tree columns, graph tooltips, bar labels); aggregate/chart kinds ignore them.",
+      "properties": {
+        "title": {
+          "$ref": "#/$defs/field_name",
+          "description": "Field shown as each item's display title on cards, rows, nodes, and bars."
+        },
+        "subtitle": {
+          "$ref": "#/$defs/field_name",
+          "description": "Field shown as each item's secondary line, where the view kind has one."
+        },
+        "fields": {
+          "type": "array",
+          "description": "Ordered field names shown as the item's detail fields — card badges, table/tree columns, graph tooltip lines.",
+          "items": { "$ref": "#/$defs/field_name" }
+        }
+      },
+      "additionalProperties": false
+    },
+
     "view": {
       "description": "A single view entry. The `type` field discriminates which slots are required.",
       "oneOf": [
@@ -91,7 +112,7 @@
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "board" },
         "where": { "$ref": "#/$defs/where_clauses" },
-        "title": { "$ref": "#/$defs/field_name" },
+        "display": { "$ref": "#/$defs/display" },
         "field": { "$ref": "#/$defs/field_name" }
       },
       "required": ["id", "type", "field"],
@@ -100,18 +121,13 @@
 
     "tree": {
       "type": "object",
-      "description": "Hierarchical tree following a single link field (e.g. parent). Optionally pairs the hierarchy with table-style columns shown alongside each row.",
+      "description": "Hierarchical tree following a single link field (e.g. parent). The `fields` display role supplies table-style columns shown alongside each row.",
       "properties": {
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "tree" },
         "where": { "$ref": "#/$defs/where_clauses" },
-        "title": { "$ref": "#/$defs/field_name" },
-        "field": { "$ref": "#/$defs/field_name" },
-        "columns": {
-          "type": "array",
-          "description": "Optional ordered field names to render as columns alongside each row's hierarchy cell. Same semantics as the table view's columns. Empty or omitted produces a title-only outline.",
-          "items": { "$ref": "#/$defs/field_name" }
-        }
+        "display": { "$ref": "#/$defs/display" },
+        "field": { "$ref": "#/$defs/field_name" }
       },
       "required": ["id", "type", "field"],
       "additionalProperties": false
@@ -124,7 +140,7 @@
         "id":       { "$ref": "#/$defs/view_id" },
         "type":     { "const": "graph" },
         "where":    { "$ref": "#/$defs/where_clauses" },
-        "title":    { "$ref": "#/$defs/field_name" },
+        "display":    { "$ref": "#/$defs/display" },
         "field":    { "$ref": "#/$defs/field_name" },
         "group_by": { "$ref": "#/$defs/field_name" }
       },
@@ -134,20 +150,14 @@
 
     "table": {
       "type": "object",
-      "description": "Tabular view with an ordered list of columns.",
+      "description": "Tabular view. Columns come from the `fields` display role; unset falls back to every schema field in declaration order.",
       "properties": {
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "table" },
         "where": { "$ref": "#/$defs/where_clauses" },
-        "title": { "$ref": "#/$defs/field_name" },
-        "columns": {
-          "type": "array",
-          "description": "Ordered field names to render as columns.",
-          "items": { "$ref": "#/$defs/field_name" },
-          "minItems": 1
-        }
+        "display": { "$ref": "#/$defs/display" }
       },
-      "required": ["id", "type", "columns"],
+      "required": ["id", "type"],
       "additionalProperties": false
     },
 
@@ -158,7 +168,7 @@
         "id":       { "$ref": "#/$defs/view_id" },
         "type":     { "const": "gantt" },
         "where":    { "$ref": "#/$defs/where_clauses" },
-        "title":    { "$ref": "#/$defs/field_name" },
+        "display":    { "$ref": "#/$defs/display" },
         "start":    { "$ref": "#/$defs/field_name" },
         "end":      { "$ref": "#/$defs/field_name" },
         "duration": { "$ref": "#/$defs/field_name" },
@@ -179,7 +189,7 @@
         "id":        { "$ref": "#/$defs/view_id" },
         "type":      { "const": "gantt_by_initiative" },
         "where":     { "$ref": "#/$defs/where_clauses" },
-        "title":     { "$ref": "#/$defs/field_name" },
+        "display":     { "$ref": "#/$defs/display" },
         "start":     { "$ref": "#/$defs/field_name" },
         "end":       { "$ref": "#/$defs/field_name" },
         "duration":  { "$ref": "#/$defs/field_name" },
@@ -203,7 +213,7 @@
         "id":         { "$ref": "#/$defs/view_id" },
         "type":       { "const": "gantt_by_depth" },
         "where":      { "$ref": "#/$defs/where_clauses" },
-        "title":      { "$ref": "#/$defs/field_name" },
+        "display":      { "$ref": "#/$defs/display" },
         "start":      { "$ref": "#/$defs/field_name" },
         "end":        { "$ref": "#/$defs/field_name" },
         "duration":   { "$ref": "#/$defs/field_name" },
@@ -227,7 +237,7 @@
         "id":        { "$ref": "#/$defs/view_id" },
         "type":      { "const": "bar_chart" },
         "where":     { "$ref": "#/$defs/where_clauses" },
-        "title":     { "$ref": "#/$defs/field_name" },
+        "display":     { "$ref": "#/$defs/display" },
         "group_by":  { "$ref": "#/$defs/field_name" },
         "value":     { "$ref": "#/$defs/field_name" },
         "aggregate": { "$ref": "#/$defs/aggregate" }
@@ -243,7 +253,7 @@
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "line_chart" },
         "where": { "$ref": "#/$defs/where_clauses" },
-        "title": { "$ref": "#/$defs/field_name" },
+        "display": { "$ref": "#/$defs/display" },
         "x":     { "$ref": "#/$defs/field_name" },
         "y":     { "$ref": "#/$defs/field_name" },
         "group": {
@@ -262,7 +272,7 @@
         "id":           { "$ref": "#/$defs/view_id" },
         "type":         { "const": "workload" },
         "where":        { "$ref": "#/$defs/where_clauses" },
-        "title":        { "$ref": "#/$defs/field_name" },
+        "display":        { "$ref": "#/$defs/display" },
         "start":        { "$ref": "#/$defs/field_name" },
         "end":          { "$ref": "#/$defs/field_name" },
         "effort":       { "$ref": "#/$defs/field_name" },
@@ -279,7 +289,7 @@
         "id":      { "$ref": "#/$defs/view_id" },
         "type":    { "const": "metric" },
         "where":   { "$ref": "#/$defs/where_clauses" },
-        "title":   { "$ref": "#/$defs/field_name" },
+        "display":   { "$ref": "#/$defs/display" },
         "metrics": {
           "type": "array",
           "description": "Ordered list of stat rows. Empty arrays are allowed (renders heading-only).",
@@ -321,7 +331,7 @@
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "treemap" },
         "where": { "$ref": "#/$defs/where_clauses" },
-        "title": { "$ref": "#/$defs/field_name" },
+        "display": { "$ref": "#/$defs/display" },
         "group": { "$ref": "#/$defs/field_name" },
         "size":  { "$ref": "#/$defs/field_name" }
       },
@@ -336,7 +346,7 @@
         "id":        { "$ref": "#/$defs/view_id" },
         "type":      { "const": "heatmap" },
         "where":     { "$ref": "#/$defs/where_clauses" },
-        "title":     { "$ref": "#/$defs/field_name" },
+        "display":     { "$ref": "#/$defs/display" },
         "x":         { "$ref": "#/$defs/field_name" },
         "y":         { "$ref": "#/$defs/field_name" },
         "value":     { "$ref": "#/$defs/field_name" },

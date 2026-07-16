@@ -324,7 +324,7 @@ async fn preview_filters_view_without_writing() {
     write_item(&root, "task-done", "---\nstatus: done\n---\n");
     write_views(
         &root,
-        "views:\n  - id: t\n    type: table\n    columns: [id, status]\n",
+        "views:\n  - id: t\n    type: table\n    display:\n      fields: [id, status]\n",
     );
     let before = read_views(&root);
 
@@ -352,7 +352,7 @@ async fn preview_with_unknown_field_is_unrenderable() {
     let root = directory.path().to_path_buf();
     write_views(
         &root,
-        "views:\n  - id: t\n    type: table\n    columns: [id, status]\n",
+        "views:\n  - id: t\n    type: table\n    display:\n      fields: [id, status]\n",
     );
 
     let uri = format!(
@@ -379,7 +379,7 @@ async fn preview_keeps_other_views_diagnostics() {
     // survive the preview ("always show all"), pinned to `broken`, not `t`.
     write_views(
         &root,
-        "views:\n  - id: t\n    type: table\n    columns: [id, status]\n  - id: broken\n    type: board\n    field: nope\n",
+        "views:\n  - id: t\n    type: table\n    display:\n      fields: [id, status]\n  - id: broken\n    type: board\n    field: nope\n",
     );
 
     let uri = format!(
@@ -410,7 +410,7 @@ async fn preview_replaces_stale_persisted_filter_diagnostics() {
     // the stale diagnostic about the persisted clause is gone.
     write_views(
         &root,
-        "views:\n  - id: t\n    type: table\n    columns: [id, status]\n    where:\n      - \"nonexistent=x\"\n",
+        "views:\n  - id: t\n    type: table\n    display:\n      fields: [id, status]\n    where:\n      - \"nonexistent=x\"\n",
     );
 
     let uri = format!(
@@ -441,7 +441,7 @@ async fn preview_with_malformed_filter_returns_422() {
     let root = directory.path().to_path_buf();
     write_views(
         &root,
-        "views:\n  - id: t\n    type: table\n    columns: [id, status]\n",
+        "views:\n  - id: t\n    type: table\n    display:\n      fields: [id, status]\n",
     );
 
     let uri = format!("/api/views/t?filter={}", encode("not json"));

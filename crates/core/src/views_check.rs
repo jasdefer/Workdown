@@ -54,7 +54,7 @@ pub fn evaluate(views: &Views, schema: &Schema, views_path: &Path) -> Vec<Diagno
     let mut out = Vec::new();
     for view in &views.views {
         check_view(view, &ctx, &mut out);
-        check_title(view, &ctx, &mut out);
+        check_display(view, &ctx, &mut out);
         check_where_clauses(view, &ctx, &mut out);
     }
     out
@@ -152,7 +152,7 @@ fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
             "choice, multichoice, or string",
             out,
         ),
-        ViewKind::Tree { field, columns } => {
+        ViewKind::Tree { field } => {
             check_slot(
                 ctx,
                 view_id,
@@ -162,9 +162,6 @@ fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
                 "link",
                 out,
             );
-            for column in columns {
-                check_slot(ctx, view_id, "columns", column, &[], "", out);
-            }
         }
         ViewKind::Graph { field, group_by } => {
             check_graph_field(ctx, view_id, field, out);
@@ -172,11 +169,9 @@ fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
                 check_link_slot(ctx, view_id, "group_by", group_by, LinkArity::Single, out);
             }
         }
-        ViewKind::Table { columns } => {
-            for column in columns {
-                check_slot(ctx, view_id, "columns", column, &[], "", out);
-            }
-        }
+        // Table has no structural slots — its columns come from the
+        // `fields` display role, checked in `check_display`.
+        ViewKind::Table => {}
         ViewKind::Gantt {
             start,
             end,
@@ -380,21 +375,23 @@ fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
     }
 }
 
-// ── Title slot (cross-cutting) ───────────────────────────────────────
+// ── Display roles (cross-cutting) ────────────────────────────────────
 
-fn check_title(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
-    let Some(field_name) = view.title.as_deref() else {
-        return;
-    };
-    check_slot(
-        ctx,
-        view.id.as_str(),
-        "title",
-        field_name,
-        &[FieldType::String, FieldType::Choice],
-        "string or choice",
-        out,
-    );
+/// Check the view's display-role field references. Every role is
+/// existence-only: any field's value can be rendered as text, so the
+/// roles constrain *which* field, not its type. (The virtual `id` is
+/// allowed everywhere, as in `check_slot`.)
+fn check_display(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
+    let view_id = view.id.as_str();
+    if let Some(field_name) = view.display.title.as_deref() {
+        check_slot(ctx, view_id, "display.title", field_name, &[], "", out);
+    }
+    if let Some(field_name) = view.display.subtitle.as_deref() {
+        check_slot(ctx, view_id, "display.subtitle", field_name, &[], "", out);
+    }
+    for field_name in &view.display.fields {
+        check_slot(ctx, view_id, "display.fields", field_name, &[], "", out);
+    }
 }
 
 // ── Slot helper ──────────────────────────────────────────────────────
@@ -923,7 +920,7 @@ mod tests {
     use super::*;
     use crate::model::diagnostic::DiagnosticBody;
     use crate::model::schema::{FieldDefinition, FieldTypeConfig, Schema};
-    use crate::model::views::{Aggregate, Bucket, MetricRow, View, ViewKind, Views};
+    use crate::model::views::{Aggregate, Bucket, DisplayConfig, MetricRow, View, ViewKind, Views};
     use crate::parser::views::parse_views;
     use indexmap::IndexMap;
     use std::path::{Path, PathBuf};
@@ -1008,7 +1005,7 @@ mod tests {
             views: vec![View {
                 id: "v".into(),
                 where_clauses: vec![],
-                title: None,
+                display: DisplayConfig::default(),
                 kind,
             }],
         }
@@ -1020,22 +1017,32 @@ mod tests {
             views: vec![View {
                 id: "v".into(),
                 where_clauses,
-                title: None,
+                display: DisplayConfig::default(),
+                kind,
+            }],
+        }
+    }
+
+    fn view_with_display(kind: ViewKind, display: DisplayConfig) -> Views {
+        Views {
+            output_dir: PathBuf::from("views"),
+            views: vec![View {
+                id: "v".into(),
+                where_clauses: vec![],
+                display,
                 kind,
             }],
         }
     }
 
     fn view_with_title(kind: ViewKind, title: &str) -> Views {
-        Views {
-            output_dir: PathBuf::from("views"),
-            views: vec![View {
-                id: "v".into(),
-                where_clauses: vec![],
+        view_with_display(
+            kind,
+            DisplayConfig {
                 title: Some(title.into()),
-                kind,
-            }],
-        }
+                ..DisplayConfig::default()
+            },
+        )
     }
 
     // ── Reference resolution ───────────────────────────────────
@@ -1060,11 +1067,15 @@ mod tests {
     }
 
     #[test]
-    fn unknown_column_in_table_errors() {
+    fn unknown_display_field_in_table_errors() {
         let diagnostics = evaluate(
-            &one_view(ViewKind::Table {
-                columns: vec!["status".into(), "nonexistent".into()],
-            }),
+            &view_with_display(
+                ViewKind::Table,
+                DisplayConfig {
+                    fields: vec!["status".into(), "nonexistent".into()],
+                    ..DisplayConfig::default()
+                },
+            ),
             &simple_schema(),
             test_views_path(),
         );
@@ -1072,12 +1083,12 @@ mod tests {
         assert!(matches!(
             view_kind(&diagnostics[0]),
             ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
-                if *slot == "columns" && field_name == "nonexistent"
+                if *slot == "display.fields" && field_name == "nonexistent"
         ));
     }
 
     #[test]
-    fn id_accepted_as_table_column_without_schema_entry() {
+    fn id_accepted_as_display_field_without_schema_entry() {
         // `id` is the virtual always-present field — schema.fields doesn't
         // have to declare it.
         let schema = build_schema(vec![(
@@ -1087,13 +1098,38 @@ mod tests {
             },
         )]);
         let diagnostics = evaluate(
-            &one_view(ViewKind::Table {
-                columns: vec!["id".into(), "status".into()],
-            }),
+            &view_with_display(
+                ViewKind::Table,
+                DisplayConfig {
+                    fields: vec!["id".into(), "status".into()],
+                    ..DisplayConfig::default()
+                },
+            ),
             &schema,
             test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn unknown_subtitle_field_errors() {
+        let diagnostics = evaluate(
+            &view_with_display(
+                ViewKind::Table,
+                DisplayConfig {
+                    subtitle: Some("nonexistent".into()),
+                    ..DisplayConfig::default()
+                },
+            ),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert_eq!(diagnostics.len(), 1);
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
+                if *slot == "display.subtitle" && field_name == "nonexistent"
+        ));
     }
 
     // ── Type compatibility (one representative per row) ────────
@@ -1103,7 +1139,6 @@ mod tests {
         let diagnostics = evaluate(
             &one_view(ViewKind::Tree {
                 field: "status".into(), // choice, not link
-                columns: vec![],
             }),
             &simple_schema(),
             test_views_path(),
@@ -1116,12 +1151,17 @@ mod tests {
     }
 
     #[test]
-    fn unknown_column_in_tree_errors() {
+    fn unknown_display_field_in_tree_errors() {
         let diagnostics = evaluate(
-            &one_view(ViewKind::Tree {
-                field: "parent".into(),
-                columns: vec!["status".into(), "nonexistent".into()],
-            }),
+            &view_with_display(
+                ViewKind::Tree {
+                    field: "parent".into(),
+                },
+                DisplayConfig {
+                    fields: vec!["status".into(), "nonexistent".into()],
+                    ..DisplayConfig::default()
+                },
+            ),
             &simple_schema(),
             test_views_path(),
         );
@@ -1129,21 +1169,8 @@ mod tests {
         assert!(matches!(
             view_kind(&diagnostics[0]),
             ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
-                if *slot == "columns" && field_name == "nonexistent"
+                if *slot == "display.fields" && field_name == "nonexistent"
         ));
-    }
-
-    #[test]
-    fn id_accepted_as_tree_column_without_schema_entry() {
-        let diagnostics = evaluate(
-            &one_view(ViewKind::Tree {
-                field: "parent".into(),
-                columns: vec!["id".into(), "status".into()],
-            }),
-            &simple_schema(),
-            test_views_path(),
-        );
-        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
 
     #[test]
@@ -2466,55 +2493,31 @@ mod tests {
             [d] if matches!(
                 view_kind(d),
                 ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
-                if *slot == "title" && field_name == "nonexistent"
+                if *slot == "display.title" && field_name == "nonexistent"
             )
         ));
     }
 
     #[test]
-    fn title_wrong_type_rejected() {
-        // `effort` is integer — not allowed as a display title.
-        let diagnostics = evaluate(
-            &view_with_title(
-                ViewKind::Board {
-                    field: "status".into(),
-                },
-                "effort",
-            ),
-            &simple_schema(),
-            test_views_path(),
-        );
-        assert!(matches!(
-            diagnostics.as_slice(),
-            [d] if matches!(
-                view_kind(d),
-                ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, field_name, actual_type, .. }
-                if *slot == "title" && field_name == "effort" && *actual_type == FieldType::Integer
-            )
-        ));
-    }
-
-    #[test]
-    fn title_link_field_rejected() {
-        // Relation fields can resolve to multiple values — not a title.
-        let diagnostics = evaluate(
-            &view_with_title(
-                ViewKind::Board {
-                    field: "status".into(),
-                },
-                "parent",
-            ),
-            &simple_schema(),
-            test_views_path(),
-        );
-        assert!(matches!(
-            diagnostics.as_slice(),
-            [d] if matches!(
-                view_kind(d),
-                ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, actual_type, .. }
-                if *slot == "title" && *actual_type == FieldType::Link
-            )
-        ));
+    fn title_accepts_any_field_type() {
+        // Display roles are existence-only: every field value renders as
+        // text, so an integer or link title is legal (if unusual).
+        for title_field in ["effort", "parent"] {
+            let diagnostics = evaluate(
+                &view_with_title(
+                    ViewKind::Board {
+                        field: "status".into(),
+                    },
+                    title_field,
+                ),
+                &simple_schema(),
+                test_views_path(),
+            );
+            assert!(
+                diagnostics.is_empty(),
+                "title `{title_field}` should be accepted, got: {diagnostics:?}"
+            );
+        }
     }
 
     // ── parse_errors_to_diagnostics ────────────────────────────

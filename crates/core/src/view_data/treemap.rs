@@ -127,14 +127,14 @@ fn to_treemap_node(
 mod tests {
     use super::*;
     use crate::model::schema::{FieldTypeConfig, Schema};
-    use crate::model::views::{View, ViewKind};
+    use crate::model::views::{DisplayConfig, View, ViewKind};
     use crate::view_data::test_support::{make_schema, make_store_with_files};
 
     fn treemap_view(group: &str, size: &str) -> View {
         View {
             id: "my-treemap".into(),
             where_clauses: vec![],
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::Treemap {
                 group: group.to_owned(),
                 size: size.to_owned(),

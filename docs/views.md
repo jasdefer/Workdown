@@ -16,13 +16,13 @@ views:
 - Each entry has a `type` that discriminates the type-specific slots.
 - `directory:` (optional) — output directory where `workdown render` writes view files, relative to project root. Defaults to `"views"`. See [Output paths](#output-paths).
 
-Every view entry also accepts two optional cross-cutting slots: `where:` (filters) and `title:` (display-title field). Both are described below.
+Every view entry also accepts two optional cross-cutting slots: `where:` (filters) and `display:` (display roles). Both are described below.
 
 Unknown top-level fields are rejected. Unknown per-view slots are rejected.
 
 ## View types (v1)
 
-Every view type also accepts the cross-cutting optional slots `where:` and `title:` on top of what the table below lists.
+Every view type also accepts the cross-cutting optional slots `where:` and `display:` on top of what the table below lists.
 
 `workdown render` writes one Markdown file per view (`<directory>/<id>.md`); the table lists what each renderer emits today.
 
@@ -31,7 +31,7 @@ Every view type also accepts the cross-cutting optional slots `where:` and `titl
 | `board` | `field` | — | shipped | Sectioned bullet list |
 | `tree` | `field` | — | shipped | Nested bullet list |
 | `graph` | `field` | `group_by` | shipped | Mermaid `flowchart TD` |
-| `table` | `columns` | — | shipped | GFM table |
+| `table` | — | — | shipped | GFM table (columns from the `fields` display role) |
 | `gantt` | `start` + one of (`end`, `duration`, `after`+`duration`) | `group` | shipped | Mermaid `gantt` block |
 | `gantt_by_initiative` | `start` + one input mode, `root_link` | — | shipped | One Mermaid `gantt` block per initiative |
 | `gantt_by_depth` | `start` + one input mode, `depth_link` | — | shipped | One Mermaid `gantt` block per non-empty depth level |
@@ -44,7 +44,6 @@ Every view type also accepts the cross-cutting optional slots `where:` and `titl
 
 Slot semantics:
 - **`field`** — a single schema field name. Type per view: `choice`/`multichoice`/`string` for board, `link` for tree, `links` for graph.
-- **`columns`** — ordered list of field names. Any field type accepted.
 - **`start` / `end`** — `date` fields. **`duration`** — `duration` field; mutually exclusive with `end`. **`after`** — `link`/`links` field naming each item's predecessors (predecessor mode); requires `duration`, forbids `end`. Predecessor fields must have `allow_cycles: false` and not be inverse names.
 - **`group_by`** — categorical field for bar chart grouping; `link` field for graph subgraph nesting. **`group`** — field for in-chart sectioning (gantt only). **`root_link`** — single `link` field whose chain identifies each item's top-level ancestor (`gantt_by_initiative`). **`depth_link`** — single `link` field whose chain depth places each item in a level (`gantt_by_depth`). Both must have `allow_cycles: false` and not be inverse names.
 - **`value`** — numeric field to aggregate. Omitted when `aggregate: count`.
@@ -79,22 +78,38 @@ When the view renders, items are filtered by the combined predicate before any a
 
 OR nesting is not supported in v1 (the CLI's inline `status=open,in_progress` form covers the common case). A structured `or:` branch can be added later without breaking existing configs.
 
-## Display titles — `title:`
+## Display roles — `display:`
 
-A single schema field name that each rendered item (card, row, node, gantt bar) uses as its display title.
+Which schema field fills each presentation role. One closed vocabulary across every view kind; each kind renders the roles in its own idiom and ignores roles it cannot place.
+
+| Role | Meaning | Board | Table/Tree | Graph | Gantt |
+|---|---|---|---|---|---|
+| `title` | Primary label | card heading | row title | node label | bar label |
+| `subtitle` | Secondary line | card second line | — | node second line | — |
+| `fields` | Ordered detail fields | card badges | columns | tooltip lines | tooltip |
 
 ```yaml
 views:
   - id: status-board
     type: board
-    field: status
-    title: title
+    field: status         # structural — defines the view
+    display:              # presentation — decorates it
+      title: title
+      subtitle: assignee
+      fields: [type, effort]
 ```
 
-- Optional on every view type. When omitted, renderers fall back to the item `id`.
-- The referenced field must resolve in `schema.yaml` and must be typed as `string` or `choice`. Pointing at `id` is accepted though redundant; other types (`multichoice`, `integer`, `float`, `date`, `boolean`, `list`, `link`, `links`) are rejected because they can't cleanly express a one-liner display title.
-- Declared per-view rather than project-wide because `title` in the default schema is only a convention — users can rename or remove the field. A per-view slot lets each view declare its own title source explicitly. A top-level `default_title:` shared across views is not supported in v1; it may be added if repeating `title: title` on every entry becomes boilerplate.
-- View types that don't render item-level labels (`metric`, `bar_chart`, `workload`, `heatmap`) accept the slot uniformly but ignore it at render time.
+Resolution per role, first match wins:
+
+1. Runtime per-session override in the web app (planned — see the `view-display-config` issue).
+2. The view's own `display:` block in `views.yaml`.
+3. Project-wide `defaults.display` in `config.yaml` — define roles once instead of repeating them on every view.
+4. Per-kind hardcoded fallback: `title` → the item `id`; `fields` → every schema field in declaration order; `subtitle` → nothing.
+
+- Every role is optional everywhere; a view with no `display:` block inherits entirely.
+- Role fields must resolve in `schema.yaml` (or be the virtual `id`). Any field type is accepted — every value renders as text.
+- Aggregate/chart kinds (`bar_chart`, `line_chart`, `heatmap`, `metric`, `treemap`, `workload`) accept the block uniformly but ignore item-level roles at render time.
+- `defaults.display` role fields are not yet validated against the schema; unresolvable names are silently skipped at render time (a diagnostic is planned).
 
 ## Output paths
 
@@ -126,7 +141,8 @@ views:
     field: depends_on
   - id: all-items
     type: table
-    columns: [id, title, type, status, start_date, end_date]
+    display:
+      fields: [id, title, type, status, start_date, end_date]
   - id: roadmap
     type: gantt
     start: start_date
@@ -185,7 +201,7 @@ views:
 `workdown validate` runs a set of checks that compare `views.yaml` against `schema.yaml`. All findings are errors in v1 (no warnings):
 
 - **Reference resolution** — every field name referenced by a view slot must exist in `schema.fields` (the virtual `id` field is always accepted).
-- **Type compatibility** — the slot dictates the allowed field type(s). For example: `board.field` must be `choice`, `multichoice`, or `string`; `tree.field` must be `link`; `graph.field` must be `links`; `gantt.start`/`gantt.end` must be `date`, `gantt.duration` must be `duration`; numeric slots accept `integer` or `float`, plus `duration` where the renderer can format it (`treemap.size`, `line_chart.x`/`y`, `workload.effort`, and aggregation slots `bar_chart.value`, `heatmap.value`, `metric.value`); `title:` must be `string` or `choice`. `table.columns[*]` is existence-only — any type is accepted as a column.
+- **Type compatibility** — the slot dictates the allowed field type(s). For example: `board.field` must be `choice`, `multichoice`, or `string`; `tree.field` must be `link`; `graph.field` must be `links`; `gantt.start`/`gantt.end` must be `date`, `gantt.duration` must be `duration`; numeric slots accept `integer` or `float`, plus `duration` where the renderer can format it (`treemap.size`, `line_chart.x`/`y`, `workload.effort`, and aggregation slots `bar_chart.value`, `heatmap.value`, `metric.value`). Display roles (`display.title`, `display.subtitle`, `display.fields[*]`) are existence-only — any field type is accepted.
 - **Gantt input modes** — every gantt-family view (`gantt`, `gantt_by_initiative`, `gantt_by_depth`) must declare `start` plus exactly one of: `end`, `duration`, or `after`+`duration`. `end` and `duration` together is rejected; `after` requires `duration` and forbids `end`.
 - **Predecessor / partition link slots** — `gantt.after`, `gantt_by_initiative.root_link`, and `gantt_by_depth.depth_link` must point at a `link`/`links` field (single-target only for `root_link`/`depth_link`) with `allow_cycles: false`, and not at an inverse relation name (e.g. `children` when `parent.inverse: children`).
 - **Heatmap bucket coupling** — if `bucket:` is set, at least one of `x` or `y` must resolve to a `date` field.

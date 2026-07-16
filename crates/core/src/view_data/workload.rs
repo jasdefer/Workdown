@@ -240,7 +240,7 @@ mod tests {
     use chrono::NaiveDate;
 
     use crate::model::schema::{FieldTypeConfig, Schema};
-    use crate::model::views::{View, ViewKind};
+    use crate::model::views::{DisplayConfig, View, ViewKind};
     use crate::model::weekday::Weekday;
     use crate::model::FieldValue;
     use crate::view_data::test_support::{make_item, make_schema, make_store};
@@ -249,7 +249,7 @@ mod tests {
         View {
             id: "my-workload".into(),
             where_clauses: vec![],
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::Workload {
                 start: start.to_owned(),
                 end: end.to_owned(),
@@ -263,7 +263,7 @@ mod tests {
         View {
             id: "my-workload".into(),
             where_clauses: vec![],
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::Workload {
                 start: start.to_owned(),
                 end: end.to_owned(),

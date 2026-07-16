@@ -58,10 +58,12 @@ views:
   - id: status-board
     type: board
     field: status
-    title: title
+    display:
+      title: title
   - id: item-table
     type: table
-    columns: [id, title, status, points]
+    display:
+      fields: [id, title, status, points]
   - id: hierarchy
     type: tree
     field: parent

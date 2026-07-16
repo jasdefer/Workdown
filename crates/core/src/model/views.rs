@@ -33,12 +33,60 @@ pub struct View {
     /// [`crate::query::parse::parse_where`].
     pub where_clauses: Vec<String>,
 
-    /// Schema field name whose value is used as each item's display title
-    /// on cards, rows, nodes, and bars. When `None`, renderers fall back to
-    /// the item id. Cross-cutting: applies uniformly to every view type.
-    pub title: Option<String>,
+    /// Cross-cutting display roles for this view. Roles left unset here
+    /// inherit the project-wide defaults from `config.yaml` — see
+    /// [`View::with_display_defaults`].
+    pub display: DisplayConfig,
 
     pub kind: ViewKind,
+}
+
+/// The cross-cutting display-role vocabulary: which schema field fills
+/// each presentation role. Applies to the item-presenting view kinds
+/// (board, tree, table, graph, gantt and variants); aggregate/chart
+/// kinds ignore it. Each kind renders the roles in its own idiom (card
+/// badges, table columns, graph tooltip, bar label) and ignores roles
+/// it cannot place.
+///
+/// Every role is optional. Resolution order per role: this per-view
+/// config, then `defaults.display` in `config.yaml` (merged via
+/// [`View::with_display_defaults`]), then the per-kind hardcoded
+/// fallback (title → item id, fields → every schema field).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct DisplayConfig {
+    /// Field whose value is each item's display title on cards, rows,
+    /// nodes, and bars. Fallback: the item id.
+    pub title: Option<String>,
+    /// Field rendered as each item's secondary line, where the kind has
+    /// one (card second line, graph node subtitle). Fallback: none.
+    pub subtitle: Option<String>,
+    /// Ordered list of fields shown as the item's detail fields — card
+    /// badges, table/tree columns, graph tooltip lines. Empty means
+    /// unset: inherit, or fall back to every schema field in
+    /// declaration order.
+    pub fields: Vec<String>,
+}
+
+impl View {
+    /// Fill unset display roles from project-wide defaults
+    /// (`defaults.display` in `config.yaml`). Per-role: a role set on
+    /// the view wins; an unset role inherits the default. Applied by
+    /// read paths (render, serve) before extraction — never persisted
+    /// back into `views.yaml`.
+    #[must_use]
+    pub fn with_display_defaults(mut self, defaults: &DisplayConfig) -> Self {
+        if self.display.title.is_none() {
+            self.display.title = defaults.title.clone();
+        }
+        if self.display.subtitle.is_none() {
+            self.display.subtitle = defaults.subtitle.clone();
+        }
+        if self.display.fields.is_empty() {
+            self.display.fields = defaults.fields.clone();
+        }
+        self
+    }
 }
 
 /// Type-specific configuration. Each variant carries only the slots valid
@@ -50,11 +98,6 @@ pub enum ViewKind {
     },
     Tree {
         field: String,
-        /// Ordered list of schema field names to display as columns next
-        /// to each row's hierarchy cell. Empty = title-only outline.
-        /// Same rules as `Table { columns }`: the virtual `id` field is
-        /// allowed; every other entry must resolve in `schema.fields`.
-        columns: Vec<String>,
     },
     Graph {
         field: String,
@@ -64,9 +107,9 @@ pub enum ViewKind {
         /// exactly one box. Inverse names are rejected by `views_check`.
         group_by: Option<String>,
     },
-    Table {
-        columns: Vec<String>,
-    },
+    /// Columns come from the `fields` display role — see
+    /// [`DisplayConfig::fields`].
+    Table,
     Gantt {
         start: String,
         /// Date field naming the bar's end. Mutually exclusive with
@@ -214,7 +257,7 @@ impl ViewKind {
             Self::Board { .. } => ViewType::Board,
             Self::Tree { .. } => ViewType::Tree,
             Self::Graph { .. } => ViewType::Graph,
-            Self::Table { .. } => ViewType::Table,
+            Self::Table => ViewType::Table,
             Self::Gantt { .. } => ViewType::Gantt,
             Self::GanttByInitiative { .. } => ViewType::GanttByInitiative,
             Self::GanttByDepth { .. } => ViewType::GanttByDepth,

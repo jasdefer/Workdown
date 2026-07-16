@@ -16,7 +16,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::views::{Aggregate, Bucket, MetricRow, View, ViewKind, ViewType, Views};
+use crate::model::views::{
+    Aggregate, Bucket, DisplayConfig, MetricRow, View, ViewKind, ViewType, Views,
+};
 use crate::model::weekday::Weekday;
 
 /// Default output directory written by `workdown render` when
@@ -158,18 +160,15 @@ struct RawView {
     #[serde(default, rename = "where", skip_serializing_if = "Vec::is_empty")]
     where_clauses: Vec<String>,
 
-    // Cross-cutting: the schema field whose value each rendered item
-    // uses as its display title. Allowed on every view type.
+    // Cross-cutting display roles. Allowed on every view type; each
+    // kind renders the roles it can place. Roles left unset inherit
+    // the project defaults from `config.yaml` at render time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    title: Option<String>,
+    display: Option<RawDisplay>,
 
     // Single-field views (board / tree / graph)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     field: Option<String>,
-
-    // Table
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    columns: Option<Vec<String>>,
 
     // Gantt / Workload
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -220,6 +219,19 @@ struct RawView {
     working_days: Option<Vec<Weekday>>,
 }
 
+/// The `display:` block on one view entry — cross-cutting display
+/// roles. Every role is optional; unknown roles are rejected.
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RawDisplay {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    subtitle: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    fields: Vec<String>,
+}
+
 /// One row inside a metric view's `metrics:` list.
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -245,15 +257,12 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
         },
         ViewType::Tree => ViewKind::Tree {
             field: require(raw.field, &id, view_type, "field")?,
-            columns: raw.columns.unwrap_or_default(),
         },
         ViewType::Graph => ViewKind::Graph {
             field: require(raw.field, &id, view_type, "field")?,
             group_by: raw.group_by,
         },
-        ViewType::Table => ViewKind::Table {
-            columns: require(raw.columns, &id, view_type, "columns")?,
-        },
+        ViewType::Table => ViewKind::Table,
         ViewType::Gantt => ViewKind::Gantt {
             start: require(raw.start, &id, view_type, "start")?,
             end: raw.end,
@@ -315,10 +324,19 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
         },
     };
 
+    let display = raw
+        .display
+        .map(|block| DisplayConfig {
+            title: block.title,
+            subtitle: block.subtitle,
+            fields: block.fields,
+        })
+        .unwrap_or_default();
+
     Ok(View {
         id: raw.id,
         where_clauses: raw.where_clauses,
-        title: raw.title,
+        display,
         kind,
     })
 }
@@ -366,9 +384,8 @@ fn raw_view_from(view: &View) -> RawView {
         id: view.id.clone(),
         view_type: view.kind.view_type(),
         where_clauses: view.where_clauses.clone(),
-        title: view.title.clone(),
+        display: raw_display_from(&view.display),
         field: None,
-        columns: None,
         start: None,
         end: None,
         duration: None,
@@ -390,21 +407,12 @@ fn raw_view_from(view: &View) -> RawView {
 
     match &view.kind {
         ViewKind::Board { field } => raw.field = Some(field.clone()),
-        ViewKind::Tree { field, columns } => {
-            raw.field = Some(field.clone());
-            // Optional slot: omit when empty so we don't emit `columns: []`.
-            if !columns.is_empty() {
-                raw.columns = Some(columns.clone());
-            }
-        }
+        ViewKind::Tree { field } => raw.field = Some(field.clone()),
         ViewKind::Graph { field, group_by } => {
             raw.field = Some(field.clone());
             raw.group_by = group_by.clone();
         }
-        ViewKind::Table { columns } => {
-            // Required slot: always emit, even when empty.
-            raw.columns = Some(columns.clone());
-        }
+        ViewKind::Table => {}
         ViewKind::Gantt {
             start,
             end,
@@ -495,6 +503,19 @@ fn raw_view_from(view: &View) -> RawView {
     raw
 }
 
+/// Emit a `display:` block only when at least one role is set, so views
+/// that rely entirely on config defaults stay free of the empty key.
+fn raw_display_from(display: &DisplayConfig) -> Option<RawDisplay> {
+    if *display == DisplayConfig::default() {
+        return None;
+    }
+    Some(RawDisplay {
+        title: display.title.clone(),
+        subtitle: display.subtitle.clone(),
+        fields: display.fields.clone(),
+    })
+}
+
 fn raw_metric_row_from(row: &MetricRow) -> RawMetricRow {
     RawMetricRow {
         label: row.label.clone(),
@@ -557,7 +578,7 @@ mod tests {
             parse_single("views:\n  - id: status-board\n    type: board\n    field: status\n");
         assert_eq!(view.id, "status-board");
         assert!(view.where_clauses.is_empty());
-        assert!(view.title.is_none());
+        assert!(view.display.title.is_none());
         match view.kind {
             ViewKind::Board { field } => assert_eq!(field, "status"),
             other => panic!("expected Board, got {other:?}"),
@@ -576,23 +597,35 @@ mod tests {
     fn parse_tree() {
         let view = parse_single("views:\n  - id: h\n    type: tree\n    field: parent\n");
         match view.kind {
-            ViewKind::Tree { field, columns } => {
-                assert_eq!(field, "parent");
-                assert!(columns.is_empty(), "no `columns:` slot → empty list");
-            }
+            ViewKind::Tree { field } => assert_eq!(field, "parent"),
             other => panic!("expected Tree, got {other:?}"),
         }
+        assert!(view.display.fields.is_empty(), "no display block → unset");
     }
 
     #[test]
-    fn parse_tree_with_columns() {
+    fn parse_tree_with_display_fields() {
         let view = parse_single(
-            "views:\n  - id: h\n    type: tree\n    field: parent\n    columns: [status, points]\n",
+            "views:\n  - id: h\n    type: tree\n    field: parent\n    display:\n      fields: [status, points]\n",
         );
-        match view.kind {
-            ViewKind::Tree { columns, .. } => assert_eq!(columns, vec!["status", "points"]),
-            other => panic!("expected Tree, got {other:?}"),
-        }
+        assert_eq!(view.display.fields, vec!["status", "points"]);
+    }
+
+    #[test]
+    fn top_level_columns_rejected() {
+        // `columns:` moved into `display.fields` — the old top-level key
+        // is an unknown slot now, caught by deny_unknown_fields.
+        let yaml = "views:\n  - id: h\n    type: tree\n    field: parent\n    columns: [status]\n";
+        let err = parse_views(yaml).unwrap_err();
+        assert!(matches!(err, ViewsLoadError::InvalidYaml(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn top_level_title_rejected() {
+        // `title:` moved into the display block likewise.
+        let yaml = "views:\n  - id: b\n    type: board\n    field: status\n    title: title\n";
+        let err = parse_views(yaml).unwrap_err();
+        assert!(matches!(err, ViewsLoadError::InvalidYaml(_)), "got {err:?}");
     }
 
     #[test]
@@ -624,12 +657,19 @@ mod tests {
     #[test]
     fn parse_table() {
         let view = parse_single(
-            "views:\n  - id: all\n    type: table\n    columns: [id, title, status]\n",
+            "views:\n  - id: all\n    type: table\n    display:\n      fields: [id, title, status]\n",
         );
-        match view.kind {
-            ViewKind::Table { columns } => assert_eq!(columns, vec!["id", "title", "status"]),
-            other => panic!("expected Table, got {other:?}"),
-        }
+        assert!(matches!(view.kind, ViewKind::Table));
+        assert_eq!(view.display.fields, vec!["id", "title", "status"]);
+    }
+
+    #[test]
+    fn parse_bare_table() {
+        // A table needs no slots: columns come from display.fields,
+        // config defaults, or the all-schema-fields fallback.
+        let view = parse_single("views:\n  - id: all\n    type: table\n");
+        assert!(matches!(view.kind, ViewKind::Table));
+        assert!(view.display.fields.is_empty());
     }
 
     #[test]
@@ -1054,98 +1094,108 @@ views:
         }
     }
 
-    // ── Title slot (cross-cutting) ─────────────────────────────────
+    // ── Display block (cross-cutting) ──────────────────────────────
 
     #[test]
-    fn parse_title_on_board() {
+    fn parse_display_on_board() {
         let view = parse_single(
-            "views:\n  - id: b\n    type: board\n    field: status\n    title: title\n",
+            "views:\n  - id: b\n    type: board\n    field: status\n    display:\n      title: title\n      subtitle: status\n      fields: [type, points]\n",
         );
-        assert_eq!(view.title.as_deref(), Some("title"));
+        assert_eq!(view.display.title.as_deref(), Some("title"));
+        assert_eq!(view.display.subtitle.as_deref(), Some("status"));
+        assert_eq!(view.display.fields, vec!["type", "points"]);
     }
 
     #[test]
-    fn parse_title_accepted_on_every_view_type() {
-        // One entry per view type, each with `title: title`. Confirms the
-        // slot is flat at the view level — every variant picks it up.
+    fn parse_display_accepted_on_every_view_type() {
+        // One entry per view type, each with a display block. Confirms
+        // the block is flat at the view level — every variant picks it up.
         let yaml = r#"
 views:
   - id: v-board
     type: board
     field: status
-    title: title
+    display: { title: title }
   - id: v-tree
     type: tree
     field: parent
-    title: title
+    display: { title: title }
   - id: v-graph
     type: graph
     field: depends_on
-    title: title
+    display: { title: title }
   - id: v-table
     type: table
-    columns: [id, title]
-    title: title
+    display: { title: title, fields: [id, title] }
   - id: v-gantt
     type: gantt
     start: start_date
     end: end_date
-    title: title
+    display: { title: title }
   - id: v-gantt-by-initiative
     type: gantt_by_initiative
     start: start_date
     end: end_date
     root_link: parent
-    title: title
+    display: { title: title }
   - id: v-bar
     type: bar_chart
     group_by: status
     aggregate: count
-    title: title
+    display: { title: title }
   - id: v-line
     type: line_chart
     x: estimate
     y: actual_effort
-    title: title
+    display: { title: title }
   - id: v-workload
     type: workload
     start: start_date
     end: end_date
     effort: effort
-    title: title
+    display: { title: title }
   - id: v-metric
     type: metric
     metrics:
       - aggregate: count
-    title: title
+    display: { title: title }
   - id: v-treemap
     type: treemap
     group: parent
     size: effort
-    title: title
+    display: { title: title }
   - id: v-heatmap
     type: heatmap
     x: end_date
     y: assignee
     aggregate: count
-    title: title
+    display: { title: title }
 "#;
         let parsed = parse_views(yaml).unwrap();
         assert_eq!(parsed.views.len(), 12);
         for view in &parsed.views {
             assert_eq!(
-                view.title.as_deref(),
+                view.display.title.as_deref(),
                 Some("title"),
-                "view {} did not carry the title slot",
+                "view {} did not carry the display title",
                 view.id
             );
         }
     }
 
     #[test]
-    fn title_omitted_leaves_none() {
+    fn display_omitted_leaves_default() {
         let view = parse_single("views:\n  - id: v\n    type: board\n    field: status\n");
-        assert!(view.title.is_none());
+        assert_eq!(view.display, DisplayConfig::default());
+    }
+
+    #[test]
+    fn unknown_display_role_rejected() {
+        // `color` is reserved for later — until it ships, an unknown
+        // role inside display is caught by deny_unknown_fields.
+        let yaml = "views:\n  - id: b\n    type: board\n    field: status\n    display:\n      color: severity\n";
+        let err = parse_views(yaml).unwrap_err();
+        assert!(matches!(err, ViewsLoadError::InvalidYaml(_)), "got {err:?}");
     }
 
     // ── Validation errors ──────────────────────────────────────────
@@ -1221,7 +1271,8 @@ views:
     field: depends_on
   - id: all-items
     type: table
-    columns: [id, title, type, status, start_date, end_date]
+    display:
+      fields: [id, title, type, status, start_date, end_date]
   - id: roadmap
     type: gantt
     start: start_date
@@ -1279,14 +1330,17 @@ views:
   - id: status-board
     type: board
     field: status
-    title: title
+    display:
+      title: title
+      subtitle: status
     where:
       - "type=issue"
       - "status!=removed"
   - id: hierarchy
     type: tree
     field: parent
-    columns: [status, points]
+    display:
+      fields: [status, points]
   - id: bare-tree
     type: tree
     field: parent
@@ -1296,7 +1350,8 @@ views:
     group_by: parent
   - id: all-items
     type: table
-    columns: [id, title, status]
+    display:
+      fields: [id, title, status]
   - id: roadmap
     type: gantt
     start: start_date

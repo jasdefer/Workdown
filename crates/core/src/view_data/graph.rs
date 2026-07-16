@@ -113,7 +113,7 @@ fn resolve_field<'schema>(name: &'schema str, schema: &'schema Schema) -> &'sche
 mod tests {
     use super::*;
     use crate::model::schema::{FieldTypeConfig, Schema};
-    use crate::model::views::{View, ViewKind};
+    use crate::model::views::{DisplayConfig, View, ViewKind};
     use crate::model::FieldValue;
     use crate::view_data::test_support::{
         make_item, make_schema, make_store, make_store_with_files,
@@ -123,7 +123,7 @@ mod tests {
         View {
             id: "my-graph".into(),
             where_clauses: vec![],
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::Graph {
                 field: field.to_owned(),
                 group_by: None,
@@ -348,7 +348,7 @@ mod tests {
         let view = View {
             id: "g".into(),
             where_clauses: vec!["status=open".into()],
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::Graph {
                 field: "depends_on".into(),
                 group_by: None,
@@ -403,7 +403,7 @@ mod tests {
         View {
             id: "my-graph".into(),
             where_clauses: vec![],
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::Graph {
                 field: field.to_owned(),
                 group_by: Some(group_by.to_owned()),
@@ -488,7 +488,7 @@ mod tests {
         let view = View {
             id: "g".into(),
             where_clauses: vec!["status=open".into()],
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::Graph {
                 field: "depends_on".into(),
                 group_by: Some("parent".into()),

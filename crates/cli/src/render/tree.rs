@@ -87,6 +87,7 @@ mod tests {
         Card {
             id: WorkItemId::from(id.to_owned()),
             title: title.map(str::to_owned),
+            subtitle: None,
             fields: vec![],
             body: String::new(),
         }

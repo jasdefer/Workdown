@@ -154,7 +154,10 @@ async fn get_view(
         return ApiResponse::unrenderable(diagnostics);
     }
 
-    // Tier 3: extract and return view data.
+    // Tier 3: extract and return view data. Unset display roles inherit
+    // the project-wide defaults from config.yaml at this point — after
+    // validation, so diagnostics keep pointing at what views.yaml says.
+    let render_view = render_view.with_display_defaults(&state.config.defaults.display);
     let data = view_data::extract(
         &render_view,
         &project.store,

@@ -13,7 +13,6 @@ flowchart TD
             diagnostic-scope-routing["Make diagnostic source-routing structural, not enumerative"]
             diagnostic-variant-cleanup["Collapse parallel View* slot variants and unify their validation helpers"]
             render-module-hygiene["Render module hygiene — escape helpers, test fixtures, common.rs naming"]
-            rules-current-date-reference["Rules can't reference the current date"]
             walker-primitives["Unify the upward chain walks and link-target reads"]
         end
         subgraph foundation ["Foundation"]
@@ -36,6 +35,9 @@ flowchart TD
             cli-unset-command["workdown unset — clear a field"]
         end
         subgraph polish ["Polish & dogfood"]
+            explicit-in-operator["Explicit `in` operator; `=` becomes always-literal"]
+            resource-option-lists["Validate resource references and render resource pickers"]
+            rules-current-date-reference["Rules can't reference the current date"]
             store-diagnostics-consistency["Make store-diagnostic surfacing consistent across commands"]
         end
         subgraph renderers ["Renderers"]
@@ -62,20 +64,36 @@ flowchart TD
             views-title-slot["Add per-view `title:` slot to views.yaml"]
         end
         subgraph server ["Interactive UI (workdown serve)"]
+            app-shell-navigation["App shell navigation (views menu + future link slots)"]
             first-view-end-to-end["First view end-to-end (board, read-only)"]
             live-updates["File watcher and SSE for live updates"]
             mutations-slice["Mutations end-to-end"]
             remaining-read-views["Remaining read-only views"]
+            ui-foundation["UI foundation — conventions and scaffolding before the first view"]
             walking-skeleton["workdown serve skeleton with embedded UI"]
+        end
+        subgraph view-authoring ["Author and edit views from the UI"]
+            schema-metadata-api["Expose schema metadata so the UI can offer valid choices"]
+            view-creation["Create a new view from the UI"]
+            view-filter-editor["Build and edit a view's where filter from the UI"]
+            view-write-backend["Persist view definitions to views.yaml"]
+        end
+        subgraph view-presentation ["View & item presentation"]
+            color-field-type["Add `color` field type with background tinting"]
+            view-display-config["Per-view-kind display configuration (which fields show where)"]
         end
     end
     subgraph time-tracking ["Time tracking"]
         duration-comparison-rule["Cross-field comparison rule for duration values"]
         git-derived-default-generator["Default generator that reads dates from git history"]
     end
+    app-shell-navigation --> first-view-end-to-end
     cli-move-command --> cli-set-command
     cli-set-modes --> cli-set-command
     cli-unset-command --> cli-set-command
+    color-field-type --> mutations-slice
+    explicit-in-operator --> view-filter-editor
+    first-view-end-to-end --> ui-foundation
     first-view-end-to-end --> walking-skeleton
     gantt-duration-mode --> duration-field-type
     gantt-duration-mode --> render-gantt
@@ -83,6 +101,7 @@ flowchart TD
     item-mutations --> foundation
     live-updates --> walking-skeleton
     mutations-slice --> first-view-end-to-end
+    polish --> view-authoring
     remaining-read-views --> first-view-end-to-end
     render-bar-chart --> view-data-intermediate
     render-board --> view-data-intermediate
@@ -109,11 +128,24 @@ flowchart TD
     render-treemap --> view-data-intermediate
     render-workload --> view-data-intermediate
     renderers --> foundation
+    resource-option-lists --> mutations-slice
+    resource-option-lists --> schema-metadata-api
     server --> foundation
     server --> item-mutations
     server --> renderers
+    ui-foundation --> walking-skeleton
+    view-authoring --> server
+    view-creation --> app-shell-navigation
+    view-creation --> schema-metadata-api
+    view-creation --> view-filter-editor
+    view-creation --> view-write-backend
     view-data-intermediate --> field-value-native-date
     view-data-intermediate --> views-title-slot
+    view-display-config --> remaining-read-views
+    view-filter-editor --> remaining-read-views
+    view-filter-editor --> schema-metadata-api
+    view-filter-editor --> view-write-backend
+    view-presentation --> server
     views-validate-integration --> foundation-cleanup
     views-validate-integration --> views-config-path
     views-validate-integration --> views-cross-file-validation

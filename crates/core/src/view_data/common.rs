@@ -70,6 +70,9 @@ pub fn column_cell(column_name: &str, item: &WorkItem) -> Option<FieldValue> {
 pub struct Card {
     pub id: WorkItemId,
     pub title: Option<String>,
+    /// Secondary line, resolved via the view's `subtitle` display role.
+    /// `None` when the role is unset or the item lacks the field.
+    pub subtitle: Option<String>,
     pub fields: Vec<CardField>,
     pub body: String,
 }
@@ -97,19 +100,22 @@ pub struct ItemRef {
     pub title: Option<String>,
 }
 
-/// Build a Card from a work item, resolving the view's title slot.
+/// Build a Card from a work item, resolving the view's display roles.
 ///
-/// Fields emitted: each schema-declared field the item actually has a
-/// value for, in schema-declaration order. Fields not present on the
-/// item are omitted (not padded with `None`) — consumers that need a
-/// uniform shape can consult the schema themselves.
+/// Fields emitted: each entry of [`effective_fields`] the item actually
+/// has a value for, in role order (user's order when the `fields` role
+/// is set, schema-declaration order in the fallback). Fields not present
+/// on the item are omitted (not padded with `None`) — consumers that
+/// need a uniform shape can consult the schema themselves.
 pub fn build_card(item: &WorkItem, schema: &Schema, view: &View) -> Card {
-    let title = resolve_title(item, view);
     let mut fields = Vec::new();
-    for (field_name, config) in &schema.fields {
-        if let Some(value) = item.fields.get(field_name) {
+    for field_name in effective_fields(view, schema) {
+        let Some(config) = schema.fields.get(&field_name) else {
+            continue; // the virtual `id` — carried on the card itself
+        };
+        if let Some(value) = item.fields.get(&field_name) {
             fields.push(CardField {
-                name: field_name.clone(),
+                name: field_name,
                 value: value.clone(),
                 field_type: config.field_type(),
             });
@@ -117,19 +123,52 @@ pub fn build_card(item: &WorkItem, schema: &Schema, view: &View) -> Card {
     }
     Card {
         id: item.id.clone(),
-        title,
+        title: resolve_title(item, view),
+        subtitle: resolve_subtitle(item, view),
         fields,
         body: item.body.clone(),
     }
 }
 
-/// Resolve a card's display title via the view's `title:` slot.
+/// The view's `fields` display role, or every schema field in
+/// declaration order when the role is unset — preserving the
+/// show-everything behavior views had before display roles existed.
 ///
-/// Returns `None` when the view has no `title:` set or when the referenced
-/// field isn't set on this item — renderers fall back to the item id.
-/// The virtual `id` slot returns the item id as a string.
+/// Names that resolve neither in `schema.fields` nor to the virtual
+/// `id` are dropped: `views_check` guarantees the view's own role
+/// entries resolve, but entries inherited from `defaults.display` in
+/// `config.yaml` are not yet validated anywhere, and must not panic
+/// the extractor.
+pub fn effective_fields(view: &View, schema: &Schema) -> Vec<String> {
+    if view.display.fields.is_empty() {
+        schema.fields.keys().cloned().collect()
+    } else {
+        view.display
+            .fields
+            .iter()
+            .filter(|name| *name == "id" || schema.fields.contains_key(*name))
+            .cloned()
+            .collect()
+    }
+}
+
+/// Resolve a card's display title via the view's `title` display role.
+///
+/// Returns `None` when the role is unset or when the referenced field
+/// isn't set on this item — renderers fall back to the item id. The
+/// virtual `id` returns the item id as a string.
 pub fn resolve_title(item: &WorkItem, view: &View) -> Option<String> {
-    let slot = view.title.as_deref()?;
+    resolve_text_role(item, view.display.title.as_deref())
+}
+
+/// Resolve a card's secondary line via the view's `subtitle` display
+/// role. Same semantics as [`resolve_title`].
+pub fn resolve_subtitle(item: &WorkItem, view: &View) -> Option<String> {
+    resolve_text_role(item, view.display.subtitle.as_deref())
+}
+
+fn resolve_text_role(item: &WorkItem, slot: Option<&str>) -> Option<String> {
+    let slot = slot?;
     if slot == "id" {
         return Some(item.id.as_str().to_owned());
     }

@@ -22,7 +22,7 @@ use crate::model::views::{View, ViewKind};
 use crate::model::{FieldValue, WorkItemId};
 use crate::store::Store;
 
-use super::common::{build_column, column_cell, resolve_title, Column, ItemRef};
+use super::common::{build_column, column_cell, effective_fields, resolve_title, Column, ItemRef};
 use super::filter::filtered_items;
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
@@ -41,11 +41,14 @@ pub struct TableRow {
 }
 
 pub fn extract_table(view: &View, store: &Store, schema: &Schema) -> TableData {
-    let ViewKind::Table { columns } = &view.kind else {
+    let ViewKind::Table = &view.kind else {
         panic!("extract_table called with non-table view kind");
     };
     let items = filtered_items(view, store, schema);
 
+    // Columns come from the `fields` display role; unset falls back to
+    // every schema field in declaration order.
+    let columns = effective_fields(view, schema);
     let table_columns: Vec<Column> = columns
         .iter()
         .map(|column_name| build_column(column_name, schema))
@@ -122,7 +125,7 @@ fn insert_ref(
 mod tests {
     use super::*;
     use crate::model::schema::{FieldType, FieldTypeConfig};
-    use crate::model::views::{View, ViewKind};
+    use crate::model::views::{DisplayConfig, View, ViewKind};
     use crate::view_data::test_support::{make_item, make_schema, make_store};
 
     fn table_view(columns: Vec<&str>, where_clauses: Vec<&str>) -> View {
@@ -137,10 +140,12 @@ mod tests {
         View {
             id: "my-table".to_owned(),
             where_clauses: where_clauses.into_iter().map(str::to_owned).collect(),
-            title: title.map(str::to_owned),
-            kind: ViewKind::Table {
-                columns: columns.into_iter().map(str::to_owned).collect(),
+            display: DisplayConfig {
+                title: title.map(str::to_owned),
+                subtitle: None,
+                fields: columns.into_iter().map(str::to_owned).collect(),
             },
+            kind: ViewKind::Table,
         }
     }
 

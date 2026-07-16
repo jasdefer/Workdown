@@ -42,6 +42,9 @@
 		<span class="title">{displayTitle}</span>
 		<span class="id" aria-label="Item id" title={card.id}>{card.id}</span>
 	</header>
+	{#if card.subtitle}
+		<div class="subtitle">{card.subtitle}</div>
+	{/if}
 	{#if card.body.trim().length > 0}
 		<div class="body">
 			<Markdown content={card.body} compact />
@@ -96,6 +99,12 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.subtitle {
+		color: var(--color-fg-muted);
+		font-size: 0.85em;
+		overflow-wrap: anywhere;
 	}
 
 	.body {

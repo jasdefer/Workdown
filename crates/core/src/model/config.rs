@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use serde::Deserialize;
 
 use super::calendar::WorkingCalendar;
+use super::views::DisplayConfig;
 use super::weekday::Weekday;
 
 /// A parsed project configuration.
@@ -91,4 +92,10 @@ pub struct ViewDefaults {
     pub tree_field: String,
     /// Field used for dependency graph (must be a `links` field).
     pub graph_field: String,
+    /// Project-wide display roles, inherited by every view. A view's
+    /// own `display:` block overrides these per role. Omitted section
+    /// means no project defaults — views fall through to the per-kind
+    /// hardcoded fallbacks.
+    #[serde(default)]
+    pub display: DisplayConfig,
 }

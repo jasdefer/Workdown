@@ -47,6 +47,20 @@ pub fn run_render(
 
     let invalid_view_ids = invalid_view_ids(&project.diagnostics);
 
+    // Fill unset display roles from `defaults.display` in config.yaml.
+    // Applied after validation so diagnostics keep pointing at what the
+    // user actually wrote in views.yaml.
+    let views = Views {
+        output_dir: views.output_dir.clone(),
+        views: views
+            .views
+            .iter()
+            .cloned()
+            .map(|view| view.with_display_defaults(&config.defaults.display))
+            .collect(),
+    };
+    let views = &views;
+
     // Climb out of the output directory back to project root, then down
     // into the work items dir. Each component of `output_dir` adds one
     // `../` so nested output paths (e.g. `rendered/views`) still produce

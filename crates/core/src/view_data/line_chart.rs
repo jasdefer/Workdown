@@ -138,7 +138,7 @@ mod tests {
     use chrono::NaiveDate;
 
     use crate::model::schema::{FieldTypeConfig, Schema};
-    use crate::model::views::{View, ViewKind};
+    use crate::model::views::{DisplayConfig, View, ViewKind};
     use crate::model::FieldValue;
     use crate::view_data::test_support::{make_item, make_schema, make_store};
 
@@ -150,7 +150,7 @@ mod tests {
         View {
             id: "my-line".into(),
             where_clauses: vec![],
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::LineChart {
                 x: x.to_owned(),
                 y: y.to_owned(),
