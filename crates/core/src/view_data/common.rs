@@ -73,6 +73,11 @@ pub struct Card {
     /// Secondary line, resolved via the view's `subtitle` display role.
     /// `None` when the role is unset or the item lacks the field.
     pub subtitle: Option<String>,
+    /// Resolved `#rrggbb` of the item's first `color` field in schema
+    /// order (see [`resolved_background`]); `None` when unset. Renderers
+    /// tint the item's surface with it and keep their neutral default
+    /// otherwise.
+    pub background: Option<String>,
     pub fields: Vec<CardField>,
     pub body: String,
 }
@@ -125,8 +130,28 @@ pub fn build_card(item: &WorkItem, schema: &Schema, view: &View) -> Card {
         id: item.id.clone(),
         title: resolve_title(item, view),
         subtitle: resolve_subtitle(item, view),
+        background: resolved_background(item, schema),
         fields,
         body: item.body.clone(),
+    }
+}
+
+/// Resolve an item's background tint: the item's value for the first
+/// `color` field in schema order, resolved to `#rrggbb`.
+///
+/// The first-color-field convention mirrors how the first compatible
+/// `choice` field backs a board. Items without a value (or with an
+/// invalid one — coercion already dropped it) return `None`, keeping
+/// the neutral default background. Resolution happens here, once, so
+/// every consumer downstream only ever sees finished hex.
+pub fn resolved_background(item: &WorkItem, schema: &Schema) -> Option<String> {
+    let (field_name, _) = schema
+        .fields
+        .iter()
+        .find(|(_, definition)| definition.field_type() == FieldType::Color)?;
+    match item.fields.get(field_name) {
+        Some(FieldValue::Color(canonical)) => crate::model::color::resolve_color_to_hex(canonical),
+        _ => None,
     }
 }
 

@@ -17,6 +17,7 @@
 	import type { FieldMutation } from '$lib/api/generated/FieldMutation';
 	import type { FieldSchema } from '$lib/api/generated/FieldSchema';
 	import type { FieldValue } from '$lib/api/generated/FieldValue';
+	import type { PaletteColor } from '$lib/api/generated/PaletteColor';
 	import Chip from '$lib/ui/Chip.svelte';
 	import { prettifyId } from '$lib/views/prettify';
 
@@ -25,14 +26,26 @@
 		value: FieldValue | null;
 		/** All item ids — option set for link/links pickers. */
 		items: string[];
+		/** The built-in color palette — option set for color swatches. */
+		palette?: PaletteColor[];
 		disabled?: boolean;
 		oncommit: (mutation: FieldMutation) => void;
 	}
 
-	let { field, value, items, disabled = false, oncommit }: Props = $props();
+	let { field, value, items, palette = [], disabled = false, oncommit }: Props = $props();
 
 	const asArray = $derived(Array.isArray(value) ? (value as string[]) : []);
 	const asScalar = $derived(value === null ? '' : String(value));
+
+	// The current color value resolved to hex — palette names resolve
+	// through the served map, hex passes through. Drives the native
+	// picker's value and the selected-swatch highlight (a stored hex
+	// equal to a palette color selects that swatch too).
+	const asHex = $derived.by(() => {
+		if (asScalar === '') return null;
+		if (asScalar.startsWith('#')) return asScalar;
+		return palette.find((entry) => entry.name === asScalar)?.hex ?? null;
+	});
 
 	function replace(next: unknown): void {
 		oncommit({ op: 'replace', value: next });
@@ -152,6 +165,51 @@
 			<option value={id} selected={asArray.includes(id)}>{prettifyId(id)}</option>
 		{/each}
 	</select>
+{:else if field.field_type === 'color'}
+	<div class="color-editor">
+		{#each palette as entry (entry.name)}
+			<!-- Clicking a swatch stores the *name* — the human-readable
+			     authoring form that tracks future palette tuning. -->
+			<button
+				type="button"
+				class="swatch"
+				class:selected={asHex === entry.hex}
+				style:background-color={entry.hex}
+				title={entry.name}
+				aria-label={entry.name}
+				aria-pressed={asHex === entry.hex}
+				{disabled}
+				onclick={() => {
+					commitScalar(entry.name, false);
+				}}
+			></button>
+		{/each}
+		<input
+			type="color"
+			class="picker"
+			title="Custom color"
+			aria-label="Custom color"
+			value={asHex ?? '#808080'}
+			{disabled}
+			onchange={(event) => {
+				commitScalar(event.currentTarget.value, false);
+			}}
+		/>
+		{#if asScalar !== ''}
+			<code class="current">{asScalar}</code>
+			{#if !field.required}
+				<button
+					type="button"
+					class="remove"
+					aria-label="Clear color"
+					{disabled}
+					onclick={() => {
+						commitScalar('', false);
+					}}>×</button
+				>
+			{/if}
+		{/if}
+	</div>
 {:else if field.field_type === 'list'}
 	<div class="tags">
 		{#each asArray as tag (tag)}
@@ -219,6 +277,43 @@
 		align-items: center;
 		gap: 0.25rem;
 		font-size: var(--text-sm);
+	}
+
+	.color-editor {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: var(--space-1);
+	}
+
+	.swatch {
+		width: 1.4rem;
+		height: 1.4rem;
+		padding: 0;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+	}
+
+	.swatch.selected {
+		outline: 2px solid var(--color-fg);
+		outline-offset: 1px;
+	}
+
+	.picker {
+		width: 1.75rem;
+		height: 1.5rem;
+		padding: 0;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: none;
+		cursor: pointer;
+	}
+
+	.current {
+		font-family: var(--font-mono);
+		font-size: 0.75em;
+		color: var(--color-fg-muted);
 	}
 
 	.tags {

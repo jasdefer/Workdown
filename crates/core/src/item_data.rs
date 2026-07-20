@@ -22,6 +22,11 @@ use crate::view_data::CardField;
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct ItemDetail {
     pub id: WorkItemId,
+    /// Resolved `#rrggbb` of the item's first `color` field in schema
+    /// order; `None` when unset. Same convention as
+    /// [`Card::background`](crate::view_data::Card::background) — the
+    /// detail surface tints itself with it.
+    pub background: Option<String>,
     /// Each schema-declared field the item has a value for, in schema
     /// order. Fields the item doesn't set are omitted — the editor pulls
     /// the full field list (and how to render absent ones) from
@@ -47,6 +52,7 @@ pub fn build(item: &WorkItem, schema: &Schema) -> ItemDetail {
 
     ItemDetail {
         id: item.id.clone(),
+        background: crate::view_data::resolved_background(item, schema),
         fields,
         body: item.body.clone(),
     }

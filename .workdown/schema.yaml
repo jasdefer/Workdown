@@ -67,6 +67,10 @@ fields:
       function: sum
       error_on_missing: false
 
+  color:
+    type: color
+    required: false
+
   # Per-issue work estimate, independent of the calendar span carried by
   # start_date/end_date/duration. Set on leaf issues; rolls up as a total
   # to milestones and the epic.

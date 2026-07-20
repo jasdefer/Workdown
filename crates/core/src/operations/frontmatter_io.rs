@@ -139,6 +139,13 @@ pub fn parse_value_for_field(value_str: &str, field_def: &FieldDefinition) -> se
                 .collect();
             Value::Sequence(elements)
         }
+        // Valid colors are written in canonical form (`#ABC` → `#aabbcc`,
+        // `RED` → `red`); invalid input falls through verbatim and the
+        // post-write reload flags it, like every other type here.
+        FieldTypeConfig::Color => match crate::model::color::parse_color(value_str) {
+            Ok(canonical) => Value::String(canonical),
+            Err(_) => Value::String(value_str.to_owned()),
+        },
         FieldTypeConfig::String { .. }
         | FieldTypeConfig::Choice { .. }
         | FieldTypeConfig::Date
@@ -397,6 +404,30 @@ mod tests {
         let sequence = value.as_sequence().unwrap();
         assert_eq!(sequence.len(), 1);
         assert_eq!(sequence[0].as_str().unwrap(), "auth");
+    }
+
+    fn color_field() -> FieldDefinition {
+        FieldDefinition::new(FieldTypeConfig::Color)
+    }
+
+    #[test]
+    fn parse_color_normalizes_valid_input() {
+        assert_eq!(
+            parse_value_for_field("#ABC", &color_field()),
+            serde_yaml::Value::String("#aabbcc".to_owned())
+        );
+        assert_eq!(
+            parse_value_for_field("RED", &color_field()),
+            serde_yaml::Value::String("red".to_owned())
+        );
+    }
+
+    #[test]
+    fn parse_color_falls_back_to_string_on_bad_input() {
+        // Invalid colors pass through verbatim; the post-write reload
+        // flags them (save-with-warning).
+        let value = parse_value_for_field("teal", &color_field());
+        assert_eq!(value.as_str().unwrap(), "teal");
     }
 
     #[test]

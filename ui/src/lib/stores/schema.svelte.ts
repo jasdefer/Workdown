@@ -12,6 +12,7 @@ import { api } from '$lib/api/client';
 import type { FieldSchema } from '$lib/api/generated/FieldSchema';
 import type { FieldType } from '$lib/api/generated/FieldType';
 import type { Operator } from '$lib/api/generated/Operator';
+import type { PaletteColor } from '$lib/api/generated/PaletteColor';
 import type { SchemaData } from '$lib/api/generated/SchemaData';
 
 let data = $state<SchemaData | null>(null);
@@ -40,6 +41,13 @@ export const schemaStore = {
 	/** All work-item ids, sorted — the option set for link/links pickers. */
 	get items(): string[] {
 		return data?.items ?? [];
+	},
+	/**
+	 * The built-in color palette (name + pinned hex) — the option set for
+	 * a color field's swatch row. Empty until loaded.
+	 */
+	get palette(): PaletteColor[] {
+		return data?.palette ?? [];
 	},
 	/** Set when the last load failed; `null` otherwise. */
 	get error(): string | null {

@@ -335,6 +335,10 @@ pub enum FieldValueError {
     /// Duration string failed to parse.
     InvalidDuration { value: String, reason: String },
 
+    /// Color value is neither valid hex nor a palette name. `allowed`
+    /// lists the palette names so the diagnostic teaches the palette.
+    InvalidColor { value: String, allowed: Vec<String> },
+
     /// Date string is not valid YYYY-MM-DD.
     InvalidDate { value: String },
 
@@ -755,6 +759,13 @@ impl std::fmt::Display for FieldValueError {
             }
             Self::InvalidDate { value } => {
                 write!(f, "'{value}' is not a valid date (expected YYYY-MM-DD)")
+            }
+            Self::InvalidColor { value, allowed } => {
+                write!(
+                    f,
+                    "'{value}' is not a valid color (expected #rgb / #rrggbb or one of: {})",
+                    allowed.join(", ")
+                )
             }
             Self::PatternMismatch { value, pattern } => {
                 write!(f, "'{value}' does not match pattern '{pattern}'")

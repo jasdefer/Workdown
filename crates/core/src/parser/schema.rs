@@ -369,6 +369,28 @@ fn validate_type_specific_properties(
                 }
             }
         }
+        FieldType::Color => {
+            reject_prop(name, "values", &field.values, field.field_type, errors);
+            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
+            reject_prop(name, "min", &field.min, field.field_type, errors);
+            reject_prop(name, "max", &field.max, field.field_type, errors);
+            reject_prop(
+                name,
+                "allow_cycles",
+                &field.allow_cycles,
+                field.field_type,
+                errors,
+            );
+            reject_prop(name, "resource", &field.resource, field.field_type, errors);
+            reject_prop(
+                name,
+                "aggregate",
+                &field.aggregate,
+                field.field_type,
+                errors,
+            );
+            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
+        }
         FieldType::List => {
             reject_prop(name, "values", &field.values, field.field_type, errors);
             reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
@@ -535,6 +557,7 @@ fn convert_field(raw: RawFieldDefinition) -> FieldDefinition {
             min: raw.min.as_ref().and_then(parse_duration_bound),
             max: raw.max.as_ref().and_then(parse_duration_bound),
         },
+        FieldType::Color => FieldTypeConfig::Color,
         FieldType::Boolean => FieldTypeConfig::Boolean,
         FieldType::List => FieldTypeConfig::List,
         FieldType::Link => FieldTypeConfig::Link {
@@ -702,6 +725,14 @@ fn validate_default_compatibility(
         }
         DefaultValue::String(s) => match field.field_type {
             FieldType::String | FieldType::Date => {}
+            FieldType::Color => {
+                if let Err(parse_error) = crate::model::color::parse_color(s) {
+                    errors.push(field_error(
+                        name,
+                        format!("default is not a valid color: {parse_error}"),
+                    ));
+                }
+            }
             FieldType::Choice | FieldType::Multichoice => {
                 if let Some(ref values) = field.values {
                     if !values.contains(s) {
@@ -1419,6 +1450,93 @@ fields:
                 .message
                 .contains("'pattern' is not valid for type 'duration'")),
             "expected pattern-rejection error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn color_field_parses_minimal() {
+        let yaml = "\
+fields:
+  background:
+    type: color
+";
+        let schema = parse_schema(yaml).expect("schema parses");
+        assert!(matches!(
+            schema.fields.get("background").map(|f| &f.type_config),
+            Some(FieldTypeConfig::Color)
+        ));
+    }
+
+    #[test]
+    fn color_values_rejected() {
+        // The palette is built-in; per-field values are not configurable.
+        let yaml = "\
+fields:
+  background:
+    type: color
+    values: [red, blue]
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.message.contains("'values' is not valid for type 'color'")),
+            "expected values-rejection error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn color_aggregate_rejected() {
+        let yaml = "\
+fields:
+  background:
+    type: color
+    aggregate:
+      function: sum
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(
+            errors.iter().any(|e| e
+                .message
+                .contains("'aggregate' is not valid for type 'color'")),
+            "expected aggregate-rejection error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn color_default_validated() {
+        let yaml_valid = "\
+fields:
+  background:
+    type: color
+    default: red
+";
+        parse_schema(yaml_valid).expect("palette-name default parses");
+
+        let yaml_invalid = "\
+fields:
+  background:
+    type: color
+    default: teal
+";
+        let err = parse_schema(yaml_invalid).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.message.contains("default is not a valid color")),
+            "expected default-color error, got: {errors:?}"
         );
     }
 

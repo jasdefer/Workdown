@@ -88,6 +88,7 @@ fn format_cell(cell: &Option<FieldValue>, column: &str, item_link_base: &str) ->
         FieldValue::Float(f) => f.to_string(),
         FieldValue::Date(d) => d.format("%Y-%m-%d").to_string(),
         FieldValue::Duration(seconds) => format_duration_seconds(*seconds),
+        FieldValue::Color(color) => escape_cell(color),
         FieldValue::Boolean(true) => "✓".to_owned(),
         FieldValue::Boolean(false) => "✗".to_owned(),
         FieldValue::Link(id) => id_link(id.as_str(), item_link_base),
@@ -113,6 +114,7 @@ mod tests {
     fn row(id: &str, cells: Vec<Option<FieldValue>>) -> TableRow {
         TableRow {
             id: WorkItemId::from(id.to_owned()),
+            background: None,
             cells,
         }
     }

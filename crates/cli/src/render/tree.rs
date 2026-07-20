@@ -88,6 +88,7 @@ mod tests {
             id: WorkItemId::from(id.to_owned()),
             title: title.map(str::to_owned),
             subtitle: None,
+            background: None,
             fields: vec![],
             body: String::new(),
         }

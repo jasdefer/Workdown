@@ -35,7 +35,7 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["string", "choice", "multichoice", "integer", "float", "date", "duration", "boolean", "list", "link", "links"],
+          "enum": ["string", "choice", "multichoice", "integer", "float", "date", "duration", "color", "boolean", "list", "link", "links"],
           "description": "The built-in type for this field."
         },
         "description": {
@@ -191,6 +191,23 @@
                 "type": "string",
                 "pattern": "^-?\\s*(\\d+(s|min|h|d|w))(\\s+\\d+(s|min|h|d|w))*$"
               }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "color" } }
+          },
+          "then": {
+            "properties": {
+              "values": false,
+              "pattern": false,
+              "min": false,
+              "max": false,
+              "allow_cycles": false,
+              "resource": false,
+              "aggregate": false,
+              "inverse": false
             }
           }
         },

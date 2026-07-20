@@ -130,6 +130,7 @@
 			case 'choice':
 			case 'date':
 			case 'duration':
+			case 'color':
 				return String(a).localeCompare(String(b));
 			case 'multichoice':
 			case 'list':

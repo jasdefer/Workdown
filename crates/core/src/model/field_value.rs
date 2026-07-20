@@ -41,6 +41,11 @@ pub enum FieldValue {
         #[ts(type = "string")]
         i64,
     ),
+    /// A color in canonical authoring form: a lowercase palette name
+    /// (`"red"`) or lowercase expanded hex (`"#aabbcc"`). Produced by
+    /// [`crate::model::color::parse_color`]; resolved to display hex via
+    /// [`crate::model::color::resolve_color_to_hex`] at use sites.
+    Color(String),
     /// A boolean flag.
     Boolean(bool),
     /// A list of free-form strings.
@@ -115,6 +120,7 @@ fn format_with(value: &FieldValue, bracketed: bool) -> String {
         FieldValue::Choice(string) => string.clone(),
         FieldValue::Date(date) => date.format("%Y-%m-%d").to_string(),
         FieldValue::Duration(seconds) => format_duration_seconds(*seconds),
+        FieldValue::Color(color) => color.clone(),
         FieldValue::Link(id) => id.as_str().to_owned(),
         FieldValue::Integer(number) => number.to_string(),
         FieldValue::Float(number) => number.to_string(),

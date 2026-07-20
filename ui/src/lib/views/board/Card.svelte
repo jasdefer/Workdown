@@ -27,6 +27,8 @@
 
 <div
 	class="card"
+	class:tinted={card.background !== null}
+	style:--item-color={card.background}
 	use:draggable={card.id}
 	role="button"
 	tabindex="0"
@@ -66,8 +68,23 @@
 		text-align: left;
 	}
 
+	/* Stripe + tint: the item's resolved `color` field. The stripe
+	   carries the hue at full strength; the tint washes the surface via
+	   the shared `--tint-strength` token. Untinted cards keep the
+	   neutral theme background. */
+	.card.tinted {
+		background-color: color-mix(in srgb, var(--item-color) var(--tint-strength), var(--color-bg));
+		border-left: 4px solid var(--item-color);
+	}
+
 	.card:hover {
 		border-color: var(--color-fg-muted);
+	}
+
+	/* The stripe keeps its hue on hover — only the neutral sides go
+	   muted, so the color doesn't blink off when reaching for a card. */
+	.card.tinted:hover {
+		border-left-color: var(--item-color);
 	}
 
 	.card:focus-visible {

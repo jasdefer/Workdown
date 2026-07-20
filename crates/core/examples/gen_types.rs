@@ -35,7 +35,7 @@ use workdown_core::mutation_data::{
 use workdown_core::query::clause::{Clause, Condition};
 use workdown_core::query::types::Operator;
 use workdown_core::schema_data::{
-    FieldSchema, FieldTypeOperators, ResourceList, ResourceOption, SchemaData,
+    FieldSchema, FieldTypeOperators, PaletteColor, ResourceList, ResourceOption, SchemaData,
 };
 use workdown_core::view_data::{
     AggregateValue, AxisValue, BarChartBar, BarChartData, BoardColumn, BoardData, Card, CardField,
@@ -81,6 +81,7 @@ const ALL_TYPES: &[&str] = &[
     "FieldSchema",
     "ResourceList",
     "ResourceOption",
+    "PaletteColor",
     "FieldTypeOperators",
     "Operator",
     "Condition",
@@ -169,6 +170,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_type::<FieldSchema>(&target_dir)?;
     write_type::<ResourceList>(&target_dir)?;
     write_type::<ResourceOption>(&target_dir)?;
+    write_type::<PaletteColor>(&target_dir)?;
     write_type::<FieldTypeOperators>(&target_dir)?;
     write_type::<Operator>(&target_dir)?;
     write_type::<Condition>(&target_dir)?;

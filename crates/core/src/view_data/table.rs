@@ -22,7 +22,10 @@ use crate::model::views::{View, ViewKind};
 use crate::model::{FieldValue, WorkItemId};
 use crate::store::Store;
 
-use super::common::{build_column, column_cell, effective_fields, resolve_title, Column, ItemRef};
+use super::common::{
+    build_column, column_cell, effective_fields, resolve_title, resolved_background, Column,
+    ItemRef,
+};
 use super::filter::filtered_items;
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
@@ -37,6 +40,10 @@ pub struct TableData {
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TableRow {
     pub id: WorkItemId,
+    /// Resolved `#rrggbb` of the item's first `color` field in schema
+    /// order; `None` when unset. Same convention as
+    /// [`Card::background`](super::common::Card::background).
+    pub background: Option<String>,
     pub cells: Vec<Option<FieldValue>>,
 }
 
@@ -58,6 +65,7 @@ pub fn extract_table(view: &View, store: &Store, schema: &Schema) -> TableData {
         .iter()
         .map(|item| TableRow {
             id: item.id.clone(),
+            background: resolved_background(item, schema),
             cells: columns
                 .iter()
                 .map(|column| column_cell(column, item))

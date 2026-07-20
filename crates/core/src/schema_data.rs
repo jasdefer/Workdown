@@ -27,7 +27,7 @@ use crate::store::Store;
 
 /// Every field type, in a stable order — the domain of
 /// [`SchemaData::operators_by_type`].
-const ALL_FIELD_TYPES: [FieldType; 11] = [
+const ALL_FIELD_TYPES: [FieldType; 12] = [
     FieldType::String,
     FieldType::Choice,
     FieldType::Multichoice,
@@ -35,6 +35,7 @@ const ALL_FIELD_TYPES: [FieldType; 11] = [
     FieldType::Float,
     FieldType::Date,
     FieldType::Duration,
+    FieldType::Color,
     FieldType::Boolean,
     FieldType::List,
     FieldType::Link,
@@ -60,6 +61,20 @@ pub struct SchemaData {
     /// (not repeated per field) since the operator set is purely a function
     /// of type — the UI reads a field's `field_type` and looks it up here.
     pub operators_by_type: Vec<FieldTypeOperators>,
+    /// The built-in named palette for `color` fields, in declaration
+    /// order. Reported once here so the color editor's swatch row and
+    /// the filter builder read the same pinned values core resolves
+    /// with — the UI keeps no copy of its own.
+    pub palette: Vec<PaletteColor>,
+}
+
+/// One entry of the built-in color palette.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct PaletteColor {
+    /// The name stored on items (e.g. `red`).
+    pub name: String,
+    /// The pinned `#rrggbb` the name resolves to.
+    pub hex: String,
 }
 
 /// One resource section and its selectable entries.
@@ -196,11 +211,20 @@ pub fn build(schema: &Schema, store: &Store, resources: &Resources) -> SchemaDat
         })
         .collect();
 
+    let palette = crate::model::color::COLOR_PALETTE
+        .iter()
+        .map(|(name, hex)| PaletteColor {
+            name: (*name).to_owned(),
+            hex: (*hex).to_owned(),
+        })
+        .collect();
+
     SchemaData {
         fields,
         items,
         resources,
         operators_by_type,
+        palette,
     }
 }
 
@@ -274,6 +298,20 @@ mod tests {
         let store = empty_store(&schema);
         let data = build(&schema, &store, &Resources::default());
         assert!(data.resources.is_empty());
+    }
+
+    #[test]
+    fn build_reports_the_builtin_palette() {
+        let schema = schema_with_assignee();
+        let store = empty_store(&schema);
+        let data = build(&schema, &store, &Resources::default());
+
+        assert_eq!(data.palette.len(), crate::model::color::COLOR_PALETTE.len());
+        assert_eq!(data.palette[0].name, "red");
+        assert_eq!(
+            data.palette[0].hex,
+            crate::model::color::resolve_color_to_hex("red").unwrap()
+        );
     }
 
     #[test]

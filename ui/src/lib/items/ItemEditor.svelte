@@ -111,6 +111,7 @@
 						{field}
 						value={valueOf(field.name)}
 						items={schemaStore.items}
+						palette={schemaStore.palette}
 						disabled={busy}
 						oncommit={(mutation: FieldMutation) => {
 							void commit(field.name, mutation);
