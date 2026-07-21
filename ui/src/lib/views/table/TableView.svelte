@@ -69,12 +69,15 @@
 
 	interface RenderableRow {
 		id: WorkItemId;
+		/** Resolved `#rrggbb` of the item's first color field, or null. */
+		background: string | null;
 		cells: RenderableCell[];
 	}
 
 	const renderableRows = $derived<RenderableRow[]>(
 		data.rows.map((row) => ({
 			id: row.id,
+			background: row.background,
 			cells: data.columns.map((column, index) => ({
 				column,
 				value: row.cells[index] ?? null
@@ -205,7 +208,7 @@
 		</thead>
 		<tbody>
 			{#each sortedRows as row (row.id)}
-				<tr>
+				<tr class:tinted={row.background !== null} style:--item-color={row.background}>
 					{#each row.cells as cell, cellIndex (cell.column.name)}
 						<td>
 							{#if cellIndex === 0}
@@ -328,6 +331,22 @@
 
 	tbody tr:last-child td {
 		border-bottom: none;
+	}
+
+	/* Color-field treatment (mirrors the board card): a full-strength
+	   stripe on the row's leading edge plus a --tint-strength wash across
+	   its cells. The stripe is an inset shadow, not a border, so it adds
+	   no width and tinted rows stay column-aligned with untinted ones.
+	   The wash mixes into the theme background (adapts to light/dark);
+	   the stripe hue is absolute, like a label color. The cell-level
+	   selector out-specifies the base `td` background, and keeps the
+	   sticky first column opaque so nothing shows through while scrolling. */
+	tbody tr.tinted td {
+		background-color: color-mix(in srgb, var(--item-color) var(--tint-strength), var(--color-bg));
+	}
+
+	tbody tr.tinted td:first-child {
+		box-shadow: inset 4px 0 0 0 var(--item-color);
 	}
 
 	th:first-child,
