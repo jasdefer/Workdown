@@ -6,6 +6,7 @@ status: in_progress
 parent: view-presentation
 depends_on:
 - mutations-slice
+color: orange
 effort: 2d
 ---
 
@@ -66,9 +67,12 @@ reopens core):**
   editor can render swatches without a second hardcoded copy in TS.
 
 **Editor:** a swatch row built from the served palette (clicking a
-swatch writes the *name* into frontmatter) plus a native
-`<input type="color">` for custom hex, plus a clear affordance for
-optional fields (an unset color field has no tint).
+swatch writes the *name* into frontmatter), a native
+`<input type="color">` for visual picking (marked with a rainbow ring
+so it isn't mistaken for a fixed swatch), a free-text input accepting
+`#rrggbb` or a palette name (committed as typed; server validates,
+save-with-warning — same pattern as duration free text), and a clear
+affordance for optional fields (an unset color field has no tint).
 
 **Background rendering:** the surface applies the resolved color and
 picks black or white text by the color's relative luminance:

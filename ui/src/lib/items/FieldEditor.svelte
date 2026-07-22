@@ -184,30 +184,45 @@
 				}}
 			></button>
 		{/each}
+		<!-- The rainbow ring marks this as the any-color picker, so it
+		     can't be mistaken for a ninth fixed swatch. -->
+		<span class="picker-ring">
+			<input
+				type="color"
+				class="picker"
+				title="Pick a custom color"
+				aria-label="Pick a custom color"
+				value={asHex ?? '#808080'}
+				{disabled}
+				onchange={(event) => {
+					commitScalar(event.currentTarget.value, false);
+				}}
+			/>
+		</span>
+		<!-- Free-text entry: a hex code or palette name, committed as
+		     typed — the server validates (save-with-warning), same as
+		     duration free text. Doubles as the current-value display. -->
 		<input
-			type="color"
-			class="picker"
-			title="Custom color"
-			aria-label="Custom color"
-			value={asHex ?? '#808080'}
+			type="text"
+			class="color-text"
+			placeholder="#rrggbb or name"
+			aria-label="Color as hex or palette name"
+			value={asScalar}
 			{disabled}
 			onchange={(event) => {
-				commitScalar(event.currentTarget.value, false);
+				commitScalar(event.currentTarget.value.trim(), false);
 			}}
 		/>
-		{#if asScalar !== ''}
-			<code class="current">{asScalar}</code>
-			{#if !field.required}
-				<button
-					type="button"
-					class="remove"
-					aria-label="Clear color"
-					{disabled}
-					onclick={() => {
-						commitScalar('', false);
-					}}>×</button
-				>
-			{/if}
+		{#if asScalar !== '' && !field.required}
+			<button
+				type="button"
+				class="remove"
+				aria-label="Clear color"
+				{disabled}
+				onclick={() => {
+					commitScalar('', false);
+				}}>×</button
+			>
 		{/if}
 	</div>
 {:else if field.field_type === 'list'}
@@ -300,20 +315,28 @@
 		outline-offset: 1px;
 	}
 
-	.picker {
-		width: 1.75rem;
-		height: 1.5rem;
-		padding: 0;
-		border: 1px solid var(--color-border);
+	.picker-ring {
+		display: inline-flex;
+		padding: 2px;
 		border-radius: var(--radius-sm);
+		background: conic-gradient(#ef4444, #eab308, #22c55e, #3b82f6, #a855f7, #ec4899, #ef4444);
+	}
+
+	.picker {
+		width: 1.2rem;
+		height: 1.2rem;
+		padding: 0;
+		border: none;
+		border-radius: 2px;
 		background: none;
 		cursor: pointer;
 	}
 
-	.current {
+	input[type='text'].color-text {
+		width: 8.5rem;
+		flex: 0 0 auto;
 		font-family: var(--font-mono);
-		font-size: 0.75em;
-		color: var(--color-fg-muted);
+		font-size: 0.8em;
 	}
 
 	.tags {
