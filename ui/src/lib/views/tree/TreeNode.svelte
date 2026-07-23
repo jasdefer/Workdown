@@ -39,7 +39,12 @@
 	const indentStyle = $derived(`--indent: ${(depth * 1.25).toString()}rem`);
 </script>
 
-<div class="row" role="row">
+<div
+	class="row"
+	role="row"
+	class:tinted={node.card.background !== null}
+	style:--item-color={node.card.background}
+>
 	<div class="cell title" style={indentStyle}>
 		{#if hasChildren}
 			<button

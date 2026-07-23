@@ -1,13 +1,17 @@
 ---
 id: server
+title: Interactive UI (workdown serve)
 type: milestone
 status: done
-title: Interactive UI (workdown serve)
 parent: phase-04-visualization
-depends_on: [foundation, item-mutations, renderers]
+depends_on:
+- foundation
+- item-mutations
+- renderers
 start_date: 2026-05-20
 end_date: 2026-06-25
-duration: "5w 2d"
+duration: 5w 2d
+color: red
 ---
 
 End-to-end interactive UI: `workdown serve` boots axum, serves an embedded Svelte SPA, exposes a JSON API the SPA consumes, pushes live updates via SSE. Server and UI ship in one binary and version together — the API is an internal contract between two halves of the same binary, not a public one.

@@ -6,7 +6,7 @@ status: done
 parent: item-mutations
 depends_on:
 - cli-set-command
-color: orange
+color: '#fbc02d'
 effort: 4h
 ---
 

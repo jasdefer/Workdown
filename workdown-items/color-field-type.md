@@ -99,6 +99,26 @@ the neutral borders go muted. Chosen against full-fill (kills the muted
 text hierarchy, loud in a column), tint-only (hues blur), and
 stripe-only (reads as a label, not a tinted surface).
 
+**Per-surface status.** Row-shaped surfaces reuse the board treatment;
+fill-shaped surfaces color their existing solid mark instead:
+
+- Board cards ✔ — stripe + tint (above).
+- Table rows ✔ — same, stripe as an inset shadow on the sticky first
+  cell so tinted rows stay column-aligned.
+- Detail editor ✔ — same, via the `--card-bg` hook on both card
+  surfaces (panel + standalone page).
+- Tree rows ✔ — same as table; rows are `display: contents`, so the
+  wash lands per cell and the stripe sits on the sticky title cell.
+- Gantt bars ✔ — the bar *is* the item's body, so its fill becomes the
+  item color (absolute across themes); uncolored bars keep the accent
+  default. Covers all three gantt variants; bars carry no text, so no
+  contrast flip is needed.
+- Treemap leaves — pending; same fill-replacement shape as gantt, but
+  leaves carry labels, so this is where the luminance text helper
+  applies.
+- Graph nodes — pending; cytoscape needs per-node data-driven styling
+  instead of tokens baked at style-build time.
+
 ## Plan
 
 **Phase 1 — backend.** Type, coercion + validation, palette +
