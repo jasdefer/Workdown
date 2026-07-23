@@ -23,9 +23,12 @@ use crate::view_data::CardField;
 pub struct ItemDetail {
     pub id: WorkItemId,
     /// Resolved `#rrggbb` of the item's first `color` field in schema
-    /// order; `None` when unset. Same convention as
+    /// order; `None` when unset. Same hex convention as
     /// [`Card::background`](crate::view_data::Card::background) — the
-    /// detail surface tints itself with it.
+    /// detail surface tints itself with it. Unlike a view's cards this
+    /// stays on the schema-order fallback: the detail surface honors no
+    /// display roles (it shows everything), so the `color` role doesn't
+    /// apply here either.
     pub background: Option<String>,
     /// Each schema-declared field the item has a value for, in schema
     /// order. Fields the item doesn't set are omitted — the editor pulls
@@ -52,7 +55,7 @@ pub fn build(item: &WorkItem, schema: &Schema) -> ItemDetail {
 
     ItemDetail {
         id: item.id.clone(),
-        background: crate::view_data::resolved_background(item, schema),
+        background: crate::view_data::resolved_background(item, schema, None),
         fields,
         body: item.body.clone(),
     }

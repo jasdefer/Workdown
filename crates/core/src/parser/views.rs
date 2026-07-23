@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::model::views::{
-    Aggregate, Bucket, DisplayConfig, MetricRow, View, ViewKind, ViewType, Views,
+    Aggregate, Bucket, ColorRole, DisplayConfig, MetricRow, View, ViewKind, ViewType, Views,
 };
 use crate::model::weekday::Weekday;
 
@@ -230,6 +230,8 @@ struct RawDisplay {
     subtitle: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     fields: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    color: Option<ColorRole>,
 }
 
 /// One row inside a metric view's `metrics:` list.
@@ -330,6 +332,7 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
             title: block.title,
             subtitle: block.subtitle,
             fields: block.fields,
+            color: block.color,
         })
         .unwrap_or_default();
 
@@ -513,6 +516,7 @@ fn raw_display_from(display: &DisplayConfig) -> Option<RawDisplay> {
         title: display.title.clone(),
         subtitle: display.subtitle.clone(),
         fields: display.fields.clone(),
+        color: display.color.clone(),
     })
 }
 
@@ -1190,10 +1194,39 @@ views:
     }
 
     #[test]
+    fn parse_display_color_as_field() {
+        let view = parse_single(
+            "views:\n  - id: b\n    type: board\n    field: status\n    display:\n      color: team_color\n",
+        );
+        assert_eq!(
+            view.display.color,
+            Some(ColorRole::Field("team_color".into()))
+        );
+    }
+
+    #[test]
+    fn parse_display_color_none_sentinel() {
+        // The literal string `none` (not YAML null) is the off switch.
+        let view = parse_single(
+            "views:\n  - id: b\n    type: board\n    field: status\n    display:\n      color: none\n",
+        );
+        assert_eq!(view.display.color, Some(ColorRole::None));
+    }
+
+    #[test]
+    fn parse_display_color_null_means_unset() {
+        // An explicitly null `color:` is *unset* (inherit down the
+        // ladder), distinct from the `none` sentinel (tinting off).
+        let view = parse_single(
+            "views:\n  - id: b\n    type: board\n    field: status\n    display:\n      color: ~\n",
+        );
+        assert_eq!(view.display.color, None);
+    }
+
+    #[test]
     fn unknown_display_role_rejected() {
-        // `color` is reserved for later — until it ships, an unknown
-        // role inside display is caught by deny_unknown_fields.
-        let yaml = "views:\n  - id: b\n    type: board\n    field: status\n    display:\n      color: severity\n";
+        // Unknown roles inside display are caught by deny_unknown_fields.
+        let yaml = "views:\n  - id: b\n    type: board\n    field: status\n    display:\n      badge: severity\n";
         let err = parse_views(yaml).unwrap_err();
         assert!(matches!(err, ViewsLoadError::InvalidYaml(_)), "got {err:?}");
     }
@@ -1333,6 +1366,7 @@ views:
     display:
       title: title
       subtitle: status
+      color: team_color
     where:
       - "type=issue"
       - "status!=removed"
@@ -1341,6 +1375,7 @@ views:
     field: parent
     display:
       fields: [status, points]
+      color: none
   - id: bare-tree
     type: tree
     field: parent

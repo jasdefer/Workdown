@@ -1,7 +1,9 @@
 <!--
   Per-session display-role override for one view — a collapsed bar in the
-  same style as `FilterBar`, above the view. Title / subtitle pickers and
-  an ordered fields multi-select. Changes apply immediately: the override
+  same style as `FilterBar`, above the view. Title / subtitle pickers, an
+  ordered fields multi-select, and — when the schema declares color-typed
+  fields — a tint picker (any color field, "None" for no tint, or the
+  configured resolution). Changes apply immediately: the override
   is written to localStorage and the page data invalidated, so the view
   below re-renders with the override taking highest precedence server-side
   (over the view's `display:` block and the config defaults). "Clear"
@@ -27,10 +29,19 @@
 	let title = $state('');
 	let subtitle = $state('');
 	let fields = $state<string[]>([]);
+	// '' = configured, 'none' = the sentinel (no tint), else a field name.
+	let color = $state('');
 
 	const overrideCount = $derived(
-		(title !== '' ? 1 : 0) + (subtitle !== '' ? 1 : 0) + (fields.length > 0 ? 1 : 0)
+		(title !== '' ? 1 : 0) +
+			(subtitle !== '' ? 1 : 0) +
+			(fields.length > 0 ? 1 : 0) +
+			(color !== '' ? 1 : 0)
 	);
+
+	// The color role only accepts color-typed fields; with none in the
+	// schema there is nothing to switch, so the picker hides entirely.
+	const colorFields = $derived(schemaStore.fields.filter((field) => field.field_type === 'color'));
 
 	// Seed once from the override active at load. The component is keyed
 	// by view id upstream, so switching views remounts and re-seeds; the
@@ -40,6 +51,7 @@
 		title = initialOverride?.title ?? '';
 		subtitle = initialOverride?.subtitle ?? '';
 		fields = initialOverride?.fields ?? [];
+		color = initialOverride?.color ?? '';
 	});
 
 	function currentOverride(): DisplayOverride {
@@ -47,6 +59,7 @@
 		if (title !== '') override.title = title;
 		if (subtitle !== '') override.subtitle = subtitle;
 		if (fields.length > 0) override.fields = fields;
+		if (color !== '') override.color = color;
 		return override;
 	}
 
@@ -72,10 +85,16 @@
 		void apply();
 	}
 
+	function onColorChange(event: Event): void {
+		color = (event.currentTarget as HTMLSelectElement).value;
+		void apply();
+	}
+
 	async function clear(): Promise<void> {
 		title = '';
 		subtitle = '';
 		fields = [];
+		color = '';
 		saveDisplayOverride(viewId, null);
 		await invalidateAll();
 	}
@@ -120,6 +139,18 @@
 					{/each}
 				</select>
 			</label>
+			{#if colorFields.length > 0}
+				<label>
+					<span>Color</span>
+					<select value={color} onchange={onColorChange}>
+						<option value="">— configured —</option>
+						<option value="none">None (no tint)</option>
+						{#each colorFields as field (field.name)}
+							<option value={field.name}>{field.name}</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
 			<label>
 				<span>Fields</span>
 				<select

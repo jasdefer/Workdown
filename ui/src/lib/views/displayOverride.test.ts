@@ -31,6 +31,9 @@ describe('isEmptyOverride', () => {
 		expect(isEmptyOverride({ title: 'status' })).toBe(false);
 		expect(isEmptyOverride({ subtitle: 'status' })).toBe(false);
 		expect(isEmptyOverride({ fields: ['id'] })).toBe(false);
+		expect(isEmptyOverride({ color: 'team_color' })).toBe(false);
+		// The sentinel is a set value — "no tint" is an active override.
+		expect(isEmptyOverride({ color: 'none' })).toBe(false);
 	});
 });
 
@@ -38,6 +41,11 @@ describe('displayOverrideParam', () => {
 	it('serializes only set roles', () => {
 		expect(displayOverrideParam({ title: 'status', fields: [] })).toBe('{"title":"status"}');
 		expect(displayOverrideParam({ fields: ['id', 'status'] })).toBe('{"fields":["id","status"]}');
+	});
+
+	it('serializes the color role, sentinel included', () => {
+		expect(displayOverrideParam({ color: 'team_color' })).toBe('{"color":"team_color"}');
+		expect(displayOverrideParam({ color: 'none' })).toBe('{"color":"none"}');
 	});
 });
 

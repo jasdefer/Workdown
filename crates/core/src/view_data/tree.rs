@@ -120,9 +120,8 @@ mod tests {
             id: "my-tree".into(),
             where_clauses: where_clauses.into_iter().map(str::to_owned).collect(),
             display: DisplayConfig {
-                title: None,
-                subtitle: None,
                 fields: columns.into_iter().map(str::to_owned).collect(),
+                ..DisplayConfig::default()
             },
             kind: ViewKind::Tree {
                 field: field.to_owned(),

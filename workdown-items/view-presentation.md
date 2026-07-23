@@ -7,8 +7,8 @@ parent: phase-04-visualization
 depends_on:
 - server
 start_date: 2026-07-13
-end_date: 2026-07-24
-duration: 2w
+end_date: 2026-07-27
+duration: 2w 1d
 color: blue
 ---
 

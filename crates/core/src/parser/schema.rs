@@ -179,6 +179,17 @@ fn validate_fields(
             ));
         }
 
+        // `none` is the sentinel display roles use as their off switch
+        // (e.g. `display: { color: none }` in views.yaml). A field with
+        // that name could never be referenced there — the sentinel
+        // always wins — so reject it at the source instead.
+        if name == "none" {
+            errors.push(field_error(
+                name,
+                "'none' is a reserved name (display roles use it to mean 'no field')",
+            ));
+        }
+
         validate_type_specific_properties(name, field, errors);
         validate_aggregate_compatibility(name, field, errors);
         validate_aggregate_over(name, field, fields, errors);
@@ -1721,6 +1732,22 @@ fields:
         assert!(errors
             .iter()
             .any(|e| e.context.contains("Status") && e.message.contains("field name")));
+    }
+
+    #[test]
+    fn field_named_none_rejected() {
+        // `none` is the sentinel display roles use as their off switch
+        // (`display: { color: none }`); a field with that name would be
+        // unreferenceable there.
+        let yaml = "fields:\n  none:\n    type: color\n";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(errors
+            .iter()
+            .any(|e| e.context.contains("none") && e.message.contains("reserved")));
     }
 
     #[test]

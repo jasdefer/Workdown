@@ -87,6 +87,7 @@ Which schema field fills each presentation role. One closed vocabulary across ev
 | `title` | Primary label | card heading | row title | node label | bar label |
 | `subtitle` | Secondary line | card second line | — | node second line | — |
 | `fields` | Ordered detail fields | card badges | columns | tooltip lines | tooltip |
+| `color` | Surface tint | card wash | row wash | node fill | bar fill |
 
 ```yaml
 views:
@@ -101,13 +102,13 @@ views:
 
 Resolution per role, first match wins:
 
-1. Runtime per-session override in the web app (planned — see the `view-display-config` issue).
+1. Runtime per-session override in the web app (the Display bar; stored per browser, never persisted).
 2. The view's own `display:` block in `views.yaml`.
 3. Project-wide `defaults.display` in `config.yaml` — define roles once instead of repeating them on every view.
-4. Per-kind hardcoded fallback: `title` → the item `id`; `fields` → every schema field in declaration order; `subtitle` → nothing.
+4. Per-kind hardcoded fallback: `title` → the item `id`; `fields` → every schema field in declaration order; `subtitle` → nothing; `color` → the first `color`-typed field in schema order.
 
 - Every role is optional everywhere; a view with no `display:` block inherits entirely.
-- Role fields must resolve in `schema.yaml` (or be the virtual `id`). Any field type is accepted — every value renders as text.
+- Role fields must resolve in `schema.yaml` (or be the virtual `id`). The text roles accept any field type — every value renders as text. The `color` role requires a `color`-typed field, or the sentinel `none` to render the view untinted at any rung (`none` is reserved — `schema.yaml` rejects it as a field name).
 - Aggregate/chart kinds (`bar_chart`, `line_chart`, `heatmap`, `metric`, `treemap`, `workload`) accept the block uniformly but ignore item-level roles at render time.
 - `defaults.display` role fields are not yet validated against the schema; unresolvable names are silently skipped at render time (a diagnostic is planned).
 
@@ -201,7 +202,7 @@ views:
 `workdown validate` runs a set of checks that compare `views.yaml` against `schema.yaml`. All findings are errors in v1 (no warnings):
 
 - **Reference resolution** — every field name referenced by a view slot must exist in `schema.fields` (the virtual `id` field is always accepted).
-- **Type compatibility** — the slot dictates the allowed field type(s). For example: `board.field` must be `choice`, `multichoice`, or `string`; `tree.field` must be `link`; `graph.field` must be `links`; `gantt.start`/`gantt.end` must be `date`, `gantt.duration` must be `duration`; numeric slots accept `integer` or `float`, plus `duration` where the renderer can format it (`treemap.size`, `line_chart.x`/`y`, `workload.effort`, and aggregation slots `bar_chart.value`, `heatmap.value`, `metric.value`). Display roles (`display.title`, `display.subtitle`, `display.fields[*]`) are existence-only — any field type is accepted.
+- **Type compatibility** — the slot dictates the allowed field type(s). For example: `board.field` must be `choice`, `multichoice`, or `string`; `tree.field` must be `link`; `graph.field` must be `links`; `gantt.start`/`gantt.end` must be `date`, `gantt.duration` must be `duration`; numeric slots accept `integer` or `float`, plus `duration` where the renderer can format it (`treemap.size`, `line_chart.x`/`y`, `workload.effort`, and aggregation slots `bar_chart.value`, `heatmap.value`, `metric.value`). The text display roles (`display.title`, `display.subtitle`, `display.fields[*]`) are existence-only — any field type is accepted; `display.color` must name a `color`-typed field (or be the sentinel `none`).
 - **Gantt input modes** — every gantt-family view (`gantt`, `gantt_by_initiative`, `gantt_by_depth`) must declare `start` plus exactly one of: `end`, `duration`, or `after`+`duration`. `end` and `duration` together is rejected; `after` requires `duration` and forbids `end`.
 - **Predecessor / partition link slots** — `gantt.after`, `gantt_by_initiative.root_link`, and `gantt_by_depth.depth_link` must point at a `link`/`links` field (single-target only for `root_link`/`depth_link`) with `allow_cycles: false`, and not at an inverse relation name (e.g. `children` when `parent.inverse: children`).
 - **Heatmap bucket coupling** — if `bucket:` is set, at least one of `x` or `y` must resolve to a `date` field.

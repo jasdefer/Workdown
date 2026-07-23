@@ -1,7 +1,7 @@
 ---
 title: '`color:` display role — choose which color field tints a view'
 type: issue
-status: to_do
+status: done
 parent: view-presentation
 depends_on:
 - color-field-type

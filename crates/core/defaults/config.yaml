@@ -20,7 +20,9 @@ defaults:
   # Project-wide display roles, inherited by every view. A view's own
   # `display:` block in views.yaml overrides these per role. Roles:
   # `title` (item heading), `subtitle` (secondary line), `fields`
-  # (ordered detail fields — card badges, table/tree columns, tooltips).
+  # (ordered detail fields — card badges, table/tree columns, tooltips),
+  # `color` (color-typed field that tints item surfaces, or `none` for
+  # no tint; unset falls back to the first color field in schema order).
   display:
     title: title
 

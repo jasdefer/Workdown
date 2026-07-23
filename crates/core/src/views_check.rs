@@ -21,7 +21,7 @@ use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic, FileDiagnosticK
 use crate::model::schema::{
     is_relation_anchor, FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity,
 };
-use crate::model::views::{Aggregate, MetricRow, View, ViewKind, Views};
+use crate::model::views::{Aggregate, ColorRole, MetricRow, View, ViewKind, Views};
 use crate::parser::views::{ViewsLoadError, ViewsValidationError};
 use crate::query::parse::parse_where;
 use crate::query::types::{FieldReference, Predicate};
@@ -377,10 +377,13 @@ fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
 
 // ── Display roles (cross-cutting) ────────────────────────────────────
 
-/// Check the view's display-role field references. Every role is
-/// existence-only: any field's value can be rendered as text, so the
-/// roles constrain *which* field, not its type. (The virtual `id` is
-/// allowed everywhere, as in `check_slot`.)
+/// Check the view's display-role field references. The text roles are
+/// existence-only: any field's value can be rendered as text, so they
+/// constrain *which* field, not its type. (The virtual `id` is allowed
+/// everywhere, as in `check_slot`.) The `color` role additionally
+/// requires a `color`-typed field — its value feeds a background tint,
+/// not a text slot; the `none` sentinel (parsed into
+/// [`ColorRole::None`]) is always valid and checks nothing.
 fn check_display(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
     let view_id = view.id.as_str();
     if let Some(field_name) = view.display.title.as_deref() {
@@ -391,6 +394,17 @@ fn check_display(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>)
     }
     for field_name in &view.display.fields {
         check_slot(ctx, view_id, "display.fields", field_name, &[], "", out);
+    }
+    if let Some(ColorRole::Field(field_name)) = &view.display.color {
+        check_slot(
+            ctx,
+            view_id,
+            "display.color",
+            field_name,
+            &[FieldType::Color],
+            "color",
+            out,
+        );
     }
 }
 
@@ -1129,6 +1143,87 @@ mod tests {
             view_kind(&diagnostics[0]),
             ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
                 if *slot == "display.subtitle" && field_name == "nonexistent"
+        ));
+    }
+
+    #[test]
+    fn color_role_accepts_color_typed_field() {
+        let schema = build_schema(vec![
+            ("team_color", FieldTypeConfig::Color),
+            ("risk_color", FieldTypeConfig::Color),
+        ]);
+        let diagnostics = evaluate(
+            &view_with_display(
+                ViewKind::Table,
+                DisplayConfig {
+                    color: Some(ColorRole::Field("risk_color".into())),
+                    ..DisplayConfig::default()
+                },
+            ),
+            &schema,
+            test_views_path(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn color_role_none_sentinel_is_always_valid() {
+        // `color: none` disables tinting; it references no field, so
+        // there is nothing to check — even in a schema with no color
+        // fields at all.
+        let diagnostics = evaluate(
+            &view_with_display(
+                ViewKind::Table,
+                DisplayConfig {
+                    color: Some(ColorRole::None),
+                    ..DisplayConfig::default()
+                },
+            ),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn unknown_color_role_field_errors() {
+        let diagnostics = evaluate(
+            &view_with_display(
+                ViewKind::Table,
+                DisplayConfig {
+                    color: Some(ColorRole::Field("nonexistent".into())),
+                    ..DisplayConfig::default()
+                },
+            ),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert_eq!(diagnostics.len(), 1);
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewUnknownField { slot, field_name, .. }
+                if *slot == "display.color" && field_name == "nonexistent"
+        ));
+    }
+
+    #[test]
+    fn color_role_field_must_be_color_typed() {
+        let diagnostics = evaluate(
+            &view_with_display(
+                ViewKind::Table,
+                DisplayConfig {
+                    color: Some(ColorRole::Field("status".into())),
+                    ..DisplayConfig::default()
+                },
+            ),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert_eq!(diagnostics.len(), 1);
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, field_name, expected, .. }
+                if *slot == "display.color" && field_name == "status" && expected == "color"
         ));
     }
 

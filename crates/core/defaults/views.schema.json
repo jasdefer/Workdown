@@ -67,7 +67,7 @@
 
     "display": {
       "type": "object",
-      "description": "Cross-cutting display roles: which schema field fills each presentation role. Roles left unset inherit `defaults.display` from config.yaml, then fall back to per-kind defaults (title → item id, fields → every schema field). Item-presenting kinds render the roles in their own idiom (card lines, table/tree columns, graph tooltips, bar labels); aggregate/chart kinds ignore them.",
+      "description": "Cross-cutting display roles: which schema field fills each presentation role. Roles left unset inherit `defaults.display` from config.yaml, then fall back to per-kind defaults (title → item id, fields → every schema field, color → the first color-typed field in schema order). Item-presenting kinds render the roles in their own idiom (card lines, table/tree columns, graph tooltips, bar labels); aggregate/chart kinds ignore them.",
       "properties": {
         "title": {
           "$ref": "#/$defs/field_name",
@@ -81,6 +81,13 @@
           "type": "array",
           "description": "Ordered field names shown as the item's detail fields — card badges, table/tree columns, graph tooltip lines.",
           "items": { "$ref": "#/$defs/field_name" }
+        },
+        "color": {
+          "description": "Color-typed field that tints each item's surface in this view, or the sentinel `none` to render the view untinted. Unset falls back to the first color-typed field in schema order. (`none` is a reserved word — schema.yaml rejects it as a field name.)",
+          "anyOf": [
+            { "$ref": "#/$defs/field_name" },
+            { "const": "none" }
+          ]
         }
       },
       "additionalProperties": false

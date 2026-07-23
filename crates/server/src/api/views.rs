@@ -54,9 +54,12 @@ struct ViewQuery {
     /// non-persisted preview. Absent → render with the persisted filter.
     filter: Option<String>,
     /// URL-encoded JSON object of display roles (`title`, `subtitle`,
-    /// `fields`) for a per-session override. Set roles take highest
-    /// precedence — over the view's `display:` block and the config
-    /// defaults; unset roles inherit as usual. Nothing is persisted.
+    /// `fields`, `color`) for a per-session override. Set roles take
+    /// highest precedence — over the view's `display:` block and the
+    /// config defaults; unset roles inherit as usual. `color` accepts a
+    /// field name or the sentinel `"none"` (no tint); a stale name (the
+    /// field was deleted or retyped since the override was saved) is
+    /// skipped at extraction time, never an error. Nothing is persisted.
     display: Option<String>,
 }
 

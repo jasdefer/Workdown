@@ -13,6 +13,8 @@ export interface DisplayOverride {
 	title?: string;
 	subtitle?: string;
 	fields?: string[];
+	/** A color-typed field name, or the sentinel 'none' for no tint. */
+	color?: string;
 }
 
 function storageKey(viewId: string): string {
@@ -24,7 +26,8 @@ export function isEmptyOverride(override: DisplayOverride): boolean {
 	return (
 		override.title === undefined &&
 		override.subtitle === undefined &&
-		(override.fields === undefined || override.fields.length === 0)
+		(override.fields === undefined || override.fields.length === 0) &&
+		override.color === undefined
 	);
 }
 
@@ -59,5 +62,6 @@ export function displayOverrideParam(override: DisplayOverride): string {
 	if (override.title !== undefined) wire.title = override.title;
 	if (override.subtitle !== undefined) wire.subtitle = override.subtitle;
 	if (override.fields !== undefined && override.fields.length > 0) wire.fields = override.fields;
+	if (override.color !== undefined) wire.color = override.color;
 	return JSON.stringify(wire);
 }

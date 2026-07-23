@@ -400,11 +400,11 @@ views:
   - id: status-board
     type: board
     field: status
-    display: { title: title, subtitle: status, fields: [type, effort] }
+    display: { title: title, subtitle: status, fields: [type, effort], color: team_color }
   - id: hierarchy
     type: tree
     field: parent
-    display: { title: title, fields: [status] }
+    display: { title: title, fields: [status], color: none }
   - id: deps
     type: graph
     field: depends_on
@@ -460,6 +460,24 @@ views:
 }
 
 #[test]
+fn display_color_rejects_non_field_shapes() {
+    // The color role takes a field name or the sentinel `none` — a
+    // value that is neither (here: an uppercase non-field-name string)
+    // must fail the pattern for editor warnings.
+    let schema = compile_schema();
+    assert_invalid(
+        &schema,
+        "\
+views:
+  - id: bad-color-role
+    type: board
+    field: status
+    display: { color: Not-A-Field }
+",
+    );
+}
+
+#[test]
 fn legacy_top_level_title_rejected() {
     // `title:` migrated into the display block — the old top-level key
     // must be rejected so editors flag stale files.
@@ -496,8 +514,8 @@ views:
 
 #[test]
 fn unknown_display_role_rejected() {
-    // `color` is reserved for later — until it ships, an unknown role
-    // inside the display block is rejected.
+    // Roles outside the closed vocabulary (title, subtitle, fields,
+    // color) are rejected.
     let schema = compile_schema();
     assert_invalid(
         &schema,
@@ -507,7 +525,7 @@ views:
     type: board
     field: status
     display:
-      color: severity
+      badge: severity
 ",
     );
 }

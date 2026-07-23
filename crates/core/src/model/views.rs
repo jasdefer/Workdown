@@ -51,7 +51,8 @@ pub struct View {
 /// Every role is optional. Resolution order per role: this per-view
 /// config, then `defaults.display` in `config.yaml` (merged via
 /// [`View::with_display_defaults`]), then the per-kind hardcoded
-/// fallback (title → item id, fields → every schema field).
+/// fallback (title → item id, fields → every schema field, color →
+/// the first `color`-typed field in schema order).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct DisplayConfig {
@@ -66,6 +67,56 @@ pub struct DisplayConfig {
     /// unset: inherit, or fall back to every schema field in
     /// declaration order.
     pub fields: Vec<String>,
+    /// Which `color`-typed field tints the item's surface, or
+    /// [`ColorRole::None`] to render the view untinted. Unset means
+    /// inherit, then fall back to the first `color`-typed field in
+    /// schema order — the behavior views had before this role existed.
+    pub color: Option<ColorRole>,
+}
+
+/// The value of the `color` display role.
+///
+/// In YAML and the `?display=` wire format this is a plain string: a
+/// field name, or the sentinel `none` to disable tinting outright. The
+/// sentinel is parsed here, once, so downstream code matches on a real
+/// variant instead of comparing against a magic string. The name `none`
+/// is reserved as a field name by schema validation, so the sentinel
+/// can never shadow a real field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ColorRole {
+    /// Tint by this schema field (must be `color`-typed; enforced by
+    /// `views_check` for view-level config, defensively skipped at
+    /// extraction time for session overrides and config defaults).
+    Field(String),
+    /// The `none` sentinel: no tint for this view, regardless of what
+    /// lower rungs or the schema would resolve to.
+    None,
+}
+
+impl<'de> Deserialize<'de> for ColorRole {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(if value == "none" {
+            ColorRole::None
+        } else {
+            ColorRole::Field(value)
+        })
+    }
+}
+
+impl Serialize for ColorRole {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            ColorRole::None => serializer.serialize_str("none"),
+            ColorRole::Field(name) => serializer.serialize_str(name),
+        }
+    }
 }
 
 impl View {
@@ -95,6 +146,9 @@ impl DisplayConfig {
         }
         if self.fields.is_empty() {
             self.fields = base.fields.clone();
+        }
+        if self.color.is_none() {
+            self.color = base.color.clone();
         }
         self
     }
@@ -363,5 +417,46 @@ impl std::fmt::Display for Bucket {
             Self::Month => "month",
         };
         f.write_str(s)
+    }
+}
+
+// ── Tests ───────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn color_role_deserializes_sentinel_and_field() {
+        // The `?display=` override deserializes through the same derive
+        // as views.yaml — the sentinel is parsed at this boundary, once.
+        let config: DisplayConfig = serde_json::from_str(r#"{"color": "none"}"#).unwrap();
+        assert_eq!(config.color, Some(ColorRole::None));
+
+        let config: DisplayConfig = serde_json::from_str(r#"{"color": "team_color"}"#).unwrap();
+        assert_eq!(config.color, Some(ColorRole::Field("team_color".into())));
+
+        let config: DisplayConfig = serde_json::from_str(r#"{"color": null}"#).unwrap();
+        assert_eq!(config.color, None, "null means unset, not the sentinel");
+    }
+
+    #[test]
+    fn or_inherit_color_unset_inherits_and_none_shadows() {
+        let base = DisplayConfig {
+            color: Some(ColorRole::Field("team_color".into())),
+            ..DisplayConfig::default()
+        };
+
+        let unset = DisplayConfig::default().or_inherit(&base);
+        assert_eq!(unset.color, Some(ColorRole::Field("team_color".into())));
+
+        // An explicit `color: none` is a set value — it must shadow an
+        // inherited field, not be treated as "nothing here, inherit".
+        let off = DisplayConfig {
+            color: Some(ColorRole::None),
+            ..DisplayConfig::default()
+        }
+        .or_inherit(&base);
+        assert_eq!(off.color, Some(ColorRole::None));
     }
 }

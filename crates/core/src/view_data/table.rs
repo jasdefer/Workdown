@@ -40,8 +40,9 @@ pub struct TableData {
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TableRow {
     pub id: WorkItemId,
-    /// Resolved `#rrggbb` of the item's first `color` field in schema
-    /// order; `None` when unset. Same convention as
+    /// Resolved `#rrggbb` of the item's value for the field the view's
+    /// `color` display role picks; `None` when the role is `none` or
+    /// the item has no value. Same convention as
     /// [`Card::background`](super::common::Card::background).
     pub background: Option<String>,
     pub cells: Vec<Option<FieldValue>>,
@@ -65,7 +66,7 @@ pub fn extract_table(view: &View, store: &Store, schema: &Schema) -> TableData {
         .iter()
         .map(|item| TableRow {
             id: item.id.clone(),
-            background: resolved_background(item, schema),
+            background: resolved_background(item, schema, Some(&view.display)),
             cells: columns
                 .iter()
                 .map(|column| column_cell(column, item))
@@ -150,8 +151,8 @@ mod tests {
             where_clauses: where_clauses.into_iter().map(str::to_owned).collect(),
             display: DisplayConfig {
                 title: title.map(str::to_owned),
-                subtitle: None,
                 fields: columns.into_iter().map(str::to_owned).collect(),
+                ..DisplayConfig::default()
             },
             kind: ViewKind::Table,
         }
