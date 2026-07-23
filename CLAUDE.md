@@ -55,7 +55,7 @@ Freeform Markdown body. Description, notes, acceptance criteria — anything.
 ## Key Design Decisions
 
 - **Generic type system:** Field types (not names) drive CLI behavior. Any `choice` field can be a board, any `link` field can be a tree, any `links` field can be a graph. No field name is "magic" except `id`. See ADR-002.
-- **Built-in type system:** Types (string, choice, multichoice, integer, float, date, boolean, list, link, links) are built into the CLI. Formally defined in `defaults/schema.schema.json`. Users define fields and pick types in their `schema.yaml`.
+- **Built-in type system:** Types (string, choice, multichoice, integer, float, date, duration, color, boolean, list, link, links) are built into the CLI. Formally defined in `defaults/schema.schema.json`. Users define fields and pick types in their `schema.yaml`.
 - **Snapshot-only validation:** The CLI validates current file state, not git history. No state transition enforcement. See ADR-001.
 - **Hybrid ID:** `id` is the one special field — filename (minus `.md`) by default, frontmatter `id` overrides it. Uniqueness enforced.
 - **Title fallback:** `title` is optional. Falls back to prettified filename.

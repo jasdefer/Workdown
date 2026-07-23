@@ -2,7 +2,7 @@
 id: color-field-type
 title: Add `color` field type with background tinting
 type: issue
-status: in_progress
+status: done
 parent: view-presentation
 depends_on:
 - mutations-slice
@@ -113,11 +113,18 @@ fill-shaped surfaces color their existing solid mark instead:
   item color (absolute across themes); uncolored bars keep the accent
   default. Covers all three gantt variants; bars carry no text, so no
   contrast flip is needed.
-- Treemap leaves — pending; same fill-replacement shape as gantt, but
-  leaves carry labels, so this is where the luminance text helper
-  applies.
-- Graph nodes — pending; cytoscape needs per-node data-driven styling
-  instead of tokens baked at style-build time.
+- Treemap leaves ✔ — leaf rects fill with the item color (accent when
+  unset) and their in-rect labels flip black/white via the luminance
+  helper (the first real consumer). Parent items show as colored
+  *frame borders* — grouping their children without washing over the
+  children's own colors; frame labels stay muted.
+- Graph nodes ✔ — nodes are compact marks with the label inside (the
+  treemap-leaf situation), so they fill with the item color and their
+  label flips black/white; both are precomputed into cytoscape node
+  data (canvas can't read CSS variables) and mapped via
+  `node[itemColor]` stylesheet entries. Colored *group* boxes keep the
+  translucent surface fill and show the color as their border, like
+  treemap frames.
 
 ## Plan
 

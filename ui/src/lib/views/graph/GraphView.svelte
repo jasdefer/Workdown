@@ -35,6 +35,7 @@
 	import type { GraphData } from '$lib/api/generated/GraphData';
 	import type { Card as CardData } from '$lib/api/generated/Card';
 	import type { TreeNode } from '$lib/api/generated/TreeNode';
+	import { textColorOn } from '$lib/views/colorContrast';
 	import { cardLabel } from '$lib/views/prettify';
 	import { themeStore, type Theme } from '$lib/stores/theme.svelte';
 	import EmptyHint from '$lib/views/EmptyHint.svelte';
@@ -54,6 +55,15 @@
 	const nodeCount = $derived(data.nodes.length);
 	const cardById = $derived(new Map(data.nodes.map((card): [string, CardData] => [card.id, card])));
 
+	// The item's `color` field rides along as node data (canvas can't
+	// read CSS variables): the resolved fill plus its black/white label
+	// color, both precomputed so the stylesheet only maps `data(...)`.
+	function colorData(card: CardData, nodeData: cytoscape.NodeDataDefinition): void {
+		if (card.background === null) return;
+		nodeData.itemColor = card.background;
+		nodeData.itemTextColor = textColorOn(card.background);
+	}
+
 	// Flat: one node per card. Grouped: walk `groups`, tagging each node
 	// with its `parent` so Cytoscape nests it. Edges are identical either
 	// way.
@@ -67,6 +77,7 @@
 						label: cardLabel(node.card)
 					};
 					if (parent !== undefined) nodeData.parent = parent;
+					colorData(node.card, nodeData);
 					elements.push({ data: nodeData });
 					if (node.children.length > 0) walk(node.children, node.card.id);
 				}
@@ -74,7 +85,9 @@
 			walk(graph.groups.roots, undefined);
 		} else {
 			for (const card of graph.nodes) {
-				elements.push({ data: { id: card.id, label: cardLabel(card) } });
+				const nodeData: cytoscape.NodeDataDefinition = { id: card.id, label: cardLabel(card) };
+				colorData(card, nodeData);
+				elements.push({ data: nodeData });
 			}
 		}
 		for (const edge of graph.edges) {
@@ -145,6 +158,22 @@
 			'text-halign': 'center',
 			padding: '16px'
 		};
+		// Colored items: the node is a chart mark with its label inside
+		// (the treemap-leaf situation), so it fills with the item color —
+		// absolute across themes — and the label flips black/white
+		// (precomputed into node data). Colored *group* boxes keep their
+		// translucent surface fill and show the color as their border,
+		// mirroring the treemap's frame treatment; listed after `:parent`
+		// so the border override wins while the surface fill stays.
+		const coloredNodeStyle: cytoscape.Css.Node = {
+			'background-color': 'data(itemColor)',
+			color: 'data(itemTextColor)'
+		};
+		const coloredParentStyle: cytoscape.Css.Node = {
+			'background-color': surface,
+			'border-color': 'data(itemColor)',
+			color: muted
+		};
 		const edgeStyle: cytoscape.Css.Edge = {
 			width: 1.5,
 			'line-color': muted,
@@ -154,7 +183,9 @@
 		};
 		return [
 			{ selector: 'node', style: nodeStyle },
+			{ selector: 'node[itemColor]', style: coloredNodeStyle },
 			{ selector: ':parent', style: parentStyle },
+			{ selector: ':parent[itemColor]', style: coloredParentStyle },
 			{ selector: 'edge', style: edgeStyle }
 		];
 	}
