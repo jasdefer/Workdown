@@ -295,6 +295,29 @@ pub enum ConfigDiagnosticKind {
         raw: String,
         detail: String,
     },
+
+    /// A `defaults.display` role in `config.yaml` names a field that
+    /// isn't defined in `schema.yaml` (and isn't the virtual `id`).
+    /// Unlike the `View*` variants this carries no `view_id` — the
+    /// default is project-wide, not tied to one view — so it never
+    /// marks a single view unrenderable; every view keeps rendering on
+    /// its fallback while this surfaces the dead default.
+    ConfigDisplayUnknownField {
+        slot: &'static str,
+        field_name: String,
+    },
+
+    /// A `defaults.display` role in `config.yaml` names a field whose
+    /// schema type is incompatible with the role. Only `color` is
+    /// type-restricted today (must be a `color` field); the text roles
+    /// are existence-only.
+    ConfigDisplayFieldTypeMismatch {
+        slot: &'static str,
+        field_name: String,
+        actual_type: FieldType,
+        /// Human-readable expected type, e.g. `"color"`.
+        expected: String,
+    },
 }
 
 // ── Field value errors ───────────────────────────────────────────────
@@ -464,6 +487,13 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
         | ConfigDiagnosticKind::ViewMetricRowAggregateTypeMismatch { view_id, .. }
         | ConfigDiagnosticKind::ViewMetricRowCountWithValue { view_id, .. }
         | ConfigDiagnosticKind::ViewMetricRowWhereParseError { view_id, .. } => Some(view_id),
+
+        // Config-defaults diagnostics are project-wide, not pinned to a
+        // view. Returning `None` keeps them out of the server's
+        // per-view "this view is unrenderable" tier — every view still
+        // renders on its fallback.
+        ConfigDiagnosticKind::ConfigDisplayUnknownField { .. }
+        | ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch { .. } => None,
     }
 }
 
@@ -728,6 +758,18 @@ impl std::fmt::Display for ConfigDiagnosticKind {
             } => write!(
                 f,
                 "view '{view_id}', metrics[{metric_index}].where clause '{raw}': {detail}"
+            ),
+            ConfigDiagnosticKind::ConfigDisplayUnknownField { slot, field_name } => {
+                write!(f, "config default '{slot}': unknown field '{field_name}'")
+            }
+            ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch {
+                slot,
+                field_name,
+                actual_type,
+                expected,
+            } => write!(
+                f,
+                "config default '{slot}': field '{field_name}' has type {actual_type}, expected {expected}"
             ),
         }
     }

@@ -86,11 +86,22 @@ impl LoadError {
 }
 
 /// Load every part of the project from disk into memory.
-pub fn load_project(config: &Config, project_root: &Path) -> Result<Project, LoadError> {
+///
+/// `config_path` is where `config.yaml` was read from — the loader
+/// receives the already-parsed [`Config`] and would otherwise not know
+/// the file's location, which `config_check` needs to pin its
+/// diagnostics. Passed relative to `project_root` or absolute; joining
+/// resolves both.
+pub fn load_project(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+) -> Result<Project, LoadError> {
     let schema_path = project_root.join(&config.schema);
     let items_path = project_root.join(&config.paths.work_items);
     let views_path = project_root.join(&config.paths.views);
     let resources_path = project_root.join(&config.paths.resources);
+    let config_path = project_root.join(config_path);
 
     let schema = parser::schema::load_schema(&schema_path).map_err(|e| LoadError::Schema {
         path: schema_path.clone(),
@@ -116,6 +127,11 @@ pub fn load_project(config: &Config, project_root: &Path) -> Result<Project, Loa
     // becomes a diagnostic rather than a hard load failure.
     let (resources, resources_diagnostics) = resources_check::load_and_check(&resources_path);
     diagnostics.extend(resources_diagnostics);
+
+    // Validate config.yaml's project-wide display-role defaults against
+    // the schema. No file read here — the parsed config is already in
+    // hand; only its path is needed to pin the diagnostics.
+    diagnostics.extend(crate::config_check::evaluate(config, &schema, &config_path));
 
     let calendar = config.working_calendar();
 

@@ -35,6 +35,10 @@ const EVENT_CHANNEL_CAPACITY: usize = 16;
 pub struct AppState {
     pub project_root: PathBuf,
     pub config: Config,
+    /// Where `config.yaml` was read from (the CLI's `--config`). Passed
+    /// to `core::load_project` per request so config-scope diagnostics
+    /// can point at the file; relative to `project_root` or absolute.
+    pub config_path: PathBuf,
     /// The live-update "announcement board": the file watcher publishes a
     /// unit value here on every debounced change, and each open SSE
     /// connection subscribes a receiver. `Sender` stays usable with zero
@@ -45,11 +49,12 @@ pub struct AppState {
 impl AppState {
     /// Build state with a fresh live-update channel. The watcher is wired
     /// separately, against the same channel, by [`crate::watcher::start`].
-    pub fn new(project_root: PathBuf, config: Config) -> Self {
+    pub fn new(project_root: PathBuf, config: Config, config_path: PathBuf) -> Self {
         let (events, _initial_receiver) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         Self {
             project_root,
             config,
+            config_path,
             events,
         }
     }
@@ -84,6 +89,10 @@ impl AppState {
             working_days: None,
             serve: None,
         };
-        Self::new(PathBuf::from("/tmp/workdown-test-stub"), config)
+        Self::new(
+            PathBuf::from("/tmp/workdown-test-stub"),
+            config,
+            PathBuf::from(".workdown/config.yaml"),
+        )
     }
 }

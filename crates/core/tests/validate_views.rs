@@ -1,9 +1,12 @@
-//! Integration tests for views.yaml validation in `operations::validate::validate`.
+//! Integration tests for config-file validation in `operations::validate::validate`.
 //!
 //! These tests focus on the **wiring**: that `validate` loads `views.yaml`,
 //! runs `views_check`, routes parse errors through the diagnostic pipeline,
-//! and silently skips when the file is absent. Content-level correctness of
-//! individual checks is covered by unit tests in `crates/core/src/views_check.rs`.
+//! and silently skips when the file is absent — plus that `config.yaml`'s
+//! `defaults.display` reaches `config_check` and its diagnostics come back
+//! pinned to the config file. Content-level correctness of individual checks
+//! is covered by unit tests in `crates/core/src/views_check.rs` and
+//! `crates/core/src/config_check.rs`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -75,7 +78,13 @@ fields:
 
 fn run_validate(project: &(TempDir, Config, PathBuf)) -> Vec<Diagnostic> {
     let (_tmp, config, root) = project;
-    validate(config, root.as_path()).unwrap().diagnostics
+    validate(
+        config,
+        root.as_path(),
+        std::path::Path::new(".workdown/config.yaml"),
+    )
+    .unwrap()
+    .diagnostics
 }
 
 fn view_diagnostics(diagnostics: &[Diagnostic]) -> Vec<&Diagnostic> {
@@ -184,4 +193,69 @@ fn missing_views_yaml_is_silently_skipped() {
         view_level.is_empty(),
         "expected silent skip, got: {view_level:?}"
     );
+}
+
+// ── config.yaml defaults validation (wiring) ─────────────────────────────
+
+/// Stage a project whose `config.yaml` sets a `defaults.display.color`
+/// pointing at a non-color field, then validate. Confirms the config
+/// path is threaded through `validate` → `load_project` → `config_check`
+/// and the diagnostic comes back pinned to config.yaml. Content-level
+/// coverage lives in `crates/core/src/config_check.rs`.
+#[test]
+fn config_defaults_display_error_surfaces_pinned_to_config() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().to_path_buf();
+    fs::create_dir_all(root.join(".workdown")).unwrap();
+    fs::create_dir_all(root.join("workdown-items")).unwrap();
+
+    // `status` is a choice field, not a color field — an invalid target
+    // for the `color` display role.
+    let config_yaml = "\
+project:
+  name: Test
+  description: \"\"
+paths:
+  work_items: workdown-items
+  templates: .workdown/templates
+  resources: .workdown/resources.yaml
+  views: .workdown/views.yaml
+schema: .workdown/schema.yaml
+defaults:
+  board_field: status
+  tree_field: parent
+  graph_field: depends_on
+  display:
+    color: status
+";
+    fs::write(root.join(".workdown/config.yaml"), config_yaml).unwrap();
+    fs::write(root.join(".workdown/schema.yaml"), schema_with_status()).unwrap();
+    fs::write(root.join("workdown-items/a.md"), "---\nstatus: open\n---\n").unwrap();
+
+    let config = load_config(&root.join(".workdown/config.yaml")).unwrap();
+    let diagnostics = validate(&config, &root, Path::new(".workdown/config.yaml"))
+        .unwrap()
+        .diagnostics;
+
+    let config_defaults: Vec<&Diagnostic> = diagnostics
+        .iter()
+        .filter(|d| {
+            matches!(
+                &d.body,
+                DiagnosticBody::Config(c)
+                    if matches!(c.kind, ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch { .. })
+            )
+        })
+        .collect();
+    assert_eq!(config_defaults.len(), 1, "got: {diagnostics:?}");
+
+    // Pinned at config.yaml, and project-wide (no view_id) so it never
+    // marks a single view unrenderable.
+    let DiagnosticBody::Config(config_diagnostic) = &config_defaults[0].body else {
+        unreachable!()
+    };
+    assert!(config_diagnostic
+        .source_path
+        .ends_with(".workdown/config.yaml"));
+    assert_eq!(config_defaults[0].view_id(), None);
 }

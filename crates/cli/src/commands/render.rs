@@ -28,9 +28,11 @@ use crate::render;
 pub fn run_render(
     config: &Config,
     project_root: &Path,
+    config_path: &Path,
     view_id: Option<&str>,
 ) -> anyhow::Result<ExitCode> {
-    let project = load_project(config, project_root).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let project =
+        load_project(config, project_root, config_path).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     // Surface every collected diagnostic as a warning, matching the
     // pre-refactor behavior. Order preserved: store diagnostics first

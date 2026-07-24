@@ -148,9 +148,9 @@ pub fn build_card(item: &WorkItem, schema: &Schema, view: &View) -> Card {
 /// - [`ColorRole::None`] — tinting is off; resolves to no field.
 /// - [`ColorRole::Field`] — that field, provided it exists and is
 ///   `color`-typed. Anything else falls through to the fallback:
-///   `views_check` guarantees view-level config, but a stale session
-///   override or an unvalidated `defaults.display` entry must degrade
-///   gracefully, not panic or mistint.
+///   `views_check` guarantees view-level config and `config_check`
+///   guarantees the `defaults.display` entry, but a stale session
+///   override must degrade gracefully, not panic or mistint.
 /// - Unset (including `display: None` — surfaces with no view in
 ///   context) — the fallback: the first `color`-typed field in schema
 ///   order, mirroring how the first compatible `choice` field backs a
@@ -199,10 +199,10 @@ pub fn resolved_background(
 /// show-everything behavior views had before display roles existed.
 ///
 /// Names that resolve neither in `schema.fields` nor to the virtual
-/// `id` are dropped: `views_check` guarantees the view's own role
-/// entries resolve, but entries inherited from `defaults.display` in
-/// `config.yaml` are not yet validated anywhere, and must not panic
-/// the extractor.
+/// `id` are dropped defensively: both the view's own role entries
+/// (`views_check`) and the `defaults.display` entries inherited from
+/// `config.yaml` (`config_check`) are validated, but a session override
+/// can still name a stale field, and the extractor must never panic.
 pub fn effective_fields(view: &View, schema: &Schema) -> Vec<String> {
     if view.display.fields.is_empty() {
         schema.fields.keys().cloned().collect()

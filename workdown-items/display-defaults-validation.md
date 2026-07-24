@@ -1,7 +1,7 @@
 ---
 id: display-defaults-validation
 type: issue
-status: to_do
+status: in_progress
 title: Validate `defaults.display` in config.yaml against the schema
 parent: view-presentation
 depends_on: [view-display-config]
@@ -32,5 +32,10 @@ config is loaded, in the CLI/server entry points).
 
 ## Out of scope
 
-- Validating the *type* of role fields — display roles are
-  existence-only by design (any value renders as text).
+- Validating the *type* of the text role fields (`title`, `subtitle`,
+  `fields`) — those are existence-only by design (any value renders
+  as text). The `color` role is the exception since
+  [[color-display-slot]] landed: `defaults.display.color` must name a
+  `color`-typed field (or be the `none` sentinel, which is always
+  valid), mirroring what `views_check` enforces for the per-view role.
+  That type check is **in** scope here.
