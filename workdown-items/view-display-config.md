@@ -7,7 +7,7 @@ parent: view-presentation
 depends_on: [remaining-read-views]
 ---
 
-Every view kind makes implicit choices about which fields display where: which fields show on a board card, which columns appear in a table, what labels gantt bars carry, which fields populate graph node tooltips. The `server` milestone hardcodes these per view kind. This issue establishes one pattern for customizing them across every kind. Design settled in [[adr-008-display-configuration]].
+Every view kind makes implicit choices about which fields display where: which fields show on a board card, which columns appear in a table, what labels gantt bars carry, which fields populate graph node tooltips. The `server` milestone hardcodes these per view kind. This issue establishes one pattern for customizing them across every kind. Design settled in [ADR-008](../docs/adr/008-display-configuration.md).
 
 ## Design (settled)
 

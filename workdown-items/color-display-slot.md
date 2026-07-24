@@ -44,7 +44,10 @@ covers all four roles at once.
 view-resolved. `resolved_background` (core `view_data`) grows a
 view-aware resolution instead of always scanning for the first color
 field; `item_data` (the detail surface, which has no view in context)
-keeps the schema-order fallback.
+applies the project-wide rungs only — `defaults.display.color` from
+`config.yaml`, then the schema-order fallback. (Originally shipped
+schema-order-only; the `defaults.display` rung was added in the
+pre-PR review pass, since rung 3 is project-wide by definition.)
 
 **Display bar:** gains a color-field selector (options: the schema's
 color fields + "none" + "default"), stored per session with the same

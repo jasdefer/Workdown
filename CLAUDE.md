@@ -25,7 +25,7 @@ workdown-items/
 
 ## Configuration Files (consumer project)
 
-- **`config.yaml`** — Entry point for the CLI. Defines project metadata, file paths (where work items live, where templates are, where resources are), and CLI defaults (which field to use for board/tree/graph views).
+- **`config.yaml`** — Entry point for the CLI. Defines project metadata, file paths (where work items live, where templates are, where resources are), and CLI defaults: which field to use for board/tree/graph views, plus project-wide display-role defaults (`defaults.display`) inherited by every view.
 - **`schema.yaml`** — User-editable. Defines fields, their types, validation rules, defaults, and aggregate behavior. This is what makes each project's work items structured differently. Fields can reference resources via `resource: <name>`.
 - **`resources.yaml`** — User-editable. Named lists of entities (people, teams, sprints, etc.) that work item fields can reference. A field with `resource: people` only accepts values matching an `id` from the `people` section.
 - **`views.yaml`** — User-editable. Declares persisted views rendered by `workdown render` (board, tree, graph, table, gantt, charts, etc.). Each view references schema fields.
@@ -62,6 +62,7 @@ Freeform Markdown body. Description, notes, acceptance criteria — anything.
 - **Default generators:** Fields can have generated defaults (`$filename`, `$filename_pretty`, `$uuid`, `$today`, `$max_plus_one`) applied at `workdown add` time.
 - **Computed/aggregated fields:** Fields with an `aggregate` config are set manually on leaf items and computed automatically up the parent chain. Two items in the same ancestor chain both setting manually is a validation error.
 - **Relations are generic:** `link`/`links` fields with `allow_cycles` config. Default relations: `parent`, `depends_on`, `related_to`, `duplicates`. Inverses are derived by the CLI.
+- **Display roles:** A closed vocabulary (`title`, `subtitle`, `fields`, `color`) controls what item-presenting views show, resolved per role: session override › view `display:` › `defaults.display` in config.yaml › per-kind fallback. See ADR-008.
 - **Flat structure:** All work items in a single directory (default: `workdown-items/`).
 - **Validation:** Broken references and cycle detection (where `allow_cycles: false`).
 
