@@ -97,33 +97,39 @@ pub(crate) fn split_frontmatter_with_body_offset(
     content: &str,
     path: &Path,
 ) -> Result<(HashMap<String, serde_yaml::Value>, usize), ParseError> {
-    let mut lines = content.lines();
+    // Iterate with `split_inclusive` so each segment keeps its real line
+    // terminator (`\n` or `\r\n`). `lines()` would strip the trailing `\r`
+    // on CRLF files, making `segment.len()` undercount by one byte per line
+    // and pushing the computed body offset back into the frontmatter.
+    let mut segments = content.split_inclusive('\n');
 
     // First line must be `---`
-    match lines.next() {
-        Some(line) if line.trim() == "---" => {}
+    let opening_delimiter_len = match segments.next() {
+        Some(segment) if segment.trim() == "---" => segment.len(),
         _ => {
             return Err(ParseError::MissingFrontmatter {
                 path: path.to_path_buf(),
             })
         }
-    }
+    };
 
     // Collect lines until the closing `---`
     let mut yaml_lines = Vec::new();
     let mut found_closing = false;
     let mut bytes_consumed = 0;
 
-    for line in &mut lines {
-        // Track how many bytes we've consumed (line + its newline).
-        // `lines()` strips the newline, so we account for it.
-        bytes_consumed += line.len() + 1;
+    for segment in &mut segments {
+        // `segment` still carries its terminator, so its length is the exact
+        // number of on-disk bytes it occupies — CRLF included.
+        bytes_consumed += segment.len();
 
-        if line.trim() == "---" {
+        if segment.trim() == "---" {
             found_closing = true;
             break;
         }
-        yaml_lines.push(line);
+        // Preserve leading indentation (YAML depends on it); only drop the
+        // trailing line terminator before re-joining.
+        yaml_lines.push(segment.trim_end_matches(['\r', '\n']));
     }
 
     if !found_closing {
@@ -157,8 +163,8 @@ pub(crate) fn split_frontmatter_with_body_offset(
         }
     };
 
-    // The opening `---\n` plus everything we consumed gives us the body offset.
-    let opening_delimiter_len = content.lines().next().unwrap().len() + 1;
+    // The opening `---` line plus everything we consumed through the closing
+    // `---` gives us the byte offset where the body begins.
     let body_offset = opening_delimiter_len + bytes_consumed;
 
     Ok((frontmatter, body_offset))
@@ -282,6 +288,35 @@ mod tests {
         let (_, body) = split_frontmatter(content, test_path()).unwrap();
         assert!(body.contains("# Heading"));
         assert!(body.contains("- a"));
+    }
+
+    #[test]
+    fn split_crlf_body_does_not_leak_frontmatter() {
+        // Windows editors write CRLF. `str::lines()` strips the `\r`, so the
+        // body-offset arithmetic must not assume a one-byte terminator or the
+        // body slice starts inside the frontmatter, dragging the closing `---`
+        // and the tail of the last field into the body.
+        let content =
+            "---\r\ntype: task\r\nstatus: open\r\ntags: [tag01, closed]\r\n---\r\nSome Content\r\n";
+        let (frontmatter, body) = split_frontmatter(content, test_path()).unwrap();
+
+        assert_eq!(body, "Some Content\r\n");
+        assert!(
+            !body.contains("---"),
+            "closing delimiter leaked into body: {body:?}"
+        );
+        assert!(
+            !body.contains(']'),
+            "frontmatter value leaked into body: {body:?}"
+        );
+        assert!(frontmatter.get("tags").unwrap().is_sequence());
+    }
+
+    #[test]
+    fn split_offset_crlf_points_at_body_start() {
+        let content = "---\r\ntitle: X\r\nstatus: open\r\n---\r\nBody line.\r\n";
+        let (_, body_offset) = split_frontmatter_with_body_offset(content, test_path()).unwrap();
+        assert_eq!(&content[body_offset..], "Body line.\r\n");
     }
 
     // ── Frontmatter parsing ──────────────────────────────────────────
