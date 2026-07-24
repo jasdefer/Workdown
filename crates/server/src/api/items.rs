@@ -55,7 +55,11 @@ async fn get_item(
     };
 
     match project.store.get(&id) {
-        Some(item) => ApiResponse::ok(item_data::build(item, &project.schema)),
+        Some(item) => ApiResponse::ok(item_data::build(
+            item,
+            &project.schema,
+            &state.config.defaults.display,
+        )),
         None => ApiResponse::not_found(),
     }
 }

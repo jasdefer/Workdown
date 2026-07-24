@@ -151,7 +151,7 @@ mod tests {
             where_clauses: where_clauses.into_iter().map(str::to_owned).collect(),
             display: DisplayConfig {
                 title: title.map(str::to_owned),
-                fields: columns.into_iter().map(str::to_owned).collect(),
+                fields: Some(columns.into_iter().map(str::to_owned).collect()),
                 ..DisplayConfig::default()
             },
             kind: ViewKind::Table,
@@ -202,6 +202,27 @@ mod tests {
             .iter()
             .map(|column| column.name.as_str())
             .collect()
+    }
+
+    #[test]
+    fn explicit_empty_fields_role_yields_zero_columns() {
+        // `fields: []` means "show no fields" — not the all-schema-fields
+        // fallback that an unset role produces.
+        let schema = basic_schema();
+        let store = make_store(
+            &schema,
+            vec![make_item(
+                "a",
+                vec![("status", FieldValue::Choice("open".into()))],
+                "",
+            )],
+        );
+        let view = table_view(vec![], vec![]);
+
+        let data = extract_table(&view, &store, &schema);
+
+        assert!(data.columns.is_empty());
+        assert!(data.rows[0].cells.is_empty());
     }
 
     #[test]

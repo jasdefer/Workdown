@@ -63,10 +63,12 @@ pub struct DisplayConfig {
     /// one (card second line, graph node subtitle). Fallback: none.
     pub subtitle: Option<String>,
     /// Ordered list of fields shown as the item's detail fields — card
-    /// badges, table/tree columns, graph tooltip lines. Empty means
+    /// badges, table/tree columns, graph tooltip lines. `None` means
     /// unset: inherit, or fall back to every schema field in
-    /// declaration order.
-    pub fields: Vec<String>,
+    /// declaration order. `Some(vec![])` is an explicit "show no
+    /// fields" — quiet cards, a zero-column table — and shadows lower
+    /// rungs like any other set value.
+    pub fields: Option<Vec<String>>,
     /// Which `color`-typed field tints the item's surface, or
     /// [`ColorRole::None`] to render the view untinted. Unset means
     /// inherit, then fall back to the first `color`-typed field in
@@ -132,6 +134,22 @@ impl View {
     }
 }
 
+impl Views {
+    /// [`View::with_display_defaults`] applied to every view — the
+    /// whole-file form used by `workdown render`, which merges once up
+    /// front; `serve` merges per request instead, after the session
+    /// override.
+    #[must_use]
+    pub fn with_display_defaults(mut self, defaults: &DisplayConfig) -> Self {
+        self.views = self
+            .views
+            .into_iter()
+            .map(|view| view.with_display_defaults(defaults))
+            .collect();
+        self
+    }
+}
+
 impl DisplayConfig {
     /// Per-role merge: roles set on `self` win, unset roles inherit
     /// from `base`. The building block of the resolution chain —
@@ -144,7 +162,7 @@ impl DisplayConfig {
         if self.subtitle.is_none() {
             self.subtitle = base.subtitle.clone();
         }
-        if self.fields.is_empty() {
+        if self.fields.is_none() {
             self.fields = base.fields.clone();
         }
         if self.color.is_none() {
@@ -458,5 +476,25 @@ mod tests {
         }
         .or_inherit(&base);
         assert_eq!(off.color, Some(ColorRole::None));
+    }
+
+    #[test]
+    fn or_inherit_fields_unset_inherits_and_empty_shadows() {
+        let base = DisplayConfig {
+            fields: Some(vec!["status".into()]),
+            ..DisplayConfig::default()
+        };
+
+        let unset = DisplayConfig::default().or_inherit(&base);
+        assert_eq!(unset.fields, Some(vec!["status".into()]));
+
+        // An explicit `fields: []` means "show no fields" — a set value
+        // that shadows the inherited list, not an unset marker.
+        let none_shown = DisplayConfig {
+            fields: Some(vec![]),
+            ..DisplayConfig::default()
+        }
+        .or_inherit(&base);
+        assert_eq!(none_shown.fields, Some(vec![]));
     }
 }

@@ -79,7 +79,7 @@
         },
         "fields": {
           "type": "array",
-          "description": "Ordered field names shown as the item's detail fields — card badges, table/tree columns, graph tooltip lines.",
+          "description": "Ordered field names shown as the item's detail fields — card badges, table/tree columns, graph tooltip lines. An explicit empty list means 'show no fields'; omit the key entirely to inherit (config defaults, then every schema field).",
           "items": { "$ref": "#/$defs/field_name" }
         },
         "color": {

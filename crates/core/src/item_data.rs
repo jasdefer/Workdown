@@ -14,6 +14,7 @@
 use serde::Serialize;
 
 use crate::model::schema::Schema;
+use crate::model::views::DisplayConfig;
 use crate::model::work_item::WorkItem;
 use crate::model::WorkItemId;
 use crate::view_data::CardField;
@@ -22,13 +23,14 @@ use crate::view_data::CardField;
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct ItemDetail {
     pub id: WorkItemId,
-    /// Resolved `#rrggbb` of the item's first `color` field in schema
-    /// order; `None` when unset. Same hex convention as
-    /// [`Card::background`](crate::view_data::Card::background) — the
-    /// detail surface tints itself with it. Unlike a view's cards this
-    /// stays on the schema-order fallback: the detail surface honors no
-    /// display roles (it shows everything), so the `color` role doesn't
-    /// apply here either.
+    /// Resolved `#rrggbb` the detail surface tints itself with; `None`
+    /// when untinted. Same hex convention as
+    /// [`Card::background`](crate::view_data::Card::background). The
+    /// detail surface has no view in context, so only the project-wide
+    /// rungs of the `color` role apply: `defaults.display.color` from
+    /// `config.yaml` (including its `none` off switch), then the
+    /// first-`color`-field-in-schema-order fallback. Per-view `display:`
+    /// blocks and session overrides never reach here.
     pub background: Option<String>,
     /// Each schema-declared field the item has a value for, in schema
     /// order. Fields the item doesn't set are omitted — the editor pulls
@@ -39,8 +41,10 @@ pub struct ItemDetail {
     pub body: String,
 }
 
-/// Build the detail projection for a single item.
-pub fn build(item: &WorkItem, schema: &Schema) -> ItemDetail {
+/// Build the detail projection for a single item. `display_defaults` is
+/// the project-wide `defaults.display` from `config.yaml` — the only
+/// display-role rung that applies to a surface without a view.
+pub fn build(item: &WorkItem, schema: &Schema, display_defaults: &DisplayConfig) -> ItemDetail {
     let fields = schema
         .fields
         .iter()
@@ -55,7 +59,7 @@ pub fn build(item: &WorkItem, schema: &Schema) -> ItemDetail {
 
     ItemDetail {
         id: item.id.clone(),
-        background: crate::view_data::resolved_background(item, schema, None),
+        background: crate::view_data::resolved_background(item, schema, Some(display_defaults)),
         fields,
         body: item.body.clone(),
     }

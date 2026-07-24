@@ -220,7 +220,9 @@ struct RawView {
 }
 
 /// The `display:` block on one view entry — cross-cutting display
-/// roles. Every role is optional; unknown roles are rejected.
+/// roles. Every role is optional; unknown roles are rejected. `fields`
+/// distinguishes absent (unset, inherit) from an explicit empty list
+/// (show no fields), so it round-trips as `Option`.
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawDisplay {
@@ -228,8 +230,8 @@ struct RawDisplay {
     title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     subtitle: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    fields: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    fields: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     color: Option<ColorRole>,
 }
@@ -604,7 +606,7 @@ mod tests {
             ViewKind::Tree { field } => assert_eq!(field, "parent"),
             other => panic!("expected Tree, got {other:?}"),
         }
-        assert!(view.display.fields.is_empty(), "no display block → unset");
+        assert!(view.display.fields.is_none(), "no display block → unset");
     }
 
     #[test]
@@ -612,7 +614,10 @@ mod tests {
         let view = parse_single(
             "views:\n  - id: h\n    type: tree\n    field: parent\n    display:\n      fields: [status, points]\n",
         );
-        assert_eq!(view.display.fields, vec!["status", "points"]);
+        assert_eq!(
+            view.display.fields,
+            Some(vec!["status".to_owned(), "points".to_owned()])
+        );
     }
 
     #[test]
@@ -664,7 +669,14 @@ mod tests {
             "views:\n  - id: all\n    type: table\n    display:\n      fields: [id, title, status]\n",
         );
         assert!(matches!(view.kind, ViewKind::Table));
-        assert_eq!(view.display.fields, vec!["id", "title", "status"]);
+        assert_eq!(
+            view.display.fields,
+            Some(vec![
+                "id".to_owned(),
+                "title".to_owned(),
+                "status".to_owned()
+            ])
+        );
     }
 
     #[test]
@@ -673,7 +685,16 @@ mod tests {
         // config defaults, or the all-schema-fields fallback.
         let view = parse_single("views:\n  - id: all\n    type: table\n");
         assert!(matches!(view.kind, ViewKind::Table));
-        assert!(view.display.fields.is_empty());
+        assert!(view.display.fields.is_none());
+    }
+
+    #[test]
+    fn parse_display_fields_empty_list_means_show_none() {
+        // An explicit `fields: []` is "show no fields" — a set value,
+        // distinct from an absent `fields:` (unset, inherit).
+        let view =
+            parse_single("views:\n  - id: all\n    type: table\n    display:\n      fields: []\n");
+        assert_eq!(view.display.fields, Some(vec![]));
     }
 
     #[test]
@@ -1107,7 +1128,10 @@ views:
         );
         assert_eq!(view.display.title.as_deref(), Some("title"));
         assert_eq!(view.display.subtitle.as_deref(), Some("status"));
-        assert_eq!(view.display.fields, vec!["type", "points"]);
+        assert_eq!(
+            view.display.fields,
+            Some(vec!["type".to_owned(), "points".to_owned()])
+        );
     }
 
     #[test]

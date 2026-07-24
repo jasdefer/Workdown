@@ -12,6 +12,11 @@
 export interface DisplayOverride {
 	title?: string;
 	subtitle?: string;
+	/**
+	 * Overriding field list. This bar treats an empty selection as unset
+	 * (the server-side wire format can also express an explicit "show no
+	 * fields" via `[]`, but the bar offers no affordance for it yet).
+	 */
 	fields?: string[];
 	/** A color-typed field name, or the sentinel 'none' for no tint. */
 	color?: string;

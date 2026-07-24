@@ -60,7 +60,7 @@ pub fn extract_tree(view: &View, store: &Store, schema: &Schema) -> TreeData {
 pub(super) fn build_tree_data(
     items: &[&WorkItem],
     field: &str,
-    columns: &[String],
+    columns: &[&str],
     store: &Store,
     schema: &Schema,
     view: &View,
@@ -81,12 +81,7 @@ pub(super) fn build_tree_data(
     }
 }
 
-fn to_tree_node(
-    traversal: Traversal,
-    columns: &[String],
-    schema: &Schema,
-    view: &View,
-) -> TreeNode {
+fn to_tree_node(traversal: Traversal, columns: &[&str], schema: &Schema, view: &View) -> TreeNode {
     let cells = columns
         .iter()
         .map(|column| column_cell(column, traversal.item))
@@ -112,21 +107,20 @@ mod tests {
     use crate::view_data::test_support::{make_schema, make_store_with_files};
 
     fn tree_view(field: &str, where_clauses: Vec<&str>) -> View {
-        tree_view_with_columns(field, where_clauses, vec![])
-    }
-
-    fn tree_view_with_columns(field: &str, where_clauses: Vec<&str>, columns: Vec<&str>) -> View {
         View {
             id: "my-tree".into(),
             where_clauses: where_clauses.into_iter().map(str::to_owned).collect(),
-            display: DisplayConfig {
-                fields: columns.into_iter().map(str::to_owned).collect(),
-                ..DisplayConfig::default()
-            },
+            display: DisplayConfig::default(),
             kind: ViewKind::Tree {
                 field: field.to_owned(),
             },
         }
+    }
+
+    fn tree_view_with_columns(field: &str, where_clauses: Vec<&str>, columns: Vec<&str>) -> View {
+        let mut view = tree_view(field, where_clauses);
+        view.display.fields = Some(columns.into_iter().map(str::to_owned).collect());
+        view
     }
 
     fn parent_schema() -> Schema {

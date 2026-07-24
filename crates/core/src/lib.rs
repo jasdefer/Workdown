@@ -4,6 +4,7 @@
 //! The repo is the single source of truth.
 
 pub mod config_check;
+mod display_check;
 pub mod generators;
 pub mod item_data;
 pub mod model;

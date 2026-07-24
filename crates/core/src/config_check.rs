@@ -9,11 +9,10 @@
 //! user gets no signal that their default is dead. This module closes
 //! that gap.
 //!
-//! The checks mirror the per-view role checks exactly: the text roles
-//! (`title`, `subtitle`, `fields`) are existence-only — any field's
-//! value renders as text — while `color` must name a `color`-typed
-//! field, or be the `none` sentinel (always valid). The virtual `id`
-//! is accepted everywhere, as it is for the per-view roles.
+//! The rules are identical to the per-view role checks by construction:
+//! both delegate to the crate-private `display_check` module, which
+//! owns the role vocabulary's constraints in one place; this module
+//! only wraps each violation into a config-scoped diagnostic.
 //!
 //! Every diagnostic here is project-wide, not pinned to a view, so it
 //! never marks a single view unrenderable: a bad default degrades every
@@ -25,10 +24,10 @@
 
 use std::path::Path;
 
+use crate::display_check::{check_display_roles, RoleViolation};
 use crate::model::config::Config;
 use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic};
-use crate::model::schema::{FieldType, Schema, Severity};
-use crate::model::views::ColorRole;
+use crate::model::schema::{Schema, Severity};
 
 /// Run all cross-file checks on `config.yaml` against a schema.
 ///
@@ -36,117 +35,31 @@ use crate::model::views::ColorRole;
 /// first. All diagnostics produced here have [`Severity::Error`] and are
 /// pinned to `config_path`.
 pub fn evaluate(config: &Config, schema: &Schema, config_path: &Path) -> Vec<Diagnostic> {
-    let mut out = Vec::new();
-    check_display_defaults(config, schema, config_path, &mut out);
-    out
-}
-
-/// Check the `defaults.display` role references. Same rules as the
-/// per-view `check_display` in [`crate::views_check`], kept as a small
-/// parallel implementation rather than shared machinery: the two emit
-/// different diagnostic variants (config-scope here, view-scope there),
-/// and the overlap is a few lines.
-fn check_display_defaults(
-    config: &Config,
-    schema: &Schema,
-    config_path: &Path,
-    out: &mut Vec<Diagnostic>,
-) {
-    let display = &config.defaults.display;
-
-    if let Some(field_name) = display.title.as_deref() {
-        check_slot(
-            schema,
-            config_path,
-            "defaults.display.title",
-            field_name,
-            &[],
-            "",
-            out,
-        );
-    }
-    if let Some(field_name) = display.subtitle.as_deref() {
-        check_slot(
-            schema,
-            config_path,
-            "defaults.display.subtitle",
-            field_name,
-            &[],
-            "",
-            out,
-        );
-    }
-    for field_name in &display.fields {
-        check_slot(
-            schema,
-            config_path,
-            "defaults.display.fields",
-            field_name,
-            &[],
-            "",
-            out,
-        );
-    }
-    if let Some(ColorRole::Field(field_name)) = &display.color {
-        check_slot(
-            schema,
-            config_path,
-            "defaults.display.color",
-            field_name,
-            &[FieldType::Color],
-            "color",
-            out,
-        );
-    }
-}
-
-/// Check one role's field reference against the schema. Existence-only
-/// when `allowed` is empty; otherwise the field's type must be in
-/// `allowed`. The virtual `id` is always accepted (it isn't a schema
-/// field) — matching `views_check::check_slot`, including its quirk that
-/// `id` skips the type check.
-fn check_slot(
-    schema: &Schema,
-    config_path: &Path,
-    slot: &'static str,
-    field_name: &str,
-    allowed: &[FieldType],
-    expected_label: &'static str,
-    out: &mut Vec<Diagnostic>,
-) {
-    if field_name == "id" {
-        return;
-    }
-
-    let Some(definition) = schema.fields.get(field_name) else {
-        out.push(Diagnostic::config(
-            Severity::Error,
-            config_path.to_path_buf(),
-            ConfigDiagnosticKind::ConfigDisplayUnknownField {
-                slot,
-                field_name: field_name.to_owned(),
-            },
-        ));
-        return;
-    };
-
-    if allowed.is_empty() {
-        return;
-    }
-
-    let actual = definition.field_type();
-    if !allowed.contains(&actual) {
-        out.push(Diagnostic::config(
-            Severity::Error,
-            config_path.to_path_buf(),
-            ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch {
-                slot,
-                field_name: field_name.to_owned(),
-                actual_type: actual,
-                expected: expected_label.to_owned(),
-            },
-        ));
-    }
+    check_display_roles(&config.defaults.display, schema)
+        .into_iter()
+        .map(|violation| {
+            let kind = match violation {
+                RoleViolation::UnknownField { role, field_name } => {
+                    ConfigDiagnosticKind::ConfigDisplayUnknownField {
+                        slot: role.config_slot(),
+                        field_name,
+                    }
+                }
+                RoleViolation::TypeMismatch {
+                    role,
+                    field_name,
+                    actual_type,
+                    expected,
+                } => ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch {
+                    slot: role.config_slot(),
+                    field_name,
+                    actual_type,
+                    expected: expected.to_owned(),
+                },
+            };
+            Diagnostic::config(Severity::Error, config_path.to_path_buf(), kind)
+        })
+        .collect()
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -157,7 +70,7 @@ mod tests {
     use crate::model::config::{Config, Paths, ProjectMeta, ViewDefaults};
     use crate::model::diagnostic::DiagnosticBody;
     use crate::model::schema::{FieldDefinition, FieldTypeConfig};
-    use crate::model::views::DisplayConfig;
+    use crate::model::views::{ColorRole, DisplayConfig};
     use indexmap::IndexMap;
     use std::path::{Path, PathBuf};
 
@@ -226,7 +139,7 @@ mod tests {
     fn valid_display_defaults_produce_no_diagnostics() {
         let config = config_with_display(DisplayConfig {
             title: Some("title".into()),
-            fields: vec!["id".into(), "status".into()],
+            fields: Some(vec!["id".into(), "status".into()]),
             color: Some(ColorRole::Field("team_color".into())),
             ..DisplayConfig::default()
         });
@@ -303,7 +216,36 @@ mod tests {
     fn id_accepted_in_text_roles() {
         let config = config_with_display(DisplayConfig {
             title: Some("id".into()),
-            fields: vec!["id".into()],
+            fields: Some(vec!["id".into()]),
+            ..DisplayConfig::default()
+        });
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn id_rejected_as_color_default() {
+        // The virtual `id` renders as text everywhere, but it can never
+        // feed a tint — accepting it here would just be a dead config.
+        let config = config_with_display(DisplayConfig {
+            color: Some(ColorRole::Field("id".into())),
+            ..DisplayConfig::default()
+        });
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            config_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch { slot, field_name, expected, .. }
+                if *slot == "defaults.display.color" && field_name == "id" && expected == "color"
+        ));
+    }
+
+    #[test]
+    fn empty_fields_default_is_valid() {
+        // `fields: []` is the explicit "show no fields" — nothing to
+        // resolve, nothing to report.
+        let config = config_with_display(DisplayConfig {
+            fields: Some(vec![]),
             ..DisplayConfig::default()
         });
         let diagnostics = evaluate(&config, &simple_schema(), config_path());

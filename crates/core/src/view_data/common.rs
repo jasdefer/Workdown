@@ -116,12 +116,12 @@ pub struct ItemRef {
 pub fn build_card(item: &WorkItem, schema: &Schema, view: &View) -> Card {
     let mut fields = Vec::new();
     for field_name in effective_fields(view, schema) {
-        let Some(config) = schema.fields.get(&field_name) else {
+        let Some(config) = schema.fields.get(field_name) else {
             continue; // the virtual `id` — carried on the card itself
         };
-        if let Some(value) = item.fields.get(&field_name) {
+        if let Some(value) = item.fields.get(field_name) {
             fields.push(CardField {
-                name: field_name,
+                name: field_name.to_owned(),
                 value: value.clone(),
                 field_type: config.field_type(),
             });
@@ -151,10 +151,11 @@ pub fn build_card(item: &WorkItem, schema: &Schema, view: &View) -> Card {
 ///   `views_check` guarantees view-level config and `config_check`
 ///   guarantees the `defaults.display` entry, but a stale session
 ///   override must degrade gracefully, not panic or mistint.
-/// - Unset (including `display: None` — surfaces with no view in
-///   context) — the fallback: the first `color`-typed field in schema
-///   order, mirroring how the first compatible `choice` field backs a
-///   board.
+/// - Unset (including `display: None`) — the fallback: the first
+///   `color`-typed field in schema order, mirroring how the first
+///   compatible `choice` field backs a board. Surfaces without a view
+///   in context (the item detail) pass the project-wide
+///   `defaults.display` here so rung 3 still applies to them.
 pub fn resolve_color_field<'schema>(
     schema: &'schema Schema,
     display: Option<&DisplayConfig>,
@@ -196,23 +197,25 @@ pub fn resolved_background(
 
 /// The view's `fields` display role, or every schema field in
 /// declaration order when the role is unset — preserving the
-/// show-everything behavior views had before display roles existed.
+/// show-everything behavior views had before display roles existed. An
+/// explicit `fields: []` means what it says: no fields.
 ///
 /// Names that resolve neither in `schema.fields` nor to the virtual
 /// `id` are dropped defensively: both the view's own role entries
 /// (`views_check`) and the `defaults.display` entries inherited from
 /// `config.yaml` (`config_check`) are validated, but a session override
 /// can still name a stale field, and the extractor must never panic.
-pub fn effective_fields(view: &View, schema: &Schema) -> Vec<String> {
-    if view.display.fields.is_empty() {
-        schema.fields.keys().cloned().collect()
-    } else {
-        view.display
-            .fields
+///
+/// Returns borrowed names: `build_card` runs once per item, so handing
+/// out owned `String`s here would clone the whole field list per card.
+pub fn effective_fields<'view>(view: &'view View, schema: &'view Schema) -> Vec<&'view str> {
+    match &view.display.fields {
+        None => schema.fields.keys().map(String::as_str).collect(),
+        Some(fields) => fields
             .iter()
+            .map(String::as_str)
             .filter(|name| *name == "id" || schema.fields.contains_key(*name))
-            .cloned()
-            .collect()
+            .collect(),
     }
 }
 

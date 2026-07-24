@@ -17,11 +17,12 @@
 
 use std::path::Path;
 
+use crate::display_check::{check_display_roles, RoleViolation};
 use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic, FileDiagnosticKind};
 use crate::model::schema::{
     is_relation_anchor, FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity,
 };
-use crate::model::views::{Aggregate, ColorRole, MetricRow, View, ViewKind, Views};
+use crate::model::views::{Aggregate, MetricRow, View, ViewKind, Views};
 use crate::parser::views::{ViewsLoadError, ViewsValidationError};
 use crate::query::parse::parse_where;
 use crate::query::types::{FieldReference, Predicate};
@@ -377,34 +378,34 @@ fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
 
 // ── Display roles (cross-cutting) ────────────────────────────────────
 
-/// Check the view's display-role field references. The text roles are
-/// existence-only: any field's value can be rendered as text, so they
-/// constrain *which* field, not its type. (The virtual `id` is allowed
-/// everywhere, as in `check_slot`.) The `color` role additionally
-/// requires a `color`-typed field — its value feeds a background tint,
-/// not a text slot; the `none` sentinel (parsed into
-/// [`ColorRole::None`]) is always valid and checks nothing.
+/// Check the view's display-role field references. The rules live in
+/// [`crate::display_check`] — shared with `config_check`, which applies
+/// them to `defaults.display` in `config.yaml` — and each violation is
+/// wrapped into a view-scoped diagnostic here.
 fn check_display(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
-    let view_id = view.id.as_str();
-    if let Some(field_name) = view.display.title.as_deref() {
-        check_slot(ctx, view_id, "display.title", field_name, &[], "", out);
-    }
-    if let Some(field_name) = view.display.subtitle.as_deref() {
-        check_slot(ctx, view_id, "display.subtitle", field_name, &[], "", out);
-    }
-    for field_name in &view.display.fields {
-        check_slot(ctx, view_id, "display.fields", field_name, &[], "", out);
-    }
-    if let Some(ColorRole::Field(field_name)) = &view.display.color {
-        check_slot(
-            ctx,
-            view_id,
-            "display.color",
-            field_name,
-            &[FieldType::Color],
-            "color",
-            out,
-        );
+    for violation in check_display_roles(&view.display, ctx.schema) {
+        let kind = match violation {
+            RoleViolation::UnknownField { role, field_name } => {
+                ConfigDiagnosticKind::ViewUnknownField {
+                    view_id: view.id.clone(),
+                    slot: role.view_slot(),
+                    field_name,
+                }
+            }
+            RoleViolation::TypeMismatch {
+                role,
+                field_name,
+                actual_type,
+                expected,
+            } => ConfigDiagnosticKind::ViewFieldTypeMismatch {
+                view_id: view.id.clone(),
+                slot: role.view_slot(),
+                field_name,
+                actual_type,
+                expected: expected.to_owned(),
+            },
+        };
+        out.push(ctx.error(kind));
     }
 }
 
@@ -934,7 +935,9 @@ mod tests {
     use super::*;
     use crate::model::diagnostic::DiagnosticBody;
     use crate::model::schema::{FieldDefinition, FieldTypeConfig, Schema};
-    use crate::model::views::{Aggregate, Bucket, DisplayConfig, MetricRow, View, ViewKind, Views};
+    use crate::model::views::{
+        Aggregate, Bucket, ColorRole, DisplayConfig, MetricRow, View, ViewKind, Views,
+    };
     use crate::parser::views::parse_views;
     use indexmap::IndexMap;
     use std::path::{Path, PathBuf};
@@ -1086,7 +1089,7 @@ mod tests {
             &view_with_display(
                 ViewKind::Table,
                 DisplayConfig {
-                    fields: vec!["status".into(), "nonexistent".into()],
+                    fields: Some(vec!["status".into(), "nonexistent".into()]),
                     ..DisplayConfig::default()
                 },
             ),
@@ -1115,7 +1118,7 @@ mod tests {
             &view_with_display(
                 ViewKind::Table,
                 DisplayConfig {
-                    fields: vec!["id".into(), "status".into()],
+                    fields: Some(vec!["id".into(), "status".into()]),
                     ..DisplayConfig::default()
                 },
             ),
@@ -1227,6 +1230,30 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn id_rejected_as_color_role() {
+        // The virtual `id` is accepted by every text role, but it can
+        // never feed a tint — silently accepting it would just be a
+        // dead config.
+        let diagnostics = evaluate(
+            &view_with_display(
+                ViewKind::Table,
+                DisplayConfig {
+                    color: Some(ColorRole::Field("id".into())),
+                    ..DisplayConfig::default()
+                },
+            ),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewFieldTypeMismatch { slot, field_name, expected, .. }
+                if *slot == "display.color" && field_name == "id" && expected == "color"
+        ));
+    }
+
     // ── Type compatibility (one representative per row) ────────
 
     #[test]
@@ -1253,7 +1280,7 @@ mod tests {
                     field: "parent".into(),
                 },
                 DisplayConfig {
-                    fields: vec!["status".into(), "nonexistent".into()],
+                    fields: Some(vec!["status".into(), "nonexistent".into()]),
                     ..DisplayConfig::default()
                 },
             ),

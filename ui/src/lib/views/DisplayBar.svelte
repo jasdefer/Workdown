@@ -81,6 +81,9 @@
 
 	function onFieldsChange(event: Event): void {
 		const select = event.currentTarget as HTMLSelectElement;
+		// `selectedOptions` comes back in document order, so this override
+		// can pick *which* fields show but not reorder them — a custom
+		// order needs the view's `display.fields` in views.yaml.
 		fields = [...select.selectedOptions].map((option) => option.value);
 		void apply();
 	}

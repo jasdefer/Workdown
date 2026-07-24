@@ -52,15 +52,9 @@ pub fn run_render(
     // Fill unset display roles from `defaults.display` in config.yaml.
     // Applied after validation so diagnostics keep pointing at what the
     // user actually wrote in views.yaml.
-    let views = Views {
-        output_dir: views.output_dir.clone(),
-        views: views
-            .views
-            .iter()
-            .cloned()
-            .map(|view| view.with_display_defaults(&config.defaults.display))
-            .collect(),
-    };
+    let views = views
+        .clone()
+        .with_display_defaults(&config.defaults.display);
     let views = &views;
 
     // Climb out of the output directory back to project root, then down

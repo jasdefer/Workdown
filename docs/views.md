@@ -108,7 +108,8 @@ Resolution per role, first match wins:
 4. Per-kind hardcoded fallback: `title` → the item `id`; `fields` → every schema field in declaration order; `subtitle` → nothing; `color` → the first `color`-typed field in schema order.
 
 - Every role is optional everywhere; a view with no `display:` block inherits entirely.
-- Role fields must resolve in `schema.yaml` (or be the virtual `id`). The text roles accept any field type — every value renders as text. The `color` role requires a `color`-typed field, or the sentinel `none` to render the view untinted at any rung (`none` is reserved — `schema.yaml` rejects it as a field name).
+- `fields` distinguishes absent from empty: omitting the key inherits down the ladder, while an explicit `fields: []` means "show no fields" (a quiet card, a zero-column table) and shadows lower rungs like any other set value.
+- Role fields must resolve in `schema.yaml`. The text roles accept any field type — every value renders as text — and also the virtual `id`. The `color` role requires a `color`-typed field (`id` is rejected — it can never feed a tint), or the sentinel `none` to render the view untinted at any rung (`none` is reserved — `schema.yaml` rejects it as a field name).
 - Aggregate/chart kinds (`bar_chart`, `line_chart`, `heatmap`, `metric`, `treemap`, `workload`) accept the block uniformly but ignore item-level roles at render time.
 - `defaults.display` role fields are validated against the schema (surfaced through `workdown validate` and the serve banner, pointing at `config.yaml`). Unlike a per-view role error — which makes that one view unrenderable — a bad project-wide default is reported but non-blocking: every view keeps rendering on its fallback, since one config typo shouldn't blank all views at once.
 
