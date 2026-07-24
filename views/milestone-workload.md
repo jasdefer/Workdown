@@ -570,17 +570,17 @@ effort (days)
 <rect x="1206" y="268" width="20" height="0" opacity="1" fill="#E69F00" stroke="none"/>
 <rect x="1226" y="268" width="19" height="0" opacity="1" fill="#E69F00" stroke="none"/>
 <rect x="1245" y="268" width="20" height="0" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1265" y="221" width="19" height="47" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1284" y="221" width="20" height="47" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1304" y="221" width="19" height="47" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1323" y="221" width="20" height="47" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1343" y="221" width="20" height="47" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1363" y="221" width="19" height="47" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1382" y="221" width="20" height="47" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1402" y="221" width="19" height="47" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1421" y="221" width="20" height="47" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1441" y="221" width="20" height="47" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1461" y="244" width="19" height="24" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1265" y="204" width="19" height="64" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1284" y="204" width="20" height="64" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1304" y="204" width="19" height="64" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1323" y="204" width="20" height="64" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1343" y="204" width="20" height="64" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1363" y="204" width="19" height="64" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1382" y="204" width="20" height="64" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1402" y="204" width="19" height="64" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1421" y="204" width="20" height="64" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1441" y="204" width="20" height="64" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1461" y="180" width="19" height="88" opacity="1" fill="#E69F00" stroke="none"/>
 <rect x="1480" y="244" width="20" height="24" opacity="1" fill="#E69F00" stroke="none"/>
 <rect x="1500" y="244" width="19" height="24" opacity="1" fill="#E69F00" stroke="none"/>
 <rect x="1519" y="244" width="20" height="24" opacity="1" fill="#E69F00" stroke="none"/>
@@ -638,17 +638,17 @@ effort (days)
 | 2026-06-29 | 1d |
 | 2026-06-30 | 1d |
 | 2026-07-01 | 1d |
-| 2026-07-13 | 4h 48min |
-| 2026-07-14 | 4h 48min |
-| 2026-07-15 | 4h 48min |
-| 2026-07-16 | 4h 48min |
-| 2026-07-17 | 4h 48min |
-| 2026-07-20 | 4h 48min |
-| 2026-07-21 | 4h 48min |
-| 2026-07-22 | 4h 48min |
-| 2026-07-23 | 4h 48min |
-| 2026-07-24 | 4h 48min |
-| 2026-07-27 | 2h 24min |
+| 2026-07-13 | 6h 32min 44s |
+| 2026-07-14 | 6h 32min 44s |
+| 2026-07-15 | 6h 32min 44s |
+| 2026-07-16 | 6h 32min 44s |
+| 2026-07-17 | 6h 32min 44s |
+| 2026-07-20 | 6h 32min 44s |
+| 2026-07-21 | 6h 32min 44s |
+| 2026-07-22 | 6h 32min 44s |
+| 2026-07-23 | 6h 32min 44s |
+| 2026-07-24 | 6h 32min 44s |
+| 2026-07-27 | 8h 56min 44s |
 | 2026-07-28 | 2h 24min |
 | 2026-07-29 | 2h 24min |
 | 2026-07-30 | 2h 24min |

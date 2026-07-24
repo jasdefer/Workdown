@@ -13,10 +13,12 @@
 | [cli-set-modes](../workdown-items/cli-set-modes.md) | issue | done | [item-mutations](../workdown-items/item-mutations.md) | [cli-set-command](../workdown-items/cli-set-command.md) |
 | [cli-unset-command](../workdown-items/cli-unset-command.md) | issue | done | [item-mutations](../workdown-items/item-mutations.md) | [cli-set-command](../workdown-items/cli-set-command.md) |
 | [code-quality](../workdown-items/code-quality.md) | milestone | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) |  |
-| [color-field-type](../workdown-items/color-field-type.md) | issue | to_do | [view-presentation](../workdown-items/view-presentation.md) | [mutations-slice](../workdown-items/mutations-slice.md) |
+| [color-display-slot](../workdown-items/color-display-slot.md) | issue | done | [view-presentation](../workdown-items/view-presentation.md) | [color-field-type](../workdown-items/color-field-type.md), [view-display-config](../workdown-items/view-display-config.md) |
+| [color-field-type](../workdown-items/color-field-type.md) | issue | done | [view-presentation](../workdown-items/view-presentation.md) | [mutations-slice](../workdown-items/mutations-slice.md) |
 | [cross-cutting-helpers](../workdown-items/cross-cutting-helpers.md) | issue | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md) | issue | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [diagnostic-variant-cleanup](../workdown-items/diagnostic-variant-cleanup.md) | issue | done | [code-quality](../workdown-items/code-quality.md) |  |
+| [display-defaults-validation](../workdown-items/display-defaults-validation.md) | issue | done | [view-presentation](../workdown-items/view-presentation.md) | [view-display-config](../workdown-items/view-display-config.md) |
 | [duration-comparison-rule](../workdown-items/duration-comparison-rule.md) | issue | to_do | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [duration-field-type](../workdown-items/duration-field-type.md) | issue | done | [renderers](../workdown-items/renderers.md) |  |
 | [explicit-in-operator](../workdown-items/explicit-in-operator.md) | issue | to_do | [polish](../workdown-items/polish.md) | [view-filter-editor](../workdown-items/view-filter-editor.md) |
@@ -61,7 +63,7 @@
 | [view-authoring](../workdown-items/view-authoring.md) | milestone | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [server](../workdown-items/server.md) |
 | [view-creation](../workdown-items/view-creation.md) | issue | done | [view-authoring](../workdown-items/view-authoring.md) | [view-write-backend](../workdown-items/view-write-backend.md), [schema-metadata-api](../workdown-items/schema-metadata-api.md), [view-filter-editor](../workdown-items/view-filter-editor.md), [app-shell-navigation](../workdown-items/app-shell-navigation.md) |
 | [view-data-intermediate](../workdown-items/view-data-intermediate.md) | issue | done | [renderers](../workdown-items/renderers.md) | [field-value-native-date](../workdown-items/field-value-native-date.md), [views-title-slot](../workdown-items/views-title-slot.md) |
-| [view-display-config](../workdown-items/view-display-config.md) | issue | in_progress | [view-presentation](../workdown-items/view-presentation.md) | [remaining-read-views](../workdown-items/remaining-read-views.md) |
+| [view-display-config](../workdown-items/view-display-config.md) | issue | done | [view-presentation](../workdown-items/view-presentation.md) | [remaining-read-views](../workdown-items/remaining-read-views.md) |
 | [view-filter-editor](../workdown-items/view-filter-editor.md) | issue | done | [view-authoring](../workdown-items/view-authoring.md) | [remaining-read-views](../workdown-items/remaining-read-views.md), [schema-metadata-api](../workdown-items/schema-metadata-api.md), [view-write-backend](../workdown-items/view-write-backend.md) |
 | [view-presentation](../workdown-items/view-presentation.md) | milestone | in_progress | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [server](../workdown-items/server.md) |
 | [view-write-backend](../workdown-items/view-write-backend.md) | issue | done | [view-authoring](../workdown-items/view-authoring.md) |  |
@@ -71,6 +73,7 @@
 | [views-title-slot](../workdown-items/views-title-slot.md) | issue | done | [renderers](../workdown-items/renderers.md) |  |
 | [views-validate-integration](../workdown-items/views-validate-integration.md) | issue | done | [foundation](../workdown-items/foundation.md) | [views-config-path](../workdown-items/views-config-path.md), [views-cross-file-validation](../workdown-items/views-cross-file-validation.md), [foundation-cleanup](../workdown-items/foundation-cleanup.md) |
 | [views-yaml-design](../workdown-items/views-yaml-design.md) | issue | done | [foundation](../workdown-items/foundation.md) |  |
+| [virtual-id-in-structural-slots](../workdown-items/virtual-id-in-structural-slots.md) | issue | to_do | [polish](../workdown-items/polish.md) |  |
 | [walker-primitives](../workdown-items/walker-primitives.md) | issue | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [walking-skeleton](../workdown-items/walking-skeleton.md) | issue | done | [server](../workdown-items/server.md) |  |
 | [workspace-refactor](../workdown-items/workspace-refactor.md) | issue | done | [foundation](../workdown-items/foundation.md) |  |

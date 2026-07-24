@@ -33,6 +33,7 @@ Hierarchical outline following `parent` upward to roots.
     - [Validate resource references and render resource pickers](../workdown-items/resource-option-lists.md) — type: issue · status: to_do
     - [Rules can't reference the current date](../workdown-items/rules-current-date-reference.md) — type: issue · status: to_do
     - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md) — type: issue · status: to_do
+    - [Reject the virtual `id` in structural slots that read item fields](../workdown-items/virtual-id-in-structural-slots.md) — type: issue · status: to_do
   - [Renderers](../workdown-items/renderers.md) — type: milestone · status: done
     - [Compute schema-declared aggregate fields up the parent chain](../workdown-items/aggregate-rollup.md) — type: issue · status: done
     - [Add `duration` field type](../workdown-items/duration-field-type.md) — type: issue · status: done
@@ -69,8 +70,10 @@ Hierarchical outline following `parent` upward to roots.
     - [Build and edit a view's where filter from the UI](../workdown-items/view-filter-editor.md) — type: issue · status: done
     - [Persist view definitions to views.yaml](../workdown-items/view-write-backend.md) — type: issue · status: done
   - [View & item presentation](../workdown-items/view-presentation.md) — type: milestone · status: in_progress
-    - [Add `color` field type with background tinting](../workdown-items/color-field-type.md) — type: issue · status: to_do
-    - [Per-view-kind display configuration (which fields show where)](../workdown-items/view-display-config.md) — type: issue · status: in_progress
+    - [`color:` display role — choose which color field tints a view](../workdown-items/color-display-slot.md) — type: issue · status: done
+    - [Add `color` field type with background tinting](../workdown-items/color-field-type.md) — type: issue · status: done
+    - [Validate `defaults.display` in config.yaml against the schema](../workdown-items/display-defaults-validation.md) — type: issue · status: done
+    - [Per-view-kind display configuration (which fields show where)](../workdown-items/view-display-config.md) — type: issue · status: done
 - [Time tracking](../workdown-items/time-tracking.md) — type: milestone · status: to_do
   - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md) — type: issue · status: to_do
   - [Default generator that reads dates from git history](../workdown-items/git-derived-default-generator.md) — type: issue · status: to_do

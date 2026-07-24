@@ -2,10 +2,10 @@
 
 Hierarchical breakdown of `effort` summed up the `parent` chain.
 
-**Total: 2w 6d 12h**
+**Total: 3w 12h**
 
-- **2w 6d 12h** (100%) — [Phase 04: Visualization](../workdown-items/phase-04-visualization.md)
-  - **5d 16h** (28%) — [Renderers](../workdown-items/renderers.md)
+- **3w 12h** (100%) — [Phase 04: Visualization](../workdown-items/phase-04-visualization.md)
+  - **5d 16h** (26%) — [Renderers](../workdown-items/renderers.md)
     - **16h** (12%) — [Design ViewData and extractors](../workdown-items/view-data-intermediate.md)
     - **12h** (9%) — [Gantt renderer](../workdown-items/render-gantt.md)
     - **8h** (6%) — [Compute schema-declared aggregate fields up the parent chain](../workdown-items/aggregate-rollup.md)
@@ -27,7 +27,7 @@ Hierarchical breakdown of `effort` summed up the `parent` chain.
     - **4h** (3%) — [Table renderer](../workdown-items/render-table.md)
     - **4h** (3%) — [Tree renderer](../workdown-items/render-tree.md)
     - **4h** (3%) — [Add per-view `title:` slot to views.yaml](../workdown-items/views-title-slot.md)
-  - **4d** (20%) — [Author and edit views from the UI](../workdown-items/view-authoring.md)
+  - **4d** (19%) — [Author and edit views from the UI](../workdown-items/view-authoring.md)
     - **2d** (50%) — [Expose schema metadata so the UI can offer valid choices](../workdown-items/schema-metadata-api.md)
     - **16h** (17%) — [Create a new view from the UI](../workdown-items/view-creation.md)
     - **16h** (17%) — [Build and edit a view's where filter from the UI](../workdown-items/view-filter-editor.md)
@@ -37,6 +37,9 @@ Hierarchical breakdown of `effort` summed up the `parent` chain.
     - **16h** (20%) — [First view end-to-end (board, read-only)](../workdown-items/first-view-end-to-end.md)
     - **16h** (20%) — [UI foundation — conventions and scaffolding before the first view](../workdown-items/ui-foundation.md)
     - **8h** (10%) — [workdown serve skeleton with embedded UI](../workdown-items/walking-skeleton.md)
+  - **3d** (14%) — [View & item presentation](../workdown-items/view-presentation.md)
+    - **2d** (67%) — [Add `color` field type with background tinting](../workdown-items/color-field-type.md)
+    - **1d** (33%) — [`color:` display role — choose which color field tints a view](../workdown-items/color-display-slot.md)
   - **2d 8h** (11%) — [Foundation](../workdown-items/foundation.md)
     - **16h** (29%) — [Split into core / cli / server workspace](../workdown-items/workspace-refactor.md)
     - **12h** (21%) — [Design views.yaml shape](../workdown-items/views-yaml-design.md)
@@ -46,8 +49,6 @@ Hierarchical breakdown of `effort` summed up the `parent` chain.
     - **4h** (7%) — [Add views path to config; ship default views.yaml](../workdown-items/views-config-path.md)
     - **4h** (7%) — [Editor-only JSON Schema for views.yaml](../workdown-items/views-json-schema.md)
     - **4h** (7%) — [Wire views validation into workdown validate](../workdown-items/views-validate-integration.md)
-  - **2d** (10%) — [View & item presentation](../workdown-items/view-presentation.md)
-    - **2d** (100%) — [Add `color` field type with background tinting](../workdown-items/color-field-type.md)
   - **1d 20h** (9%) — [Item mutations](../workdown-items/item-mutations.md)
     - **12h** (27%) — [workdown set — replace a field value](../workdown-items/cli-set-command.md)
     - **8h** (18%) — [workdown rename — change an item's id](../workdown-items/cli-rename-command.md)
@@ -68,6 +69,7 @@ Hierarchical breakdown of `effort` summed up the `parent` chain.
 
 ## Unplaced (missing `effort`)
 - [App shell navigation (views menu + future link slots)](../workdown-items/app-shell-navigation.md)
+- [Validate `defaults.display` in config.yaml against the schema](../workdown-items/display-defaults-validation.md)
 - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md)
 - [Default generator that reads dates from git history](../workdown-items/git-derived-default-generator.md)
 - [File watcher and SSE for live updates](../workdown-items/live-updates.md)
@@ -76,3 +78,4 @@ Hierarchical breakdown of `effort` summed up the `parent` chain.
 - [Rules can't reference the current date](../workdown-items/rules-current-date-reference.md)
 - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md)
 - [Per-view-kind display configuration (which fields show where)](../workdown-items/view-display-config.md)
+- [Reject the virtual `id` in structural slots that read item fields](../workdown-items/virtual-id-in-structural-slots.md)

@@ -1,7 +1,7 @@
 ---
 id: display-defaults-validation
 type: issue
-status: in_progress
+status: done
 title: Validate `defaults.display` in config.yaml against the schema
 parent: view-presentation
 depends_on: [view-display-config]

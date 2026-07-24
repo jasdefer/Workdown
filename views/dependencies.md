@@ -39,6 +39,7 @@ flowchart TD
             resource-option-lists["Validate resource references and render resource pickers"]
             rules-current-date-reference["Rules can't reference the current date"]
             store-diagnostics-consistency["Make store-diagnostic surfacing consistent across commands"]
+            virtual-id-in-structural-slots["Reject the virtual `id` in structural slots that read item fields"]
         end
         subgraph renderers ["Renderers"]
             aggregate-rollup["Compute schema-declared aggregate fields up the parent chain"]
@@ -79,7 +80,9 @@ flowchart TD
             view-write-backend["Persist view definitions to views.yaml"]
         end
         subgraph view-presentation ["View & item presentation"]
+            color-display-slot["`color:` display role — choose which color field tints a view"]
             color-field-type["Add `color` field type with background tinting"]
+            display-defaults-validation["Validate `defaults.display` in config.yaml against the schema"]
             view-display-config["Per-view-kind display configuration (which fields show where)"]
         end
     end
@@ -91,7 +94,10 @@ flowchart TD
     cli-move-command --> cli-set-command
     cli-set-modes --> cli-set-command
     cli-unset-command --> cli-set-command
+    color-display-slot --> color-field-type
+    color-display-slot --> view-display-config
     color-field-type --> mutations-slice
+    display-defaults-validation --> view-display-config
     explicit-in-operator --> view-filter-editor
     first-view-end-to-end --> ui-foundation
     first-view-end-to-end --> walking-skeleton

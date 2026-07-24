@@ -3,7 +3,6 @@
 Cards grouped into columns by `status`.
 
 ## to_do
-- [Add `color` field type with background tinting](../workdown-items/color-field-type.md)
 - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md)
 - [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md)
 - [Default generator that reads dates from git history](../workdown-items/git-derived-default-generator.md)
@@ -11,9 +10,10 @@ Cards grouped into columns by `status`.
 - [Validate resource references and render resource pickers](../workdown-items/resource-option-lists.md)
 - [Rules can't reference the current date](../workdown-items/rules-current-date-reference.md)
 - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md)
+- [Reject the virtual `id` in structural slots that read item fields](../workdown-items/virtual-id-in-structural-slots.md)
 
 ## in_progress
-- [Per-view-kind display configuration (which fields show where)](../workdown-items/view-display-config.md)
+_(no cards)_
 
 ## done
 - [ADR — visualization architecture](../workdown-items/adr-phase-04-architecture.md)
@@ -26,9 +26,12 @@ Cards grouped into columns by `status`.
 - [workdown set — replace a field value](../workdown-items/cli-set-command.md)
 - [workdown set — type-aware modes (append, remove, delta)](../workdown-items/cli-set-modes.md)
 - [workdown unset — clear a field](../workdown-items/cli-unset-command.md)
+- [`color:` display role — choose which color field tints a view](../workdown-items/color-display-slot.md)
+- [Add `color` field type with background tinting](../workdown-items/color-field-type.md)
 - [Relocate cross-cutting helpers out of feature modules](../workdown-items/cross-cutting-helpers.md)
 - [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md)
 - [Collapse parallel View* slot variants and unify their validation helpers](../workdown-items/diagnostic-variant-cleanup.md)
+- [Validate `defaults.display` in config.yaml against the schema](../workdown-items/display-defaults-validation.md)
 - [Add `duration` field type](../workdown-items/duration-field-type.md)
 - [Store FieldValue::Date as chrono::NaiveDate](../workdown-items/field-value-native-date.md)
 - [First view end-to-end (board, read-only)](../workdown-items/first-view-end-to-end.md)
@@ -57,6 +60,7 @@ Cards grouped into columns by `status`.
 - [UI foundation — conventions and scaffolding before the first view](../workdown-items/ui-foundation.md)
 - [Create a new view from the UI](../workdown-items/view-creation.md)
 - [Design ViewData and extractors](../workdown-items/view-data-intermediate.md)
+- [Per-view-kind display configuration (which fields show where)](../workdown-items/view-display-config.md)
 - [Build and edit a view's where filter from the UI](../workdown-items/view-filter-editor.md)
 - [Persist view definitions to views.yaml](../workdown-items/view-write-backend.md)
 - [Add views path to config; ship default views.yaml](../workdown-items/views-config-path.md)

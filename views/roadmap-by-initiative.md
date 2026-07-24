@@ -14,7 +14,7 @@ gantt
     Item mutations :item-mutations, 2026-05-13, 2026-05-17
     Interactive UI (workdown serve) :server, 2026-05-20, 2026-06-25
     Author and edit views from the UI :view-authoring, 2026-06-26, 2026-07-01
-    View & item presentation :view-presentation, 2026-07-13, 2026-07-24
+    View & item presentation :view-presentation, 2026-07-13, 2026-07-27
     Polish & dogfood :polish, 2026-07-27, 2026-07-31
 ```
 
