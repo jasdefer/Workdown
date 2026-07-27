@@ -135,6 +135,15 @@ fn validation_error_to_kind(err: ViewsValidationError) -> ConfigDiagnosticKind {
             view_type,
             slot,
         },
+        ViewsValidationError::LegacyDisplaySlot {
+            id,
+            slot,
+            replacement,
+        } => ConfigDiagnosticKind::ViewLegacyDisplaySlot {
+            view_id: id,
+            slot,
+            replacement,
+        },
     }
 }
 

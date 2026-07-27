@@ -96,6 +96,24 @@ async fn get_view(
         Some(view) => view,
     };
 
+    // Parse the per-session display override up front, next to the
+    // filter parse below — before the tier-2 unrenderable check — so a
+    // malformed `?display=` is rejected with 422 exactly like a
+    // malformed `?filter=`, whether or not the view itself can render.
+    // It is *applied* only at tier 3, after validation.
+    let display_override: Option<DisplayConfig> = match query.display.as_deref() {
+        None => None,
+        Some(display_json) => match serde_json::from_str(display_json) {
+            Ok(override_config) => Some(override_config),
+            Err(error) => {
+                return ApiResponse::failed(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    format!("invalid display parameter: {error}"),
+                )
+            }
+        },
+    };
+
     // Preview path: render with an ad-hoc, non-persisted filter supplied
     // by the editor, instead of the view's saved `where:`. The diagnostics
     // are recomputed as if the draft were saved: the whole views file is
@@ -166,16 +184,7 @@ async fn get_view(
     // after validation, so diagnostics keep pointing at what views.yaml
     // says: per-session override › view `display:` › config defaults.
     let mut render_view = render_view;
-    if let Some(display_json) = query.display.as_deref() {
-        let override_config: DisplayConfig = match serde_json::from_str(display_json) {
-            Ok(config) => config,
-            Err(error) => {
-                return ApiResponse::failed(
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    format!("invalid display parameter: {error}"),
-                )
-            }
-        };
+    if let Some(override_config) = display_override {
         render_view.display = override_config.or_inherit(&render_view.display);
     }
     let render_view = render_view.with_display_defaults(&state.config.defaults.display);

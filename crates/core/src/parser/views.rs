@@ -124,6 +124,13 @@ pub enum ViewsValidationError {
         view_type: ViewType,
         slot: &'static str,
     },
+
+    #[error("view '{id}': the top-level '{slot}:' slot moved into the display block — use '{replacement}:' instead")]
+    LegacyDisplaySlot {
+        id: String,
+        slot: &'static str,
+        replacement: &'static str,
+    },
 }
 
 fn format_errors(errors: &[ViewsValidationError]) -> String {
@@ -165,6 +172,15 @@ struct RawView {
     // the project defaults from `config.yaml` at render time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     display: Option<RawDisplay>,
+
+    // Legacy pre-display-role slots, deserialized (any value shape)
+    // only so [`convert_view`] can reject them with a migration hint
+    // pointing at their display-role replacements, instead of serde's
+    // generic unknown-field error. Never populated on serialization.
+    #[serde(default, skip_serializing)]
+    title: Option<serde_yaml::Value>,
+    #[serde(default, skip_serializing)]
+    columns: Option<serde_yaml::Value>,
 
     // Single-field views (board / tree / graph)
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -252,6 +268,21 @@ struct RawMetricRow {
 // ── Conversion: raw → validated ───────────────────────────────────────
 
 fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
+    if raw.title.is_some() {
+        return Err(ViewsValidationError::LegacyDisplaySlot {
+            id: raw.id,
+            slot: "title",
+            replacement: "display.title",
+        });
+    }
+    if raw.columns.is_some() {
+        return Err(ViewsValidationError::LegacyDisplaySlot {
+            id: raw.id,
+            slot: "columns",
+            replacement: "display.fields",
+        });
+    }
+
     let id = raw.id.clone();
     let view_type = raw.view_type;
 
@@ -390,6 +421,8 @@ fn raw_view_from(view: &View) -> RawView {
         view_type: view.kind.view_type(),
         where_clauses: view.where_clauses.clone(),
         display: raw_display_from(&view.display),
+        title: None,
+        columns: None,
         field: None,
         start: None,
         end: None,
@@ -621,20 +654,53 @@ mod tests {
     }
 
     #[test]
-    fn top_level_columns_rejected() {
+    fn top_level_columns_rejected_with_migration_hint() {
         // `columns:` moved into `display.fields` — the old top-level key
-        // is an unknown slot now, caught by deny_unknown_fields.
+        // is rejected with a hint naming the replacement, not serde's
+        // generic unknown-field error.
         let yaml = "views:\n  - id: h\n    type: tree\n    field: parent\n    columns: [status]\n";
         let err = parse_views(yaml).unwrap_err();
-        assert!(matches!(err, ViewsLoadError::InvalidYaml(_)), "got {err:?}");
+        match err {
+            ViewsLoadError::Validation(ref errors) => {
+                assert!(
+                    matches!(
+                        errors.as_slice(),
+                        [ViewsValidationError::LegacyDisplaySlot { id, slot, replacement }]
+                            if id == "h" && *slot == "columns" && *replacement == "display.fields"
+                    ),
+                    "got {errors:?}"
+                );
+            }
+            ref other => panic!("expected Validation, got {other:?}"),
+        }
+        assert!(
+            err.to_string().contains("display.fields"),
+            "message must name the replacement, got: {err}"
+        );
     }
 
     #[test]
-    fn top_level_title_rejected() {
+    fn top_level_title_rejected_with_migration_hint() {
         // `title:` moved into the display block likewise.
         let yaml = "views:\n  - id: b\n    type: board\n    field: status\n    title: title\n";
         let err = parse_views(yaml).unwrap_err();
-        assert!(matches!(err, ViewsLoadError::InvalidYaml(_)), "got {err:?}");
+        match err {
+            ViewsLoadError::Validation(ref errors) => {
+                assert!(
+                    matches!(
+                        errors.as_slice(),
+                        [ViewsValidationError::LegacyDisplaySlot { id, slot, replacement }]
+                            if id == "b" && *slot == "title" && *replacement == "display.title"
+                    ),
+                    "got {errors:?}"
+                );
+            }
+            ref other => panic!("expected Validation, got {other:?}"),
+        }
+        assert!(
+            err.to_string().contains("display.title"),
+            "message must name the replacement, got: {err}"
+        );
     }
 
     #[test]

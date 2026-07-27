@@ -36,15 +36,49 @@ export function isEmptyOverride(override: DisplayOverride): boolean {
 	);
 }
 
+function isStringArray(value: unknown): value is string[] {
+	return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
+
+/**
+ * Narrow parsed storage JSON to a DisplayOverride, or null when any
+ * known role carries the wrong type. A corrupt or drifted entry must
+ * degrade to "no override" here: forwarded as `?display=` it would 422
+ * on every load and strand the page on the error boundary, where the
+ * bar's "Clear" affordance doesn't exist. Unknown keys are dropped, not
+ * rejected, so an entry written by a newer version degrades gracefully.
+ */
+function asDisplayOverride(parsed: unknown): DisplayOverride | null {
+	if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+	const candidate = parsed as Record<string, unknown>;
+	const override: DisplayOverride = {};
+	if (candidate.title !== undefined) {
+		if (typeof candidate.title !== 'string') return null;
+		override.title = candidate.title;
+	}
+	if (candidate.subtitle !== undefined) {
+		if (typeof candidate.subtitle !== 'string') return null;
+		override.subtitle = candidate.subtitle;
+	}
+	if (candidate.fields !== undefined) {
+		if (!isStringArray(candidate.fields)) return null;
+		override.fields = candidate.fields;
+	}
+	if (candidate.color !== undefined) {
+		if (typeof candidate.color !== 'string') return null;
+		override.color = candidate.color;
+	}
+	return override;
+}
+
 export function loadDisplayOverride(viewId: string): DisplayOverride | null {
 	if (typeof localStorage === 'undefined') return null;
 	const raw = localStorage.getItem(storageKey(viewId));
 	if (raw === null) return null;
 	try {
-		const parsed: unknown = JSON.parse(raw);
-		if (typeof parsed !== 'object' || parsed === null) return null;
-		const override = parsed as DisplayOverride;
-		return isEmptyOverride(override) ? null : override;
+		const override = asDisplayOverride(JSON.parse(raw));
+		if (override === null || isEmptyOverride(override)) return null;
+		return override;
 	} catch {
 		return null;
 	}

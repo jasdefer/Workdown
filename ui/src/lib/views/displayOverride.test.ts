@@ -71,6 +71,31 @@ describe('load / save round-trip', () => {
 		expect(loadDisplayOverride('my-view')).toBeNull();
 	});
 
+	it('rejects wrong-typed role values instead of forwarding them', () => {
+		// A tampered or drifted entry must degrade to "no override" —
+		// forwarded to the server it would 422 on every load and strand
+		// the page on the error boundary, where "Clear" doesn't exist.
+		const backing = installStorageStub();
+		backing.set('workdown.display.my-view', '{"title":5}');
+		expect(loadDisplayOverride('my-view')).toBeNull();
+		backing.set('workdown.display.my-view', '{"subtitle":{}}');
+		expect(loadDisplayOverride('my-view')).toBeNull();
+		backing.set('workdown.display.my-view', '{"fields":"status"}');
+		expect(loadDisplayOverride('my-view')).toBeNull();
+		backing.set('workdown.display.my-view', '{"fields":["status",7]}');
+		expect(loadDisplayOverride('my-view')).toBeNull();
+		backing.set('workdown.display.my-view', '{"color":false}');
+		expect(loadDisplayOverride('my-view')).toBeNull();
+		backing.set('workdown.display.my-view', '["title"]');
+		expect(loadDisplayOverride('my-view')).toBeNull();
+	});
+
+	it('drops unknown keys but keeps the valid roles', () => {
+		const backing = installStorageStub();
+		backing.set('workdown.display.my-view', '{"title":"status","badge":"severity"}');
+		expect(loadDisplayOverride('my-view')).toEqual({ title: 'status' });
+	});
+
 	it('returns null without localStorage (no stub installed)', () => {
 		expect(loadDisplayOverride('my-view')).toBeNull();
 	});

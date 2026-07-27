@@ -211,7 +211,7 @@ views:
 - **Where-clause parsing** — each string in a view's `where:` list must parse as a valid `--where` expression.
 - **Where-clause field references** — local field names must exist in `schema.fields` (or be `id`); relation names (left side of a dot) must resolve to a `link`/`links` field or a known inverse name.
 
-Load-time failures surface through the same diagnostic stream: read/YAML errors reuse the generic `FileError` (pointing at `views.yaml`), while duplicate ids and missing required slots get dedicated variants (`ViewDuplicateId`, `ViewMissingSlot`) so callers like the live server can highlight specific problems in the UI.
+Load-time failures surface through the same diagnostic stream: read/YAML errors reuse the generic `FileError` (pointing at `views.yaml`), while duplicate ids, missing required slots, and the legacy pre-display-role `title:`/`columns:` slots get dedicated variants (`ViewDuplicateId`, `ViewMissingSlot`, `ViewLegacyDisplaySlot`) so callers like the live server can highlight specific problems in the UI.
 
 `views.yaml` is optional — if the file is absent, these checks are skipped and no view-level diagnostics are produced. The companion `views.schema.json` shipped with the CLI provides editor autocomplete only and is not loaded at validate-time; see [ADR-005](adr/005-json-schema-editor-only.md).
 

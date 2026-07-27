@@ -194,6 +194,14 @@ pub enum ConfigDiagnosticKind {
         slot: &'static str,
     },
 
+    /// A view still uses a pre-display-role top-level slot (`title:` or
+    /// `columns:`); `replacement` names the display role that took over.
+    ViewLegacyDisplaySlot {
+        view_id: String,
+        slot: &'static str,
+        replacement: &'static str,
+    },
+
     /// A view references a field name that isn't defined in `schema.yaml`.
     ViewUnknownField {
         view_id: String,
@@ -471,6 +479,7 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
     match kind {
         ConfigDiagnosticKind::ViewDuplicateId { view_id }
         | ConfigDiagnosticKind::ViewMissingSlot { view_id, .. }
+        | ConfigDiagnosticKind::ViewLegacyDisplaySlot { view_id, .. }
         | ConfigDiagnosticKind::ViewUnknownField { view_id, .. }
         | ConfigDiagnosticKind::ViewFieldTypeMismatch { view_id, .. }
         | ConfigDiagnosticKind::ViewWhereParseError { view_id, .. }
@@ -639,6 +648,16 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                 write!(
                     f,
                     "view '{view_id}' (type {view_type}): missing required slot '{slot}'"
+                )
+            }
+            ConfigDiagnosticKind::ViewLegacyDisplaySlot {
+                view_id,
+                slot,
+                replacement,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}': the top-level '{slot}:' slot moved into the display block — use '{replacement}:' instead"
                 )
             }
             ConfigDiagnosticKind::ViewUnknownField {

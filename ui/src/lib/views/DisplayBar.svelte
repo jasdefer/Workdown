@@ -161,6 +161,7 @@
 					size={Math.min(schemaStore.fields.length + 1, 8)}
 					onchange={onFieldsChange}
 				>
+					<option value="id" selected={fields.includes('id')}>id</option>
 					{#each schemaStore.fields as field (field.name)}
 						<option value={field.name} selected={fields.includes(field.name)}>{field.name}</option>
 					{/each}

@@ -375,6 +375,24 @@ async fn preview_with_unknown_field_is_unrenderable() {
 }
 
 #[tokio::test]
+async fn malformed_display_on_unrenderable_view_returns_422() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    // The view itself is broken (unknown board field) — normally tier-2
+    // unrenderable. A malformed `?display=` must still be rejected with
+    // 422, exactly like a malformed `?filter=`: parameter validation
+    // happens before the unrenderable check.
+    write_views(
+        &root,
+        "views:\n  - id: broken\n    type: board\n    field: nope\n",
+    );
+
+    let uri = format!("/api/views/broken?display={}", encode("{not json"));
+    let response = get(state, &uri).await;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
 async fn preview_keeps_other_views_diagnostics() {
     let (directory, state) = temp_project();
     let root = directory.path().to_path_buf();
