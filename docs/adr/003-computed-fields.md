@@ -1,7 +1,10 @@
-# ADR-003: Computed/aggregated fields
+# ADR-003: Aggregated fields
 
 **Status:** Accepted
 **Date:** 2026-04-10
+
+> Originally titled "Computed/aggregated fields". "Computed" now names
+> the same-item expression mechanism — see ADR-009.
 
 ## Context
 
