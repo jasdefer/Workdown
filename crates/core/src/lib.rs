@@ -5,6 +5,7 @@
 
 pub mod config_check;
 mod display_check;
+pub mod expression;
 pub mod generators;
 pub mod item_data;
 pub mod model;
