@@ -53,15 +53,25 @@ fields:
 /// Build a throwaway project with no `views.yaml` yet. The returned
 /// `TempDir` must outlive the test — dropping it deletes the project.
 fn temp_project() -> (TempDir, AppState) {
+    temp_project_with_config(CONFIG)
+}
+
+/// [`temp_project`] with a custom `config.yaml` — for tests exercising
+/// config-sourced behavior like `defaults.display`.
+fn temp_project_with_config(config_yaml: &str) -> (TempDir, AppState) {
     let directory = TempDir::new().unwrap();
     let root = directory.path().to_path_buf();
     fs::create_dir_all(root.join(".workdown/templates")).unwrap();
     fs::create_dir_all(root.join("workdown-items")).unwrap();
-    fs::write(root.join(".workdown/config.yaml"), CONFIG).unwrap();
+    fs::write(root.join(".workdown/config.yaml"), config_yaml).unwrap();
     fs::write(root.join(".workdown/schema.yaml"), SCHEMA).unwrap();
 
-    let config = parse_config(CONFIG).expect("parse config");
-    let state = AppState::new(root, config);
+    let config = parse_config(config_yaml).expect("parse config");
+    let state = AppState::new(
+        root,
+        config,
+        std::path::PathBuf::from(".workdown/config.yaml"),
+    );
     (directory, state)
 }
 
@@ -324,7 +334,7 @@ async fn preview_filters_view_without_writing() {
     write_item(&root, "task-done", "---\nstatus: done\n---\n");
     write_views(
         &root,
-        "views:\n  - id: t\n    type: table\n    columns: [id, status]\n",
+        "views:\n  - id: t\n    type: table\n    display:\n      fields: [id, status]\n",
     );
     let before = read_views(&root);
 
@@ -352,7 +362,7 @@ async fn preview_with_unknown_field_is_unrenderable() {
     let root = directory.path().to_path_buf();
     write_views(
         &root,
-        "views:\n  - id: t\n    type: table\n    columns: [id, status]\n",
+        "views:\n  - id: t\n    type: table\n    display:\n      fields: [id, status]\n",
     );
 
     let uri = format!(
@@ -370,6 +380,88 @@ async fn preview_with_unknown_field_is_unrenderable() {
     assert!(!envelope["diagnostics"].as_array().unwrap().is_empty());
 }
 
+/// Column names of a table response, for the display-role tests below.
+async fn column_names(response: axum::http::Response<Body>) -> Vec<String> {
+    let envelope = body_json(response).await;
+    envelope["data"]["columns"]
+        .as_array()
+        .expect("columns array")
+        .iter()
+        .map(|column| column["name"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[tokio::test]
+async fn display_override_with_stale_field_drops_it() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(
+        &root,
+        "views:\n  - id: t\n    type: table\n    display:\n      fields: [id, status]\n",
+    );
+
+    // A stored override can outlive its field. The stale name must be
+    // dropped at extraction (not panic, not 422 — the override as a
+    // whole is well-formed); the surviving names still apply.
+    let uri = format!(
+        "/api/views/t?display={}",
+        encode(r#"{"fields":["ghost","status"]}"#)
+    );
+    let response = get(state, &uri).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(column_names(response).await, vec!["status"]);
+}
+
+#[tokio::test]
+async fn config_display_defaults_inherited_by_bare_view() {
+    // Rung 3 of the resolution ladder, end-to-end through serve: a view
+    // with no display block inherits `defaults.display` from
+    // config.yaml.
+    let config_yaml = format!("{CONFIG}  display:\n    fields: [status]\n");
+    let (directory, state) = temp_project_with_config(&config_yaml);
+    let root = directory.path().to_path_buf();
+    write_views(&root, "views:\n  - id: t\n    type: table\n");
+
+    let response = get(state, "/api/views/t").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(column_names(response).await, vec!["status"]);
+}
+
+#[tokio::test]
+async fn view_display_beats_config_defaults() {
+    // Rung 2 shadows rung 3: a view's own display block wins over the
+    // project-wide default for the roles it sets.
+    let config_yaml = format!("{CONFIG}  display:\n    fields: [status]\n");
+    let (directory, state) = temp_project_with_config(&config_yaml);
+    let root = directory.path().to_path_buf();
+    write_views(
+        &root,
+        "views:\n  - id: own\n    type: table\n    display:\n      fields: [id]\n",
+    );
+
+    let response = get(state, "/api/views/own").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(column_names(response).await, vec!["id"]);
+}
+
+#[tokio::test]
+async fn malformed_display_on_unrenderable_view_returns_422() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    // The view itself is broken (unknown board field) — normally tier-2
+    // unrenderable. A malformed `?display=` must still be rejected with
+    // 422, exactly like a malformed `?filter=`: parameter validation
+    // happens before the unrenderable check.
+    write_views(
+        &root,
+        "views:\n  - id: broken\n    type: board\n    field: nope\n",
+    );
+
+    let uri = format!("/api/views/broken?display={}", encode("{not json"));
+    let response = get(state, &uri).await;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
 #[tokio::test]
 async fn preview_keeps_other_views_diagnostics() {
     let (directory, state) = temp_project();
@@ -379,7 +471,7 @@ async fn preview_keeps_other_views_diagnostics() {
     // survive the preview ("always show all"), pinned to `broken`, not `t`.
     write_views(
         &root,
-        "views:\n  - id: t\n    type: table\n    columns: [id, status]\n  - id: broken\n    type: board\n    field: nope\n",
+        "views:\n  - id: t\n    type: table\n    display:\n      fields: [id, status]\n  - id: broken\n    type: board\n    field: nope\n",
     );
 
     let uri = format!(
@@ -410,7 +502,7 @@ async fn preview_replaces_stale_persisted_filter_diagnostics() {
     // the stale diagnostic about the persisted clause is gone.
     write_views(
         &root,
-        "views:\n  - id: t\n    type: table\n    columns: [id, status]\n    where:\n      - \"nonexistent=x\"\n",
+        "views:\n  - id: t\n    type: table\n    display:\n      fields: [id, status]\n    where:\n      - \"nonexistent=x\"\n",
     );
 
     let uri = format!(
@@ -441,7 +533,7 @@ async fn preview_with_malformed_filter_returns_422() {
     let root = directory.path().to_path_buf();
     write_views(
         &root,
-        "views:\n  - id: t\n    type: table\n    columns: [id, status]\n",
+        "views:\n  - id: t\n    type: table\n    display:\n      fields: [id, status]\n",
     );
 
     let uri = format!("/api/views/t?filter={}", encode("not json"));

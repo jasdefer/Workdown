@@ -172,6 +172,7 @@ fn format_value_delimited(
         FieldValue::Choice(string) => Ok(string.clone()),
         FieldValue::Date(date) => Ok(date.format("%Y-%m-%d").to_string()),
         FieldValue::Duration(seconds) => Ok(format_duration_seconds(*seconds)),
+        FieldValue::Color(color) => Ok(color.clone()),
         FieldValue::Link(id) => Ok(id.as_str().to_owned()),
         FieldValue::Integer(number) => Ok(number.to_string()),
         FieldValue::Float(number) => Ok(number.to_string()),

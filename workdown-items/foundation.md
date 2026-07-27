@@ -1,12 +1,13 @@
 ---
 id: foundation
+title: Foundation
 type: milestone
 status: done
-title: Foundation
 parent: phase-04-visualization
 start_date: 2026-04-20
 end_date: 2026-04-22
-duration: "3d"
+duration: 3d
+color: orange
 ---
 
 Prereq work for everything else in phase 04. Establishes the workspace layout and the `views.yaml` contract.

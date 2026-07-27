@@ -69,12 +69,16 @@
 
 	interface RenderableRow {
 		id: WorkItemId;
+		/** Resolved `#rrggbb` of the field the view's `color` display
+		 *  role picks (override and `none` included), or null. */
+		background: string | null;
 		cells: RenderableCell[];
 	}
 
 	const renderableRows = $derived<RenderableRow[]>(
 		data.rows.map((row) => ({
 			id: row.id,
+			background: row.background,
 			cells: data.columns.map((column, index) => ({
 				column,
 				value: row.cells[index] ?? null
@@ -130,6 +134,7 @@
 			case 'choice':
 			case 'date':
 			case 'duration':
+			case 'color':
 				return String(a).localeCompare(String(b));
 			case 'multichoice':
 			case 'list':
@@ -204,7 +209,7 @@
 		</thead>
 		<tbody>
 			{#each sortedRows as row (row.id)}
-				<tr>
+				<tr class:tinted={row.background !== null} style:--item-color={row.background}>
 					{#each row.cells as cell, cellIndex (cell.column.name)}
 						<td>
 							{#if cellIndex === 0}
@@ -327,6 +332,22 @@
 
 	tbody tr:last-child td {
 		border-bottom: none;
+	}
+
+	/* Color-field treatment (mirrors the board card): a full-strength
+	   stripe on the row's leading edge plus the global `.tinted` wash
+	   (base.css) across its cells. The stripe is an inset shadow, not a
+	   border, so it adds no width and tinted rows stay column-aligned
+	   with untinted ones. The stripe hue is absolute, like a label
+	   color. The cell-level selector out-specifies the base `td`
+	   background, and keeps the sticky first column opaque so nothing
+	   shows through while scrolling. */
+	tbody tr.tinted td {
+		background-color: var(--tint-wash);
+	}
+
+	tbody tr.tinted td:first-child {
+		box-shadow: inset 4px 0 0 0 var(--item-color);
 	}
 
 	th:first-child,

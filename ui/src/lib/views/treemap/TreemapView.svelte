@@ -13,12 +13,15 @@
   every depth too; layering Plot marks for that would be heavier than
   rolling the SVG ourselves.
 
-  Color is intentionally not data-encoded: area carries the only
-  numeric dimension, so a sequential color scale would be redundant.
-  Leaves get `var(--color-accent)` solid, internal frames are
-  transparent with a thin border. CSS variables cascade naturally into
-  SVG via class-based `fill`/`stroke` rules, so no theme-flip glue is
-  needed (unlike the canvas-based graph view).
+  Color carries no *numeric* encoding (area is the only numeric
+  dimension) — it renders the item's `color` field as identity, same as
+  every per-item surface: leaves fill with their item's color (accent
+  solid when unset, with a black/white label picked per fill via the
+  luminance helper), internal frames stay transparent but stroke their
+  border in their item's color (neutral border when unset). CSS
+  variables cascade naturally into SVG via class-based `fill`/`stroke`
+  rules, so no theme-flip glue is needed (unlike the canvas-based graph
+  view).
 
   Hover reuses the rich board <Card> via TreemapItemTooltip, which
   prepends a size row. The v1 chart family deferred drill-down
@@ -31,6 +34,7 @@
 	import type { TreemapNode } from '$lib/api/generated/TreemapNode';
 	import type { SizeValue } from '$lib/api/generated/SizeValue';
 	import type { Card as CardData } from '$lib/api/generated/Card';
+	import { textColorOn } from '$lib/views/colorContrast';
 	import { formatScalar } from '$lib/views/format';
 	import { cardLabel, prettifyId } from '$lib/views/prettify';
 	import EmptyHint from '$lib/views/EmptyHint.svelte';
@@ -86,6 +90,22 @@
 
 	function nodeLabel(node: TreemapNode): string {
 		return node.card === null ? '' : cardLabel(node.card);
+	}
+
+	/** The item's resolved color, or null (synthetic root / no color set). */
+	function nodeColor(node: TreemapNode): string | null {
+		return node.card?.background ?? null;
+	}
+
+	/**
+	 * Label color for a leaf: black/white by the fill's luminance when
+	 * the leaf carries an item color; `null` for accent-filled leaves so
+	 * the CSS default (`var(--color-bg)`, theme-correct for the accent)
+	 * applies.
+	 */
+	function leafLabelColor(node: TreemapNode): string | null {
+		const color = nodeColor(node);
+		return color === null ? null : textColorOn(color);
 	}
 
 	function frameStrokeWidth(depth: number): number {
@@ -220,6 +240,7 @@
 							{#if laid.isLeaf}
 								<rect
 									class="leaf"
+									style:--item-color={nodeColor(laid.node)}
 									role="img"
 									aria-label={nodeLabel(laid.node)}
 									width={laid.width}
@@ -231,6 +252,7 @@
 								{#if laid.width >= MIN_LEAF_LABEL_WIDTH && laid.height >= MIN_LEAF_LABEL_HEIGHT}
 									<text
 										class="leaf-label"
+										style:fill={leafLabelColor(laid.node)}
 										x={laid.width / 2}
 										y={laid.height / 2}
 										text-anchor="middle"
@@ -241,6 +263,7 @@
 							{:else}
 								<rect
 									class="frame"
+									style:--item-color={nodeColor(laid.node)}
 									width={laid.width}
 									height={laid.height}
 									stroke-width={frameStrokeWidth(laid.depth)}
@@ -293,7 +316,9 @@
 	}
 
 	.leaf {
-		fill: var(--color-accent);
+		/* The rect is the item's mark, so it fills with the item's color
+		   (absolute across themes); uncolored leaves keep the accent. */
+		fill: var(--item-color, var(--color-accent));
 		stroke: var(--color-border);
 		stroke-width: 1;
 		cursor: default;
@@ -301,7 +326,9 @@
 
 	.frame {
 		fill: transparent;
-		stroke: var(--color-border);
+		/* A parent item's color shows as its frame border — grouping its
+		   children without washing over their own colors. */
+		stroke: var(--item-color, var(--color-border));
 		/* stroke-width is set per-rect via the `stroke-width` attribute
 		   (scaled by depth); a CSS rule here would override that attribute. */
 		pointer-events: none;

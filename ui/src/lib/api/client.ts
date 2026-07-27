@@ -76,15 +76,20 @@ export const api = {
 	 * Fetch a view's data. `filter` is a JSON array of structured clauses
 	 * (already serialized) for a "for right now" preview: the server
 	 * extracts with those clauses instead of the persisted `where:`, and
-	 * writes nothing.
+	 * writes nothing. `display` is a JSON object of display roles for a
+	 * per-session override — set roles take highest precedence; nothing
+	 * is persisted.
 	 */
-	getView: (id: string, filter?: string) =>
-		request<ViewData>(
+	getView: (id: string, filter?: string, display?: string) => {
+		const params = new URLSearchParams();
+		if (filter !== undefined) params.set('filter', filter);
+		if (display !== undefined) params.set('display', display);
+		const query = params.toString();
+		return request<ViewData>(
 			'GET',
-			`/api/views/${encodeURIComponent(id)}${
-				filter !== undefined ? `?filter=${encodeURIComponent(filter)}` : ''
-			}`
-		),
+			`/api/views/${encodeURIComponent(id)}${query ? `?${query}` : ''}`
+		);
+	},
 	/** The view's persisted filter, decomposed into the editor's clause shape. */
 	getViewFilter: (id: string) =>
 		request<Clause[]>('GET', `/api/views/${encodeURIComponent(id)}/filter`),

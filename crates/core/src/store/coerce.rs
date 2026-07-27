@@ -98,6 +98,7 @@ pub(crate) fn coerce_value(
         FieldTypeConfig::Float { min, max } => coerce_float(value, *min, *max),
         FieldTypeConfig::Date => coerce_date(value),
         FieldTypeConfig::Duration { min, max } => coerce_duration(value, *min, *max),
+        FieldTypeConfig::Color => coerce_color(value),
         FieldTypeConfig::Boolean => coerce_boolean(value),
         FieldTypeConfig::List => coerce_list(value),
         FieldTypeConfig::Link { .. } => coerce_link(value),
@@ -297,6 +298,24 @@ fn coerce_duration(
     }
 
     Ok(FieldValue::Duration(seconds))
+}
+
+fn coerce_color(value: &serde_yaml::Value) -> Result<FieldValue, FieldValueError> {
+    use crate::model::color::{color_palette_names, parse_color};
+
+    let s = value
+        .as_str()
+        .ok_or_else(|| FieldValueError::TypeMismatch {
+            expected: FieldType::Color,
+            got: yaml_type_name(value).into(),
+        })?;
+
+    let canonical = parse_color(s).map_err(|_| FieldValueError::InvalidColor {
+        value: s.to_owned(),
+        allowed: color_palette_names(),
+    })?;
+
+    Ok(FieldValue::Color(canonical))
 }
 
 fn coerce_date(value: &serde_yaml::Value) -> Result<FieldValue, FieldValueError> {
@@ -916,6 +935,81 @@ mod tests {
 
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::InvalidDuration { .. })
+        });
+    }
+
+    // ── Color coercion ───────────────────────────────────────────────
+
+    #[test]
+    fn coerce_color_hex_normalized_to_lowercase_expanded() {
+        let s = schema(vec![(
+            "background",
+            FieldDefinition::new(FieldTypeConfig::Color),
+        )]);
+
+        let raw = raw_item("t", vec![("background", yaml_str("#ABC"))]);
+        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        assert!(diagnostics.is_empty(), "got diagnostics: {diagnostics:?}");
+        assert_eq!(fields["background"], FieldValue::Color("#aabbcc".into()));
+    }
+
+    #[test]
+    fn coerce_color_palette_name_stays_a_name() {
+        let s = schema(vec![(
+            "background",
+            FieldDefinition::new(FieldTypeConfig::Color),
+        )]);
+
+        let raw = raw_item("t", vec![("background", yaml_str("Red"))]);
+        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        assert!(diagnostics.is_empty());
+        assert_eq!(fields["background"], FieldValue::Color("red".into()));
+    }
+
+    #[test]
+    fn coerce_color_unknown_name_rejected_with_allowed_list() {
+        let s = schema(vec![(
+            "background",
+            FieldDefinition::new(FieldTypeConfig::Color),
+        )]);
+
+        let raw = raw_item("t", vec![("background", yaml_str("teal"))]);
+        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        assert!(!fields.contains_key("background"));
+        assert_field_error(
+            &diagnostics,
+            |e| matches!(e, FieldValueError::InvalidColor { allowed, .. } if !allowed.is_empty()),
+        );
+    }
+
+    #[test]
+    fn coerce_color_bad_hex_rejected() {
+        let s = schema(vec![(
+            "background",
+            FieldDefinition::new(FieldTypeConfig::Color),
+        )]);
+
+        // Alpha channels and rgb() are out of scope for v1.
+        for input in ["#aabbccdd", "rgb(1, 2, 3)"] {
+            let raw = raw_item("t", vec![("background", yaml_str(input))]);
+            let (_, diagnostics) = coerce_fields(&raw, &s);
+            assert_field_error(&diagnostics, |e| {
+                matches!(e, FieldValueError::InvalidColor { .. })
+            });
+        }
+    }
+
+    #[test]
+    fn coerce_color_rejects_number() {
+        let s = schema(vec![(
+            "background",
+            FieldDefinition::new(FieldTypeConfig::Color),
+        )]);
+
+        let raw = raw_item("t", vec![("background", yaml_int(0xff0000))]);
+        let (_, diagnostics) = coerce_fields(&raw, &s);
+        assert_field_error(&diagnostics, |e| {
+            matches!(e, FieldValueError::TypeMismatch { .. })
         });
     }
 

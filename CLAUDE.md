@@ -25,7 +25,7 @@ workdown-items/
 
 ## Configuration Files (consumer project)
 
-- **`config.yaml`** — Entry point for the CLI. Defines project metadata, file paths (where work items live, where templates are, where resources are), and CLI defaults (which field to use for board/tree/graph views).
+- **`config.yaml`** — Entry point for the CLI. Defines project metadata, file paths (where work items live, where templates are, where resources are), and CLI defaults: which field to use for board/tree/graph views, plus project-wide display-role defaults (`defaults.display`) inherited by every view.
 - **`schema.yaml`** — User-editable. Defines fields, their types, validation rules, defaults, and aggregate behavior. This is what makes each project's work items structured differently. Fields can reference resources via `resource: <name>`.
 - **`resources.yaml`** — User-editable. Named lists of entities (people, teams, sprints, etc.) that work item fields can reference. A field with `resource: people` only accepts values matching an `id` from the `people` section.
 - **`views.yaml`** — User-editable. Declares persisted views rendered by `workdown render` (board, tree, graph, table, gantt, charts, etc.). Each view references schema fields.
@@ -55,13 +55,14 @@ Freeform Markdown body. Description, notes, acceptance criteria — anything.
 ## Key Design Decisions
 
 - **Generic type system:** Field types (not names) drive CLI behavior. Any `choice` field can be a board, any `link` field can be a tree, any `links` field can be a graph. No field name is "magic" except `id`. See ADR-002.
-- **Built-in type system:** Types (string, choice, multichoice, integer, float, date, boolean, list, link, links) are built into the CLI. Formally defined in `defaults/schema.schema.json`. Users define fields and pick types in their `schema.yaml`.
+- **Built-in type system:** Types (string, choice, multichoice, integer, float, date, duration, color, boolean, list, link, links) are built into the CLI. Formally defined in `defaults/schema.schema.json`. Users define fields and pick types in their `schema.yaml`.
 - **Snapshot-only validation:** The CLI validates current file state, not git history. No state transition enforcement. See ADR-001.
 - **Hybrid ID:** `id` is the one special field — filename (minus `.md`) by default, frontmatter `id` overrides it. Uniqueness enforced.
 - **Title fallback:** `title` is optional. Falls back to prettified filename.
 - **Default generators:** Fields can have generated defaults (`$filename`, `$filename_pretty`, `$uuid`, `$today`, `$max_plus_one`) applied at `workdown add` time.
 - **Computed/aggregated fields:** Fields with an `aggregate` config are set manually on leaf items and computed automatically up the parent chain. Two items in the same ancestor chain both setting manually is a validation error.
 - **Relations are generic:** `link`/`links` fields with `allow_cycles` config. Default relations: `parent`, `depends_on`, `related_to`, `duplicates`. Inverses are derived by the CLI.
+- **Display roles:** A closed vocabulary (`title`, `subtitle`, `fields`, `color`) controls what item-presenting views show, resolved per role: session override › view `display:` › `defaults.display` in config.yaml › per-kind fallback. See ADR-008.
 - **Flat structure:** All work items in a single directory (default: `workdown-items/`).
 - **Validation:** Broken references and cycle detection (where `allow_cycles: false`).
 

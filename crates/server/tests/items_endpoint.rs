@@ -71,7 +71,11 @@ fn temp_project() -> (TempDir, AppState) {
     .unwrap();
 
     let config = parse_config(CONFIG).expect("parse config");
-    let state = AppState::new(root, config);
+    let state = AppState::new(
+        root,
+        config,
+        std::path::PathBuf::from(".workdown/config.yaml"),
+    );
     (directory, state)
 }
 

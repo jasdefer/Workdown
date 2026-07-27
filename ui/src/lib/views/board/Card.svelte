@@ -27,6 +27,8 @@
 
 <div
 	class="card"
+	class:tinted={card.background !== null}
+	style:--item-color={card.background}
 	use:draggable={card.id}
 	role="button"
 	tabindex="0"
@@ -42,6 +44,9 @@
 		<span class="title">{displayTitle}</span>
 		<span class="id" aria-label="Item id" title={card.id}>{card.id}</span>
 	</header>
+	{#if card.subtitle}
+		<div class="subtitle">{card.subtitle}</div>
+	{/if}
 	{#if card.body.trim().length > 0}
 		<div class="body">
 			<Markdown content={card.body} compact />
@@ -63,8 +68,23 @@
 		text-align: left;
 	}
 
+	/* Stripe + tint: the item's resolved `color` field. The stripe
+	   carries the hue at full strength; the wash comes from the global
+	   `.tinted` recipe (base.css). Untinted cards keep the neutral
+	   theme background. */
+	.card.tinted {
+		background-color: var(--tint-wash);
+		border-left: 4px solid var(--item-color);
+	}
+
 	.card:hover {
 		border-color: var(--color-fg-muted);
+	}
+
+	/* The stripe keeps its hue on hover — only the neutral sides go
+	   muted, so the color doesn't blink off when reaching for a card. */
+	.card.tinted:hover {
+		border-left-color: var(--item-color);
 	}
 
 	.card:focus-visible {
@@ -96,6 +116,12 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.subtitle {
+		color: var(--color-fg-muted);
+		font-size: 0.85em;
+		overflow-wrap: anywhere;
 	}
 
 	.body {

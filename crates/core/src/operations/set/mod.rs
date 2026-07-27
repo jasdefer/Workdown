@@ -602,6 +602,43 @@ mod tests {
     }
 
     #[test]
+    fn set_on_crlf_file_does_not_duplicate_closing_delimiter() {
+        // Regression: on a CRLF file the body offset used to land before the
+        // closing `---`, so the leftover delimiter bytes rode along in the
+        // body and a second `---` was emitted after the rewritten frontmatter.
+        let (_directory, root) = setup_project();
+        let config = load_test_config(&root);
+        write_item(
+            &root,
+            "task-1",
+            "---\r\ntitle: Task 1\r\nstatus: open\r\n---\r\nSome Content\r\n",
+        );
+
+        run_set(
+            &config,
+            &root,
+            &WorkItemId::from("task-1".to_owned()),
+            "status",
+            SetOperation::Replace(serde_yaml::Value::String("done".to_owned())),
+        )
+        .unwrap();
+
+        let file = read_item(&root, "task-1");
+        // Exactly two `---` delimiters (open + close), not three.
+        assert_eq!(
+            file.matches("---").count(),
+            2,
+            "expected one opening and one closing delimiter, got: {file:?}"
+        );
+        // The body after the closing delimiter is exactly the original body,
+        // with no leftover delimiter bytes riding along in front of it.
+        let after_opening = file.find("---\n").unwrap() + 4;
+        let closing = file[after_opening..].find("---\n").unwrap();
+        let body_in_file = &file[after_opening + closing + 4..];
+        assert_eq!(body_in_file, "Some Content\r\n");
+    }
+
+    #[test]
     fn previous_value_is_none_when_field_was_absent() {
         let (_directory, root) = setup_project();
         let config = load_test_config(&root);

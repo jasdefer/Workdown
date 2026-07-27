@@ -28,9 +28,11 @@ use crate::render;
 pub fn run_render(
     config: &Config,
     project_root: &Path,
+    config_path: &Path,
     view_id: Option<&str>,
 ) -> anyhow::Result<ExitCode> {
-    let project = load_project(config, project_root).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let project =
+        load_project(config, project_root, config_path).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     // Surface every collected diagnostic as a warning, matching the
     // pre-refactor behavior. Order preserved: store diagnostics first
@@ -46,6 +48,14 @@ pub fn run_render(
     };
 
     let invalid_view_ids = invalid_view_ids(&project.diagnostics);
+
+    // Fill unset display roles from `defaults.display` in config.yaml.
+    // Applied after validation so diagnostics keep pointing at what the
+    // user actually wrote in views.yaml.
+    let views = views
+        .clone()
+        .with_display_defaults(&config.defaults.display);
+    let views = &views;
 
     // Climb out of the output directory back to project root, then down
     // into the work items dir. Each component of `output_dir` adds one

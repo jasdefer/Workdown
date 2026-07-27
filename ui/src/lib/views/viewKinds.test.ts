@@ -31,8 +31,8 @@ describe('isDefinitionComplete', () => {
 		expect(isDefinitionComplete('tree', { field: 'parent' })).toBe(true);
 	});
 
-	it('requires a non-empty column list for a table', () => {
-		expect(isDefinitionComplete('table', { columns: [] })).toBe(false);
+	it('accepts a table without columns (fields role falls back)', () => {
+		expect(isDefinitionComplete('table', {})).toBe(true);
 		expect(isDefinitionComplete('table', { columns: ['id'] })).toBe(true);
 	});
 

@@ -32,14 +32,19 @@
 
 	let { node, columns, depth, expandedIds, toggle }: Props = $props();
 
-	const id = $derived(node.card.id);
+	const id = $derived(node.id);
 	const expanded = $derived(expandedIds.has(id));
 	const hasChildren = $derived(node.children.length > 0);
-	const displayTitle = $derived(cardLabel(node.card));
+	const displayTitle = $derived(cardLabel(node));
 	const indentStyle = $derived(`--indent: ${(depth * 1.25).toString()}rem`);
 </script>
 
-<div class="row" role="row">
+<div
+	class="row"
+	role="row"
+	class:tinted={node.background !== null}
+	style:--item-color={node.background}
+>
 	<div class="cell title" style={indentStyle}>
 		{#if hasChildren}
 			<button
@@ -67,7 +72,7 @@
 </div>
 
 {#if expanded}
-	{#each node.children as child (child.card.id)}
+	{#each node.children as child (child.id)}
 		<Self node={child} {columns} depth={depth + 1} {expandedIds} {toggle} />
 	{/each}
 {/if}

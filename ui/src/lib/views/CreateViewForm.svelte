@@ -88,7 +88,13 @@
 	async function save(): Promise<void> {
 		saving = true;
 		error = null;
-		const payload = { type: kind, ...definition };
+		// The form keeps `columns` as a flat slot for editing ergonomics;
+		// on the wire it is the `fields` display role inside `display:`.
+		const { columns, ...slots } = definition;
+		const payload: Record<string, unknown> = { type: kind, ...slots };
+		if (Array.isArray(columns) && columns.length > 0) {
+			payload.display = { fields: columns };
+		}
 		const result = await api.createView({ name, definition: payload, filter: filterClauses });
 		saving = false;
 		if (result.error !== undefined) {

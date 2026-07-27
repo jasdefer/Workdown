@@ -1,0 +1,102 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+	displayOverrideParam,
+	isEmptyOverride,
+	loadDisplayOverride,
+	saveDisplayOverride
+} from './displayOverride';
+
+// Node has no localStorage — install a minimal stub on globalThis.
+function installStorageStub(): Map<string, string> {
+	const backing = new Map<string, string>();
+	(globalThis as Record<string, unknown>).localStorage = {
+		getItem: (key: string) => backing.get(key) ?? null,
+		setItem: (key: string, value: string) => void backing.set(key, value),
+		removeItem: (key: string) => void backing.delete(key)
+	};
+	return backing;
+}
+
+afterEach(() => {
+	delete (globalThis as Record<string, unknown>).localStorage;
+});
+
+describe('isEmptyOverride', () => {
+	it('treats no roles and empty fields as empty', () => {
+		expect(isEmptyOverride({})).toBe(true);
+		expect(isEmptyOverride({ fields: [] })).toBe(true);
+	});
+
+	it('treats any set role as non-empty', () => {
+		expect(isEmptyOverride({ title: 'status' })).toBe(false);
+		expect(isEmptyOverride({ subtitle: 'status' })).toBe(false);
+		expect(isEmptyOverride({ fields: ['id'] })).toBe(false);
+		expect(isEmptyOverride({ color: 'team_color' })).toBe(false);
+		// The sentinel is a set value — "no tint" is an active override.
+		expect(isEmptyOverride({ color: 'none' })).toBe(false);
+	});
+});
+
+describe('displayOverrideParam', () => {
+	it('serializes only set roles', () => {
+		expect(displayOverrideParam({ title: 'status', fields: [] })).toBe('{"title":"status"}');
+		expect(displayOverrideParam({ fields: ['id', 'status'] })).toBe('{"fields":["id","status"]}');
+	});
+
+	it('serializes the color role, sentinel included', () => {
+		expect(displayOverrideParam({ color: 'team_color' })).toBe('{"color":"team_color"}');
+		expect(displayOverrideParam({ color: 'none' })).toBe('{"color":"none"}');
+	});
+});
+
+describe('load / save round-trip', () => {
+	it('round-trips an override per view id', () => {
+		installStorageStub();
+		saveDisplayOverride('my-view', { title: 'status', fields: ['id'] });
+		expect(loadDisplayOverride('my-view')).toEqual({ title: 'status', fields: ['id'] });
+		expect(loadDisplayOverride('other-view')).toBeNull();
+	});
+
+	it('saving an empty override removes the stored entry', () => {
+		const backing = installStorageStub();
+		saveDisplayOverride('my-view', { title: 'status' });
+		saveDisplayOverride('my-view', {});
+		expect(backing.size).toBe(0);
+		expect(loadDisplayOverride('my-view')).toBeNull();
+	});
+
+	it('tolerates malformed stored JSON', () => {
+		const backing = installStorageStub();
+		backing.set('workdown.display.my-view', '{not json');
+		expect(loadDisplayOverride('my-view')).toBeNull();
+	});
+
+	it('rejects wrong-typed role values instead of forwarding them', () => {
+		// A tampered or drifted entry must degrade to "no override" —
+		// forwarded to the server it would 422 on every load and strand
+		// the page on the error boundary, where "Clear" doesn't exist.
+		const backing = installStorageStub();
+		backing.set('workdown.display.my-view', '{"title":5}');
+		expect(loadDisplayOverride('my-view')).toBeNull();
+		backing.set('workdown.display.my-view', '{"subtitle":{}}');
+		expect(loadDisplayOverride('my-view')).toBeNull();
+		backing.set('workdown.display.my-view', '{"fields":"status"}');
+		expect(loadDisplayOverride('my-view')).toBeNull();
+		backing.set('workdown.display.my-view', '{"fields":["status",7]}');
+		expect(loadDisplayOverride('my-view')).toBeNull();
+		backing.set('workdown.display.my-view', '{"color":false}');
+		expect(loadDisplayOverride('my-view')).toBeNull();
+		backing.set('workdown.display.my-view', '["title"]');
+		expect(loadDisplayOverride('my-view')).toBeNull();
+	});
+
+	it('drops unknown keys but keeps the valid roles', () => {
+		const backing = installStorageStub();
+		backing.set('workdown.display.my-view', '{"title":"status","badge":"severity"}');
+		expect(loadDisplayOverride('my-view')).toEqual({ title: 'status' });
+	});
+
+	it('returns null without localStorage (no stub installed)', () => {
+		expect(loadDisplayOverride('my-view')).toBeNull();
+	});
+});

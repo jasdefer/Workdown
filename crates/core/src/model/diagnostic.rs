@@ -176,11 +176,14 @@ pub struct ConfigDiagnostic {
     pub kind: ConfigDiagnosticKind,
 }
 
-/// Cross-file failures against `views.yaml`.
+/// Cross-file failures against a config file — `views.yaml` for the
+/// `View*` variants, `config.yaml` for the `ConfigDisplay*` variants.
 ///
-/// Today every variant carries a `view_id`. When a future `Schema*`
-/// family lands for cross-file `schema.yaml` validation, those variants
-/// will share `ConfigDiagnosticKind` but will not have a `view_id`.
+/// The `View*` variants carry a `view_id` and pin the failure to one
+/// view (that view is unrenderable, the rest keep working); the
+/// `ConfigDisplay*` variants are project-wide and carry none — a bad
+/// default degrades every view to its fallback instead of blanking
+/// anything (see `view_id_of` below).
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConfigDiagnosticKind {
@@ -192,6 +195,14 @@ pub enum ConfigDiagnosticKind {
         view_id: String,
         view_type: ViewType,
         slot: &'static str,
+    },
+
+    /// A view still uses a pre-display-role top-level slot (`title:` or
+    /// `columns:`); `replacement` names the display role that took over.
+    ViewLegacyDisplaySlot {
+        view_id: String,
+        slot: &'static str,
+        replacement: &'static str,
     },
 
     /// A view references a field name that isn't defined in `schema.yaml`.
@@ -295,6 +306,29 @@ pub enum ConfigDiagnosticKind {
         raw: String,
         detail: String,
     },
+
+    /// A `defaults.display` role in `config.yaml` names a field that
+    /// isn't defined in `schema.yaml` (and isn't the virtual `id`).
+    /// Unlike the `View*` variants this carries no `view_id` — the
+    /// default is project-wide, not tied to one view — so it never
+    /// marks a single view unrenderable; every view keeps rendering on
+    /// its fallback while this surfaces the dead default.
+    ConfigDisplayUnknownField {
+        slot: &'static str,
+        field_name: String,
+    },
+
+    /// A `defaults.display` role in `config.yaml` names a field whose
+    /// schema type is incompatible with the role. Only `color` is
+    /// type-restricted today (must be a `color` field); the text roles
+    /// are existence-only.
+    ConfigDisplayFieldTypeMismatch {
+        slot: &'static str,
+        field_name: String,
+        actual_type: FieldType,
+        /// Human-readable expected type, e.g. `"color"`.
+        expected: String,
+    },
 }
 
 // ── Field value errors ───────────────────────────────────────────────
@@ -334,6 +368,10 @@ pub enum FieldValueError {
 
     /// Duration string failed to parse.
     InvalidDuration { value: String, reason: String },
+
+    /// Color value is neither valid hex nor a palette name. `allowed`
+    /// lists the palette names so the diagnostic teaches the palette.
+    InvalidColor { value: String, allowed: Vec<String> },
 
     /// Date string is not valid YYYY-MM-DD.
     InvalidDate { value: String },
@@ -444,6 +482,7 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
     match kind {
         ConfigDiagnosticKind::ViewDuplicateId { view_id }
         | ConfigDiagnosticKind::ViewMissingSlot { view_id, .. }
+        | ConfigDiagnosticKind::ViewLegacyDisplaySlot { view_id, .. }
         | ConfigDiagnosticKind::ViewUnknownField { view_id, .. }
         | ConfigDiagnosticKind::ViewFieldTypeMismatch { view_id, .. }
         | ConfigDiagnosticKind::ViewWhereParseError { view_id, .. }
@@ -460,6 +499,13 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
         | ConfigDiagnosticKind::ViewMetricRowAggregateTypeMismatch { view_id, .. }
         | ConfigDiagnosticKind::ViewMetricRowCountWithValue { view_id, .. }
         | ConfigDiagnosticKind::ViewMetricRowWhereParseError { view_id, .. } => Some(view_id),
+
+        // Config-defaults diagnostics are project-wide, not pinned to a
+        // view. Returning `None` keeps them out of the server's
+        // per-view "this view is unrenderable" tier — every view still
+        // renders on its fallback.
+        ConfigDiagnosticKind::ConfigDisplayUnknownField { .. }
+        | ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch { .. } => None,
     }
 }
 
@@ -607,6 +653,16 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                     "view '{view_id}' (type {view_type}): missing required slot '{slot}'"
                 )
             }
+            ConfigDiagnosticKind::ViewLegacyDisplaySlot {
+                view_id,
+                slot,
+                replacement,
+            } => {
+                write!(
+                    f,
+                    "view '{view_id}': the top-level '{slot}:' slot moved into the display block — use '{replacement}:' instead"
+                )
+            }
             ConfigDiagnosticKind::ViewUnknownField {
                 view_id,
                 slot,
@@ -725,6 +781,18 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                 f,
                 "view '{view_id}', metrics[{metric_index}].where clause '{raw}': {detail}"
             ),
+            ConfigDiagnosticKind::ConfigDisplayUnknownField { slot, field_name } => {
+                write!(f, "config default '{slot}': unknown field '{field_name}'")
+            }
+            ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch {
+                slot,
+                field_name,
+                actual_type,
+                expected,
+            } => write!(
+                f,
+                "config default '{slot}': field '{field_name}' has type {actual_type}, expected {expected}"
+            ),
         }
     }
 }
@@ -755,6 +823,13 @@ impl std::fmt::Display for FieldValueError {
             }
             Self::InvalidDate { value } => {
                 write!(f, "'{value}' is not a valid date (expected YYYY-MM-DD)")
+            }
+            Self::InvalidColor { value, allowed } => {
+                write!(
+                    f,
+                    "'{value}' is not a valid color (expected #rgb / #rrggbb or one of: {})",
+                    allowed.join(", ")
+                )
             }
             Self::PatternMismatch { value, pattern } => {
                 write!(f, "'{value}' does not match pattern '{pattern}'")

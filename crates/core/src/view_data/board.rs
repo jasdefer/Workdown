@@ -117,14 +117,14 @@ fn place_in(columns: &mut [BoardColumn], value: &str, card: &Card) -> bool {
 mod tests {
     use super::*;
     use crate::model::schema::{FieldTypeConfig, Schema};
-    use crate::model::views::{View, ViewKind};
+    use crate::model::views::{DisplayConfig, View, ViewKind};
     use crate::view_data::test_support::{make_item, make_schema, make_store};
 
     fn board_view(field: &str) -> View {
         View {
             id: "my-board".into(),
             where_clauses: vec![],
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::Board {
                 field: field.to_owned(),
             },
@@ -209,6 +209,69 @@ mod tests {
         assert_eq!(synthetic.value, None);
         assert_eq!(synthetic.cards.len(), 1);
         assert_eq!(synthetic.cards[0].id.as_str(), "a");
+    }
+
+    // ── Background resolution ────────────────────────────────────
+
+    #[test]
+    fn card_background_resolves_first_color_field_in_schema_order() {
+        // Two color fields: the first in schema order backs the card
+        // background, mirroring how the first choice field backs a board.
+        let schema = make_schema(vec![
+            (
+                "status",
+                FieldTypeConfig::Choice {
+                    values: vec!["open".into()],
+                },
+            ),
+            ("highlight", FieldTypeConfig::Color),
+            ("accent", FieldTypeConfig::Color),
+        ]);
+        let store = make_store(
+            &schema,
+            vec![make_item(
+                "a",
+                vec![
+                    ("status", FieldValue::Choice("open".into())),
+                    ("highlight", FieldValue::Color("red".into())),
+                    ("accent", FieldValue::Color("#123456".into())),
+                ],
+                "",
+            )],
+        );
+        let view = board_view("status");
+
+        let data = extract_board(&view, &store, &schema);
+
+        let card = &data.columns[0].cards[0];
+        // `red` resolves to its pinned hex — the UI only ever sees hex.
+        assert_eq!(card.background.as_deref(), Some("#ef4444"));
+    }
+
+    #[test]
+    fn card_background_absent_without_color_value() {
+        let schema = make_schema(vec![
+            (
+                "status",
+                FieldTypeConfig::Choice {
+                    values: vec!["open".into()],
+                },
+            ),
+            ("highlight", FieldTypeConfig::Color),
+        ]);
+        let store = make_store(
+            &schema,
+            vec![make_item(
+                "a",
+                vec![("status", FieldValue::Choice("open".into()))],
+                "",
+            )],
+        );
+        let view = board_view("status");
+
+        let data = extract_board(&view, &store, &schema);
+
+        assert_eq!(data.columns[0].cards[0].background, None);
     }
 
     #[test]

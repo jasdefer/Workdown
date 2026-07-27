@@ -100,6 +100,7 @@ fn build_field_arg(name: &str, type_config: &FieldTypeConfig, description: Optio
         FieldTypeConfig::String { .. }
         | FieldTypeConfig::Date
         | FieldTypeConfig::Duration { .. }
+        | FieldTypeConfig::Color
         | FieldTypeConfig::Link { .. } => {
             arg = arg
                 .action(ArgAction::Set)
@@ -160,6 +161,7 @@ fn default_help_for_type(type_config: &FieldTypeConfig) -> String {
         FieldTypeConfig::String { .. } => "string".to_owned(),
         FieldTypeConfig::Date => "date (YYYY-MM-DD)".to_owned(),
         FieldTypeConfig::Duration { .. } => "duration (e.g. 5d, 1w 2d 3h, 30min)".to_owned(),
+        FieldTypeConfig::Color => "color (#rgb / #rrggbb hex or a palette name)".to_owned(),
         FieldTypeConfig::Integer { .. } => "integer".to_owned(),
         FieldTypeConfig::Float { .. } => "float".to_owned(),
         FieldTypeConfig::Boolean => "boolean".to_owned(),
@@ -186,6 +188,7 @@ fn extract_field_value(
         FieldTypeConfig::String { .. }
         | FieldTypeConfig::Date
         | FieldTypeConfig::Duration { .. }
+        | FieldTypeConfig::Color
         | FieldTypeConfig::Link { .. }
         | FieldTypeConfig::Choice { .. } => matches
             .get_one::<String>(name)

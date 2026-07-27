@@ -88,7 +88,7 @@ export function idsInView(view: ViewData): Set<WorkItemId> {
 
 function collectTreeNodeIds(nodes: TreeNode[], ids: Set<WorkItemId>): void {
 	for (const node of nodes) {
-		ids.add(node.card.id);
+		ids.add(node.id);
 		collectTreeNodeIds(node.children, ids);
 	}
 }

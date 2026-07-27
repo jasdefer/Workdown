@@ -96,7 +96,7 @@
 			</div>
 		{/if}
 
-		{#each data.roots as root (root.card.id)}
+		{#each data.roots as root (root.id)}
 			<TreeNodeRow node={root} columns={data.columns} depth={0} {expandedIds} {toggle} />
 		{/each}
 	</div>
@@ -163,6 +163,21 @@
 		bottom: 0;
 		width: 1px;
 		background-color: var(--color-border);
+	}
+
+	/* Color-field treatment, identical to the table: rows are
+	   `display: contents`, so the global `.tinted` wash (base.css)
+	   lands on each cell (the computed --tint-wash inherits through the
+	   row wrapper) and the full-strength stripe is an inset shadow on
+	   the sticky title cell — no width added, columns stay aligned, and
+	   the tint stays opaque while the hierarchy column is stuck during
+	   horizontal scroll. */
+	:global(.tree .row.tinted .cell) {
+		background-color: var(--tint-wash);
+	}
+
+	:global(.tree .row.tinted .cell.title) {
+		box-shadow: inset 4px 0 0 0 var(--item-color);
 	}
 
 	:global(.tree .row.header .cell) {

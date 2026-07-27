@@ -154,6 +154,7 @@ fn eval_single(
         Some(FieldType::Float) => eval_float(field_value, comparison),
         Some(FieldType::Boolean) => eval_boolean(field_value, comparison),
         Some(FieldType::Duration) => eval_duration(field_value, comparison),
+        Some(FieldType::Color) => eval_color(field_value, comparison),
         Some(FieldType::Multichoice) | Some(FieldType::List) => eval_list(field_value, comparison),
         Some(FieldType::Links) => eval_links(field_value, comparison),
         // String, Choice, Date, Link, and unknown fields all use string comparison.
@@ -255,6 +256,36 @@ fn eval_duration(
     })
 }
 
+/// Color comparison. Both sides are resolved to hex before comparing,
+/// so `color == red` matches an item that stores red's pinned hex and
+/// vice versa. A RHS that isn't a valid color never matches, mirroring
+/// how unparseable numbers behave for numeric fields.
+fn eval_color(field_value: &FieldValue, comparison: &Comparison) -> Result<bool, QueryEvalError> {
+    use crate::model::color::{parse_color, resolve_color_to_hex};
+
+    let actual = match field_value {
+        FieldValue::Color(canonical) => resolve_color_to_hex(canonical),
+        _ => return Ok(false),
+    };
+    let Some(actual) = actual else {
+        return Ok(false);
+    };
+    let expected = match parse_color(&comparison.value) {
+        Ok(canonical) => resolve_color_to_hex(&canonical),
+        Err(_) => return Ok(false),
+    };
+    let Some(expected) = expected else {
+        return Ok(false);
+    };
+
+    Ok(match comparison.operator {
+        Operator::Equal => actual == expected,
+        Operator::NotEqual => actual != expected,
+        // Ordering/contains/regex don't make sense for colors.
+        _ => false,
+    })
+}
+
 /// Boolean comparison.
 fn eval_boolean(field_value: &FieldValue, comparison: &Comparison) -> Result<bool, QueryEvalError> {
     let actual = match field_value {
@@ -335,6 +366,7 @@ fn extract_string(value: &FieldValue) -> String {
         FieldValue::Choice(string) => string.clone(),
         FieldValue::Date(date) => date.format("%Y-%m-%d").to_string(),
         FieldValue::Duration(seconds) => format_duration_seconds(*seconds),
+        FieldValue::Color(color) => color.clone(),
         FieldValue::Link(id) => id.as_str().to_owned(),
         // For non-string types, fall back to a reasonable string representation.
         FieldValue::Integer(number) => number.to_string(),
@@ -474,6 +506,10 @@ mod tests {
                 max: None,
             }),
         );
+        fields.insert(
+            "background".to_owned(),
+            FieldDefinition::new(FieldTypeConfig::Color),
+        );
 
         let inverse_table = Schema::build_inverse_table(&fields);
         Schema {
@@ -528,6 +564,45 @@ mod tests {
         let item = make_item("t1", vec![("status", FieldValue::Choice("open".into()))]);
         let predicate = comparison("status", Operator::NotEqual, "done");
         assert!(check(&item, &predicate, &schema).unwrap());
+    }
+
+    // ── Color comparison ────────────────────────────────────────
+
+    #[test]
+    fn color_name_matches_its_pinned_hex() {
+        // The item stores red's pinned hex literally; filtering on the
+        // name must match — both sides resolve before comparing.
+        let schema = test_schema();
+        let item = make_item(
+            "t1",
+            vec![("background", FieldValue::Color("#ef4444".into()))],
+        );
+        let predicate = comparison("background", Operator::Equal, "red");
+        assert!(check(&item, &predicate, &schema).unwrap());
+    }
+
+    #[test]
+    fn color_hex_matches_stored_name() {
+        let schema = test_schema();
+        let item = make_item("t1", vec![("background", FieldValue::Color("red".into()))]);
+        let predicate = comparison("background", Operator::Equal, "#EF4444");
+        assert!(check(&item, &predicate, &schema).unwrap());
+    }
+
+    #[test]
+    fn color_not_equal_on_resolved_hex() {
+        let schema = test_schema();
+        let item = make_item("t1", vec![("background", FieldValue::Color("red".into()))]);
+        let predicate = comparison("background", Operator::NotEqual, "blue");
+        assert!(check(&item, &predicate, &schema).unwrap());
+    }
+
+    #[test]
+    fn color_invalid_comparison_value_never_matches() {
+        let schema = test_schema();
+        let item = make_item("t1", vec![("background", FieldValue::Color("red".into()))]);
+        let equal_predicate = comparison("background", Operator::Equal, "teal");
+        assert!(!check(&item, &equal_predicate, &schema).unwrap());
     }
 
     // ── Integer comparison ──────────────────────────────────────

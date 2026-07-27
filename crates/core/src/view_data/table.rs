@@ -1,17 +1,18 @@
 //! Table view extractor.
 //!
-//! Produces one row per filtered item, with cells parallel to the view's
-//! `columns:` list. The virtual `id` column emits the item id as a string
-//! cell; real fields emit their typed [`FieldValue`] when set, `None`
-//! when the item doesn't have that field.
+//! Produces one row per filtered item, with cells parallel to the
+//! columns the `fields` display role selects (unset falls back to
+//! every schema field). The virtual `id` column emits the item id as a
+//! string cell; real fields emit their typed [`FieldValue`] when set,
+//! `None` when the item doesn't have that field.
 //!
 //! Each column carries its [`FieldType`](crate::model::schema::FieldType) so the UI can render and align
 //! cells correctly even when every cell in a column is `None`. Link and
 //! Links cells reference items by id; an `items` sidecar map resolves
-//! those ids to display titles (via the view's `title:` slot, same
-//! mechanism as [`Card`](super::common::Card)). Ids that don't resolve
-//! to any item in the store are absent from the map — the UI treats
-//! absence as "broken link, show the raw id".
+//! those ids to display titles (via the view's `title` display role,
+//! same mechanism as [`Card`](super::common::Card)). Ids that don't
+//! resolve to any item in the store are absent from the map — the UI
+//! treats absence as "broken link, show the raw id".
 
 use std::collections::HashMap;
 
@@ -22,7 +23,10 @@ use crate::model::views::{View, ViewKind};
 use crate::model::{FieldValue, WorkItemId};
 use crate::store::Store;
 
-use super::common::{build_column, column_cell, resolve_title, Column, ItemRef};
+use super::common::{
+    build_column, column_cell, effective_fields, resolve_title, resolved_background, Column,
+    ItemRef,
+};
 use super::filter::filtered_items;
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
@@ -37,15 +41,23 @@ pub struct TableData {
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TableRow {
     pub id: WorkItemId,
+    /// Resolved `#rrggbb` of the item's value for the field the view's
+    /// `color` display role picks; `None` when the role is `none` or
+    /// the item has no value. Same convention as
+    /// [`Card::background`](super::common::Card::background).
+    pub background: Option<String>,
     pub cells: Vec<Option<FieldValue>>,
 }
 
 pub fn extract_table(view: &View, store: &Store, schema: &Schema) -> TableData {
-    let ViewKind::Table { columns } = &view.kind else {
+    let ViewKind::Table = &view.kind else {
         panic!("extract_table called with non-table view kind");
     };
     let items = filtered_items(view, store, schema);
 
+    // Columns come from the `fields` display role; unset falls back to
+    // every schema field in declaration order.
+    let columns = effective_fields(view, schema);
     let table_columns: Vec<Column> = columns
         .iter()
         .map(|column_name| build_column(column_name, schema))
@@ -55,6 +67,7 @@ pub fn extract_table(view: &View, store: &Store, schema: &Schema) -> TableData {
         .iter()
         .map(|item| TableRow {
             id: item.id.clone(),
+            background: resolved_background(item, schema, Some(&view.display)),
             cells: columns
                 .iter()
                 .map(|column| column_cell(column, item))
@@ -122,7 +135,7 @@ fn insert_ref(
 mod tests {
     use super::*;
     use crate::model::schema::{FieldType, FieldTypeConfig};
-    use crate::model::views::{View, ViewKind};
+    use crate::model::views::{DisplayConfig, View, ViewKind};
     use crate::view_data::test_support::{make_item, make_schema, make_store};
 
     fn table_view(columns: Vec<&str>, where_clauses: Vec<&str>) -> View {
@@ -137,10 +150,12 @@ mod tests {
         View {
             id: "my-table".to_owned(),
             where_clauses: where_clauses.into_iter().map(str::to_owned).collect(),
-            title: title.map(str::to_owned),
-            kind: ViewKind::Table {
-                columns: columns.into_iter().map(str::to_owned).collect(),
+            display: DisplayConfig {
+                title: title.map(str::to_owned),
+                fields: Some(columns.into_iter().map(str::to_owned).collect()),
+                ..DisplayConfig::default()
             },
+            kind: ViewKind::Table,
         }
     }
 
@@ -188,6 +203,27 @@ mod tests {
             .iter()
             .map(|column| column.name.as_str())
             .collect()
+    }
+
+    #[test]
+    fn explicit_empty_fields_role_yields_zero_columns() {
+        // `fields: []` means "show no fields" — not the all-schema-fields
+        // fallback that an unset role produces.
+        let schema = basic_schema();
+        let store = make_store(
+            &schema,
+            vec![make_item(
+                "a",
+                vec![("status", FieldValue::Choice("open".into()))],
+                "",
+            )],
+        );
+        let view = table_view(vec![], vec![]);
+
+        let data = extract_table(&view, &store, &schema);
+
+        assert!(data.columns.is_empty());
+        assert!(data.rows[0].cells.is_empty());
     }
 
     #[test]

@@ -1,8 +1,9 @@
 //! Types and helpers shared across view_data extractors.
 //!
 //! `Card` is the resolved form of a work item for a specific view: id,
-//! optional display title (from the view's `title:` slot), every field
-//! set on the item (in schema order), and the freeform body text.
+//! title and subtitle (resolved via the view's display roles),
+//! background tint, the fields the effective `fields` role selects (in
+//! role order), and the freeform body text.
 //! `UnplacedCard` carries items that couldn't be turned into the view's
 //! natural mark (a bar, a point, a cell) — filter-matched but structurally
 //! unrenderable — so the renderer can show them in a side panel or ignore
@@ -15,7 +16,7 @@ use serde::Serialize;
 
 use crate::model::field_value::format_field_value;
 use crate::model::schema::{FieldType, Schema};
-use crate::model::views::{Bucket, View};
+use crate::model::views::{Bucket, ColorRole, DisplayConfig, View};
 use crate::model::{FieldValue, WorkItem, WorkItemId};
 
 // ── Column (shared by table and tree) ───────────────────────────────
@@ -70,6 +71,15 @@ pub fn column_cell(column_name: &str, item: &WorkItem) -> Option<FieldValue> {
 pub struct Card {
     pub id: WorkItemId,
     pub title: Option<String>,
+    /// Secondary line, resolved via the view's `subtitle` display role.
+    /// `None` when the role is unset or the item lacks the field.
+    pub subtitle: Option<String>,
+    /// Resolved `#rrggbb` of the item's value for the field the view's
+    /// `color` display role picks (see [`resolved_background`]); `None`
+    /// when the role is `none` or the item has no value. Renderers tint
+    /// the item's surface with it and keep their neutral default
+    /// otherwise.
+    pub background: Option<String>,
     pub fields: Vec<CardField>,
     pub body: String,
 }
@@ -78,6 +88,11 @@ pub struct Card {
 pub struct CardField {
     pub name: String,
     pub value: FieldValue,
+    /// The field's [`FieldType`], carried alongside the value so
+    /// card/tooltip renderers can format a date, choice, or link
+    /// correctly from the value alone — as the table/tree column
+    /// payload already does.
+    pub field_type: FieldType,
 }
 
 /// A lightweight resolved reference to a work item — just its display
@@ -86,44 +101,142 @@ pub struct CardField {
 /// show a linked item by name rather than raw id.
 #[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
 pub struct ItemRef {
-    /// Resolved via the view's `title:` slot. `None` when the view has
-    /// no title slot configured or the linked item lacks that field —
-    /// the UI falls back to `prettifyId(id)` in that case.
+    /// Resolved via the view's `title` display role. `None` when the
+    /// role is unset or the linked item lacks that field — the UI
+    /// falls back to `prettifyId(id)` in that case.
     pub title: Option<String>,
 }
 
-/// Build a Card from a work item, resolving the view's title slot.
+/// Build a Card from a work item, resolving the view's display roles.
 ///
-/// Fields emitted: each schema-declared field the item actually has a
-/// value for, in schema-declaration order. Fields not present on the
-/// item are omitted (not padded with `None`) — consumers that need a
-/// uniform shape can consult the schema themselves.
+/// Fields emitted: each entry of [`effective_fields`] the item actually
+/// has a value for, in role order (user's order when the `fields` role
+/// is set, schema-declaration order in the fallback). Fields not present
+/// on the item are omitted (not padded with `None`) — consumers that
+/// need a uniform shape can consult the schema themselves.
 pub fn build_card(item: &WorkItem, schema: &Schema, view: &View) -> Card {
-    let title = resolve_title(item, view);
     let mut fields = Vec::new();
-    for field_name in schema.fields.keys() {
+    for field_name in effective_fields(view, schema) {
+        let Some(config) = schema.fields.get(field_name) else {
+            continue; // the virtual `id` — carried on the card itself
+        };
         if let Some(value) = item.fields.get(field_name) {
             fields.push(CardField {
-                name: field_name.clone(),
+                name: field_name.to_owned(),
                 value: value.clone(),
+                field_type: config.field_type(),
             });
         }
     }
     Card {
         id: item.id.clone(),
-        title,
+        title: resolve_title(item, view),
+        subtitle: resolve_subtitle(item, view),
+        background: resolved_background(item, schema, Some(&view.display)),
         fields,
         body: item.body.clone(),
     }
 }
 
-/// Resolve a card's display title via the view's `title:` slot.
+/// Resolve which schema field feeds the background tint — the single
+/// implementation of the `color` display role's resolution, shared by
+/// every surface that tints (view extractors and the item detail).
 ///
-/// Returns `None` when the view has no `title:` set or when the referenced
-/// field isn't set on this item — renderers fall back to the item id.
-/// The virtual `id` slot returns the item id as a string.
+/// By the time extraction runs, the role's upper rungs are already
+/// merged into one value (session override › view `display:` › config
+/// defaults — see [`DisplayConfig::or_inherit`]):
+///
+/// - [`ColorRole::None`] — tinting is off; resolves to no field.
+/// - [`ColorRole::Field`] — that field, provided it exists and is
+///   `color`-typed. Anything else falls through to the fallback:
+///   `views_check` guarantees view-level config and `config_check`
+///   guarantees the `defaults.display` entry, but a stale session
+///   override must degrade gracefully, not panic or mistint.
+/// - Unset (including `display: None`) — the fallback: the first
+///   `color`-typed field in schema order, mirroring how the first
+///   compatible `choice` field backs a board. Surfaces without a view
+///   in context (the item detail) pass the project-wide
+///   `defaults.display` here so rung 3 still applies to them.
+pub fn resolve_color_field<'schema>(
+    schema: &'schema Schema,
+    display: Option<&DisplayConfig>,
+) -> Option<&'schema str> {
+    match display.and_then(|config| config.color.as_ref()) {
+        Some(ColorRole::None) => return None,
+        Some(ColorRole::Field(name)) => {
+            if let Some((schema_name, definition)) = schema.fields.get_key_value(name.as_str()) {
+                if definition.field_type() == FieldType::Color {
+                    return Some(schema_name.as_str());
+                }
+            }
+        }
+        None => {}
+    }
+    schema
+        .fields
+        .iter()
+        .find(|(_, definition)| definition.field_type() == FieldType::Color)
+        .map(|(name, _)| name.as_str())
+}
+
+/// Resolve an item's background tint to `#rrggbb`: the item's value for
+/// the field [`resolve_color_field`] picks, or `None` when tinting is
+/// off, the item has no value, or coercion already dropped an invalid
+/// one — keeping the neutral default background. Resolution happens
+/// here, once, so every consumer downstream only ever sees finished hex.
+pub fn resolved_background(
+    item: &WorkItem,
+    schema: &Schema,
+    display: Option<&DisplayConfig>,
+) -> Option<String> {
+    let field_name = resolve_color_field(schema, display)?;
+    match item.fields.get(field_name) {
+        Some(FieldValue::Color(canonical)) => crate::model::color::resolve_color_to_hex(canonical),
+        _ => None,
+    }
+}
+
+/// The view's `fields` display role, or every schema field in
+/// declaration order when the role is unset — preserving the
+/// show-everything behavior views had before display roles existed. An
+/// explicit `fields: []` means what it says: no fields.
+///
+/// Names that resolve neither in `schema.fields` nor to the virtual
+/// `id` are dropped defensively: both the view's own role entries
+/// (`views_check`) and the `defaults.display` entries inherited from
+/// `config.yaml` (`config_check`) are validated, but a session override
+/// can still name a stale field, and the extractor must never panic.
+///
+/// Returns borrowed names: `build_card` runs once per item, so handing
+/// out owned `String`s here would clone the whole field list per card.
+pub fn effective_fields<'view>(view: &'view View, schema: &'view Schema) -> Vec<&'view str> {
+    match &view.display.fields {
+        None => schema.fields.keys().map(String::as_str).collect(),
+        Some(fields) => fields
+            .iter()
+            .map(String::as_str)
+            .filter(|name| *name == "id" || schema.fields.contains_key(*name))
+            .collect(),
+    }
+}
+
+/// Resolve a card's display title via the view's `title` display role.
+///
+/// Returns `None` when the role is unset or when the referenced field
+/// isn't set on this item — renderers fall back to the item id. The
+/// virtual `id` returns the item id as a string.
 pub fn resolve_title(item: &WorkItem, view: &View) -> Option<String> {
-    let slot = view.title.as_deref()?;
+    resolve_text_role(item, view.display.title.as_deref())
+}
+
+/// Resolve a card's secondary line via the view's `subtitle` display
+/// role. Same semantics as [`resolve_title`].
+pub fn resolve_subtitle(item: &WorkItem, view: &View) -> Option<String> {
+    resolve_text_role(item, view.display.subtitle.as_deref())
+}
+
+fn resolve_text_role(item: &WorkItem, slot: Option<&str>) -> Option<String> {
+    let slot = slot?;
     if slot == "id" {
         return Some(item.id.as_str().to_owned());
     }
@@ -345,5 +458,155 @@ pub(super) fn group_keys(item: &WorkItem, field: &str, bucket: Option<Bucket>) -
             vec![formatted]
         }
         Some(other) => vec![format_field_value(other)],
+    }
+}
+
+// ── Tests ───────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::schema::FieldTypeConfig;
+    use crate::model::views::ViewKind;
+    use crate::view_data::test_support::{make_item, make_schema};
+
+    fn view_with_fields(fields: Option<Vec<&str>>) -> View {
+        View {
+            id: "v".to_owned(),
+            where_clauses: vec![],
+            display: DisplayConfig {
+                fields: fields.map(|names| names.into_iter().map(str::to_owned).collect()),
+                ..DisplayConfig::default()
+            },
+            kind: ViewKind::Table,
+        }
+    }
+
+    #[test]
+    fn effective_fields_drops_stale_names_and_keeps_id() {
+        // A session override can name a field that was deleted since it
+        // was saved. This filter is load-bearing: without it,
+        // `build_column`'s expect panics on the stale name for
+        // column-bearing views. The virtual `id` passes through.
+        let schema = two_color_schema();
+        let view = view_with_fields(Some(vec!["ghost", "id", "status"]));
+        assert_eq!(effective_fields(&view, &schema), vec!["id", "status"]);
+    }
+
+    #[test]
+    fn effective_fields_unset_yields_schema_order_and_empty_means_none() {
+        let schema = two_color_schema();
+        let unset = view_with_fields(None);
+        assert_eq!(
+            effective_fields(&unset, &schema),
+            vec!["status", "team_color", "risk_color"]
+        );
+        let empty = view_with_fields(Some(vec![]));
+        assert!(effective_fields(&empty, &schema).is_empty());
+    }
+
+    fn two_color_schema() -> Schema {
+        make_schema(vec![
+            (
+                "status",
+                FieldTypeConfig::Choice {
+                    values: vec!["open".into()],
+                },
+            ),
+            ("team_color", FieldTypeConfig::Color),
+            ("risk_color", FieldTypeConfig::Color),
+        ])
+    }
+
+    fn display_with_color(color: Option<ColorRole>) -> DisplayConfig {
+        DisplayConfig {
+            color,
+            ..DisplayConfig::default()
+        }
+    }
+
+    #[test]
+    fn color_field_defaults_to_first_in_schema_order() {
+        let schema = two_color_schema();
+        assert_eq!(resolve_color_field(&schema, None), Some("team_color"));
+        let unset = display_with_color(None);
+        assert_eq!(
+            resolve_color_field(&schema, Some(&unset)),
+            Some("team_color")
+        );
+    }
+
+    #[test]
+    fn color_role_picks_the_named_field() {
+        let schema = two_color_schema();
+        let display = display_with_color(Some(ColorRole::Field("risk_color".into())));
+        assert_eq!(
+            resolve_color_field(&schema, Some(&display)),
+            Some("risk_color")
+        );
+    }
+
+    #[test]
+    fn color_role_none_disables_tinting() {
+        let schema = two_color_schema();
+        let display = display_with_color(Some(ColorRole::None));
+        assert_eq!(resolve_color_field(&schema, Some(&display)), None);
+    }
+
+    #[test]
+    fn stale_color_role_falls_back_to_schema_order() {
+        // A session override can outlive its field (deleted or retyped
+        // since it was saved) — degrade to the fallback, never panic.
+        let schema = two_color_schema();
+        let deleted = display_with_color(Some(ColorRole::Field("gone".into())));
+        assert_eq!(
+            resolve_color_field(&schema, Some(&deleted)),
+            Some("team_color")
+        );
+        let retyped = display_with_color(Some(ColorRole::Field("status".into())));
+        assert_eq!(
+            resolve_color_field(&schema, Some(&retyped)),
+            Some("team_color")
+        );
+    }
+
+    #[test]
+    fn no_color_fields_resolves_to_nothing() {
+        let schema = make_schema(vec![(
+            "status",
+            FieldTypeConfig::Choice {
+                values: vec!["open".into()],
+            },
+        )]);
+        assert_eq!(resolve_color_field(&schema, None), None);
+    }
+
+    #[test]
+    fn background_follows_the_resolved_field() {
+        let schema = two_color_schema();
+        let item = make_item(
+            "a",
+            vec![
+                ("team_color", FieldValue::Color("red".into())),
+                ("risk_color", FieldValue::Color("#123456".into())),
+            ],
+            "",
+        );
+
+        let by_role = display_with_color(Some(ColorRole::Field("risk_color".into())));
+        assert_eq!(
+            resolved_background(&item, &schema, Some(&by_role)).as_deref(),
+            Some("#123456")
+        );
+
+        let off = display_with_color(Some(ColorRole::None));
+        assert_eq!(resolved_background(&item, &schema, Some(&off)), None);
+
+        // No display in context (the item detail surface): first color
+        // field in schema order, resolved to its pinned hex.
+        assert_eq!(
+            resolved_background(&item, &schema, None).as_deref(),
+            Some("#ef4444")
+        );
     }
 }

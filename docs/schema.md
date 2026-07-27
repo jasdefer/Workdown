@@ -16,6 +16,8 @@ fields:
     required: false
 ```
 
+Field names are lowercase letters, digits, and underscores, starting with a letter or underscore. The name `none` is reserved — display roles in `views.yaml`/`config.yaml` use it as their "no field" sentinel (e.g. `display: { color: none }`), so a field by that name could never be referenced there.
+
 ### Available types
 
 | Type | Description | Type-specific options |
@@ -26,6 +28,8 @@ fields:
 | `integer` | Whole number | `min`, `max` |
 | `float` | Decimal number | `min`, `max` |
 | `date` | Calendar date (YYYY-MM-DD) | |
+| `duration` | Length of time (`5d`, `1w 2d 3h`, `30min`) | `min`, `max` (duration strings) |
+| `color` | Hex color (`#rgb` / `#rrggbb`) or a built-in palette name (`red`, `orange`, `yellow`, `green`, `blue`, `purple`, `pink`, `gray`) | |
 | `boolean` | True or false | |
 | `list` | List of free-text strings | |
 | `link` | Single reference to another work item | `allow_cycles`, `inverse` |
@@ -78,9 +82,9 @@ Available aggregate functions by type:
 
 | Type | Functions |
 |------|-----------|
-| `integer`, `float` | `sum`, `min`, `max`, `average`, `median`, `count` |
-| `date` | `min`, `max` |
-| `boolean` | `all`, `any`, `none` |
+| `integer`, `float`, `duration` | `sum`, `min`, `max`, `average`, `median`, `count` |
+| `date` | `min`, `max`, `average` |
+| `boolean` | `all`, `any`, `none`, `count` |
 
 If two items in the same ancestor chain both define the value manually, it is a validation error.
 

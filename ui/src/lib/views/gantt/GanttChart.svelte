@@ -181,6 +181,7 @@
 							<div class="track">
 								<div
 									class="bar"
+									style:--item-color={bar.card.background}
 									style="left: {barGeom(bar).left}px; width: {barGeom(bar).width}px;"
 									role="img"
 									aria-label={barDescription(bar)}
@@ -386,7 +387,10 @@
 		top: calc((var(--row-h) - var(--bar-h)) / 2);
 		height: var(--bar-h);
 		z-index: 1;
-		background-color: var(--color-accent);
+		/* The bar is the item's body on this view, so it carries the
+		   item's `color` field directly (absolute, same in both themes);
+		   uncolored items keep the accent as the neutral default bar. */
+		background-color: var(--item-color, var(--color-accent));
 		border-radius: var(--radius-sm, 3px);
 		cursor: default;
 	}

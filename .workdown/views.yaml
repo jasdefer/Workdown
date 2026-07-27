@@ -12,25 +12,24 @@ views:
   - id: hierarchy
     type: tree
     field: parent
-    title: title
-    columns: [type, status]
+    display:
+      fields: [type, status]
 
   - id: dependencies
     type: graph
     field: depends_on
     group_by: parent
-    title: title
 
   - id: items
     type: table
-    columns: [id, type, status, parent, depends_on]
+    display:
+      fields: [id, type, status, parent, depends_on]
 
   - id: roadmap
     type: gantt
     start: start_date
     end: end_date
     group: type
-    title: title
     where:
       - "type=milestone,epic"
 
@@ -39,7 +38,6 @@ views:
     start: start_date
     duration: duration
     group: type
-    title: title
     where:
       - "type=milestone,epic"
 
@@ -49,7 +47,6 @@ views:
     duration: duration
     after: depends_on
     group: type
-    title: title
     where:
       - "type=milestone,epic"
 
@@ -58,7 +55,6 @@ views:
     start: start_date
     end: end_date
     root_link: parent
-    title: title
     where:
       - "type=milestone,epic"
 
@@ -67,7 +63,6 @@ views:
     start: start_date
     end: end_date
     depth_link: parent
-    title: title
     where:
       - "type=milestone,epic"
 
@@ -75,7 +70,6 @@ views:
     type: treemap
     group: parent
     size: effort
-    title: title
     where:
       - "status!=removed"
 
@@ -84,7 +78,6 @@ views:
     start: start_date
     end: end_date
     effort: effort
-    title: title
     where:
       - "type=milestone"
 
@@ -93,7 +86,6 @@ views:
     x: start_date
     y: duration
     group: type
-    title: title
     where:
       - "status!=removed"
 

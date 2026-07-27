@@ -5,49 +5,68 @@
 //! filtered set, absent, or broken become roots. Siblings at every level
 //! are sorted by id ascending.
 //!
-//! Each node carries a [`Card`] (with title pre-resolved via the view's
-//! `title:` slot) plus a `cells` list parallel to the view's `columns:`
-//! configuration. When `columns:` is empty (or absent in `views.yaml`)
-//! the tree degenerates to a pure outline — `cells` is empty on every
-//! node. Same column semantics as the table view: virtual `id` column,
-//! `None` cells when the item lacks that field.
+//! Each node mirrors a table row — resolved title, background, and a
+//! `cells` list parallel to the columns derived from the `fields`
+//! display role (unset falls back to every schema field, like the table
+//! view) — rather than carrying a full `Card`: the `fields` role already
+//! manifests as the columns, so card fields would serialize every value
+//! a second time. Same column semantics as the table view: virtual `id`
+//! column, `None` cells when the item lacks that field.
 
 use serde::Serialize;
 
 use crate::model::schema::Schema;
 use crate::model::views::{View, ViewKind};
-use crate::model::{FieldValue, WorkItem};
+use crate::model::{FieldValue, WorkItem, WorkItemId};
 use crate::store::Store;
 
-use super::common::{build_card, build_column, column_cell, Card, Column};
+use super::common::{
+    build_column, column_cell, effective_fields, resolve_title, resolved_background, Column,
+};
 use super::filter::filtered_items;
 use super::traverse::{walk_forest, Traversal};
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TreeData {
     pub field: String,
-    /// User-configured columns shown alongside the hierarchy. Empty when
-    /// `views.yaml` omits `columns:` — the renderer falls back to a
-    /// title-only outline.
+    /// Columns shown alongside the hierarchy, from the `fields` display
+    /// role (or the all-schema-fields fallback when the role is unset).
     pub columns: Vec<Column>,
     pub roots: Vec<TreeNode>,
 }
 
+/// One item in the hierarchy. Carries what a tree row (or a graph
+/// subgraph label) renders — the [`TableRow`](super::table::TableRow)
+/// shape plus the nesting — not a full `Card`: the tree places the
+/// `title` and `color` roles on the row and the `fields` role as its
+/// columns, so per-node card fields and body would be dead weight on
+/// the wire.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TreeNode {
-    pub card: Card,
+    pub id: WorkItemId,
+    /// Resolved via the view's `title` display role; `None` when the
+    /// role is unset or the item lacks the field — renderers fall back
+    /// to the prettified id.
+    pub title: Option<String>,
+    /// Resolved `#rrggbb` of the item's value for the field the view's
+    /// `color` display role picks; `None` when the role is `none` or
+    /// the item has no value. Same convention as
+    /// [`Card::background`](super::common::Card::background).
+    pub background: Option<String>,
     /// Cell values parallel to [`TreeData::columns`]. Empty when the
-    /// view has no `columns:` configured.
+    /// effective `fields` role is an explicit `[]` (and for the graph's
+    /// column-less grouping tree).
     pub cells: Vec<Option<FieldValue>>,
     pub children: Vec<TreeNode>,
 }
 
 pub fn extract_tree(view: &View, store: &Store, schema: &Schema) -> TreeData {
-    let ViewKind::Tree { field, columns } = &view.kind else {
+    let ViewKind::Tree { field } = &view.kind else {
         panic!("extract_tree called with non-tree view kind");
     };
     let items = filtered_items(view, store, schema);
-    build_tree_data(&items, field, columns, store, schema, view)
+    let columns = effective_fields(view, schema);
+    build_tree_data(&items, field, &columns, store, schema, view)
 }
 
 /// Build a [`TreeData`] from an already-filtered set of items by walking a
@@ -60,7 +79,7 @@ pub fn extract_tree(view: &View, store: &Store, schema: &Schema) -> TreeData {
 pub(super) fn build_tree_data(
     items: &[&WorkItem],
     field: &str,
-    columns: &[String],
+    columns: &[&str],
     store: &Store,
     schema: &Schema,
     view: &View,
@@ -81,18 +100,15 @@ pub(super) fn build_tree_data(
     }
 }
 
-fn to_tree_node(
-    traversal: Traversal,
-    columns: &[String],
-    schema: &Schema,
-    view: &View,
-) -> TreeNode {
+fn to_tree_node(traversal: Traversal, columns: &[&str], schema: &Schema, view: &View) -> TreeNode {
     let cells = columns
         .iter()
         .map(|column| column_cell(column, traversal.item))
         .collect();
     TreeNode {
-        card: build_card(traversal.item, schema, view),
+        id: traversal.item.id.clone(),
+        title: resolve_title(traversal.item, view),
+        background: resolved_background(traversal.item, schema, Some(&view.display)),
         cells,
         children: traversal
             .children
@@ -108,23 +124,24 @@ fn to_tree_node(
 mod tests {
     use super::*;
     use crate::model::schema::{FieldTypeConfig, Schema};
-    use crate::model::views::{View, ViewKind};
+    use crate::model::views::{DisplayConfig, View, ViewKind};
     use crate::view_data::test_support::{make_schema, make_store_with_files};
 
     fn tree_view(field: &str, where_clauses: Vec<&str>) -> View {
-        tree_view_with_columns(field, where_clauses, vec![])
-    }
-
-    fn tree_view_with_columns(field: &str, where_clauses: Vec<&str>, columns: Vec<&str>) -> View {
         View {
             id: "my-tree".into(),
             where_clauses: where_clauses.into_iter().map(str::to_owned).collect(),
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::Tree {
                 field: field.to_owned(),
-                columns: columns.into_iter().map(str::to_owned).collect(),
             },
         }
+    }
+
+    fn tree_view_with_columns(field: &str, where_clauses: Vec<&str>, columns: Vec<&str>) -> View {
+        let mut view = tree_view(field, where_clauses);
+        view.display.fields = Some(columns.into_iter().map(str::to_owned).collect());
+        view
     }
 
     fn parent_schema() -> Schema {
@@ -161,11 +178,11 @@ mod tests {
         let data = extract_tree(&view, &store, &schema);
 
         assert_eq!(data.roots.len(), 1);
-        assert_eq!(data.roots[0].card.id.as_str(), "root");
+        assert_eq!(data.roots[0].id.as_str(), "root");
         let child_ids: Vec<&str> = data.roots[0]
             .children
             .iter()
-            .map(|node| node.card.id.as_str())
+            .map(|node| node.id.as_str())
             .collect();
         assert_eq!(child_ids, vec!["child-a", "child-b"]);
     }
@@ -186,9 +203,9 @@ mod tests {
         let data = extract_tree(&view, &store, &schema);
 
         assert_eq!(data.roots.len(), 1);
-        assert_eq!(data.roots[0].card.id.as_str(), "a");
-        assert_eq!(data.roots[0].children[0].card.id.as_str(), "b");
-        assert_eq!(data.roots[0].children[0].children[0].card.id.as_str(), "c");
+        assert_eq!(data.roots[0].id.as_str(), "a");
+        assert_eq!(data.roots[0].children[0].id.as_str(), "b");
+        assert_eq!(data.roots[0].children[0].children[0].id.as_str(), "c");
     }
 
     #[test]
@@ -205,7 +222,7 @@ mod tests {
 
         let data = extract_tree(&view, &store, &schema);
 
-        let ids: Vec<&str> = data.roots.iter().map(|n| n.card.id.as_str()).collect();
+        let ids: Vec<&str> = data.roots.iter().map(|n| n.id.as_str()).collect();
         assert_eq!(ids, vec!["orphan", "root"]);
     }
 
@@ -226,8 +243,8 @@ mod tests {
 
         // `a` is filtered out so `b` becomes a root; `c` stays under it.
         assert_eq!(data.roots.len(), 1);
-        assert_eq!(data.roots[0].card.id.as_str(), "b");
-        assert_eq!(data.roots[0].children[0].card.id.as_str(), "c");
+        assert_eq!(data.roots[0].id.as_str(), "b");
+        assert_eq!(data.roots[0].children[0].id.as_str(), "c");
     }
 
     #[test]
@@ -256,14 +273,14 @@ mod tests {
 
         let data = extract_tree(&view, &store, &schema);
 
-        let ids: Vec<&str> = data.roots.iter().map(|n| n.card.id.as_str()).collect();
+        let ids: Vec<&str> = data.roots.iter().map(|n| n.id.as_str()).collect();
         assert_eq!(ids, vec!["a", "m", "z"]);
     }
 
     // ── Columns + cells ─────────────────────────────────────────────
 
     #[test]
-    fn empty_columns_yields_empty_cells_on_every_node() {
+    fn unset_fields_role_falls_back_to_all_schema_fields() {
         let schema = parent_schema();
         let (_tmp, store) = make_store_with_files(
             &schema,
@@ -276,9 +293,14 @@ mod tests {
 
         let data = extract_tree(&view, &store, &schema);
 
-        assert!(data.columns.is_empty());
-        assert!(data.roots[0].cells.is_empty());
-        assert!(data.roots[0].children[0].cells.is_empty());
+        let names: Vec<&str> = data
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["parent", "status"]);
+        assert_eq!(data.roots[0].cells.len(), 2);
+        assert_eq!(data.roots[0].children[0].cells.len(), 2);
     }
 
     #[test]

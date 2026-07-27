@@ -11,7 +11,7 @@ use crate::model::schema::{FieldDefinition, FieldTypeConfig, Schema};
 use crate::model::{FieldValue, WorkItem, WorkItemId};
 use crate::store::Store;
 
-pub(super) fn make_item(id: &str, fields: Vec<(&str, FieldValue)>, body: &str) -> WorkItem {
+pub(crate) fn make_item(id: &str, fields: Vec<(&str, FieldValue)>, body: &str) -> WorkItem {
     let mut map = HashMap::new();
     for (name, value) in fields {
         map.insert(name.to_owned(), value);
@@ -24,7 +24,7 @@ pub(super) fn make_item(id: &str, fields: Vec<(&str, FieldValue)>, body: &str) -
     }
 }
 
-pub(super) fn make_schema(fields: Vec<(&str, FieldTypeConfig)>) -> Schema {
+pub(crate) fn make_schema(fields: Vec<(&str, FieldTypeConfig)>) -> Schema {
     let mut map = IndexMap::new();
     for (name, config) in fields {
         map.insert(name.to_owned(), FieldDefinition::new(config));

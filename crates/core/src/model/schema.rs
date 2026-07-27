@@ -115,6 +115,7 @@ impl FieldDefinition {
             FieldTypeConfig::Float { .. } => FieldType::Float,
             FieldTypeConfig::Date => FieldType::Date,
             FieldTypeConfig::Duration { .. } => FieldType::Duration,
+            FieldTypeConfig::Color => FieldType::Color,
             FieldTypeConfig::Boolean => FieldType::Boolean,
             FieldTypeConfig::List => FieldType::List,
             FieldTypeConfig::Link { .. } => FieldType::Link,
@@ -165,6 +166,10 @@ pub enum FieldTypeConfig {
         min: Option<i64>,
         max: Option<i64>,
     },
+    /// A color field: hex (`#rgb` / `#rrggbb`) or a built-in palette
+    /// name. The palette is hardcoded in [`crate::model::color`] — no
+    /// per-field configuration.
+    Color,
     Boolean,
     List,
     Link {
@@ -235,7 +240,7 @@ pub(crate) struct RawFieldDefinition {
     pub aggregate: Option<AggregateConfig>,
 }
 
-/// The 11 built-in field types.
+/// The 12 built-in field types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
 pub enum FieldType {
@@ -246,6 +251,7 @@ pub enum FieldType {
     Float,
     Date,
     Duration,
+    Color,
     Boolean,
     List,
     Link,
@@ -262,6 +268,7 @@ impl std::fmt::Display for FieldType {
             Self::Float => "float",
             Self::Date => "date",
             Self::Duration => "duration",
+            Self::Color => "color",
             Self::Boolean => "boolean",
             Self::List => "list",
             Self::Link => "link",

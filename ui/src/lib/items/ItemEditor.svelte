@@ -78,7 +78,11 @@
 	const editableFields = $derived(schemaStore.fields.filter((field) => field.name !== 'id'));
 </script>
 
-<div class="item-editor">
+<div
+	class="item-editor"
+	class:tinted={item !== null && item.background !== null}
+	style:--item-color={item?.background}
+>
 	<header>
 		<h2>{prettifyId(itemId)}</h2>
 		<code>{itemId}</code>
@@ -111,6 +115,7 @@
 						{field}
 						value={valueOf(field.name)}
 						items={schemaStore.items}
+						palette={schemaStore.palette}
 						disabled={busy}
 						oncommit={(mutation: FieldMutation) => {
 							void commit(field.name, mutation);
@@ -158,13 +163,27 @@
 	}
 
 	.card {
-		/* `--card-bg` is the hook a `color` field will set per item later
-		   (see color-field-type); defaults to the neutral card surface. */
+		/* `--card-bg` is the hook the item's `color` field fills via the
+		   `tinted` class below; defaults to the neutral card surface. */
 		background: var(--card-bg, var(--color-card));
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
 		box-shadow: var(--shadow-sm);
 		padding: var(--space-4);
+	}
+
+	/* Stripe + tint — the same treatment as board cards and table rows,
+	   so an item reads as its color on every surface. The global
+	   `.tinted` wash (base.css) mixes into the raised card surface here
+	   (not the page background) and flows to both card surfaces through
+	   the --card-bg hook; the stripe carries the full-strength hue. */
+	.item-editor.tinted {
+		--tint-base: var(--color-card);
+		--card-bg: var(--tint-wash);
+	}
+
+	.item-editor.tinted .card {
+		border-left: 4px solid var(--item-color);
 	}
 
 	.fields {

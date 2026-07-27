@@ -19,11 +19,16 @@ const SCAN_FALLBACK_COUNT: u16 = 10;
 pub fn run_serve_command(
     config: &Config,
     project_root: &Path,
+    config_path: &Path,
     port: Option<u16>,
     open: bool,
 ) -> Result<ExitCode> {
     let port_resolution = resolve_port(config, port);
-    let state = AppState::new(project_root.to_path_buf(), config.clone());
+    let state = AppState::new(
+        project_root.to_path_buf(),
+        config.clone(),
+        config_path.to_path_buf(),
+    );
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

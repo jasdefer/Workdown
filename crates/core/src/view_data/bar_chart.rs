@@ -114,7 +114,7 @@ mod tests {
     use chrono::NaiveDate;
 
     use crate::model::schema::{FieldTypeConfig, Schema};
-    use crate::model::views::{View, ViewKind};
+    use crate::model::views::{DisplayConfig, View, ViewKind};
     use crate::model::FieldValue;
     use crate::view_data::test_support::{make_item, make_schema, make_store};
 
@@ -122,7 +122,7 @@ mod tests {
         View {
             id: "my-bar".into(),
             where_clauses: vec![],
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::BarChart {
                 group_by: group_by.to_owned(),
                 value: value.map(str::to_owned),

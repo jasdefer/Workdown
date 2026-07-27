@@ -33,12 +33,168 @@ pub struct View {
     /// [`crate::query::parse::parse_where`].
     pub where_clauses: Vec<String>,
 
-    /// Schema field name whose value is used as each item's display title
-    /// on cards, rows, nodes, and bars. When `None`, renderers fall back to
-    /// the item id. Cross-cutting: applies uniformly to every view type.
-    pub title: Option<String>,
+    /// Cross-cutting display roles for this view. Roles left unset here
+    /// inherit the project-wide defaults from `config.yaml` — see
+    /// [`View::with_display_defaults`].
+    pub display: DisplayConfig,
 
     pub kind: ViewKind,
+}
+
+/// The cross-cutting display-role vocabulary: which schema field fills
+/// each presentation role. Every kind accepts the block and renders
+/// the roles in its own idiom, ignoring roles it cannot place: board,
+/// tree, table, graph, and the gantts render them directly, treemap
+/// labels and tints its nodes, line_chart resolves point tooltips via
+/// the title role, and the remaining aggregate kinds (bar_chart,
+/// heatmap, metric, workload) surface roles only on their
+/// unplaced-items footer.
+///
+/// Every role is optional. Resolution order per role: this per-view
+/// config, then `defaults.display` in `config.yaml` (merged via
+/// [`View::with_display_defaults`]), then the per-kind hardcoded
+/// fallback (title → item id, fields → every schema field, color →
+/// the first `color`-typed field in schema order).
+///
+/// This one struct is every serde boundary the roles cross: the
+/// `display:` block in `views.yaml` (read and written back), the
+/// `defaults.display` block in `config.yaml`, and the `?display=`
+/// session override — plus the TS binding the UI builds overrides
+/// from. Adding a role here is a compile error at every merge/check
+/// site that must handle it (they destructure exhaustively).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
+#[serde(default, deny_unknown_fields)]
+pub struct DisplayConfig {
+    /// Field whose value is each item's display title on cards, rows,
+    /// nodes, and bars. Fallback: the item id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub title: Option<String>,
+    /// Field rendered as each item's secondary line, where the kind has
+    /// one (card second line, graph node subtitle). Fallback: none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub subtitle: Option<String>,
+    /// Ordered list of fields shown as the item's detail fields — card
+    /// badges, table/tree columns, graph tooltip lines. `None` means
+    /// unset: inherit, or fall back to every schema field in
+    /// declaration order. `Some(vec![])` is an explicit "show no
+    /// fields" — quiet cards, a zero-column table — and shadows lower
+    /// rungs like any other set value.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub fields: Option<Vec<String>>,
+    /// Which `color`-typed field tints the item's surface, or
+    /// [`ColorRole::None`] to render the view untinted. Unset means
+    /// inherit, then fall back to the first `color`-typed field in
+    /// schema order — the behavior views had before this role existed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "string")]
+    pub color: Option<ColorRole>,
+}
+
+/// The wire/YAML spelling of [`ColorRole::None`]: the one string a
+/// `color` role value can carry that is not a field name. Schema
+/// validation reserves it as a field name (see `parser::schema`) so the
+/// sentinel can never shadow a real field — this constant ties the
+/// reservation, the parse, and the serialization to one definition.
+pub const COLOR_NONE_SENTINEL: &str = "none";
+
+/// The value of the `color` display role.
+///
+/// In YAML and the `?display=` wire format this is a plain string: a
+/// field name, or [`COLOR_NONE_SENTINEL`] to disable tinting outright.
+/// The sentinel is parsed here, once, so downstream code matches on a
+/// real variant instead of comparing against a magic string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ColorRole {
+    /// Tint by this schema field (must be `color`-typed; enforced by
+    /// `views_check` for view-level config and by `config_check` for
+    /// the config defaults; a stale session override is defensively
+    /// skipped at extraction time).
+    Field(String),
+    /// The `none` sentinel: no tint for this view, regardless of what
+    /// lower rungs or the schema would resolve to.
+    None,
+}
+
+impl<'de> Deserialize<'de> for ColorRole {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(if value == COLOR_NONE_SENTINEL {
+            ColorRole::None
+        } else {
+            ColorRole::Field(value)
+        })
+    }
+}
+
+impl Serialize for ColorRole {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            ColorRole::None => serializer.serialize_str(COLOR_NONE_SENTINEL),
+            ColorRole::Field(name) => serializer.serialize_str(name),
+        }
+    }
+}
+
+impl View {
+    /// Fill unset display roles from project-wide defaults
+    /// (`defaults.display` in `config.yaml`). Per-role: a role set on
+    /// the view wins; an unset role inherits the default. Applied by
+    /// read paths (render, serve) before extraction — never persisted
+    /// back into `views.yaml`.
+    #[must_use]
+    pub fn with_display_defaults(mut self, defaults: &DisplayConfig) -> Self {
+        self.display = self.display.or_inherit(defaults);
+        self
+    }
+}
+
+impl Views {
+    /// [`View::with_display_defaults`] applied to every view — the
+    /// whole-file form used by `workdown render`, which merges once up
+    /// front; `serve` merges per request instead, after the session
+    /// override.
+    #[must_use]
+    pub fn with_display_defaults(mut self, defaults: &DisplayConfig) -> Self {
+        self.views = self
+            .views
+            .into_iter()
+            .map(|view| view.with_display_defaults(defaults))
+            .collect();
+        self
+    }
+}
+
+impl DisplayConfig {
+    /// Per-role merge: roles set on `self` win, unset roles inherit
+    /// from `base`. The building block of the resolution chain —
+    /// runtime override › view `display:` › config defaults.
+    ///
+    /// Destructured so a role added to the struct fails to compile
+    /// here rather than silently skipping inheritance.
+    #[must_use]
+    pub fn or_inherit(self, base: &DisplayConfig) -> Self {
+        let DisplayConfig {
+            title,
+            subtitle,
+            fields,
+            color,
+        } = self;
+        DisplayConfig {
+            title: title.or_else(|| base.title.clone()),
+            subtitle: subtitle.or_else(|| base.subtitle.clone()),
+            fields: fields.or_else(|| base.fields.clone()),
+            color: color.or_else(|| base.color.clone()),
+        }
+    }
 }
 
 /// Type-specific configuration. Each variant carries only the slots valid
@@ -50,11 +206,6 @@ pub enum ViewKind {
     },
     Tree {
         field: String,
-        /// Ordered list of schema field names to display as columns next
-        /// to each row's hierarchy cell. Empty = title-only outline.
-        /// Same rules as `Table { columns }`: the virtual `id` field is
-        /// allowed; every other entry must resolve in `schema.fields`.
-        columns: Vec<String>,
     },
     Graph {
         field: String,
@@ -64,9 +215,9 @@ pub enum ViewKind {
         /// exactly one box. Inverse names are rejected by `views_check`.
         group_by: Option<String>,
     },
-    Table {
-        columns: Vec<String>,
-    },
+    /// Columns come from the `fields` display role — see
+    /// [`DisplayConfig::fields`].
+    Table,
     Gantt {
         start: String,
         /// Date field naming the bar's end. Mutually exclusive with
@@ -181,10 +332,10 @@ pub struct MetricRow {
 
 /// Compact descriptor for a configured view — the wire shape
 /// `GET /api/views` returns. Carries only what a navigation list needs:
-/// the id, an optional display title (for the view itself, distinct
-/// from the title slot on [`View`]), and the [`ViewType`] discriminant.
-/// Excludes per-kind config so the wire response doesn't track internal
-/// model evolution.
+/// the id, an optional display title (naming the view itself, distinct
+/// from the per-item `title` display role), and the [`ViewType`]
+/// discriminant. Excludes per-kind config so the wire response doesn't
+/// track internal model evolution.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct ViewSummary {
     pub id: String,
@@ -214,7 +365,7 @@ impl ViewKind {
             Self::Board { .. } => ViewType::Board,
             Self::Tree { .. } => ViewType::Tree,
             Self::Graph { .. } => ViewType::Graph,
-            Self::Table { .. } => ViewType::Table,
+            Self::Table => ViewType::Table,
             Self::Gantt { .. } => ViewType::Gantt,
             Self::GanttByInitiative { .. } => ViewType::GanttByInitiative,
             Self::GanttByDepth { .. } => ViewType::GanttByDepth,
@@ -309,5 +460,126 @@ impl std::fmt::Display for Bucket {
             Self::Month => "month",
         };
         f.write_str(s)
+    }
+}
+
+// ── Tests ───────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn color_role_deserializes_sentinel_and_field() {
+        // The `?display=` override deserializes through the same derive
+        // as views.yaml — the sentinel is parsed at this boundary, once.
+        let config: DisplayConfig = serde_json::from_str(r#"{"color": "none"}"#).unwrap();
+        assert_eq!(config.color, Some(ColorRole::None));
+
+        let config: DisplayConfig = serde_json::from_str(r#"{"color": "team_color"}"#).unwrap();
+        assert_eq!(config.color, Some(ColorRole::Field("team_color".into())));
+
+        let config: DisplayConfig = serde_json::from_str(r#"{"color": null}"#).unwrap();
+        assert_eq!(config.color, None, "null means unset, not the sentinel");
+    }
+
+    #[test]
+    fn or_inherit_color_unset_inherits_and_none_shadows() {
+        let base = DisplayConfig {
+            color: Some(ColorRole::Field("team_color".into())),
+            ..DisplayConfig::default()
+        };
+
+        let unset = DisplayConfig::default().or_inherit(&base);
+        assert_eq!(unset.color, Some(ColorRole::Field("team_color".into())));
+
+        // An explicit `color: none` is a set value — it must shadow an
+        // inherited field, not be treated as "nothing here, inherit".
+        let off = DisplayConfig {
+            color: Some(ColorRole::None),
+            ..DisplayConfig::default()
+        }
+        .or_inherit(&base);
+        assert_eq!(off.color, Some(ColorRole::None));
+    }
+
+    #[test]
+    fn or_inherit_text_roles_unset_inherit_and_set_wins() {
+        let base = DisplayConfig {
+            title: Some("title".into()),
+            subtitle: Some("status".into()),
+            ..DisplayConfig::default()
+        };
+
+        let unset = DisplayConfig::default().or_inherit(&base);
+        assert_eq!(unset.title.as_deref(), Some("title"));
+        assert_eq!(unset.subtitle.as_deref(), Some("status"));
+
+        let own_title = DisplayConfig {
+            title: Some("assignee".into()),
+            ..DisplayConfig::default()
+        }
+        .or_inherit(&base);
+        assert_eq!(own_title.title.as_deref(), Some("assignee"));
+        assert_eq!(
+            own_title.subtitle.as_deref(),
+            Some("status"),
+            "unset roles inherit independently of set ones"
+        );
+    }
+
+    #[test]
+    fn views_with_display_defaults_merges_per_view() {
+        // The whole-file merge `workdown render` applies once up front:
+        // each view inherits per role, so a view with its own title
+        // keeps it while a bare view picks up the default.
+        let bare = View {
+            id: "bare".into(),
+            where_clauses: vec![],
+            display: DisplayConfig::default(),
+            kind: ViewKind::Table,
+        };
+        let own = View {
+            id: "own".into(),
+            where_clauses: vec![],
+            display: DisplayConfig {
+                title: Some("assignee".into()),
+                ..DisplayConfig::default()
+            },
+            kind: ViewKind::Table,
+        };
+        let views = Views {
+            output_dir: std::path::PathBuf::from("views"),
+            views: vec![bare, own],
+        };
+
+        let defaults = DisplayConfig {
+            title: Some("title".into()),
+            ..DisplayConfig::default()
+        };
+        let merged = views.with_display_defaults(&defaults);
+
+        assert_eq!(merged.views[0].display.title.as_deref(), Some("title"));
+        assert_eq!(merged.views[1].display.title.as_deref(), Some("assignee"));
+    }
+
+    #[test]
+    fn or_inherit_fields_unset_inherits_and_empty_shadows() {
+        let base = DisplayConfig {
+            fields: Some(vec!["status".into()]),
+            ..DisplayConfig::default()
+        };
+
+        let unset = DisplayConfig::default().or_inherit(&base);
+        assert_eq!(unset.fields, Some(vec!["status".into()]));
+
+        // An explicit `fields: []` means "show no fields" — a set value
+        // that shadows the inherited list, not an unset marker.
+        let none_shown = DisplayConfig {
+            fields: Some(vec![]),
+            ..DisplayConfig::default()
+        }
+        .or_inherit(&base);
+        assert_eq!(none_shown.fields, Some(vec![]));
     }
 }

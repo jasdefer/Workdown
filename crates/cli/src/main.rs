@@ -52,9 +52,12 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     tracing::info!("validating work items");
                     let project_root = std::env::current_dir()
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
-                    let result =
-                        workdown_core::operations::validate::validate(&config, &project_root)
-                            .map_err(|e| anyhow::anyhow!("{e}"))?;
+                    let result = workdown_core::operations::validate::validate(
+                        &config,
+                        &project_root,
+                        &cli.config,
+                    )
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
                     commands::validate::render(&result.diagnostics, *format);
                     if result.has_errors {
                         Ok(ExitCode::FAILURE)
@@ -98,7 +101,12 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     tracing::info!("rendering views");
                     let project_root = std::env::current_dir()
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
-                    commands::render::run_render(&config, &project_root, view_id.as_deref())
+                    commands::render::run_render(
+                        &config,
+                        &project_root,
+                        &cli.config,
+                        view_id.as_deref(),
+                    )
                 }
                 cli::Command::Templates { action } => {
                     let project_root = std::env::current_dir()
@@ -183,7 +191,13 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     tracing::info!("starting workdown serve");
                     let project_root = std::env::current_dir()
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
-                    commands::serve::run_serve_command(&config, &project_root, *port, *open)
+                    commands::serve::run_serve_command(
+                        &config,
+                        &project_root,
+                        &cli.config,
+                        *port,
+                        *open,
+                    )
                 }
                 cli::Command::Rename {
                     old_id,

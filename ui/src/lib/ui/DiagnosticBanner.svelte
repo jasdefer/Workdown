@@ -53,10 +53,11 @@
 				return true;
 			}
 		}
-		// Rule 2: view-config diagnostic for the current view. Every
-		// ConfigDiagnostic variant carries `view_id`, so narrowing on
-		// `scope` is enough — no field probing needed.
-		if (diagnostic.scope === 'config' && currentView !== undefined) {
+		// Rule 2: a per-view config diagnostic for the current view.
+		// Only the view-scoped ConfigDiagnostic variants carry `view_id`;
+		// project-wide ones (e.g. `defaults.display` validation) have
+		// none and are never primary to a single view.
+		if (diagnostic.scope === 'config' && currentView !== undefined && 'view_id' in diagnostic) {
 			return diagnostic.view_id === currentView;
 		}
 		return false;
@@ -67,6 +68,7 @@
 		const cycles: Diagnostic[] = [];
 		const duplicates: Diagnostic[] = [];
 		const viewConfigs: Diagnostic[] = [];
+		const configDefaults: Diagnostic[] = [];
 		const other: Diagnostic[] = [];
 
 		for (const diagnostic of list) {
@@ -87,7 +89,15 @@
 				continue;
 			}
 			if (diagnostic.scope === 'config') {
-				viewConfigs.push(diagnostic);
+				// View-scoped config diagnostics carry `view_id` and group
+				// under "Views"; project-wide ones (config.yaml defaults)
+				// have none and get their own "Config" group so the label
+				// points at the right file.
+				if ('view_id' in diagnostic) {
+					viewConfigs.push(diagnostic);
+				} else {
+					configDefaults.push(diagnostic);
+				}
 				continue;
 			}
 			other.push(diagnostic);
@@ -107,6 +117,7 @@
 			{ label: 'Cycles', bucket: cycles },
 			{ label: 'Duplicates', bucket: duplicates },
 			{ label: 'Views', bucket: viewConfigs },
+			{ label: 'Config', bucket: configDefaults },
 			{ label: 'Other', bucket: other }
 		];
 		for (const { label, bucket } of syntheticBuckets) {

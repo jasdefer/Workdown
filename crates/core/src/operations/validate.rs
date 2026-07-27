@@ -33,8 +33,15 @@ pub type ValidateError = LoadError;
 // ── Public API ──────────────────────────────────────────────────────
 
 /// Run validation: load schema, store, and views, collect all diagnostics.
-pub fn validate(config: &Config, project_root: &Path) -> Result<ValidationResult, ValidateError> {
-    let project = load_project(config, project_root)?;
+///
+/// `config_path` is where `config.yaml` was read from — forwarded to
+/// [`load_project`] so config-scope diagnostics can point at it.
+pub fn validate(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+) -> Result<ValidationResult, ValidateError> {
+    let project = load_project(config, project_root, config_path)?;
     let has_errors = project
         .diagnostics
         .iter()

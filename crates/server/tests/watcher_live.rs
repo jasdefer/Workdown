@@ -35,6 +35,7 @@ fn config() -> Config {
             board_field: "status".into(),
             tree_field: "parent".into(),
             graph_field: "depends_on".into(),
+            display: workdown_core::model::views::DisplayConfig::default(),
         },
         working_days: None,
         serve: None,

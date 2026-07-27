@@ -52,7 +52,10 @@ export const VIEW_KIND_CONTROLS: Record<ViewType, Control[]> = {
 		{ control: 'field', key: 'field', label: 'Relation', accepts: ['link', 'links'] },
 		{ control: 'field', key: 'group_by', label: 'Group by', accepts: ['link'], optional: true }
 	],
-	table: [{ control: 'fieldList', key: 'columns', label: 'Columns', accepts: [] }],
+	// `columns` is a form-local slot: the create form serializes it into
+	// the `fields` display role (`display.fields`) on save. Optional —
+	// an unset role falls back to every schema field.
+	table: [{ control: 'fieldList', key: 'columns', label: 'Columns', accepts: [], optional: true }],
 	gantt: [
 		{ control: 'ganttInput' },
 		{ control: 'field', key: 'group', label: 'Group by', accepts: GROUPABLE, optional: true }

@@ -87,6 +87,9 @@ pub enum Operator {
 /// - `integer` / `float` / `duration` — ordered scalars: equality and
 ///   comparison.
 /// - `boolean` — equality only.
+/// - `color` — equality only, compared on the *resolved hex* (so
+///   `color == red` matches an item storing red's pinned hex literally).
+///   Ordering and substring matching are meaningless, as for `choice`.
 /// - `multichoice` / `list` / `links` — collections: membership (`equal` /
 ///   `not_equal`) plus per-element `contains` / `matches`.
 pub fn operators_for(field_type: FieldType) -> Vec<Operator> {
@@ -112,7 +115,7 @@ pub fn operators_for(field_type: FieldType) -> Vec<Operator> {
             GreaterOrEqual,
             LessOrEqual,
         ],
-        Boolean => vec![Equal, NotEqual],
+        Boolean | Color => vec![Equal, NotEqual],
         Multichoice | List | Links => vec![Equal, NotEqual, Contains, Matches],
     };
     // Presence checks are type-agnostic — the evaluator answers them before
@@ -195,6 +198,7 @@ mod tests {
             FieldType::Float,
             FieldType::Date,
             FieldType::Duration,
+            FieldType::Color,
             FieldType::Boolean,
             FieldType::List,
             FieldType::Link,
@@ -204,6 +208,20 @@ mod tests {
             assert!(operators.contains(&Operator::IsSet), "{field_type}");
             assert!(operators.contains(&Operator::IsNotSet), "{field_type}");
         }
+    }
+
+    #[test]
+    fn color_supports_equality_only() {
+        let operators = operators_for(FieldType::Color);
+        assert_eq!(
+            operators,
+            vec![
+                Operator::Equal,
+                Operator::NotEqual,
+                Operator::IsSet,
+                Operator::IsNotSet
+            ]
+        );
     }
 
     #[test]

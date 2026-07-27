@@ -35,7 +35,7 @@ pub mod treemap;
 pub mod workload;
 
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 
 use serde::Serialize;
 
@@ -47,8 +47,9 @@ use crate::store::Store;
 pub use bar_chart::{BarChartBar, BarChartData};
 pub use board::{BoardColumn, BoardData};
 pub use common::{
-    build_card, resolve_title, AggregateValue, AxisValue, Card, CardField, Column, ItemRef,
-    SizeValue, UnplacedCard, UnplacedReason,
+    build_card, effective_fields, resolve_color_field, resolve_subtitle, resolve_title,
+    resolved_background, AggregateValue, AxisValue, Card, CardField, Column, ItemRef, SizeValue,
+    UnplacedCard, UnplacedReason,
 };
 pub use gantt::{GanttBar, GanttData};
 pub use gantt_by_depth::{GanttByDepthData, Level};
@@ -117,7 +118,7 @@ pub fn extract(
             ViewData::LineChart(line_chart::extract_line_chart(view, store, schema))
         }
         ViewKind::Metric { .. } => ViewData::Metric(metric::extract_metric(view, store, schema)),
-        ViewKind::Table { .. } => ViewData::Table(table::extract_table(view, store, schema)),
+        ViewKind::Table => ViewData::Table(table::extract_table(view, store, schema)),
         ViewKind::Tree { .. } => ViewData::Tree(tree::extract_tree(view, store, schema)),
         ViewKind::Treemap { .. } => {
             ViewData::Treemap(treemap::extract_treemap(view, store, schema))

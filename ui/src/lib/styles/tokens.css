@@ -43,6 +43,11 @@
 	--space-6: 1.5rem;
 	--space-8: 2rem;
 
+	/* Item-color tinting: how strongly an item's `color` field mixes
+	   into a surface's background (the stripe stays full-strength).
+	   Shared by every view that tints per-item surfaces. */
+	--tint-strength: 14%;
+
 	/* Radii */
 	--radius-md: 0.375rem;
 	--radius-full: 9999px;

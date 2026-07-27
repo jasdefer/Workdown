@@ -2,6 +2,7 @@
 
 pub mod assertion;
 pub mod calendar;
+pub mod color;
 pub mod condition;
 pub mod config;
 pub mod diagnostic;

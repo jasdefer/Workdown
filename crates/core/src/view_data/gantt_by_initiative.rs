@@ -127,7 +127,7 @@ mod tests {
     use chrono::NaiveDate;
 
     use crate::model::schema::FieldTypeConfig;
-    use crate::model::views::{View, ViewKind};
+    use crate::model::views::{DisplayConfig, View, ViewKind};
     use crate::model::{FieldValue, WorkItemId};
     use crate::view_data::test_support::{make_item, make_schema, make_store};
 
@@ -185,7 +185,7 @@ mod tests {
         View {
             id: "v".into(),
             where_clauses: vec![],
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::GanttByInitiative {
                 start: start.to_owned(),
                 end: Some(end.to_owned()),
@@ -200,7 +200,7 @@ mod tests {
         View {
             id: "v".into(),
             where_clauses: vec![],
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::GanttByInitiative {
                 start: start.to_owned(),
                 end: None,
@@ -462,7 +462,7 @@ mod tests {
         let view = View {
             id: "v".into(),
             where_clauses: vec!["team=b".into()],
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::GanttByInitiative {
                 start: "start".into(),
                 end: Some("end".into()),
@@ -601,7 +601,10 @@ mod tests {
         let view = View {
             id: "v".into(),
             where_clauses: vec![],
-            title: Some("name".into()),
+            display: DisplayConfig {
+                title: Some("name".into()),
+                ..DisplayConfig::default()
+            },
             kind: ViewKind::GanttByInitiative {
                 start: "start".into(),
                 end: Some("end".into()),

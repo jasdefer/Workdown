@@ -124,14 +124,14 @@ mod tests {
     use chrono::NaiveDate;
 
     use crate::model::schema::{FieldTypeConfig, Schema};
-    use crate::model::views::{MetricRow, View, ViewKind};
+    use crate::model::views::{DisplayConfig, MetricRow, View, ViewKind};
     use crate::view_data::test_support::{make_item, make_schema, make_store};
 
     fn metric_view(rows: Vec<MetricRow>) -> View {
         View {
             id: "my-metric".into(),
             where_clauses: vec![],
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::Metric { metrics: rows },
         }
     }

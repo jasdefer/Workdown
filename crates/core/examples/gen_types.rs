@@ -26,7 +26,7 @@ use workdown_core::model::diagnostic::{
 };
 use workdown_core::model::field_value::FieldValue;
 use workdown_core::model::schema::{FieldType, Severity};
-use workdown_core::model::views::{Aggregate, Bucket, ViewSummary, ViewType};
+use workdown_core::model::views::{Aggregate, Bucket, DisplayConfig, ViewSummary, ViewType};
 use workdown_core::model::WorkItemId;
 use workdown_core::mutation_data::{
     CreateItem, CreateItemResult, CreateView, FieldMutation, FieldMutationResult, SetViewFilter,
@@ -35,7 +35,7 @@ use workdown_core::mutation_data::{
 use workdown_core::query::clause::{Clause, Condition};
 use workdown_core::query::types::Operator;
 use workdown_core::schema_data::{
-    FieldSchema, FieldTypeOperators, ResourceList, ResourceOption, SchemaData,
+    FieldSchema, FieldTypeOperators, PaletteColor, ResourceList, ResourceOption, SchemaData,
 };
 use workdown_core::view_data::{
     AggregateValue, AxisValue, BarChartBar, BarChartData, BoardColumn, BoardData, Card, CardField,
@@ -75,12 +75,14 @@ const ALL_TYPES: &[&str] = &[
     "FieldType",
     "ViewType",
     "ViewSummary",
+    "DisplayConfig",
     "Aggregate",
     "Bucket",
     "SchemaData",
     "FieldSchema",
     "ResourceList",
     "ResourceOption",
+    "PaletteColor",
     "FieldTypeOperators",
     "Operator",
     "Condition",
@@ -161,6 +163,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_type::<FieldType>(&target_dir)?;
     write_type::<ViewType>(&target_dir)?;
     write_type::<ViewSummary>(&target_dir)?;
+    write_type::<DisplayConfig>(&target_dir)?;
     write_type::<Aggregate>(&target_dir)?;
     write_type::<Bucket>(&target_dir)?;
 
@@ -169,6 +172,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_type::<FieldSchema>(&target_dir)?;
     write_type::<ResourceList>(&target_dir)?;
     write_type::<ResourceOption>(&target_dir)?;
+    write_type::<PaletteColor>(&target_dir)?;
     write_type::<FieldTypeOperators>(&target_dir)?;
     write_type::<Operator>(&target_dir)?;
     write_type::<Condition>(&target_dir)?;

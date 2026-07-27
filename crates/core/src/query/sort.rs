@@ -178,6 +178,7 @@ fn extract_sort_string(value: &FieldValue) -> String {
         FieldValue::Choice(string) => string.clone(),
         FieldValue::Date(date) => date.format("%Y-%m-%d").to_string(),
         FieldValue::Duration(seconds) => format_duration_seconds(*seconds),
+        FieldValue::Color(color) => color.clone(),
         FieldValue::Link(id) => id.as_str().to_owned(),
         FieldValue::Integer(number) => number.to_string(),
         FieldValue::Float(number) => number.to_string(),

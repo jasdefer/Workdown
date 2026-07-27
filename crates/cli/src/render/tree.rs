@@ -5,11 +5,12 @@
 //! indented two spaces per depth level. Roots appear in the order the
 //! extractor produced (ascending by id); children inherit that order.
 //!
-//! When the view configures `columns:`, each node's set cells are
-//! appended after the link as ` — name: value · name: value`, joining
-//! with a middle dot and dropping `None` cells. A row with all-None
-//! cells (or a view with no `columns:`) emits just the link, no em dash
-//! — keeps the file tidy when every node is empty.
+//! Each node's set cells (parallel to the columns the `fields` display
+//! role selects) are appended after the link as
+//! ` — name: value · name: value`, joining with a middle dot and
+//! dropping `None` cells. A row with all-None cells (or an explicit
+//! `fields: []`) emits just the link, no em dash — keeps the file tidy
+//! when every node is empty.
 //!
 //! An empty tree emits just the heading.
 
@@ -17,7 +18,7 @@ use workdown_core::model::field_value::format_field_value;
 use workdown_core::model::FieldValue;
 use workdown_core::view_data::{Column, TreeData, TreeNode};
 
-use crate::render::markdown::{card_link, emit_description};
+use crate::render::markdown::{emit_description, item_link};
 
 /// Render a `TreeData` as a Markdown string.
 ///
@@ -45,7 +46,11 @@ fn render_node(
     let indent = "  ".repeat(depth);
     out.push_str(&indent);
     out.push_str("- ");
-    out.push_str(&card_link(&node.card, item_link_base));
+    out.push_str(&item_link(
+        node.id.as_str(),
+        node.title.as_deref(),
+        item_link_base,
+    ));
 
     let suffix = format_inline_fields(columns, &node.cells);
     if !suffix.is_empty() {
@@ -81,20 +86,13 @@ mod tests {
     use super::*;
     use workdown_core::model::schema::FieldType;
     use workdown_core::model::{FieldValue, WorkItemId};
-    use workdown_core::view_data::{Card, Column, TreeData, TreeNode};
-
-    fn card(id: &str, title: Option<&str>) -> Card {
-        Card {
-            id: WorkItemId::from(id.to_owned()),
-            title: title.map(str::to_owned),
-            fields: vec![],
-            body: String::new(),
-        }
-    }
+    use workdown_core::view_data::{Column, TreeData, TreeNode};
 
     fn leaf(id: &str, title: Option<&str>, cells: Vec<Option<FieldValue>>) -> TreeNode {
         TreeNode {
-            card: card(id, title),
+            id: WorkItemId::from(id.to_owned()),
+            title: title.map(str::to_owned),
+            background: None,
             cells,
             children: vec![],
         }
@@ -186,13 +184,13 @@ mod tests {
         let tree = data(
             vec![("status", FieldType::Choice)],
             vec![TreeNode {
-                card: card("epic", Some("Auth epic")),
                 cells: vec![Some(FieldValue::Choice("open".into()))],
                 children: vec![leaf(
                     "story",
                     Some("Login"),
                     vec![Some(FieldValue::Choice("in_progress".into()))],
                 )],
+                ..leaf("epic", Some("Auth epic"), vec![])
             }],
         );
         let output = render_tree(&tree, "../workdown-items", "");
@@ -208,7 +206,6 @@ mod tests {
                 ("assignee", FieldType::String),
             ],
             vec![TreeNode {
-                card: card("epic", Some("Auth")),
                 cells: vec![Some(FieldValue::Choice("open".into())), None],
                 children: vec![leaf(
                     "story",
@@ -218,6 +215,7 @@ mod tests {
                         Some(FieldValue::String("alice".into())),
                     ],
                 )],
+                ..leaf("epic", Some("Auth"), vec![])
             }],
         );
         let output = render_tree(&tree, "../workdown-items", "");

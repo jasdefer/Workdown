@@ -1,19 +1,19 @@
 <!--
-  Filter editor for an existing view — a bar that slides down beneath the
+  Filter editor for an existing view — a `CollapsibleBar` beneath the
   nav, above the view. Wraps the reusable `FilterBuilder` with the
-  view-specific behaviour: seed from the persisted filter, live-preview the
-  draft via the `?filter=` URL param (debounced, `replaceState`) so the
-  result below re-narrows without persisting, and Save / Reset.
+  view-specific behaviour: seed from the persisted filter, live-preview
+  the draft via the `?filter=` URL param (debounced, `replaceState`) so
+  the result below re-narrows without persisting, and Save / Reset.
 
   Keyed by view id upstream so it re-seeds when the user switches views.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { slide } from 'svelte/transition';
 	import { goto, invalidateAll } from '$app/navigation';
 	import type { Clause } from '$lib/api/generated/Clause';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import { api } from '$lib/api/client';
+	import CollapsibleBar, { type BarAction } from '$lib/ui/CollapsibleBar.svelte';
 	import FilterBuilder from './FilterBuilder.svelte';
 	import { clausesEqual } from './clauses';
 
@@ -37,6 +37,16 @@
 	let saveError = $state<string | null>(null);
 
 	const unsaved = $derived(seeded && !clausesEqual(draftClauses, savedClauses));
+
+	const actions = $derived<BarAction[]>([
+		{
+			label: saving ? 'Saving…' : 'Save to view',
+			onclick: () => void save(),
+			primary: true,
+			disabled: saving
+		},
+		{ label: 'Reset', onclick: reset, disabled: saving }
+	]);
 
 	function parseInitialFilter(raw: string | null): Clause[] | null {
 		if (raw === null) return null;
@@ -112,135 +122,32 @@
 	}
 </script>
 
-<div class="filter-bar">
-	<div class="header">
-		<button
-			type="button"
-			class="toggle"
-			aria-expanded={expanded}
-			onclick={() => (expanded = !expanded)}
-		>
-			<span class="chevron" class:open={expanded}>▸</span>
-			Filter
-			{#if draftClauses.length > 0}<span class="count">{draftClauses.length}</span>{/if}
-		</button>
-
-		{#if unsaved}
-			<span class="unsaved" in:slide={{ axis: 'x' }}>Previewing · unsaved</span>
-			<button type="button" class="action save" disabled={saving} onclick={save}>
-				{saving ? 'Saving…' : 'Save to view'}
-			</button>
-			<button type="button" class="action" disabled={saving} onclick={reset}>Reset</button>
+<CollapsibleBar
+	label="Filter"
+	count={draftClauses.length}
+	status={unsaved ? 'Previewing · unsaved' : null}
+	{actions}
+	bind:expanded
+>
+	<div class="content">
+		{#if !seeded}
+			<p class="hint">Loading…</p>
+		{:else}
+			{#key builderKey}
+				<FilterBuilder {initialClauses} onchange={handleChange} />
+			{/key}
+			{#if saveError !== null}
+				<p class="error" role="alert">{saveError}</p>
+			{/if}
 		{/if}
 	</div>
-
-	{#if expanded}
-		<div class="panel" transition:slide>
-			{#if !seeded}
-				<p class="hint">Loading…</p>
-			{:else}
-				{#key builderKey}
-					<FilterBuilder {initialClauses} onchange={handleChange} />
-				{/key}
-				{#if saveError !== null}
-					<p class="error" role="alert">{saveError}</p>
-				{/if}
-			{/if}
-		</div>
-	{/if}
-</div>
+</CollapsibleBar>
 
 <style>
-	.filter-bar {
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		background-color: var(--color-surface);
-	}
-
-	.header {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-2) var(--space-3);
-	}
-
-	.toggle {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-2);
-		background: none;
-		border: none;
-		color: var(--color-fg);
-		cursor: pointer;
-		font-size: var(--text-sm);
-		font-weight: 600;
-		padding: 0;
-	}
-
-	.chevron {
-		display: inline-block;
-		transition: transform 0.15s ease;
-		color: var(--color-fg-muted);
-	}
-
-	.chevron.open {
-		transform: rotate(90deg);
-	}
-
-	.count {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-width: 1.25rem;
-		height: 1.25rem;
-		padding: 0 0.35rem;
-		border-radius: var(--radius-full);
-		background-color: var(--color-accent);
-		color: var(--color-accent-fg);
-		font-size: var(--text-sm);
-		font-weight: 600;
-	}
-
-	.unsaved {
-		margin-left: auto;
-		color: var(--color-warning-fg);
-		background-color: var(--color-warning-bg);
-		padding: 0.1rem var(--space-2);
-		border-radius: var(--radius-full);
-		font-size: var(--text-sm);
-	}
-
-	.action {
-		background-color: var(--color-bg);
-		color: var(--color-fg);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
-		padding: 0.25rem var(--space-2);
-		font-size: var(--text-sm);
-		cursor: pointer;
-	}
-
-	.action:hover:not(:disabled) {
-		border-color: var(--color-accent);
-	}
-
-	.action:disabled {
-		opacity: 0.6;
-		cursor: default;
-	}
-
-	.action.save {
-		background-color: var(--color-accent);
-		color: var(--color-accent-fg);
-		border-color: var(--color-accent);
-	}
-
-	.panel {
+	.content {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-2);
-		padding: var(--space-3);
-		border-top: 1px solid var(--color-border);
 	}
 
 	.hint {

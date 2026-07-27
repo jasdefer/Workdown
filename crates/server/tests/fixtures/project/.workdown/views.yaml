@@ -6,13 +6,15 @@ views:
   - id: hierarchy
     type: tree
     field: parent
-    title: title
-    columns: [status]
+    display:
+      title: title
+      fields: [status]
 
   - id: items-table
     type: table
-    title: title
-    columns: [id, title, status, parent]
+    display:
+      title: title
+      fields: [id, title, status, parent]
 
   - id: project-stats
     type: metric
@@ -38,14 +40,16 @@ views:
     type: line_chart
     x: deadline
     y: effort
-    title: title
+    display:
+      title: title
 
   - id: weekly-load
     type: workload
     start: start_date
     end: deadline
     effort: effort
-    title: title
+    display:
+      title: title
 
   - id: load-by-status-team
     type: heatmap
@@ -57,4 +61,5 @@ views:
     type: treemap
     group: parent
     size: effort
-    title: title
+    display:
+      title: title

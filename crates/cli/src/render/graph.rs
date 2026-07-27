@@ -60,25 +60,29 @@ pub fn render_graph(data: &GraphData, description: &str) -> String {
 /// Recursively emit a `TreeNode` as either a leaf node line or a
 /// `subgraph ... end` block. Nesting depth grows the indent — Mermaid is
 /// whitespace-tolerant; the indent is for `.md` source readability.
+///
+/// The label prefers the card from `data.nodes` (same resolution as the
+/// flat layout) and falls back to the tree node's own resolved title —
+/// the two carry the same value today, but `nodes` stays authoritative.
 fn render_tree_node(
     node: &TreeNode,
     depth: usize,
     card_for: &HashMap<&str, &Card>,
     out: &mut String,
 ) {
-    let card = card_for
-        .get(node.card.id.as_str())
-        .copied()
-        .unwrap_or(&node.card);
+    let label = card_for
+        .get(node.id.as_str())
+        .map(|card| label_for(card))
+        .unwrap_or_else(|| node.title.as_deref().unwrap_or_else(|| node.id.as_str()));
     if node.children.is_empty() {
-        render_leaf(card, depth, out);
+        render_node_line(node.id.as_str(), label, depth, out);
     } else {
         let indent = indent_for(depth);
         let _ = writeln!(
             out,
             "{indent}subgraph {id} [\"{label}\"]",
-            id = card.id,
-            label = sanitize(label_for(card)),
+            id = node.id,
+            label = sanitize(label),
         );
         for child in &node.children {
             render_tree_node(child, depth + 1, card_for, out);
@@ -88,13 +92,12 @@ fn render_tree_node(
 }
 
 fn render_leaf(card: &Card, depth: usize, out: &mut String) {
+    render_node_line(card.id.as_str(), label_for(card), depth, out);
+}
+
+fn render_node_line(id: &str, label: &str, depth: usize, out: &mut String) {
     let indent = indent_for(depth);
-    let _ = writeln!(
-        out,
-        "{indent}{id}[\"{label}\"]",
-        id = card.id,
-        label = sanitize(label_for(card)),
-    );
+    let _ = writeln!(out, "{indent}{id}[\"{label}\"]", label = sanitize(label));
 }
 
 fn label_for(card: &Card) -> &str {
@@ -149,7 +152,9 @@ mod tests {
 
     fn tree_node(id: &str, title: Option<&str>, children: Vec<TreeNode>) -> TreeNode {
         TreeNode {
-            card: card(id, title),
+            id: WorkItemId::from(id.to_owned()),
+            title: title.map(str::to_owned),
+            background: None,
             cells: vec![],
             children,
         }

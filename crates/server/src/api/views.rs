@@ -12,14 +12,17 @@
 //! - Project loaded, view is valid → 200 with `ViewData` and the full
 //!   project diagnostic list (tier 3). The UI groups primary/secondary.
 //!
-//! `GET /api/views/{id}` also accepts an optional `?filter=` param — a
-//! URL-encoded JSON array of structured clauses — for the filter editor's
-//! "for right now" preview: the view is extracted using those clauses
-//! *instead of* the persisted `where:`, without writing anything. Its
-//! diagnostics are computed as if the draft were saved, so the preview's
-//! banner matches what a save would produce. The
-//! companion `GET /api/views/{id}/filter` returns the persisted filter
-//! decomposed into the editor's clause shape, for seeding the builder.
+//! `GET /api/views/{id}` also accepts two optional, non-persisting
+//! query params, both validated up front (malformed JSON → 422, even
+//! on an unrenderable view): `?filter=` — a URL-encoded JSON array of
+//! structured clauses for the filter editor's "for right now" preview,
+//! extracted *instead of* the persisted `where:`, with diagnostics
+//! computed as if the draft were saved so the preview's banner matches
+//! what a save would produce — and `?display=` — a JSON object of
+//! display roles applied with highest precedence (see `ViewQuery`).
+//! The companion `GET /api/views/{id}/filter` returns the persisted
+//! filter decomposed into the editor's clause shape, for seeding the
+//! builder.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -28,7 +31,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 
 use workdown_core::model::diagnostic::Diagnostic;
-use workdown_core::model::views::{View, ViewSummary, Views};
+use workdown_core::model::views::{DisplayConfig, View, ViewSummary, Views};
 use workdown_core::mutation_data::{CreateView, SetViewFilter, ViewMutationResult};
 use workdown_core::operations::view_write::{create_view, set_view_filter, ViewWriteError};
 use workdown_core::project::load_project;
@@ -53,10 +56,18 @@ struct ViewQuery {
     /// URL-encoded JSON array of structured clauses for an ad-hoc,
     /// non-persisted preview. Absent → render with the persisted filter.
     filter: Option<String>,
+    /// URL-encoded JSON object of display roles (`title`, `subtitle`,
+    /// `fields`, `color`) for a per-session override. Set roles take
+    /// highest precedence — over the view's `display:` block and the
+    /// config defaults; unset roles inherit as usual. `color` accepts a
+    /// field name or the sentinel `"none"` (no tint); a stale name (the
+    /// field was deleted or retyped since the override was saved) is
+    /// skipped at extraction time, never an error. Nothing is persisted.
+    display: Option<String>,
 }
 
 async fn list_views(State(state): State<AppState>) -> ApiResponse<Vec<ViewSummary>> {
-    match load_project(&state.config, &state.project_root) {
+    match load_project(&state.config, &state.project_root, &state.config_path) {
         Err(error) => ApiResponse::rejected(vec![error.to_diagnostic()]),
         Ok(project) => {
             let summaries: Vec<ViewSummary> = project
@@ -74,7 +85,7 @@ async fn get_view(
     Path(id): Path<String>,
     Query(query): Query<ViewQuery>,
 ) -> ApiResponse<ViewData> {
-    let project = match load_project(&state.config, &state.project_root) {
+    let project = match load_project(&state.config, &state.project_root, &state.config_path) {
         Err(error) => return ApiResponse::rejected(vec![error.to_diagnostic()]),
         Ok(project) => project,
     };
@@ -86,6 +97,24 @@ async fn get_view(
     let view = match views.views.iter().find(|view| view.id == id) {
         None => return ApiResponse::not_found(),
         Some(view) => view,
+    };
+
+    // Parse the per-session display override up front, next to the
+    // filter parse below — before the tier-2 unrenderable check — so a
+    // malformed `?display=` is rejected with 422 exactly like a
+    // malformed `?filter=`, whether or not the view itself can render.
+    // It is *applied* only at tier 3, after validation.
+    let display_override: Option<DisplayConfig> = match query.display.as_deref() {
+        None => None,
+        Some(display_json) => match serde_json::from_str(display_json) {
+            Ok(override_config) => Some(override_config),
+            Err(error) => {
+                return ApiResponse::failed(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    format!("invalid display parameter: {error}"),
+                )
+            }
+        },
     };
 
     // Preview path: render with an ad-hoc, non-persisted filter supplied
@@ -154,7 +183,14 @@ async fn get_view(
         return ApiResponse::unrenderable(diagnostics);
     }
 
-    // Tier 3: extract and return view data.
+    // Tier 3: extract and return view data. Display roles resolve here —
+    // after validation, so diagnostics keep pointing at what views.yaml
+    // says: per-session override › view `display:` › config defaults.
+    let mut render_view = render_view;
+    if let Some(override_config) = display_override {
+        render_view.display = override_config.or_inherit(&render_view.display);
+    }
+    let render_view = render_view.with_display_defaults(&state.config.defaults.display);
     let data = view_data::extract(
         &render_view,
         &project.store,
@@ -174,7 +210,7 @@ async fn get_view_filter(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResponse<Vec<Clause>> {
-    let project = match load_project(&state.config, &state.project_root) {
+    let project = match load_project(&state.config, &state.project_root, &state.config_path) {
         Err(error) => return ApiResponse::rejected(vec![error.to_diagnostic()]),
         Ok(project) => project,
     };

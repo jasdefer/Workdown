@@ -149,7 +149,7 @@ mod tests {
     use chrono::NaiveDate;
 
     use crate::model::schema::FieldTypeConfig;
-    use crate::model::views::{View, ViewKind};
+    use crate::model::views::{DisplayConfig, View, ViewKind};
     use crate::model::FieldValue;
     use crate::view_data::test_support::{make_item, make_schema, make_store};
 
@@ -163,7 +163,7 @@ mod tests {
         View {
             id: "my-heatmap".into(),
             where_clauses: vec![],
-            title: None,
+            display: DisplayConfig::default(),
             kind: ViewKind::Heatmap {
                 x: x.to_owned(),
                 y: y.to_owned(),

@@ -1,13 +1,15 @@
 ---
 id: view-presentation
-type: milestone
-status: to_do
 title: View & item presentation
+type: milestone
+status: in_progress
 parent: phase-04-visualization
-depends_on: [server]
-start_date: 2026-07-02
-end_date: 2026-07-15
-duration: "2w"
+depends_on:
+- server
+start_date: 2026-07-13
+end_date: 2026-07-27
+duration: 2w 1d
+color: blue
 ---
 
 How views and items *present* their data — a distinct axis from authoring a
