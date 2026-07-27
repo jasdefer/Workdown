@@ -9,7 +9,9 @@
 //! reports all findings.
 
 mod coerce;
+mod compute;
 mod cycles;
+mod derive;
 mod rollup;
 
 use std::collections::HashMap;
@@ -18,6 +20,7 @@ use std::path::Path;
 use crate::model::diagnostic::{
     Diagnostic, FileDiagnosticKind, FilesDiagnosticKind, ItemDiagnosticKind,
 };
+use crate::model::resources::Resources;
 use crate::model::schema::{Schema, Severity};
 use crate::model::{WorkItem, WorkItemId};
 use crate::parser;
@@ -43,11 +46,25 @@ pub struct Store {
 }
 
 impl Store {
-    /// Scan `items_dir` for `.md` files and load them into the store.
+    /// Scan `items_dir` for `.md` files and load them into the store,
+    /// without project resources. Computed fields whose expressions
+    /// reference `$constants.<name>` stay absent under this entry point;
+    /// use [`Store::load_with_resources`] where constants matter.
     ///
     /// Only returns `Err` if the directory itself cannot be read.
     /// Per-file and per-field problems are collected in [`Store::diagnostics`].
     pub fn load(items_dir: &Path, schema: &Schema) -> Result<Store, std::io::Error> {
+        Self::load_with_resources(items_dir, schema, &Resources::default())
+    }
+
+    /// Scan `items_dir` for `.md` files and load them into the store,
+    /// resolving `$constants.<name>` references in compute expressions
+    /// against the given resources.
+    pub fn load_with_resources(
+        items_dir: &Path,
+        schema: &Schema,
+        resources: &Resources,
+    ) -> Result<Store, std::io::Error> {
         let mut diagnostics = Vec::new();
 
         // 1. Collect all .md file paths, sorted alphabetically for determinism.
@@ -138,11 +155,16 @@ impl Store {
             }
         }
 
-        // 5. Aggregate rollup: fill computed values into non-leaf items
-        // and emit chain-conflict / missing-value diagnostics. Mutates
-        // `items` in place so downstream consumers see manual + computed
-        // values indistinguishably.
-        diagnostics.extend(rollup::run(&mut items, &reverse_links, schema));
+        // 5. Derive passes: evaluate compute expressions and aggregate
+        // rollups per field in dependency order, emitting their
+        // diagnostics. Mutates `items` in place so downstream consumers
+        // see manual + derived values indistinguishably.
+        diagnostics.extend(derive::run(
+            &mut items,
+            &reverse_links,
+            schema,
+            &resources.constants,
+        ));
 
         Ok(Store {
             items,

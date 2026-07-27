@@ -20,9 +20,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::expression::{
-    check_types, Expression, ExpressionType, ReferenceResolution, TypeContext,
-};
+use crate::expression::{check_types, ExpressionType, ReferenceResolution, TypeContext};
 use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic};
 use crate::model::resources::Resources;
 use crate::model::schema::{FieldType, Schema, Severity};
@@ -195,10 +193,7 @@ fn visit<'a>(
         .get(field_name)
         .and_then(|field_definition| field_definition.compute.as_ref());
     if let Some(compute) = compute {
-        let mut references = Vec::new();
-        collect_field_references(&compute.expression, &mut references);
-
-        for referenced in references {
+        for referenced in compute.expression.field_references() {
             // Resolve to the schema's own key so the borrow outlives us.
             let Some((referenced, referenced_definition)) = schema.fields.get_key_value(referenced)
             else {
@@ -228,21 +223,6 @@ fn visit<'a>(
 
     stack.pop();
     states.insert(field_name, VisitState::Done);
-}
-
-/// Collect the names of all fields an expression references.
-fn collect_field_references<'a>(expression: &'a Expression, references: &mut Vec<&'a str>) {
-    match expression {
-        Expression::FieldReference { name, .. } => references.push(name),
-        Expression::ConstantReference { .. }
-        | Expression::IntegerLiteral { .. }
-        | Expression::FloatLiteral { .. } => {}
-        Expression::Negate { operand, .. } => collect_field_references(operand, references),
-        Expression::Binary { left, right, .. } => {
-            collect_field_references(left, references);
-            collect_field_references(right, references);
-        }
-    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────

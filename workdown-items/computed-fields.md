@@ -1,7 +1,7 @@
 ---
 id: computed-fields
 type: issue
-status: in_progress
+status: done
 title: Computed fields — same-item cross-field expressions
 parent: time-tracking
 depends_on: [project-constants]
@@ -46,12 +46,15 @@ every view. Frontmatter stays human input only.
 - Evaluation order: field-level dependency DAG (compute inputs →
   output), processed topologically, each field running compute then
   aggregate. Cycles among field expressions are a schema-load error.
-- Compute + aggregate on the same field: compute fires only on items
-  whose inputs are all manually set, and its result behaves exactly
-  like a manual value — including the rollup chain-conflict
-  diagnostic; aggregate fills all other items. This makes a
+- Compute + aggregate on the same field: compute fires only on leaf
+  items (relative to the aggregate's `over` link); aggregate fills
+  everything above, mirroring how aggregated fields are already
+  documented ("set on leaves, rolled up above"). This makes a
   milestone's `end_date` the `max` of its children (correct across
-  gaps), not its rolled-up `start + duration`.
+  gaps), not its rolled-up `start + duration`, and needs no value
+  provenance — leaf-ness falls out of the reverse links. Conscious
+  trade-off: a non-leaf with hand-written inputs does not get the
+  field computed; type it manually or drop the aggregate.
 - A field with only `compute:` may consume rolled-up inputs. This is
   load-bearing for ratios: `flow_efficiency = effort / duration` on a
   milestone must be `sum / sum`, not an aggregate of children's

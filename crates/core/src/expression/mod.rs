@@ -26,11 +26,13 @@
 //! store's derive pass, not here.
 
 mod ast;
+mod evaluate;
 mod lexer;
 mod parser;
 mod typecheck;
 
 pub use ast::{BinaryOperator, Expression, Span};
+pub use evaluate::{evaluate, EvaluateError, Value, ValueContext};
 pub use lexer::LexError;
 pub use parser::{parse_expression, ParseExpressionError};
 pub use typecheck::{

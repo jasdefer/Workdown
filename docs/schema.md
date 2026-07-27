@@ -88,6 +88,59 @@ Available aggregate functions by type:
 
 If two items in the same ancestor chain both define the value manually, it is a validation error.
 
+### Computed fields
+
+Fields with a `compute` config derive their value from an expression over the *same item's* other fields — the cross-field counterpart to aggregation (which is cross-item, same field):
+
+```yaml
+fields:
+  end_date:
+    type: date
+    compute: start_date + duration
+
+  cost:
+    type: float
+    compute: effort / $constants.work_hours_per_day * $constants.daily_rate
+
+  finish:
+    type: date
+    compute:
+      expression: start_date + effort
+      round: ceil
+      error_on_missing: true
+```
+
+`compute` is either the expression string directly, or a mapping with options:
+
+| Option | Description |
+|--------|-------------|
+| `expression` | The expression. Field names, `$constants.<name>` references ([constants](#constants) from `resources.yaml`), numeric literals, `+ - * /`, and parentheses. |
+| `round` | For date results with a sub-day remainder: `nearest` (default), `floor` (the last fully-used day), or `ceil` (the day the work spills into). Only valid on `date` fields. |
+| `error_on_missing` | Report an error when an item is missing an expression input, instead of silently leaving the field absent. Default: `false`. |
+
+Computed values are never written to files. They are derived at load time and visible everywhere — `workdown query`, every view, rules — indistinguishable from set values. A value written in frontmatter always wins; compute fills only absent fields.
+
+`compute` is only valid on `integer`, `float`, `date`, and `duration` fields, and cannot be combined with `default`. Expressions are type-checked at load time against a closed algebra:
+
+| Expression | Result type |
+|-----------|-------------|
+| `date ± duration` | `date` |
+| `date - date` | `duration` |
+| `duration ± duration` | `duration` |
+| `duration * number`, `duration / number` | `duration` |
+| `duration / duration` | `float` |
+| `integer op integer` | `integer` (except `/`, which is always `float`) |
+| mixed number arithmetic | `float` |
+
+Everything else — unknown references, `date + date`, a result type that doesn't fit the declared field type, expressions referencing each other in a cycle — is reported when the project loads.
+
+Computed fields may reference other computed fields (evaluation runs in dependency order), and compose with aggregation:
+
+- A field with **only** `compute` evaluates on every item whose inputs resolve — including items whose inputs were themselves rolled up. `flow_efficiency: effort / duration` on a milestone is `sum / sum`.
+- A field with **both** `compute` and `aggregate` computes on *leaf* items only; the aggregate fills everything above. `end_date` on a milestone is the `max` of its children's ends — not its rolled-up `start + duration`, which would be blind to gaps between children.
+
+Per-item problems are reported without blocking the load: missing inputs (with `error_on_missing` or on a `required` computed field, naming the inputs that are absent) and runtime failures such as division by zero.
+
 ---
 
 ## Resources

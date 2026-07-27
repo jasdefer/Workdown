@@ -123,6 +123,19 @@ pub enum ItemDiagnosticKind {
     /// An aggregate-configured field with `error_on_missing: true` has
     /// no value at this leaf (manual or inherited from an ancestor).
     AggregateMissingValue { field: String },
+
+    /// A computed field could not be evaluated on this item because
+    /// inputs are missing. Warning when the field's compute config sets
+    /// `error_on_missing: true`; error when the field is `required` and
+    /// the item ended up without a value.
+    ComputeMissingInputs {
+        field: String,
+        missing_inputs: Vec<String>,
+    },
+
+    /// A computed field's evaluation failed on this item's actual
+    /// values (division by zero, overflow, non-finite result).
+    ComputeFailed { field: String, detail: String },
 }
 
 // ── Files scope ──────────────────────────────────────────────────────
@@ -624,6 +637,23 @@ impl std::fmt::Display for ItemDiagnosticKind {
                     f,
                     "aggregate field '{field}' is missing (no value here or in any ancestor)"
                 )
+            }
+            ItemDiagnosticKind::ComputeMissingInputs {
+                field,
+                missing_inputs,
+            } => {
+                write!(
+                    f,
+                    "computed field '{field}' could not be evaluated: missing {}",
+                    missing_inputs
+                        .iter()
+                        .map(|input| format!("'{input}'"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            ItemDiagnosticKind::ComputeFailed { field, detail } => {
+                write!(f, "computed field '{field}' failed to evaluate: {detail}")
             }
         }
     }

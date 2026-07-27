@@ -68,6 +68,28 @@ impl Expression {
             | Expression::Binary { span, .. } => *span,
         }
     }
+
+    /// Names of all fields this expression references, in source order,
+    /// duplicates included.
+    pub fn field_references(&self) -> Vec<&str> {
+        fn collect<'a>(expression: &'a Expression, references: &mut Vec<&'a str>) {
+            match expression {
+                Expression::FieldReference { name, .. } => references.push(name),
+                Expression::ConstantReference { .. }
+                | Expression::IntegerLiteral { .. }
+                | Expression::FloatLiteral { .. } => {}
+                Expression::Negate { operand, .. } => collect(operand, references),
+                Expression::Binary { left, right, .. } => {
+                    collect(left, references);
+                    collect(right, references);
+                }
+            }
+        }
+
+        let mut references = Vec::new();
+        collect(self, &mut references);
+        references
+    }
 }
 
 /// The four arithmetic operators.
