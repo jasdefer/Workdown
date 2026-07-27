@@ -7,10 +7,11 @@ use std::path::Path;
 
 use indexmap::IndexMap;
 
+use crate::expression::parse_expression;
 use crate::model::schema::{
-    is_defined_inverse, is_relation_anchor, AggregateFunction, Assertion, Condition,
+    is_defined_inverse, is_relation_anchor, AggregateFunction, Assertion, ComputeConfig, Condition,
     ConditionValue, CountConstraint, DefaultValue, FieldDefinition, FieldType, FieldTypeConfig,
-    Generator, NegationValue, RawFieldDefinition, RawRule, RawSchema, Rule, Schema,
+    Generator, NegationValue, RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema,
 };
 use crate::model::views::COLOR_NONE_SENTINEL;
 
@@ -195,7 +196,145 @@ fn validate_fields(
         validate_aggregate_compatibility(name, field, errors);
         validate_aggregate_over(name, field, fields, errors);
         validate_default_compatibility(name, field, errors);
+        validate_compute_config(name, field, errors);
         validate_inverse_property(name, field, fields, &mut seen_inverses, errors);
+    }
+}
+
+// ── Compute config ────────────────────────────────────────────────────
+
+/// The interpreted shape of a raw `compute:` value, before expression
+/// parsing. Shared by validation (which reports problems) and conversion
+/// (which builds the [`ComputeConfig`]).
+struct ComputeParts {
+    expression_source: String,
+    round: RoundMode,
+    round_is_set: bool,
+    error_on_missing: bool,
+}
+
+/// Interpret a raw `compute:` value: either an expression string or a
+/// mapping with `expression` plus options. Returns a message describing
+/// the first structural problem found.
+fn interpret_compute(value: &serde_yaml::Value) -> Result<ComputeParts, String> {
+    let mapping = match value {
+        serde_yaml::Value::String(source) => {
+            return Ok(ComputeParts {
+                expression_source: source.clone(),
+                round: RoundMode::default(),
+                round_is_set: false,
+                error_on_missing: false,
+            })
+        }
+        serde_yaml::Value::Mapping(mapping) => mapping,
+        _ => {
+            return Err(
+                "'compute' must be an expression string or a mapping with 'expression'".to_owned(),
+            )
+        }
+    };
+
+    let mut expression_source = None;
+    let mut round = None;
+    let mut error_on_missing = false;
+
+    for (key, entry) in mapping {
+        let Some(key) = key.as_str() else {
+            return Err("'compute' mapping keys must be strings".to_owned());
+        };
+        match key {
+            "expression" => match entry.as_str() {
+                Some(source) => expression_source = Some(source.to_owned()),
+                None => return Err("compute 'expression' must be a string".to_owned()),
+            },
+            "round" => {
+                round = Some(match entry.as_str() {
+                    Some("nearest") => RoundMode::Nearest,
+                    Some("floor") => RoundMode::Floor,
+                    Some("ceil") => RoundMode::Ceil,
+                    _ => {
+                        return Err(
+                            "compute 'round' must be one of: nearest, floor, ceil".to_owned()
+                        )
+                    }
+                });
+            }
+            "error_on_missing" => match entry.as_bool() {
+                Some(flag) => error_on_missing = flag,
+                None => return Err("compute 'error_on_missing' must be a boolean".to_owned()),
+            },
+            other => {
+                return Err(format!(
+                "unknown compute option '{other}' (allowed: expression, round, error_on_missing)"
+            ))
+            }
+        }
+    }
+
+    let Some(expression_source) = expression_source else {
+        return Err("'compute' mapping requires an 'expression'".to_owned());
+    };
+
+    Ok(ComputeParts {
+        expression_source,
+        round: round.unwrap_or_default(),
+        round_is_set: round.is_some(),
+        error_on_missing,
+    })
+}
+
+/// Validate a field's `compute:` config: structural shape, expression
+/// syntax, and combinations with other options. Reference resolution and
+/// type checking need `resources.yaml` and live in `compute_check`.
+fn validate_compute_config(
+    name: &str,
+    field: &RawFieldDefinition,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    let Some(raw_compute) = &field.compute else {
+        return;
+    };
+
+    if field.default.is_some() {
+        errors.push(field_error(
+            name,
+            "'compute' and 'default' cannot be combined — both fill in absent values",
+        ));
+    }
+
+    let type_supports_compute = matches!(
+        field.field_type,
+        FieldType::Integer | FieldType::Float | FieldType::Date | FieldType::Duration
+    );
+    if !type_supports_compute {
+        errors.push(field_error(
+            name,
+            format!(
+                "'compute' is only valid for integer, float, date, and duration fields (this field is {})",
+                field.field_type
+            ),
+        ));
+    }
+
+    match interpret_compute(raw_compute) {
+        Err(message) => errors.push(field_error(name, message)),
+        Ok(parts) => {
+            if parts.round_is_set && field.field_type != FieldType::Date {
+                errors.push(field_error(
+                    name,
+                    "compute 'round' is only valid on date fields (nothing else rounds to days)",
+                ));
+            }
+            if let Err(parse_error) = parse_expression(&parts.expression_source) {
+                errors.push(field_error(
+                    name,
+                    format!(
+                        "compute expression '{}': {parse_error}",
+                        parts.expression_source
+                    ),
+                ));
+            }
+        }
     }
 }
 
@@ -581,6 +720,20 @@ fn convert_field(raw: RawFieldDefinition) -> FieldDefinition {
             inverse: raw.inverse,
         },
     };
+    // Conversion runs even when validation collected errors (the errors
+    // are checked afterwards), so a malformed compute value must degrade
+    // to `None` here rather than panic — `.ok()` on both steps.
+    let compute = raw.compute.as_ref().and_then(|value| {
+        let parts = interpret_compute(value).ok()?;
+        let expression = parse_expression(&parts.expression_source).ok()?;
+        Some(ComputeConfig {
+            expression,
+            source: parts.expression_source,
+            round: parts.round,
+            error_on_missing: parts.error_on_missing,
+        })
+    });
+
     FieldDefinition {
         type_config,
         description: raw.description,
@@ -588,6 +741,7 @@ fn convert_field(raw: RawFieldDefinition) -> FieldDefinition {
         default: raw.default,
         resource: raw.resource,
         aggregate: raw.aggregate,
+        compute,
     }
 }
 
@@ -1720,6 +1874,168 @@ fields:
       over: epic
 ";
         parse_schema(yaml).expect("explicit over: <link field> should parse");
+    }
+
+    // ── Compute config ────────────────────────────────────────────────
+
+    /// Unwrap the validation-error list from a schema that must fail.
+    fn validation_errors(yaml: &str) -> Vec<SchemaValidationError> {
+        match parse_schema(yaml).unwrap_err() {
+            SchemaLoadError::Validation(errors) => errors,
+            other => panic!("expected Validation error, got: {other}"),
+        }
+    }
+
+    fn assert_validation_error_contains(yaml: &str, needle: &str) {
+        let errors = validation_errors(yaml);
+        assert!(
+            errors.iter().any(|error| error.message.contains(needle)),
+            "expected an error containing {needle:?}, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn compute_shorthand_accepted_with_defaults() {
+        let yaml = "\
+fields:
+  start_date:
+    type: date
+  duration:
+    type: duration
+  end_date:
+    type: date
+    compute: start_date + duration
+";
+        let schema = parse_schema(yaml).unwrap();
+        let compute = schema.fields["end_date"].compute.as_ref().unwrap();
+        assert_eq!(compute.source, "start_date + duration");
+        assert_eq!(compute.round, RoundMode::Nearest);
+        assert!(!compute.error_on_missing);
+    }
+
+    #[test]
+    fn compute_mapping_with_options_accepted() {
+        let yaml = "\
+fields:
+  start_date:
+    type: date
+  duration:
+    type: duration
+  end_date:
+    type: date
+    compute:
+      expression: start_date + duration
+      round: ceil
+      error_on_missing: true
+";
+        let schema = parse_schema(yaml).unwrap();
+        let compute = schema.fields["end_date"].compute.as_ref().unwrap();
+        assert_eq!(compute.source, "start_date + duration");
+        assert_eq!(compute.round, RoundMode::Ceil);
+        assert!(compute.error_on_missing);
+    }
+
+    #[test]
+    fn compute_with_default_rejected() {
+        let yaml = "\
+fields:
+  end_date:
+    type: date
+    default: $today
+    compute: start_date + duration
+";
+        assert_validation_error_contains(yaml, "'compute' and 'default' cannot be combined");
+    }
+
+    #[test]
+    fn compute_on_type_without_arithmetic_rejected() {
+        let yaml = "\
+fields:
+  status:
+    type: choice
+    values: [open, done]
+    compute: other + 1
+";
+        assert_validation_error_contains(
+            yaml,
+            "'compute' is only valid for integer, float, date, and duration fields (this field is choice)",
+        );
+    }
+
+    #[test]
+    fn compute_round_on_non_date_rejected() {
+        let yaml = "\
+fields:
+  weight:
+    type: float
+    compute:
+      expression: 1.5 * 2
+      round: floor
+";
+        assert_validation_error_contains(yaml, "'round' is only valid on date fields");
+    }
+
+    #[test]
+    fn compute_invalid_round_value_rejected() {
+        let yaml = "\
+fields:
+  end_date:
+    type: date
+    compute:
+      expression: start_date + duration
+      round: sideways
+";
+        assert_validation_error_contains(yaml, "'round' must be one of: nearest, floor, ceil");
+    }
+
+    #[test]
+    fn compute_unknown_option_rejected() {
+        let yaml = "\
+fields:
+  end_date:
+    type: date
+    compute:
+      expression: start_date + duration
+      rounding: ceil
+";
+        assert_validation_error_contains(yaml, "unknown compute option 'rounding'");
+    }
+
+    #[test]
+    fn compute_mapping_without_expression_rejected() {
+        let yaml = "\
+fields:
+  end_date:
+    type: date
+    compute:
+      round: ceil
+";
+        assert_validation_error_contains(yaml, "'compute' mapping requires an 'expression'");
+    }
+
+    #[test]
+    fn compute_non_string_non_mapping_rejected() {
+        let yaml = "\
+fields:
+  weight:
+    type: float
+    compute: 5
+";
+        assert_validation_error_contains(
+            yaml,
+            "'compute' must be an expression string or a mapping with 'expression'",
+        );
+    }
+
+    #[test]
+    fn compute_expression_syntax_error_rejected() {
+        let yaml = "\
+fields:
+  weight:
+    type: float
+    compute: effort +
+";
+        assert_validation_error_contains(yaml, "compute expression 'effort +'");
     }
 
     #[test]

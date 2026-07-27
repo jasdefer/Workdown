@@ -100,3 +100,106 @@ fields:
 ",
     );
 }
+
+// ── Compute config ────────────────────────────────────────────────────
+
+#[test]
+fn compute_shorthand_and_mapping_accepted() {
+    let schema = compile_schema();
+    assert_valid(
+        &schema,
+        "\
+fields:
+  start_date:
+    type: date
+  duration:
+    type: duration
+  end_date:
+    type: date
+    compute: start_date + duration
+  finish:
+    type: date
+    compute:
+      expression: start_date + duration
+      round: ceil
+      error_on_missing: true
+",
+    );
+}
+
+#[test]
+fn compute_on_type_without_arithmetic_rejected() {
+    let schema = compile_schema();
+    assert_invalid(
+        &schema,
+        "\
+fields:
+  status:
+    type: choice
+    values: [open, done]
+    compute: other + 1
+",
+    );
+}
+
+#[test]
+fn compute_with_default_rejected() {
+    let schema = compile_schema();
+    assert_invalid(
+        &schema,
+        "\
+fields:
+  end_date:
+    type: date
+    default: $today
+    compute: start_date + duration
+",
+    );
+}
+
+#[test]
+fn compute_round_on_non_date_rejected() {
+    let schema = compile_schema();
+    assert_invalid(
+        &schema,
+        "\
+fields:
+  weight:
+    type: float
+    compute:
+      expression: 1.5 * 2
+      round: floor
+",
+    );
+}
+
+#[test]
+fn compute_unknown_option_rejected() {
+    let schema = compile_schema();
+    assert_invalid(
+        &schema,
+        "\
+fields:
+  end_date:
+    type: date
+    compute:
+      expression: start_date + duration
+      rounding: ceil
+",
+    );
+}
+
+#[test]
+fn compute_mapping_without_expression_rejected() {
+    let schema = compile_schema();
+    assert_invalid(
+        &schema,
+        "\
+fields:
+  end_date:
+    type: date
+    compute:
+      round: ceil
+",
+    );
+}

@@ -128,6 +128,14 @@ pub fn load_project(
     let (resources, resources_diagnostics) = resources_check::load_and_check(&resources_path);
     diagnostics.extend(resources_diagnostics);
 
+    // Compute configs need both schema and resources (constant types),
+    // so their reference/type/cycle checks run here, not at schema parse.
+    diagnostics.extend(crate::compute_check::evaluate(
+        &schema,
+        &resources,
+        &schema_path,
+    ));
+
     // Validate config.yaml's project-wide display-role defaults against
     // the schema. No file read here — the parsed config is already in
     // hand; only its path is needed to pin the diagnostics.

@@ -75,7 +75,7 @@ fields:
     allow_cycles: true
     inverse: duplicated_by
 
-  # Computed fields — set manually on leaf items, computed automatically
+  # Aggregated fields — set manually on leaf items, computed automatically
   # up the link chain named in `over` (defaults to `parent`). Uncomment
   # and adjust as needed:
   #
