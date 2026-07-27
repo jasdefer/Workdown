@@ -4,6 +4,7 @@ type: issue
 status: to_do
 title: Cross-field comparison rule for duration values
 parent: time-tracking
+depends_on: [project-constants]
 ---
 
 The schema rule engine has no way to compare two duration fields and
