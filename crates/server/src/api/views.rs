@@ -12,14 +12,17 @@
 //! - Project loaded, view is valid → 200 with `ViewData` and the full
 //!   project diagnostic list (tier 3). The UI groups primary/secondary.
 //!
-//! `GET /api/views/{id}` also accepts an optional `?filter=` param — a
-//! URL-encoded JSON array of structured clauses — for the filter editor's
-//! "for right now" preview: the view is extracted using those clauses
-//! *instead of* the persisted `where:`, without writing anything. Its
-//! diagnostics are computed as if the draft were saved, so the preview's
-//! banner matches what a save would produce. The
-//! companion `GET /api/views/{id}/filter` returns the persisted filter
-//! decomposed into the editor's clause shape, for seeding the builder.
+//! `GET /api/views/{id}` also accepts two optional, non-persisting
+//! query params, both validated up front (malformed JSON → 422, even
+//! on an unrenderable view): `?filter=` — a URL-encoded JSON array of
+//! structured clauses for the filter editor's "for right now" preview,
+//! extracted *instead of* the persisted `where:`, with diagnostics
+//! computed as if the draft were saved so the preview's banner matches
+//! what a save would produce — and `?display=` — a JSON object of
+//! display roles applied with highest precedence (see `ViewQuery`).
+//! The companion `GET /api/views/{id}/filter` returns the persisted
+//! filter decomposed into the editor's clause shape, for seeding the
+//! builder.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;

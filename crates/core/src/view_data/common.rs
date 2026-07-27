@@ -1,8 +1,9 @@
 //! Types and helpers shared across view_data extractors.
 //!
 //! `Card` is the resolved form of a work item for a specific view: id,
-//! optional display title (from the view's `title:` slot), every field
-//! set on the item (in schema order), and the freeform body text.
+//! title and subtitle (resolved via the view's display roles),
+//! background tint, the fields the effective `fields` role selects (in
+//! role order), and the freeform body text.
 //! `UnplacedCard` carries items that couldn't be turned into the view's
 //! natural mark (a bar, a point, a cell) — filter-matched but structurally
 //! unrenderable — so the renderer can show them in a side panel or ignore
@@ -100,9 +101,9 @@ pub struct CardField {
 /// show a linked item by name rather than raw id.
 #[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
 pub struct ItemRef {
-    /// Resolved via the view's `title:` slot. `None` when the view has
-    /// no title slot configured or the linked item lacks that field —
-    /// the UI falls back to `prettifyId(id)` in that case.
+    /// Resolved via the view's `title` display role. `None` when the
+    /// role is unset or the linked item lacks that field — the UI
+    /// falls back to `prettifyId(id)` in that case.
     pub title: Option<String>,
 }
 

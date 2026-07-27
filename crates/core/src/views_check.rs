@@ -426,8 +426,9 @@ fn check_display(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>)
 /// - [`ConfigDiagnosticKind::ViewFieldTypeMismatch`] if `allowed` is non-empty and
 ///   the field's type isn't in the list.
 ///
-/// Passing an empty `allowed` performs an existence-only check (used by
-/// `table.columns[*]`).
+/// Passing an empty `allowed` performs an existence-only check (used
+/// by slots that accept any field type, e.g. `graph.group_by` and the
+/// line chart's `x`/`y`).
 fn check_slot(
     ctx: &ViewCheckContext,
     view_id: &str,

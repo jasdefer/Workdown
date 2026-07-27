@@ -176,11 +176,14 @@ pub struct ConfigDiagnostic {
     pub kind: ConfigDiagnosticKind,
 }
 
-/// Cross-file failures against `views.yaml`.
+/// Cross-file failures against a config file — `views.yaml` for the
+/// `View*` variants, `config.yaml` for the `ConfigDisplay*` variants.
 ///
-/// Today every variant carries a `view_id`. When a future `Schema*`
-/// family lands for cross-file `schema.yaml` validation, those variants
-/// will share `ConfigDiagnosticKind` but will not have a `view_id`.
+/// The `View*` variants carry a `view_id` and pin the failure to one
+/// view (that view is unrenderable, the rest keep working); the
+/// `ConfigDisplay*` variants are project-wide and carry none — a bad
+/// default degrades every view to its fallback instead of blanking
+/// anything (see `view_id_of` below).
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConfigDiagnosticKind {

@@ -69,7 +69,8 @@
 
 	interface RenderableRow {
 		id: WorkItemId;
-		/** Resolved `#rrggbb` of the item's first color field, or null. */
+		/** Resolved `#rrggbb` of the field the view's `color` display
+		 *  role picks (override and `none` included), or null. */
 		background: string | null;
 		cells: RenderableCell[];
 	}

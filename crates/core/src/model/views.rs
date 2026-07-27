@@ -42,11 +42,13 @@ pub struct View {
 }
 
 /// The cross-cutting display-role vocabulary: which schema field fills
-/// each presentation role. Applies to the item-presenting view kinds
-/// (board, tree, table, graph, gantt and variants); aggregate/chart
-/// kinds ignore it. Each kind renders the roles in its own idiom (card
-/// badges, table columns, graph tooltip, bar label) and ignores roles
-/// it cannot place.
+/// each presentation role. Every kind accepts the block and renders
+/// the roles in its own idiom, ignoring roles it cannot place: board,
+/// tree, table, graph, and the gantts render them directly, treemap
+/// labels and tints its nodes, line_chart resolves point tooltips via
+/// the title role, and the remaining aggregate kinds (bar_chart,
+/// heatmap, metric, workload) surface roles only on their
+/// unplaced-items footer.
 ///
 /// Every role is optional. Resolution order per role: this per-view
 /// config, then `defaults.display` in `config.yaml` (merged via
@@ -107,8 +109,9 @@ pub const COLOR_NONE_SENTINEL: &str = "none";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ColorRole {
     /// Tint by this schema field (must be `color`-typed; enforced by
-    /// `views_check` for view-level config, defensively skipped at
-    /// extraction time for session overrides and config defaults).
+    /// `views_check` for view-level config and by `config_check` for
+    /// the config defaults; a stale session override is defensively
+    /// skipped at extraction time).
     Field(String),
     /// The `none` sentinel: no tint for this view, regardless of what
     /// lower rungs or the schema would resolve to.
@@ -329,10 +332,10 @@ pub struct MetricRow {
 
 /// Compact descriptor for a configured view — the wire shape
 /// `GET /api/views` returns. Carries only what a navigation list needs:
-/// the id, an optional display title (for the view itself, distinct
-/// from the title slot on [`View`]), and the [`ViewType`] discriminant.
-/// Excludes per-kind config so the wire response doesn't track internal
-/// model evolution.
+/// the id, an optional display title (naming the view itself, distinct
+/// from the per-item `title` display role), and the [`ViewType`]
+/// discriminant. Excludes per-kind config so the wire response doesn't
+/// track internal model evolution.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct ViewSummary {
     pub id: String,

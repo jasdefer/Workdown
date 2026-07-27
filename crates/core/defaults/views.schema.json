@@ -67,7 +67,7 @@
 
     "display": {
       "type": "object",
-      "description": "Cross-cutting display roles: which schema field fills each presentation role. Roles left unset inherit `defaults.display` from config.yaml, then fall back to per-kind defaults (title → item id, fields → every schema field, color → the first color-typed field in schema order). Item-presenting kinds render the roles in their own idiom (card lines, table/tree columns, graph tooltips, bar labels); aggregate/chart kinds ignore them.",
+      "description": "Cross-cutting display roles: which schema field fills each presentation role. Roles left unset inherit `defaults.display` from config.yaml, then fall back to per-kind defaults (title → item id, fields → every schema field, color → the first color-typed field in schema order). Each kind renders the roles in its own idiom (card lines, table/tree columns, graph tooltips, treemap node labels and tint, line-chart tooltips) and ignores roles it cannot place; the aggregate kinds (bar_chart, heatmap, metric, workload) surface item-level roles only on their unplaced-items footer.",
       "properties": {
         "title": {
           "$ref": "#/$defs/field_name",

@@ -21,7 +21,7 @@ use workdown_core::parser::config::load_config;
 
 /// Stage a minimal project in a tempdir: config.yaml, schema.yaml, an
 /// optional views.yaml, and work items. Returns the handles needed to
-/// call `validate(&config, &project_root)`.
+/// call `validate(&config, &project_root, &config_path)`.
 fn setup_project(
     schema_yaml: &str,
     views_yaml: Option<&str>,

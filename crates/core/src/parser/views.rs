@@ -387,10 +387,10 @@ fn to_raw_views_file(views: &Views) -> RawViewsFile {
 /// raw struct, populating only the slots its kind uses.
 ///
 /// Slots that are optional *and* empty in the model are left `None` so
-/// they don't serialize (e.g. a tree with no extra columns). Slots that
-/// are required for the kind are always populated — even when empty (a
-/// table's `columns: []`, a metric's `metrics: []`) — so the output
-/// re-parses without tripping the required-slot check.
+/// they don't serialize (e.g. a gantt with no `group`, a view whose
+/// display block is all-default). Slots that are required for the kind
+/// are always populated — even when empty (a metric's `metrics: []`) —
+/// so the output re-parses without tripping the required-slot check.
 fn raw_view_from(view: &View) -> RawView {
     let mut raw = RawView {
         id: view.id.clone(),

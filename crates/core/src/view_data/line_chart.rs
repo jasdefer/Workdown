@@ -36,11 +36,11 @@ pub struct LineChartData {
     /// `None` means single-series; the renderer skips the legend.
     pub group_field: Option<String>,
     pub points: Vec<LinePoint>,
-    /// Resolution map for the ids carried by `points`. Title is taken
-    /// from the view's `title:` slot; `None` when unset or absent on
-    /// the item — UI falls back to `prettifyId(id)`. Mirrors the Table
-    /// pattern, since hover tooltips on points need item titles and
-    /// `LinePoint` carries only the raw id.
+    /// Resolution map for the ids carried by `points`. Title resolves
+    /// via the view's `title` display role; `None` when unset or
+    /// absent on the item — UI falls back to `prettifyId(id)`. Mirrors
+    /// the Table pattern, since hover tooltips on points need item
+    /// titles and `LinePoint` carries only the raw id.
     pub items: HashMap<WorkItemId, ItemRef>,
     pub unplaced: Vec<UnplacedCard>,
 }

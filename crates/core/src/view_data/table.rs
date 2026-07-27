@@ -1,17 +1,18 @@
 //! Table view extractor.
 //!
-//! Produces one row per filtered item, with cells parallel to the view's
-//! `columns:` list. The virtual `id` column emits the item id as a string
-//! cell; real fields emit their typed [`FieldValue`] when set, `None`
-//! when the item doesn't have that field.
+//! Produces one row per filtered item, with cells parallel to the
+//! columns the `fields` display role selects (unset falls back to
+//! every schema field). The virtual `id` column emits the item id as a
+//! string cell; real fields emit their typed [`FieldValue`] when set,
+//! `None` when the item doesn't have that field.
 //!
 //! Each column carries its [`FieldType`](crate::model::schema::FieldType) so the UI can render and align
 //! cells correctly even when every cell in a column is `None`. Link and
 //! Links cells reference items by id; an `items` sidecar map resolves
-//! those ids to display titles (via the view's `title:` slot, same
-//! mechanism as [`Card`](super::common::Card)). Ids that don't resolve
-//! to any item in the store are absent from the map — the UI treats
-//! absence as "broken link, show the raw id".
+//! those ids to display titles (via the view's `title` display role,
+//! same mechanism as [`Card`](super::common::Card)). Ids that don't
+//! resolve to any item in the store are absent from the map — the UI
+//! treats absence as "broken link, show the raw id".
 
 use std::collections::HashMap;
 

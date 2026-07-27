@@ -5,11 +5,12 @@
 //! indented two spaces per depth level. Roots appear in the order the
 //! extractor produced (ascending by id); children inherit that order.
 //!
-//! When the view configures `columns:`, each node's set cells are
-//! appended after the link as ` — name: value · name: value`, joining
-//! with a middle dot and dropping `None` cells. A row with all-None
-//! cells (or a view with no `columns:`) emits just the link, no em dash
-//! — keeps the file tidy when every node is empty.
+//! Each node's set cells (parallel to the columns the `fields` display
+//! role selects) are appended after the link as
+//! ` — name: value · name: value`, joining with a middle dot and
+//! dropping `None` cells. A row with all-None cells (or an explicit
+//! `fields: []`) emits just the link, no em dash — keeps the file tidy
+//! when every node is empty.
 //!
 //! An empty tree emits just the heading.
 

@@ -9,7 +9,7 @@ Every item-presenting view kind makes choices about which fields display where: 
 
 ## Decision
 
-A **closed vocabulary of display roles** — `title`, `subtitle`, `fields` (ordered list), `color` — applies uniformly to the item-presenting kinds (board, tree, table, graph, gantt and variants). Aggregate/chart kinds accept the block but ignore item-level roles. Each kind renders the roles in its own idiom and ignores roles it cannot place.
+A **closed vocabulary of display roles** — `title`, `subtitle`, `fields` (ordered list), `color` — applies uniformly to the kinds that present items: board, tree, table, graph, gantt and variants, plus treemap (node labels and tint) and line_chart (point tooltips). The remaining aggregate kinds (bar_chart, heatmap, metric, workload) accept the block and surface item-level roles only on their unplaced-items footer. Each kind renders the roles in its own idiom and ignores roles it cannot place.
 
 Each role resolves independently down a ladder, first match wins:
 
