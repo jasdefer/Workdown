@@ -206,7 +206,7 @@ fn extract_exercises_every_variant() {
             ("hierarchy", ViewData::Tree(tree)) => {
                 // Only epic-auth is a root; the three tasks are children.
                 assert_eq!(tree.roots.len(), 1);
-                assert_eq!(tree.roots[0].card.id.as_str(), "epic-auth");
+                assert_eq!(tree.roots[0].id.as_str(), "epic-auth");
                 assert_eq!(tree.roots[0].children.len(), 3);
             }
             ("deps", ViewData::Graph(graph)) => {

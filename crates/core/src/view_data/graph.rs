@@ -465,12 +465,12 @@ mod tests {
 
         let groups = data.groups.expect("group_by should populate groups");
         assert_eq!(groups.field, "parent");
-        let root_ids: Vec<&str> = groups.roots.iter().map(|n| n.card.id.as_str()).collect();
+        let root_ids: Vec<&str> = groups.roots.iter().map(|n| n.id.as_str()).collect();
         assert_eq!(root_ids, vec!["epic-a", "epic-b"]);
         let epic_a_children: Vec<&str> = groups.roots[0]
             .children
             .iter()
-            .map(|n| n.card.id.as_str())
+            .map(|n| n.id.as_str())
             .collect();
         assert_eq!(epic_a_children, vec!["task-a1", "task-a2"]);
     }
@@ -498,7 +498,7 @@ mod tests {
         let data = extract_graph(&view, &store, &schema);
 
         let groups = data.groups.expect("groups present");
-        let root_ids: Vec<&str> = groups.roots.iter().map(|n| n.card.id.as_str()).collect();
+        let root_ids: Vec<&str> = groups.roots.iter().map(|n| n.id.as_str()).collect();
         assert_eq!(root_ids, vec!["task"]);
         assert!(groups.roots[0].children.is_empty());
     }

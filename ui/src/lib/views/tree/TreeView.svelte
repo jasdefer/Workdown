@@ -96,7 +96,7 @@
 			</div>
 		{/if}
 
-		{#each data.roots as root (root.card.id)}
+		{#each data.roots as root (root.id)}
 			<TreeNodeRow node={root} columns={data.columns} depth={0} {expandedIds} {toggle} />
 		{/each}
 	</div>

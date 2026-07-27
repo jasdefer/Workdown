@@ -7,15 +7,20 @@
 
 use workdown_core::view_data::Card;
 
-/// Render a card as a Markdown link: `[title-or-id](base/id.md)`.
+/// Render a work item as a Markdown link: `[title-or-id](base/id.md)`.
 ///
 /// No bullet and no trailing newline — the caller decides indentation and
 /// line structure. `item_link_base` is the path from the rendered view
 /// file to the work items directory (e.g. `"../workdown-items"`).
-pub fn card_link(card: &Card, item_link_base: &str) -> String {
-    let link_text = card.title.as_deref().unwrap_or_else(|| card.id.as_str());
+pub fn item_link(id: &str, title: Option<&str>, item_link_base: &str) -> String {
+    let link_text = title.unwrap_or(id);
     let escaped = escape_link_text(link_text);
-    format!("[{escaped}]({item_link_base}/{id}.md)", id = card.id)
+    format!("[{escaped}]({item_link_base}/{id}.md)")
+}
+
+/// [`item_link`] for a [`Card`]-carrying payload.
+pub fn card_link(card: &Card, item_link_base: &str) -> String {
+    item_link(card.id.as_str(), card.title.as_deref(), item_link_base)
 }
 
 /// Render a bare work item id as a Markdown link: `[id](base/id.md)`.

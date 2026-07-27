@@ -58,10 +58,15 @@
 	// The item's `color` field rides along as node data (canvas can't
 	// read CSS variables): the resolved fill plus its black/white label
 	// color, both precomputed so the stylesheet only maps `data(...)`.
-	function colorData(card: CardData, nodeData: cytoscape.NodeDataDefinition): void {
-		if (card.background === null) return;
-		nodeData.itemColor = card.background;
-		nodeData.itemTextColor = textColorOn(card.background);
+	// Takes anything background-carrying — a Card (flat layout) or a
+	// TreeNode (grouped layout).
+	function colorData(
+		item: Pick<CardData, 'background'>,
+		nodeData: cytoscape.NodeDataDefinition
+	): void {
+		if (item.background === null) return;
+		nodeData.itemColor = item.background;
+		nodeData.itemTextColor = textColorOn(item.background);
 	}
 
 	// Flat: one node per card. Grouped: walk `groups`, tagging each node
@@ -73,13 +78,13 @@
 			const walk = (nodes: TreeNode[], parent: string | undefined): void => {
 				for (const node of nodes) {
 					const nodeData: cytoscape.NodeDataDefinition = {
-						id: node.card.id,
-						label: cardLabel(node.card)
+						id: node.id,
+						label: cardLabel(node)
 					};
 					if (parent !== undefined) nodeData.parent = parent;
-					colorData(node.card, nodeData);
+					colorData(node, nodeData);
 					elements.push({ data: nodeData });
-					if (node.children.length > 0) walk(node.children, node.card.id);
+					if (node.children.length > 0) walk(node.children, node.id);
 				}
 			};
 			walk(graph.groups.roots, undefined);
