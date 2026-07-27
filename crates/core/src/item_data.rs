@@ -64,3 +64,94 @@ pub fn build(item: &WorkItem, schema: &Schema, display_defaults: &DisplayConfig)
         body: item.body.clone(),
     }
 }
+
+// ── Tests ───────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::schema::{FieldType, FieldTypeConfig};
+    use crate::model::views::ColorRole;
+    use crate::model::FieldValue;
+    use crate::view_data::test_support::{make_item, make_schema};
+
+    fn color_schema() -> Schema {
+        make_schema(vec![
+            (
+                "status",
+                FieldTypeConfig::Choice {
+                    values: vec!["open".into()],
+                },
+            ),
+            ("team_color", FieldTypeConfig::Color),
+            ("risk_color", FieldTypeConfig::Color),
+        ])
+    }
+
+    #[test]
+    fn fields_carry_types_in_schema_order_and_omit_absent() {
+        let schema = color_schema();
+        // Set out of schema order; `risk_color` absent.
+        let item = make_item(
+            "task-a",
+            vec![
+                ("team_color", FieldValue::Color("red".into())),
+                ("status", FieldValue::Choice("open".into())),
+            ],
+            "the body",
+        );
+
+        let detail = build(&item, &schema, &DisplayConfig::default());
+
+        assert_eq!(detail.id.as_str(), "task-a");
+        assert_eq!(detail.body, "the body");
+        let names: Vec<&str> = detail
+            .fields
+            .iter()
+            .map(|field| field.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["status", "team_color"]);
+        let types: Vec<FieldType> = detail.fields.iter().map(|field| field.field_type).collect();
+        assert_eq!(types, vec![FieldType::Choice, FieldType::Color]);
+    }
+
+    #[test]
+    fn background_applies_the_config_defaults_rung() {
+        // The detail surface has no view in context, so
+        // `defaults.display.color` is the only configurable rung: it
+        // picks the field, `none` disables, unset falls back to the
+        // first color field in schema order.
+        let schema = color_schema();
+        let item = make_item(
+            "task-a",
+            vec![
+                ("team_color", FieldValue::Color("red".into())),
+                ("risk_color", FieldValue::Color("#123456".into())),
+            ],
+            "",
+        );
+
+        let by_default = DisplayConfig {
+            color: Some(ColorRole::Field("risk_color".into())),
+            ..DisplayConfig::default()
+        };
+        assert_eq!(
+            build(&item, &schema, &by_default).background.as_deref(),
+            Some("#123456")
+        );
+
+        let off = DisplayConfig {
+            color: Some(ColorRole::None),
+            ..DisplayConfig::default()
+        };
+        assert_eq!(build(&item, &schema, &off).background, None);
+
+        // Unset: first color field in schema order, palette-resolved.
+        assert_eq!(
+            build(&item, &schema, &DisplayConfig::default())
+                .background
+                .as_deref(),
+            Some("#ef4444")
+        );
+    }
+}

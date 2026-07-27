@@ -19,7 +19,10 @@
 
     "fields": {
       "type": "object",
-      "description": "Map of field names to field definitions. Each field picks a type from the type system and configures it.",
+      "description": "Map of field names to field definitions. Each field picks a type from the type system and configures it. `none` is reserved — display roles use it as their no-tint sentinel, so schema.yaml rejects it as a field name.",
+      "propertyNames": {
+        "not": { "const": "none" }
+      },
       "patternProperties": {
         "^[a-z_][a-z0-9_]*$": {
           "$ref": "#/$defs/field"

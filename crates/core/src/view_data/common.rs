@@ -467,7 +467,43 @@ pub(super) fn group_keys(item: &WorkItem, field: &str, bucket: Option<Bucket>) -
 mod tests {
     use super::*;
     use crate::model::schema::FieldTypeConfig;
+    use crate::model::views::ViewKind;
     use crate::view_data::test_support::{make_item, make_schema};
+
+    fn view_with_fields(fields: Option<Vec<&str>>) -> View {
+        View {
+            id: "v".to_owned(),
+            where_clauses: vec![],
+            display: DisplayConfig {
+                fields: fields.map(|names| names.into_iter().map(str::to_owned).collect()),
+                ..DisplayConfig::default()
+            },
+            kind: ViewKind::Table,
+        }
+    }
+
+    #[test]
+    fn effective_fields_drops_stale_names_and_keeps_id() {
+        // A session override can name a field that was deleted since it
+        // was saved. This filter is load-bearing: without it,
+        // `build_column`'s expect panics on the stale name for
+        // column-bearing views. The virtual `id` passes through.
+        let schema = two_color_schema();
+        let view = view_with_fields(Some(vec!["ghost", "id", "status"]));
+        assert_eq!(effective_fields(&view, &schema), vec!["id", "status"]);
+    }
+
+    #[test]
+    fn effective_fields_unset_yields_schema_order_and_empty_means_none() {
+        let schema = two_color_schema();
+        let unset = view_with_fields(None);
+        assert_eq!(
+            effective_fields(&unset, &schema),
+            vec!["status", "team_color", "risk_color"]
+        );
+        let empty = view_with_fields(Some(vec![]));
+        assert!(effective_fields(&empty, &schema).is_empty());
+    }
 
     fn two_color_schema() -> Schema {
         make_schema(vec![

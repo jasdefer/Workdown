@@ -35,7 +35,7 @@ pub mod treemap;
 pub mod workload;
 
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 
 use serde::Serialize;
 

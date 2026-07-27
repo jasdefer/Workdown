@@ -504,6 +504,66 @@ mod tests {
     }
 
     #[test]
+    fn or_inherit_text_roles_unset_inherit_and_set_wins() {
+        let base = DisplayConfig {
+            title: Some("title".into()),
+            subtitle: Some("status".into()),
+            ..DisplayConfig::default()
+        };
+
+        let unset = DisplayConfig::default().or_inherit(&base);
+        assert_eq!(unset.title.as_deref(), Some("title"));
+        assert_eq!(unset.subtitle.as_deref(), Some("status"));
+
+        let own_title = DisplayConfig {
+            title: Some("assignee".into()),
+            ..DisplayConfig::default()
+        }
+        .or_inherit(&base);
+        assert_eq!(own_title.title.as_deref(), Some("assignee"));
+        assert_eq!(
+            own_title.subtitle.as_deref(),
+            Some("status"),
+            "unset roles inherit independently of set ones"
+        );
+    }
+
+    #[test]
+    fn views_with_display_defaults_merges_per_view() {
+        // The whole-file merge `workdown render` applies once up front:
+        // each view inherits per role, so a view with its own title
+        // keeps it while a bare view picks up the default.
+        let bare = View {
+            id: "bare".into(),
+            where_clauses: vec![],
+            display: DisplayConfig::default(),
+            kind: ViewKind::Table,
+        };
+        let own = View {
+            id: "own".into(),
+            where_clauses: vec![],
+            display: DisplayConfig {
+                title: Some("assignee".into()),
+                ..DisplayConfig::default()
+            },
+            kind: ViewKind::Table,
+        };
+        let views = Views {
+            output_dir: std::path::PathBuf::from("views"),
+            views: vec![bare, own],
+        };
+
+        let defaults = DisplayConfig {
+            title: Some("title".into()),
+            ..DisplayConfig::default()
+        };
+        let merged = views.with_display_defaults(&defaults);
+
+        assert_eq!(merged.views[0].display.title.as_deref(), Some("title"));
+        assert_eq!(merged.views[1].display.title.as_deref(), Some("assignee"));
+    }
+
+    #[test]
     fn or_inherit_fields_unset_inherits_and_empty_shadows() {
         let base = DisplayConfig {
             fields: Some(vec!["status".into()]),
