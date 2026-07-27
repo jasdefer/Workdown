@@ -158,6 +158,22 @@ The `resource` option is valid on `string` and `list` fields. When set, the CLI 
 
 Resources are flexible. The CLI only enforces that `id` values are unique within a resource and that fields referencing a resource use valid ids. Everything else is up to you.
 
+### Constants
+
+The top-level key `constants` is reserved. Instead of a resource list, it holds named scalar values defined once per project — data that changes over the project's life (a daily rate, a work-hours-per-day convention) and therefore belongs in `resources.yaml`, not in the schema:
+
+```yaml
+constants:
+  daily_rate:
+    type: float
+    value: 800
+  work_hours_per_day:
+    type: duration
+    value: "8h"
+```
+
+Each constant declares a `type` — one of the scalar field types (`string`, `integer`, `float`, `date`, `duration`, `boolean`) — and a `value`, which is validated against that type when the file loads. Constants are referenced by name from `schema.yaml` (for example from computed-field expressions as `$constants.<name>`); referencing an undeclared constant is a schema error.
+
 ---
 
 ## Rules

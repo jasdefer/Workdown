@@ -24,3 +24,16 @@ people:
 #     name: Sprint 1
 #     start: 2026-04-01
 #     end: 2026-04-14
+
+# The `constants` key is reserved: named scalar values defined once per
+# project and referenced from schema.yaml. Each constant declares a
+# scalar type (string, integer, float, date, duration, boolean) and a
+# value of that type, e.g.:
+#
+# constants:
+#   daily_rate:
+#     type: float
+#     value: 800
+#   work_hours_per_day:
+#     type: duration
+#     value: "8h"

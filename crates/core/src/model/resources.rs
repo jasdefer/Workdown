@@ -1,9 +1,16 @@
-//! Resource lists loaded from `resources.yaml`.
+//! Resource lists and project constants loaded from `resources.yaml`.
 //!
 //! Resources are named lists of entities (people, teams, sprints, …) that
 //! a work-item field can reference via `resource: <name>` in `schema.yaml`.
 //! A field so declared only accepts values matching an `id` from the named
 //! section.
+//!
+//! The reserved top-level key `constants` holds named scalar values defined
+//! once per project (a daily rate, a work-hours-per-day convention) that
+//! schema-level consumers — computed-field expressions, rule configs —
+//! resolve by name. Constants live here rather than in `schema.yaml`
+//! because they are *data* that changes over a project's life, not
+//! structure.
 //!
 //! The model carries only what the editing vocabulary needs: each entry's
 //! `id` (the value stored on items) and an optional `name` (its display
@@ -17,8 +24,10 @@
 
 use indexmap::IndexMap;
 
-/// All resource lists in a project, keyed by section name in
-/// declaration order (the order they appear in `resources.yaml`).
+use crate::model::FieldValue;
+
+/// All resource lists and constants in a project, keyed by section name
+/// in declaration order (the order they appear in `resources.yaml`).
 ///
 /// An absent or empty `resources.yaml` yields an empty `Resources` — a
 /// valid configuration meaning "this project references no resources,"
@@ -27,6 +36,10 @@ use indexmap::IndexMap;
 pub struct Resources {
     /// Section name (e.g. `people`) → its entries.
     pub sections: IndexMap<String, Vec<ResourceEntry>>,
+    /// Constant name → its typed value, from the reserved `constants`
+    /// section, in declaration order. Values are already coerced to the
+    /// scalar type each constant declares.
+    pub constants: IndexMap<String, FieldValue>,
 }
 
 impl Resources {
@@ -35,9 +48,14 @@ impl Resources {
         self.sections.get(name).map(Vec::as_slice)
     }
 
-    /// Whether the project declares no resources at all.
+    /// The value of one constant, or `None` if no such constant exists.
+    pub fn constant(&self, name: &str) -> Option<&FieldValue> {
+        self.constants.get(name)
+    }
+
+    /// Whether the project declares no resources or constants at all.
     pub fn is_empty(&self) -> bool {
-        self.sections.is_empty()
+        self.sections.is_empty() && self.constants.is_empty()
     }
 }
 

@@ -1,7 +1,7 @@
 ---
 id: project-constants
 type: issue
-status: to_do
+status: in_progress
 title: Project-level constants in resources.yaml
 parent: time-tracking
 effort: "4h"
