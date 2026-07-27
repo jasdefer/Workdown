@@ -1,21 +1,21 @@
 <!--
-  Per-session display-role override for one view — a collapsed bar in the
-  same style as `FilterBar`, above the view. Title / subtitle pickers, an
-  ordered fields multi-select, and — when the schema declares color-typed
-  fields — a tint picker (any color field, "None" for no tint, or the
-  configured resolution). Changes apply immediately: the override
-  is written to localStorage and the page data invalidated, so the view
-  below re-renders with the override taking highest precedence server-side
-  (over the view's `display:` block and the config defaults). "Clear"
-  removes the override and returns to the configured roles. Nothing is
-  ever written to views.yaml.
+  Per-session display-role override for one view — a `CollapsibleBar`
+  above the view, next to the filter bar. Title / subtitle pickers, an
+  ordered fields multi-select, and — when the schema declares
+  color-typed fields — a tint picker (any color field, "None" for no
+  tint, or the configured resolution). Changes apply immediately: the
+  override is written to localStorage and the page data invalidated, so
+  the view below re-renders with the override taking highest precedence
+  server-side (over the view's `display:` block and the config
+  defaults). "Clear" removes the override and returns to the configured
+  roles. Nothing is ever written to views.yaml.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { slide } from 'svelte/transition';
 	import { invalidateAll } from '$app/navigation';
 	import { schemaStore } from '$lib/stores/schema.svelte';
-	import { isEmptyOverride, saveDisplayOverride, type DisplayOverride } from './displayOverride';
+	import CollapsibleBar, { type BarAction } from '$lib/ui/CollapsibleBar.svelte';
+	import { saveDisplayOverride, type DisplayOverride } from './displayOverride';
 
 	interface Props {
 		viewId: string;
@@ -38,6 +38,8 @@
 			(fields.length > 0 ? 1 : 0) +
 			(color !== '' ? 1 : 0)
 	);
+
+	const actions = $derived<BarAction[]>([{ label: 'Clear', onclick: () => void clear() }]);
 
 	// The color role only accepts color-typed fields; with none in the
 	// schema there is nothing to switch, so the picker hides entirely.
@@ -63,33 +65,39 @@
 		return override;
 	}
 
+	// `saveDisplayOverride` removes the stored entry when the override is
+	// empty, so applying an all-defaults state clears rather than saves.
 	async function apply(): Promise<void> {
-		const override = currentOverride();
-		saveDisplayOverride(viewId, isEmptyOverride(override) ? null : override);
+		saveDisplayOverride(viewId, currentOverride());
 		await invalidateAll();
 	}
 
-	function onTitleChange(event: Event): void {
-		title = (event.currentTarget as HTMLSelectElement).value;
-		void apply();
-	}
+	// The two text roles share one picker markup; `set` writes the role's
+	// local state and applies.
+	const textRoles = $derived([
+		{
+			label: 'Title',
+			value: title,
+			set: (value: string) => {
+				title = value;
+				void apply();
+			}
+		},
+		{
+			label: 'Subtitle',
+			value: subtitle,
+			set: (value: string) => {
+				subtitle = value;
+				void apply();
+			}
+		}
+	]);
 
-	function onSubtitleChange(event: Event): void {
-		subtitle = (event.currentTarget as HTMLSelectElement).value;
-		void apply();
-	}
-
-	function onFieldsChange(event: Event): void {
-		const select = event.currentTarget as HTMLSelectElement;
+	function onFieldsChange(event: Event & { currentTarget: HTMLSelectElement }): void {
 		// `selectedOptions` comes back in document order, so this override
 		// can pick *which* fields show but not reorder them — a custom
 		// order needs the view's `display.fields` in views.yaml.
-		fields = [...select.selectedOptions].map((option) => option.value);
-		void apply();
-	}
-
-	function onColorChange(event: Event): void {
-		color = (event.currentTarget as HTMLSelectElement).value;
+		fields = [...event.currentTarget.selectedOptions].map((option) => option.value);
 		void apply();
 	}
 
@@ -103,155 +111,66 @@
 	}
 </script>
 
-<div class="display-bar">
-	<div class="header">
-		<button
-			type="button"
-			class="toggle"
-			aria-expanded={expanded}
-			onclick={() => (expanded = !expanded)}
-		>
-			<span class="chevron" class:open={expanded}>▸</span>
-			Display
-			{#if overrideCount > 0}<span class="count">{overrideCount}</span>{/if}
-		</button>
-
-		{#if overrideCount > 0}
-			<span class="overridden" in:slide={{ axis: 'x' }}>Overridden · this browser only</span>
-			<button type="button" class="action" onclick={clear}>Clear</button>
-		{/if}
-	</div>
-
-	{#if expanded}
-		<div class="panel" transition:slide>
+<CollapsibleBar
+	label="Display"
+	count={overrideCount}
+	status={overrideCount > 0 ? 'Overridden · this browser only' : null}
+	{actions}
+	bind:expanded
+>
+	<div class="controls">
+		{#each textRoles as role (role.label)}
 			<label>
-				<span>Title</span>
-				<select value={title} onchange={onTitleChange}>
-					<option value="">— configured —</option>
-					{#each schemaStore.fields as field (field.name)}
-						<option value={field.name}>{field.name}</option>
-					{/each}
-				</select>
-			</label>
-			<label>
-				<span>Subtitle</span>
-				<select value={subtitle} onchange={onSubtitleChange}>
-					<option value="">— configured —</option>
-					{#each schemaStore.fields as field (field.name)}
-						<option value={field.name}>{field.name}</option>
-					{/each}
-				</select>
-			</label>
-			{#if colorFields.length > 0}
-				<label>
-					<span>Color</span>
-					<select value={color} onchange={onColorChange}>
-						<option value="">— configured —</option>
-						<option value="none">None (no tint)</option>
-						{#each colorFields as field (field.name)}
-							<option value={field.name}>{field.name}</option>
-						{/each}
-					</select>
-				</label>
-			{/if}
-			<label>
-				<span>Fields</span>
+				<span>{role.label}</span>
 				<select
-					multiple
-					size={Math.min(schemaStore.fields.length + 1, 8)}
-					onchange={onFieldsChange}
+					value={role.value}
+					onchange={(event) => {
+						role.set(event.currentTarget.value);
+					}}
 				>
-					<option value="id" selected={fields.includes('id')}>id</option>
+					<option value="">— configured —</option>
 					{#each schemaStore.fields as field (field.name)}
-						<option value={field.name} selected={fields.includes(field.name)}>{field.name}</option>
+						<option value={field.name}>{field.name}</option>
 					{/each}
 				</select>
-				<span class="hint">None selected = the configured fields.</span>
 			</label>
-		</div>
-	{/if}
-</div>
+		{/each}
+		{#if colorFields.length > 0}
+			<label>
+				<span>Color</span>
+				<select
+					value={color}
+					onchange={(event) => {
+						color = event.currentTarget.value;
+						void apply();
+					}}
+				>
+					<option value="">— configured —</option>
+					<option value="none">None (no tint)</option>
+					{#each colorFields as field (field.name)}
+						<option value={field.name}>{field.name}</option>
+					{/each}
+				</select>
+			</label>
+		{/if}
+		<label>
+			<span>Fields</span>
+			<select multiple size={Math.min(schemaStore.fields.length + 1, 8)} onchange={onFieldsChange}>
+				<option value="id" selected={fields.includes('id')}>id</option>
+				{#each schemaStore.fields as field (field.name)}
+					<option value={field.name} selected={fields.includes(field.name)}>{field.name}</option>
+				{/each}
+			</select>
+			<span class="hint">None selected = the configured fields.</span>
+		</label>
+	</div>
+</CollapsibleBar>
 
 <style>
-	.display-bar {
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		background-color: var(--color-surface);
-	}
-
-	.header {
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-2) var(--space-3);
-	}
-
-	.toggle {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-2);
-		background: none;
-		border: none;
-		color: var(--color-fg);
-		cursor: pointer;
-		font-size: var(--text-sm);
-		font-weight: 600;
-		padding: 0;
-	}
-
-	.chevron {
-		display: inline-block;
-		transition: transform 0.15s ease;
-		color: var(--color-fg-muted);
-	}
-
-	.chevron.open {
-		transform: rotate(90deg);
-	}
-
-	.count {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-width: 1.25rem;
-		height: 1.25rem;
-		padding: 0 0.35rem;
-		border-radius: var(--radius-full);
-		background-color: var(--color-accent);
-		color: var(--color-accent-fg);
-		font-size: var(--text-sm);
-		font-weight: 600;
-	}
-
-	.overridden {
-		margin-left: auto;
-		color: var(--color-warning-fg);
-		background-color: var(--color-warning-bg);
-		padding: 0.1rem var(--space-2);
-		border-radius: var(--radius-full);
-		font-size: var(--text-sm);
-	}
-
-	.action {
-		background-color: var(--color-bg);
-		color: var(--color-fg);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
-		padding: 0.25rem var(--space-2);
-		font-size: var(--text-sm);
-		cursor: pointer;
-	}
-
-	.action:hover {
-		border-color: var(--color-accent);
-	}
-
-	.panel {
+	.controls {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
 		gap: var(--space-3);
-		padding: var(--space-3);
-		border-top: 1px solid var(--color-border);
 	}
 
 	label {
