@@ -32,6 +32,22 @@ code {
 	border-radius: var(--radius-md);
 }
 
+/* Item-color tint wash — the one definition of the mix formula. A
+ * surface carrying an item's resolved color sets `--item-color` and
+ * class `tinted`; this rule computes the washed background into
+ * `--tint-wash`, which the component applies to its own target (the
+ * element itself for a card, each cell for tables/trees whose rows are
+ * `display: contents`, a forwarded surface variable for the item
+ * editor). `--tint-base` picks the surface being washed; defaults to
+ * the page background. */
+.tinted {
+	--tint-wash: color-mix(
+		in srgb,
+		var(--item-color) var(--tint-strength),
+		var(--tint-base, var(--color-bg))
+	);
+}
+
 .sr-only {
 	position: absolute;
 	width: 1px;

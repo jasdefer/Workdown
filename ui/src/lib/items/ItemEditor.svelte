@@ -173,11 +173,13 @@
 	}
 
 	/* Stripe + tint — the same treatment as board cards and table rows,
-	   so an item reads as its color on every surface. The wash flows to
-	   both card surfaces through the --card-bg hook; the stripe carries
-	   the full-strength hue. */
+	   so an item reads as its color on every surface. The global
+	   `.tinted` wash (base.css) mixes into the raised card surface here
+	   (not the page background) and flows to both card surfaces through
+	   the --card-bg hook; the stripe carries the full-strength hue. */
 	.item-editor.tinted {
-		--card-bg: color-mix(in srgb, var(--item-color) var(--tint-strength), var(--color-card));
+		--tint-base: var(--color-card);
+		--card-bg: var(--tint-wash);
 	}
 
 	.item-editor.tinted .card {

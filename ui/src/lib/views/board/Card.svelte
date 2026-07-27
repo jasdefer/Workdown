@@ -69,11 +69,11 @@
 	}
 
 	/* Stripe + tint: the item's resolved `color` field. The stripe
-	   carries the hue at full strength; the tint washes the surface via
-	   the shared `--tint-strength` token. Untinted cards keep the
-	   neutral theme background. */
+	   carries the hue at full strength; the wash comes from the global
+	   `.tinted` recipe (base.css). Untinted cards keep the neutral
+	   theme background. */
 	.card.tinted {
-		background-color: color-mix(in srgb, var(--item-color) var(--tint-strength), var(--color-bg));
+		background-color: var(--tint-wash);
 		border-left: 4px solid var(--item-color);
 	}
 

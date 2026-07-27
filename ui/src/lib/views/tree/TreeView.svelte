@@ -166,13 +166,14 @@
 	}
 
 	/* Color-field treatment, identical to the table: rows are
-	   `display: contents`, so the wash lands on each cell (the custom
-	   property inherits through the row wrapper) and the full-strength
-	   stripe is an inset shadow on the sticky title cell — no width
-	   added, columns stay aligned, and the tint stays opaque while the
-	   hierarchy column is stuck during horizontal scroll. */
+	   `display: contents`, so the global `.tinted` wash (base.css)
+	   lands on each cell (the computed --tint-wash inherits through the
+	   row wrapper) and the full-strength stripe is an inset shadow on
+	   the sticky title cell — no width added, columns stay aligned, and
+	   the tint stays opaque while the hierarchy column is stuck during
+	   horizontal scroll. */
 	:global(.tree .row.tinted .cell) {
-		background-color: color-mix(in srgb, var(--item-color) var(--tint-strength), var(--color-bg));
+		background-color: var(--tint-wash);
 	}
 
 	:global(.tree .row.tinted .cell.title) {

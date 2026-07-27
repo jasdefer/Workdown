@@ -334,15 +334,15 @@
 	}
 
 	/* Color-field treatment (mirrors the board card): a full-strength
-	   stripe on the row's leading edge plus a --tint-strength wash across
-	   its cells. The stripe is an inset shadow, not a border, so it adds
-	   no width and tinted rows stay column-aligned with untinted ones.
-	   The wash mixes into the theme background (adapts to light/dark);
-	   the stripe hue is absolute, like a label color. The cell-level
-	   selector out-specifies the base `td` background, and keeps the
-	   sticky first column opaque so nothing shows through while scrolling. */
+	   stripe on the row's leading edge plus the global `.tinted` wash
+	   (base.css) across its cells. The stripe is an inset shadow, not a
+	   border, so it adds no width and tinted rows stay column-aligned
+	   with untinted ones. The stripe hue is absolute, like a label
+	   color. The cell-level selector out-specifies the base `td`
+	   background, and keeps the sticky first column opaque so nothing
+	   shows through while scrolling. */
 	tbody tr.tinted td {
-		background-color: color-mix(in srgb, var(--item-color) var(--tint-strength), var(--color-bg));
+		background-color: var(--tint-wash);
 	}
 
 	tbody tr.tinted td:first-child {
