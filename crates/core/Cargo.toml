@@ -20,7 +20,11 @@ walkdir = "2"
 csv.workspace = true
 uuid = { version = "1", features = ["v4"] }
 chrono = { workspace = true, features = ["clock", "serde"] }
-ts-rs = { version = "10", features = ["serde-compat", "chrono-impl"] }
+# `no-serde-warnings`: DisplayConfig pairs `skip_serializing_if` (for
+# clean views.yaml output) with an explicit `#[ts(optional)]` — the TS
+# side is hand-annotated, so ts-rs's "can't parse this serde attribute"
+# warning is pure noise on every build.
+ts-rs = { version = "10", features = ["serde-compat", "chrono-impl", "no-serde-warnings"] }
 
 [dev-dependencies]
 tempfile = "3"

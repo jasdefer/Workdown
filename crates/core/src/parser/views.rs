@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::model::views::{
-    Aggregate, Bucket, ColorRole, DisplayConfig, MetricRow, View, ViewKind, ViewType, Views,
+    Aggregate, Bucket, DisplayConfig, MetricRow, View, ViewKind, ViewType, Views,
 };
 use crate::model::weekday::Weekday;
 
@@ -170,8 +170,11 @@ struct RawView {
     // Cross-cutting display roles. Allowed on every view type; each
     // kind renders the roles it can place. Roles left unset inherit
     // the project defaults from `config.yaml` at render time.
+    // `DisplayConfig` is its own serde boundary (deny_unknown_fields,
+    // `fields` as Option to keep absent distinct from `[]`), so the
+    // raw layer carries it directly instead of mirroring it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    display: Option<RawDisplay>,
+    display: Option<DisplayConfig>,
 
     // Legacy pre-display-role slots, deserialized (any value shape)
     // only so [`convert_view`] can reject them with a migration hint
@@ -233,23 +236,6 @@ struct RawView {
     // Workload
     #[serde(default, skip_serializing_if = "Option::is_none")]
     working_days: Option<Vec<Weekday>>,
-}
-
-/// The `display:` block on one view entry — cross-cutting display
-/// roles. Every role is optional; unknown roles are rejected. `fields`
-/// distinguishes absent (unset, inherit) from an explicit empty list
-/// (show no fields), so it round-trips as `Option`.
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct RawDisplay {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    title: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    subtitle: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    fields: Option<Vec<String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    color: Option<ColorRole>,
 }
 
 /// One row inside a metric view's `metrics:` list.
@@ -359,20 +345,10 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
         },
     };
 
-    let display = raw
-        .display
-        .map(|block| DisplayConfig {
-            title: block.title,
-            subtitle: block.subtitle,
-            fields: block.fields,
-            color: block.color,
-        })
-        .unwrap_or_default();
-
     Ok(View {
         id: raw.id,
         where_clauses: raw.where_clauses,
-        display,
+        display: raw.display.unwrap_or_default(),
         kind,
     })
 }
@@ -543,16 +519,12 @@ fn raw_view_from(view: &View) -> RawView {
 
 /// Emit a `display:` block only when at least one role is set, so views
 /// that rely entirely on config defaults stay free of the empty key.
-fn raw_display_from(display: &DisplayConfig) -> Option<RawDisplay> {
+fn raw_display_from(display: &DisplayConfig) -> Option<DisplayConfig> {
     if *display == DisplayConfig::default() {
-        return None;
+        None
+    } else {
+        Some(display.clone())
     }
-    Some(RawDisplay {
-        title: display.title.clone(),
-        subtitle: display.subtitle.clone(),
-        fields: display.fields.clone(),
-        color: display.color.clone(),
-    })
 }
 
 fn raw_metric_row_from(row: &MetricRow) -> RawMetricRow {
@@ -569,6 +541,7 @@ fn raw_metric_row_from(row: &MetricRow) -> RawMetricRow {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::views::ColorRole;
 
     fn parse_single(yaml: &str) -> View {
         let mut views = parse_views(yaml).unwrap().views;

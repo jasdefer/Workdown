@@ -12,6 +12,7 @@ use crate::model::schema::{
     ConditionValue, CountConstraint, DefaultValue, FieldDefinition, FieldType, FieldTypeConfig,
     Generator, NegationValue, RawFieldDefinition, RawRule, RawSchema, Rule, Schema,
 };
+use crate::model::views::COLOR_NONE_SENTINEL;
 
 // ── Public API ────────────────────────────────────────────────────────
 
@@ -179,11 +180,11 @@ fn validate_fields(
             ));
         }
 
-        // `none` is the sentinel display roles use as their off switch
-        // (e.g. `display: { color: none }` in views.yaml). A field with
-        // that name could never be referenced there — the sentinel
-        // always wins — so reject it at the source instead.
-        if name == "none" {
+        // The sentinel display roles use as their off switch (e.g.
+        // `display: { color: none }` in views.yaml). A field with that
+        // name could never be referenced there — the sentinel always
+        // wins — so reject it at the source instead.
+        if name == COLOR_NONE_SENTINEL {
             errors.push(field_error(
                 name,
                 "'none' is a reserved name (display roles use it to mean 'no field')",

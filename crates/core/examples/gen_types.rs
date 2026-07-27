@@ -26,7 +26,7 @@ use workdown_core::model::diagnostic::{
 };
 use workdown_core::model::field_value::FieldValue;
 use workdown_core::model::schema::{FieldType, Severity};
-use workdown_core::model::views::{Aggregate, Bucket, ViewSummary, ViewType};
+use workdown_core::model::views::{Aggregate, Bucket, DisplayConfig, ViewSummary, ViewType};
 use workdown_core::model::WorkItemId;
 use workdown_core::mutation_data::{
     CreateItem, CreateItemResult, CreateView, FieldMutation, FieldMutationResult, SetViewFilter,
@@ -75,6 +75,7 @@ const ALL_TYPES: &[&str] = &[
     "FieldType",
     "ViewType",
     "ViewSummary",
+    "DisplayConfig",
     "Aggregate",
     "Bucket",
     "SchemaData",
@@ -162,6 +163,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_type::<FieldType>(&target_dir)?;
     write_type::<ViewType>(&target_dir)?;
     write_type::<ViewSummary>(&target_dir)?;
+    write_type::<DisplayConfig>(&target_dir)?;
     write_type::<Aggregate>(&target_dir)?;
     write_type::<Bucket>(&target_dir)?;
 

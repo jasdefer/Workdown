@@ -9,31 +9,40 @@
 // free — a views.yaml change still re-renders, just with the override
 // still applied on top.
 
-export interface DisplayOverride {
-	title?: string;
-	subtitle?: string;
-	/**
-	 * Overriding field list. This bar treats an empty selection as unset
-	 * (the server-side wire format can also express an explicit "show no
-	 * fields" via `[]`, but the bar offers no affordance for it yet).
-	 */
-	fields?: string[];
-	/** A color-typed field name, or the sentinel 'none' for no tint. */
-	color?: string;
-}
+import type { DisplayConfig } from '$lib/api/generated/DisplayConfig';
+
+/**
+ * A partial DisplayConfig — the same wire shape the server's
+ * `?display=` parameter deserializes (generated from the Rust type, so
+ * the two cannot drift). `color` carries a color-typed field name or
+ * the sentinel `'none'` (no tint).
+ */
+export type DisplayOverride = DisplayConfig;
 
 function storageKey(viewId: string): string {
 	return `workdown.display.${viewId}`;
 }
 
+/**
+ * Copy carrying only the set roles — the single definition of "set"
+ * shared by emptiness checks and the wire format. An empty `fields`
+ * array counts as unset here: the Display bar's multi-select cannot
+ * express "show no fields", so an empty selection means "configured"
+ * (the wire format itself can express `[]`; the bar offers no
+ * affordance for it yet).
+ */
+function setRoles(override: DisplayOverride): DisplayOverride {
+	const cleaned: DisplayOverride = {};
+	if (override.title !== undefined) cleaned.title = override.title;
+	if (override.subtitle !== undefined) cleaned.subtitle = override.subtitle;
+	if (override.fields !== undefined && override.fields.length > 0) cleaned.fields = override.fields;
+	if (override.color !== undefined) cleaned.color = override.color;
+	return cleaned;
+}
+
 /** Whether the override sets any role at all. */
 export function isEmptyOverride(override: DisplayOverride): boolean {
-	return (
-		override.title === undefined &&
-		override.subtitle === undefined &&
-		(override.fields === undefined || override.fields.length === 0) &&
-		override.color === undefined
-	);
+	return Object.keys(setRoles(override)).length === 0;
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -96,11 +105,5 @@ export function saveDisplayOverride(viewId: string, override: DisplayOverride | 
 
 /** The `?display=` parameter value for an override (server-side JSON shape). */
 export function displayOverrideParam(override: DisplayOverride): string {
-	// Drop unset keys so the server-side partial only carries set roles.
-	const wire: DisplayOverride = {};
-	if (override.title !== undefined) wire.title = override.title;
-	if (override.subtitle !== undefined) wire.subtitle = override.subtitle;
-	if (override.fields !== undefined && override.fields.length > 0) wire.fields = override.fields;
-	if (override.color !== undefined) wire.color = override.color;
-	return JSON.stringify(wire);
+	return JSON.stringify(setRoles(override));
 }

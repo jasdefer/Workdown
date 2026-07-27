@@ -72,19 +72,28 @@ pub(crate) enum RoleViolation {
 /// Check every role reference in one [`DisplayConfig`] against the
 /// schema. Returns one violation per problem found; does not stop at
 /// the first.
+///
+/// The config is destructured so a role added to [`DisplayConfig`]
+/// fails to compile here rather than silently going unvalidated.
 pub(crate) fn check_display_roles(display: &DisplayConfig, schema: &Schema) -> Vec<RoleViolation> {
+    let DisplayConfig {
+        title,
+        subtitle,
+        fields,
+        color,
+    } = display;
     let mut violations = Vec::new();
 
-    if let Some(field_name) = display.title.as_deref() {
+    if let Some(field_name) = title.as_deref() {
         check_text_reference(DisplayRole::Title, field_name, schema, &mut violations);
     }
-    if let Some(field_name) = display.subtitle.as_deref() {
+    if let Some(field_name) = subtitle.as_deref() {
         check_text_reference(DisplayRole::Subtitle, field_name, schema, &mut violations);
     }
-    for field_name in display.fields.iter().flatten() {
+    for field_name in fields.iter().flatten() {
         check_text_reference(DisplayRole::Fields, field_name, schema, &mut violations);
     }
-    if let Some(ColorRole::Field(field_name)) = &display.color {
+    if let Some(ColorRole::Field(field_name)) = color {
         check_color_reference(field_name, schema, &mut violations);
     }
 
