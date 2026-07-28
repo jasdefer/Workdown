@@ -3,8 +3,10 @@
 //! Work items are structured Markdown files (YAML frontmatter + freeform body).
 //! The repo is the single source of truth.
 
+pub mod compute_check;
 pub mod config_check;
 mod display_check;
+pub mod expression;
 pub mod generators;
 pub mod item_data;
 pub mod model;

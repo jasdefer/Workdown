@@ -44,6 +44,9 @@ pub fn parse_errors_to_diagnostics(
     let detail = match error {
         ResourcesLoadError::ReadFailed(io) => io.to_string(),
         ResourcesLoadError::InvalidYaml(yaml) => yaml.to_string(),
+        // The remaining variants (bad section, bad constant) carry their
+        // context — section or constant name — in their Display form.
+        other => other.to_string(),
     };
     vec![Diagnostic::file(
         Severity::Error,

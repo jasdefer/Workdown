@@ -123,6 +123,19 @@ pub enum ItemDiagnosticKind {
     /// An aggregate-configured field with `error_on_missing: true` has
     /// no value at this leaf (manual or inherited from an ancestor).
     AggregateMissingValue { field: String },
+
+    /// A computed field could not be evaluated on this item because
+    /// inputs are missing. Emitted when the field's compute config sets
+    /// `error_on_missing: true`, and when the field is `required` and
+    /// the item ended up without a value — error severity either way.
+    ComputeMissingInputs {
+        field: String,
+        missing_inputs: Vec<String>,
+    },
+
+    /// A computed field's evaluation failed on this item's actual
+    /// values (division by zero, overflow, non-finite result).
+    ComputeFailed { field: String, detail: String },
 }
 
 // ── Files scope ──────────────────────────────────────────────────────
@@ -329,6 +342,29 @@ pub enum ConfigDiagnosticKind {
         /// Human-readable expected type, e.g. `"color"`.
         expected: String,
     },
+
+    /// A `compute:` expression in `schema.yaml` failed type checking:
+    /// an unknown field or constant reference, a reference to a type
+    /// without arithmetic, or an operator applied outside the algebra.
+    /// `detail` is the rendered type-check error, column included.
+    ComputeInvalidExpression {
+        field: String,
+        expression: String,
+        detail: String,
+    },
+
+    /// A `compute:` expression type-checks, but its result type doesn't
+    /// fit the field's declared type.
+    ComputeResultTypeMismatch {
+        field: String,
+        expression: String,
+        result_type: String,
+        declared_type: String,
+    },
+
+    /// `compute:` expressions reference each other in a loop. `chain`
+    /// lists the fields in order, first one repeated at the end.
+    ComputeCycle { chain: Vec<String> },
 }
 
 // ── Field value errors ───────────────────────────────────────────────
@@ -500,12 +536,15 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
         | ConfigDiagnosticKind::ViewMetricRowCountWithValue { view_id, .. }
         | ConfigDiagnosticKind::ViewMetricRowWhereParseError { view_id, .. } => Some(view_id),
 
-        // Config-defaults diagnostics are project-wide, not pinned to a
-        // view. Returning `None` keeps them out of the server's
-        // per-view "this view is unrenderable" tier — every view still
-        // renders on its fallback.
+        // Config-defaults and schema-compute diagnostics are
+        // project-wide, not pinned to a view. Returning `None` keeps
+        // them out of the server's per-view "this view is unrenderable"
+        // tier — every view still renders on its fallback.
         ConfigDiagnosticKind::ConfigDisplayUnknownField { .. }
-        | ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch { .. } => None,
+        | ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch { .. }
+        | ConfigDiagnosticKind::ComputeInvalidExpression { .. }
+        | ConfigDiagnosticKind::ComputeResultTypeMismatch { .. }
+        | ConfigDiagnosticKind::ComputeCycle { .. } => None,
     }
 }
 
@@ -598,6 +637,23 @@ impl std::fmt::Display for ItemDiagnosticKind {
                     f,
                     "aggregate field '{field}' is missing (no value here or in any ancestor)"
                 )
+            }
+            ItemDiagnosticKind::ComputeMissingInputs {
+                field,
+                missing_inputs,
+            } => {
+                write!(
+                    f,
+                    "computed field '{field}' could not be evaluated: missing {}",
+                    missing_inputs
+                        .iter()
+                        .map(|input| format!("'{input}'"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            ItemDiagnosticKind::ComputeFailed { field, detail } => {
+                write!(f, "computed field '{field}' failed to evaluate: {detail}")
             }
         }
     }
@@ -793,6 +849,30 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                 f,
                 "config default '{slot}': field '{field_name}' has type {actual_type}, expected {expected}"
             ),
+            ConfigDiagnosticKind::ComputeInvalidExpression {
+                field,
+                expression,
+                detail,
+            } => write!(
+                f,
+                "field '{field}', compute expression '{expression}': {detail}"
+            ),
+            ConfigDiagnosticKind::ComputeResultTypeMismatch {
+                field,
+                expression,
+                result_type,
+                declared_type,
+            } => write!(
+                f,
+                "field '{field}', compute expression '{expression}': result type is {result_type}, but the field is declared {declared_type}"
+            ),
+            ConfigDiagnosticKind::ComputeCycle { chain } => {
+                write!(
+                    f,
+                    "compute expressions form a reference cycle: {}",
+                    chain.join(" -> ")
+                )
+            }
         }
     }
 }

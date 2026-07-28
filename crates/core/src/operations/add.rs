@@ -91,8 +91,13 @@ pub fn run_add(
     tracing::debug!(schema = %schema_path.display(), "loading schema");
     let schema = crate::parser::schema::load_schema(&schema_path)?;
 
+    // A missing or malformed resources.yaml degrades to empty resources
+    // here — `workdown validate` owns reporting it.
+    let (resources, _) =
+        crate::resources_check::load_and_check(&project_root.join(&config.paths.resources));
+
     tracing::debug!(items = %items_path.display(), "loading work items");
-    let store = crate::store::Store::load(&items_path, &schema)?;
+    let store = crate::store::Store::load_with_resources(&items_path, &schema, &resources)?;
 
     // Snapshot pre-mutation diagnostics so the post-write diff can tell
     // mutation-introduced warnings apart from pre-existing project state.
@@ -172,10 +177,10 @@ pub fn run_add(
     })?;
 
     // Reload the store from disk: the new file is now part of the items
-    // directory, so a fresh `Store::load` resolves aggregates and reverse
-    // links correctly. Avoids in-memory `insert` which can't recompute
+    // directory, so a fresh load resolves aggregates and reverse links
+    // correctly. Avoids in-memory `insert` which can't recompute
     // aggregates without per-field provenance.
-    let reloaded = crate::store::Store::load(&items_path, &schema)?;
+    let reloaded = crate::store::Store::load_with_resources(&items_path, &schema, &resources)?;
 
     // Surface every diagnostic from the reload plus every rule
     // violation against the post-write store. We don't filter to "just

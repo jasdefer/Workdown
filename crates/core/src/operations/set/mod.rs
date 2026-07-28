@@ -22,6 +22,7 @@ use std::path::{Path, PathBuf};
 
 use crate::model::config::Config;
 use crate::model::diagnostic::Diagnostic;
+use crate::model::resources::Resources;
 use crate::model::schema::{FieldDefinition, FieldType, Schema};
 use crate::model::WorkItemId;
 use crate::operations::frontmatter_io::{build_frontmatter_yaml, write_file_atomically};
@@ -229,6 +230,10 @@ pub fn run_set(
 /// Loaded inputs and pre-mutation state, shared between compute and finalize.
 struct SetContext {
     schema: Schema,
+    /// Resources feed `$constants.<name>` in compute expressions —
+    /// loaded once so the pre- and post-write snapshots derive the same
+    /// values.
+    resources: Resources,
     items_path: PathBuf,
     file_path: PathBuf,
     frontmatter: HashMap<String, serde_yaml::Value>,
@@ -264,7 +269,11 @@ fn preflight(
     check_mode_valid(operation, field_definition, field)?;
 
     let items_path = project_root.join(&config.paths.work_items);
-    let store = crate::store::Store::load(&items_path, &schema)?;
+    // A missing or malformed resources.yaml degrades to empty resources
+    // here — `workdown validate` owns reporting it.
+    let (resources, _) =
+        crate::resources_check::load_and_check(&project_root.join(&config.paths.resources));
+    let store = crate::store::Store::load_with_resources(&items_path, &schema, &resources)?;
 
     let work_item = store
         .get(id.as_str())
@@ -299,6 +308,7 @@ fn preflight(
 
     Ok(SetContext {
         schema,
+        resources,
         items_path,
         file_path,
         frontmatter,
@@ -517,7 +527,11 @@ fn finalize_mutation(
     // drives `mutation_caused_warning` — pre-existing problems elsewhere
     // in the project remain visible (per the milestone's "always show
     // all" convention) but don't fail this mutation.
-    let reloaded = crate::store::Store::load(&context.items_path, &context.schema)?;
+    let reloaded = crate::store::Store::load_with_resources(
+        &context.items_path,
+        &context.schema,
+        &context.resources,
+    )?;
     let mut post_diagnostics: Vec<Diagnostic> = reloaded.diagnostics().to_vec();
     post_diagnostics.extend(crate::rules::evaluate(&reloaded, &context.schema));
 

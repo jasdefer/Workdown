@@ -99,7 +99,17 @@
         },
         "aggregate": {
           "$ref": "#/$defs/aggregate",
-          "description": "Aggregation config for computed fields that propagate up the parent chain."
+          "description": "Aggregation config for aggregated fields that propagate up the parent chain."
+        },
+        "compute": {
+          "$ref": "#/$defs/compute",
+          "description": "Compute config for computed fields: the value derives from an expression over the item's other fields."
+        }
+      },
+      "dependentSchemas": {
+        "compute": {
+          "not": { "required": ["default"] },
+          "description": "'compute' and 'default' cannot be combined — both fill in absent values."
         }
       },
       "allOf": [
@@ -262,6 +272,31 @@
               "aggregate": false
             }
           }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["string", "choice", "multichoice", "color", "boolean", "list", "link", "links"] } }
+          },
+          "then": {
+            "properties": {
+              "compute": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["integer", "float", "duration"] } }
+          },
+          "then": {
+            "properties": {
+              "compute": {
+                "anyOf": [
+                  { "type": "string" },
+                  { "not": { "required": ["round"] } }
+                ]
+              }
+            }
+          }
         }
       ],
       "additionalProperties": false
@@ -290,6 +325,38 @@
         }
       },
       "additionalProperties": false
+    },
+
+    "compute": {
+      "description": "Computed-field config: derive this field's value from an expression over the item's other fields, project constants ($constants.<name> from resources.yaml), and numeric literals, combined with + - * / and parentheses. Only valid for integer, float, date, and duration fields. A manually set frontmatter value always wins; compute fills only absent values.",
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "The expression, e.g. 'start_date + duration' or 'effort * $constants.daily_rate'."
+        },
+        {
+          "type": "object",
+          "required": ["expression"],
+          "properties": {
+            "expression": {
+              "type": "string",
+              "description": "The expression, e.g. 'start_date + duration'."
+            },
+            "round": {
+              "type": "string",
+              "enum": ["nearest", "floor", "ceil"],
+              "default": "nearest",
+              "description": "How a date-valued result with a sub-day remainder lands on a calendar day: floor = the last fully-used day, ceil = the day the work spills into. Only valid on date fields."
+            },
+            "error_on_missing": {
+              "type": "boolean",
+              "default": false,
+              "description": "Report a diagnostic when an item is missing an expression input instead of silently leaving the field absent."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
 
     "rules": {

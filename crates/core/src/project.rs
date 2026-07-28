@@ -108,12 +108,21 @@ pub fn load_project(
         detail: e.to_string(),
     })?;
 
-    let store = Store::load(&items_path, &schema).map_err(|e| LoadError::Items {
-        path: items_path.clone(),
-        detail: e.to_string(),
+    // Load resources.yaml before the store: compute expressions resolve
+    // `$constants.<name>` during the store's derive passes. Absent is
+    // fine, a malformed file becomes a diagnostic rather than a hard
+    // load failure.
+    let (resources, resources_diagnostics) = resources_check::load_and_check(&resources_path);
+
+    let store = Store::load_with_resources(&items_path, &schema, &resources).map_err(|e| {
+        LoadError::Items {
+            path: items_path.clone(),
+            detail: e.to_string(),
+        }
     })?;
 
     let mut diagnostics: Vec<Diagnostic> = store.diagnostics().to_vec();
+    diagnostics.extend(resources_diagnostics);
     diagnostics.extend(store.detect_cycles(&schema));
     diagnostics.extend(crate::rules::evaluate(&store, &schema));
 
@@ -123,10 +132,13 @@ pub fn load_project(
     let (views, views_diagnostics) = views_check::load_and_check(&views_path, &schema);
     diagnostics.extend(views_diagnostics);
 
-    // Load resources.yaml the same way: absent is fine, a malformed file
-    // becomes a diagnostic rather than a hard load failure.
-    let (resources, resources_diagnostics) = resources_check::load_and_check(&resources_path);
-    diagnostics.extend(resources_diagnostics);
+    // Compute configs need both schema and resources (constant types),
+    // so their reference/type/cycle checks run here, not at schema parse.
+    diagnostics.extend(crate::compute_check::evaluate(
+        &schema,
+        &resources,
+        &schema_path,
+    ));
 
     // Validate config.yaml's project-wide display-role defaults against
     // the schema. No file read here — the parsed config is already in

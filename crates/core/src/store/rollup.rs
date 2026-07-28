@@ -7,10 +7,12 @@
 //! values for the apply pass. An optional coverage pass surfaces
 //! `error_on_missing` diagnostics for tree-leaves with no covering value.
 //!
-//! Computed values are written back into `WorkItem.fields` and become
+//! Aggregated values are written back into `WorkItem.fields` and become
 //! indistinguishable from manually-set values for downstream consumers.
-//! `Store::load` runs this once per load on a freshly-coerced state, so we
-//! never have to track per-field provenance.
+//! The derive orchestrator (`store::derive`) runs [`run_for_field`] once
+//! per aggregate-configured field, in field-dependency order, on a
+//! freshly-coerced state — so we never have to track per-field
+//! provenance.
 //!
 //! Cycles are guarded by a per-walk visited set; the cycle detector emits
 //! its own diagnostic separately.
@@ -20,81 +22,25 @@ use std::collections::{HashMap, HashSet};
 use chrono::{Datelike, NaiveDate};
 
 use crate::model::diagnostic::{Diagnostic, ItemDiagnosticKind};
-use crate::model::schema::{AggregateFunction, Schema, Severity};
+use crate::model::schema::{AggregateFunction, Severity};
 use crate::model::{FieldValue, WorkItem, WorkItemId};
 use crate::walker::walk_up_in;
 
 /// Link field walked when an aggregate config doesn't set `over`.
-const DEFAULT_OVER_FIELD: &str = "parent";
+pub(super) const DEFAULT_OVER_FIELD: &str = "parent";
 
-// ── Public entry ────────────────────────────────────────────────────
-
-/// Run the rollup over every aggregate-configured field in the schema.
-/// Mutates `items` in place; returns chain-conflict and (when configured)
-/// missing-value diagnostics.
-pub(crate) fn run(
-    items: &mut HashMap<WorkItemId, WorkItem>,
-    reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
-    schema: &Schema,
-) -> Vec<Diagnostic> {
-    let specs: Vec<AggregateFieldSpec> = schema
-        .fields
-        .iter()
-        .filter_map(|(name, field_def)| {
-            field_def.aggregate.as_ref().map(|cfg| AggregateFieldSpec {
-                name: name.clone(),
-                function: cfg.function,
-                over: cfg
-                    .over
-                    .clone()
-                    .unwrap_or_else(|| DEFAULT_OVER_FIELD.to_owned()),
-                error_on_missing: cfg.error_on_missing,
-            })
-        })
-        .collect();
-
-    let mut diagnostics = Vec::new();
-    for spec in &specs {
-        run_for_field(items, reverse_links, spec, &mut diagnostics);
-    }
-
-    // Post-compute required check: for any field that is both `required:
-    // true` and aggregate-configured, every item must end up with a value
-    // (manual or computed). Coercion deferred this check to here.
-    for (field_name, field_def) in &schema.fields {
-        if !field_def.required || field_def.aggregate.is_none() {
-            continue;
-        }
-        let mut missing: Vec<(&WorkItemId, &WorkItem)> = items
-            .iter()
-            .filter(|(_, item)| !item.fields.contains_key(field_name))
-            .collect();
-        missing.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
-        for (item_id, item) in missing {
-            diagnostics.push(Diagnostic::item(
-                Severity::Error,
-                item.source_path.clone(),
-                item_id.clone(),
-                ItemDiagnosticKind::MissingRequired {
-                    field: field_name.clone(),
-                },
-            ));
-        }
-    }
-
-    diagnostics
-}
-
-struct AggregateFieldSpec {
-    name: String,
-    function: AggregateFunction,
-    over: String,
-    error_on_missing: bool,
+/// One aggregate-configured field, with `over` already resolved to a
+/// concrete link field. Built by the derive orchestrator.
+pub(super) struct AggregateFieldSpec {
+    pub(super) name: String,
+    pub(super) function: AggregateFunction,
+    pub(super) over: String,
+    pub(super) error_on_missing: bool,
 }
 
 // ── Per-field pass ──────────────────────────────────────────────────
 
-fn run_for_field(
+pub(super) fn run_for_field(
     items: &mut HashMap<WorkItemId, WorkItem>,
     reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
     spec: &AggregateFieldSpec,
@@ -415,10 +361,27 @@ mod tests {
     use super::*;
     use crate::model::diagnostic::DiagnosticBody;
     use crate::model::schema::{
-        AggregateConfig, AggregateFunction, FieldDefinition, FieldTypeConfig,
+        AggregateConfig, AggregateFunction, FieldDefinition, FieldTypeConfig, Schema,
     };
     use indexmap::IndexMap;
     use std::path::PathBuf;
+
+    /// The all-fields entry point these scenarios were written against
+    /// now lives in the derive orchestrator; this shim keeps them
+    /// reading naturally while exercising the real pipeline.
+    fn run(
+        items: &mut HashMap<WorkItemId, WorkItem>,
+        reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
+        schema: &Schema,
+    ) -> Vec<Diagnostic> {
+        crate::store::derive::run(
+            items,
+            reverse_links,
+            schema,
+            &IndexMap::new(),
+            &HashSet::new(),
+        )
+    }
 
     // ── apply_aggregate (table-driven) ──────────────────────────────
 

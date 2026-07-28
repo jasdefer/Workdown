@@ -271,7 +271,10 @@ mod tests {
                 },
             ],
         );
-        Resources { sections }
+        Resources {
+            sections,
+            constants: IndexMap::new(),
+        }
     }
 
     #[test]

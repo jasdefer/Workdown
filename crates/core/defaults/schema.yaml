@@ -75,7 +75,7 @@ fields:
     allow_cycles: true
     inverse: duplicated_by
 
-  # Computed fields — set manually on leaf items, computed automatically
+  # Aggregated fields — set manually on leaf items, computed automatically
   # up the link chain named in `over` (defaults to `parent`). Uncomment
   # and adjust as needed:
   #
@@ -94,6 +94,23 @@ fields:
   #     function: max
   #     over: parent
   #     error_on_missing: false
+
+  # Computed fields — same item, cross-field: derive a value at load
+  # time from an expression over the item's other fields and constants
+  # from resources.yaml. Never written to files; a hand-written value
+  # always wins. See docs/schema.md. Uncomment and adjust as needed —
+  # keep a single `end_date` definition: to combine with the aggregate
+  # block above, put `compute:` and `aggregate:` on one definition
+  # (compute fills leaves, the rollup fills parents):
+  #
+  # duration:
+  #   type: duration
+  #   required: false
+  #
+  # end_date:
+  #   type: date
+  #   required: false
+  #   compute: start_date + duration
 
 # ── Rules ──────────────────────────────────────────────────
 # Cross-field, cross-item, and collection-wide validation.

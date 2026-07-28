@@ -13,6 +13,8 @@ use std::collections::HashMap;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
+use crate::expression::Expression;
+
 // Re-export rule-engine types so existing `use crate::model::schema::X` paths keep working.
 pub use super::assertion::{Assertion, AssertionOperator};
 pub use super::condition::{Condition, ConditionOperator, ConditionValue, NegationValue};
@@ -87,8 +89,11 @@ pub struct FieldDefinition {
     /// Resource section in `resources.yaml` that constrains this field's values.
     pub resource: Option<String>,
 
-    /// Aggregation config for computed fields.
+    /// Aggregation config for aggregated fields (cross-item, same field).
     pub aggregate: Option<AggregateConfig>,
+
+    /// Compute config for computed fields (same item, cross-field).
+    pub compute: Option<ComputeConfig>,
 }
 
 impl FieldDefinition {
@@ -102,6 +107,7 @@ impl FieldDefinition {
             default: None,
             resource: None,
             aggregate: None,
+            compute: None,
         }
     }
 
@@ -235,9 +241,16 @@ pub(crate) struct RawFieldDefinition {
     #[serde(default)]
     pub resource: Option<String>,
 
-    /// Aggregation config for computed fields.
+    /// Aggregation config for aggregated fields.
     #[serde(default)]
     pub aggregate: Option<AggregateConfig>,
+
+    /// Compute config for computed fields. Either an expression string
+    /// (`compute: start_date + duration`) or a mapping with options —
+    /// kept raw here and interpreted type-aware in the validation pass,
+    /// like `min`/`max`.
+    #[serde(default)]
+    pub compute: Option<serde_yaml::Value>,
 }
 
 /// The 12 built-in field types.
@@ -344,7 +357,8 @@ impl<'de> Deserialize<'de> for DefaultValue {
 
 // ── Aggregate config ──────────────────────────────────────────────────
 
-/// Configuration for a computed/aggregated field.
+/// Configuration for an aggregated field (cross-item, same field —
+/// values roll up a link chain).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AggregateConfig {
@@ -393,6 +407,42 @@ impl std::fmt::Display for AggregateFunction {
         };
         f.write_str(s)
     }
+}
+
+// ── Compute config ────────────────────────────────────────────────────
+
+/// Configuration for a computed field (same item, cross-field — the
+/// value derives from an expression over the item's other fields and
+/// project constants).
+///
+/// Produced by the schema parser from the raw `compute:` value; the
+/// expression is already parsed here, but *not* yet type-checked —
+/// that needs the constants in `resources.yaml` and happens in
+/// `compute_check`.
+#[derive(Debug, Clone)]
+pub struct ComputeConfig {
+    /// The parsed expression tree.
+    pub expression: Expression,
+    /// The expression exactly as written in `schema.yaml`, kept so
+    /// diagnostics can quote it.
+    pub source: String,
+    /// How a date-valued result with a sub-day remainder lands on a
+    /// calendar day.
+    pub round: RoundMode,
+    /// Whether an item missing an expression input gets a diagnostic
+    /// instead of silently lacking the computed value.
+    pub error_on_missing: bool,
+}
+
+/// Rounding for date-valued compute results with a sub-day remainder.
+/// `Floor` means "the last fully-used day", `Ceil` means "the day the
+/// work spills into".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RoundMode {
+    #[default]
+    Nearest,
+    Floor,
+    Ceil,
 }
 
 // ── Field-map predicates ────────────────────────────────────────────

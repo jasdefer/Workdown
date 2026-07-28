@@ -44,7 +44,7 @@ fields:
     allow_cycles: false
     inverse: dependents
 
-  # Computed fields — uncomment and adjust as needed:
+  # Aggregated fields — uncomment and adjust as needed:
   
   start_date:
     type: date
