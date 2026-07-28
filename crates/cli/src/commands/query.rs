@@ -8,6 +8,7 @@ use workdown_core::parser;
 use workdown_core::query;
 use workdown_core::query::format::DelimitedOptions;
 use workdown_core::query::types::{Predicate, QueryRequest, SortDirection, SortSpec};
+use workdown_core::resources_check;
 use workdown_core::store::Store;
 
 /// In-cell separator for list/multichoice/links values in delimited output.
@@ -26,7 +27,12 @@ pub fn run_query(
     let items_path = project_root.join(&config.paths.work_items);
 
     let schema = parser::schema::load_schema(&schema_path)?;
-    let store = Store::load(&items_path, &schema)?;
+    // Resources feed `$constants.<name>` in compute expressions; a
+    // missing or malformed resources.yaml degrades to empty resources
+    // here — `workdown validate` owns reporting it.
+    let (resources, _) =
+        resources_check::load_and_check(&project_root.join(&config.paths.resources));
+    let store = Store::load_with_resources(&items_path, &schema, &resources)?;
 
     // Parse --where clauses into a single predicate (ANDed together).
     let predicate = parse_where_clauses(where_clauses)?;

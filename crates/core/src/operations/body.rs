@@ -92,7 +92,11 @@ pub fn run_body_replace(
     let schema = parser::schema::load_schema(&schema_path)?;
 
     let items_path = project_root.join(&config.paths.work_items);
-    let store = crate::store::Store::load(&items_path, &schema)?;
+    // A missing or malformed resources.yaml degrades to empty resources
+    // here — `workdown validate` owns reporting it.
+    let (resources, _) =
+        crate::resources_check::load_and_check(&project_root.join(&config.paths.resources));
+    let store = crate::store::Store::load_with_resources(&items_path, &schema, &resources)?;
 
     let work_item = store
         .get(id.as_str())
@@ -130,7 +134,7 @@ pub fn run_body_replace(
     // introduce a new warning (rules and schema only look at frontmatter),
     // so there is no pre/post diff — the post-write snapshot is what the
     // user sees.
-    let reloaded = crate::store::Store::load(&items_path, &schema)?;
+    let reloaded = crate::store::Store::load_with_resources(&items_path, &schema, &resources)?;
     let mut post_diagnostics: Vec<Diagnostic> = reloaded.diagnostics().to_vec();
     post_diagnostics.extend(crate::rules::evaluate(&reloaded, &schema));
 

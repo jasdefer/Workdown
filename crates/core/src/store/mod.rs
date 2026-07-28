@@ -48,8 +48,10 @@ pub struct Store {
 impl Store {
     /// Scan `items_dir` for `.md` files and load them into the store,
     /// without project resources. Computed fields whose expressions
-    /// reference `$constants.<name>` stay absent under this entry point;
-    /// use [`Store::load_with_resources`] where constants matter.
+    /// reference `$constants.<name>` stay absent under this entry point
+    /// (their configs fail the compute check against empty resources) —
+    /// production code paths load through [`Store::load_with_resources`];
+    /// this convenience exists for tests and resource-free callers.
     ///
     /// Only returns `Err` if the directory itself cannot be read.
     /// Per-file and per-field problems are collected in [`Store::diagnostics`].
@@ -157,13 +159,19 @@ impl Store {
 
         // 5. Derive passes: evaluate compute expressions and aggregate
         // rollups per field in dependency order, emitting their
-        // diagnostics. Mutates `items` in place so downstream consumers
-        // see manual + derived values indistinguishably.
+        // diagnostics. Compute fields whose config fails the cross-file
+        // check are skipped entirely — the check's findings are schema
+        // diagnostics (surfaced by `compute_check::evaluate` at project
+        // load), not per-item ones. Mutates `items` in place so
+        // downstream consumers see manual + derived values
+        // indistinguishably.
+        let disabled_compute_fields = crate::compute_check::failed_fields(schema, resources);
         diagnostics.extend(derive::run(
             &mut items,
             &reverse_links,
             schema,
             &resources.constants,
+            &disabled_compute_fields,
         ));
 
         Ok(Store {

@@ -16,8 +16,9 @@
 //! Failure handling per item: missing inputs skip silently (or emit an
 //! error when the config sets `error_on_missing`); runtime failures on
 //! actual values (division by zero, overflow, non-finite results) emit
-//! a warning; type-level impossibilities skip silently because
-//! `compute_check` already reported them against the schema.
+//! a warning. Configs that failed the schema-level check never reach
+//! this pass — the derive orchestrator skips them — so the remaining
+//! type-level error paths below are defensive mappings to silent skips.
 
 use std::collections::HashMap;
 
@@ -31,19 +32,24 @@ use crate::model::{FieldValue, WorkItem, WorkItemId};
 
 const SECONDS_PER_DAY: i64 = 86_400;
 
-/// Evaluate `config` for every eligible item, writing results into
-/// `items`. `leaves_only_over` carries the aggregate's resolved `over`
-/// link when the field also aggregates — restricting the pass to leaves
-/// of that hierarchy.
-#[allow(clippy::too_many_arguments)]
+/// One compute-configured field, resolved by the derive orchestrator —
+/// the compute counterpart to [`super::rollup::AggregateFieldSpec`].
+pub(super) struct ComputeFieldSpec<'a> {
+    pub(super) name: &'a str,
+    pub(super) declared_type: FieldType,
+    pub(super) config: &'a ComputeConfig,
+    /// The aggregate's resolved `over` link when the field also
+    /// aggregates — restricting the pass to leaves of that hierarchy.
+    pub(super) leaves_only_over: Option<String>,
+}
+
+/// Evaluate `spec`'s expression for every eligible item, writing
+/// results into `items`.
 pub(super) fn run_for_field(
     items: &mut HashMap<WorkItemId, WorkItem>,
     reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
     constants: &IndexMap<String, FieldValue>,
-    field_name: &str,
-    declared_type: FieldType,
-    config: &ComputeConfig,
-    leaves_only_over: Option<&str>,
+    spec: &ComputeFieldSpec<'_>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     // Sorted for deterministic diagnostic order, like the rollup.
@@ -54,24 +60,24 @@ pub(super) fn run_for_field(
         let Some(item) = items.get(&item_id) else {
             continue;
         };
-        if item.fields.contains_key(field_name) {
+        if item.fields.contains_key(spec.name) {
             continue; // manual value wins; compute fills only absence
         }
-        if let Some(over) = leaves_only_over {
+        if let Some(over) = &spec.leaves_only_over {
             if !is_leaf(reverse_links, &item_id, over) {
                 continue; // non-leaf of a compute+aggregate field: rollup's job
             }
         }
 
-        let missing = missing_inputs(item, config);
+        let missing = missing_inputs(item, spec.config);
         if !missing.is_empty() {
-            if config.error_on_missing {
+            if spec.config.error_on_missing {
                 diagnostics.push(Diagnostic::item(
                     Severity::Error,
                     item.source_path.clone(),
                     item_id.clone(),
                     ItemDiagnosticKind::ComputeMissingInputs {
-                        field: field_name.to_owned(),
+                        field: spec.name.to_owned(),
                         missing_inputs: missing,
                     },
                 ));
@@ -83,8 +89,8 @@ pub(super) fn run_for_field(
             fields: &item.fields,
             constants,
         };
-        let outcome = match evaluate(&config.expression, &context) {
-            Ok(value) => match field_value_from(value, declared_type, config.round) {
+        let outcome = match evaluate(&spec.config.expression, &context) {
+            Ok(value) => match field_value_from(value, spec.declared_type, spec.config.round) {
                 Some(field_value) => Outcome::Value(field_value),
                 // A result that doesn't fit the declared type is
                 // schema-level and already reported by compute_check;
@@ -107,13 +113,13 @@ pub(super) fn run_for_field(
                 item.source_path.clone(),
                 item_id.clone(),
                 ItemDiagnosticKind::ComputeFailed {
-                    field: field_name.to_owned(),
+                    field: spec.name.to_owned(),
                     detail,
                 },
             )),
             Outcome::Value(field_value) => {
                 if let Some(item) = items.get_mut(&item_id) {
-                    item.fields.insert(field_name.to_owned(), field_value);
+                    item.fields.insert(spec.name.to_owned(), field_value);
                 }
             }
         }
@@ -203,12 +209,18 @@ fn field_value_from(
         (Value::Float(value), FieldType::Float) => Some(FieldValue::Float(value)),
         (Value::Duration(seconds), FieldType::Duration) => Some(FieldValue::Duration(seconds)),
         (Value::Timestamp(seconds), FieldType::Date) => {
-            let days = match round {
-                RoundMode::Nearest => (seconds + SECONDS_PER_DAY / 2).div_euclid(SECONDS_PER_DAY),
-                RoundMode::Floor => seconds.div_euclid(SECONDS_PER_DAY),
-                RoundMode::Ceil => (seconds + SECONDS_PER_DAY - 1).div_euclid(SECONDS_PER_DAY),
+            // The rounding shift must not wrap: a timestamp near
+            // `i64::MAX` (reachable through duration arithmetic) skips
+            // like any date outside the calendar range.
+            let shifted = match round {
+                RoundMode::Nearest => seconds.checked_add(SECONDS_PER_DAY / 2)?,
+                RoundMode::Floor => seconds,
+                RoundMode::Ceil => seconds.checked_add(SECONDS_PER_DAY - 1)?,
             };
-            let date = epoch().checked_add_signed(chrono::Duration::days(days))?;
+            let days = shifted.div_euclid(SECONDS_PER_DAY);
+            // `try_days`, not `days` — the panicking constructor rejects
+            // day counts this arithmetic can legitimately produce.
+            let date = epoch().checked_add_signed(chrono::Duration::try_days(days)?)?;
             Some(FieldValue::Date(date))
         }
         _ => None,
@@ -295,5 +307,18 @@ mod tests {
     fn non_scalar_field_values_do_not_convert() {
         assert_eq!(value_of(&FieldValue::String("x".to_owned())), None);
         assert_eq!(value_of(&FieldValue::Boolean(true)), None);
+    }
+
+    #[test]
+    fn timestamp_at_the_integer_limit_skips_instead_of_wrapping() {
+        // Nearest and Ceil shift before dividing; Floor fails on the
+        // calendar range instead. All three must skip, never wrap.
+        for round in [RoundMode::Nearest, RoundMode::Floor, RoundMode::Ceil] {
+            assert_eq!(
+                field_value_from(Value::Timestamp(i64::MAX), FieldType::Date, round),
+                None,
+                "{round:?}"
+            );
+        }
     }
 }

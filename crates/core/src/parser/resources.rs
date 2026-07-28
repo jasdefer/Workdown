@@ -174,7 +174,7 @@ fn coerce_constant(
     match type_name {
         "string" => value
             .as_str()
-            .map(|s| FieldValue::String(s.to_owned()))
+            .map(|text| FieldValue::String(text.to_owned()))
             .ok_or_else(|| invalid("value must be a string".to_owned())),
         "integer" => value
             .as_i64()
@@ -189,18 +189,18 @@ fn coerce_constant(
             .map(FieldValue::Boolean)
             .ok_or_else(|| invalid("value must be a boolean".to_owned())),
         "date" => {
-            let s = value
+            let text = value
                 .as_str()
                 .ok_or_else(|| invalid("value must be a YYYY-MM-DD string".to_owned()))?;
-            let date = NaiveDate::parse_from_str(s, "%Y-%m-%d")
-                .map_err(|_| invalid(format!("'{s}' is not a valid YYYY-MM-DD date")))?;
+            let date = NaiveDate::parse_from_str(text, "%Y-%m-%d")
+                .map_err(|_| invalid(format!("'{text}' is not a valid YYYY-MM-DD date")))?;
             Ok(FieldValue::Date(date))
         }
         "duration" => {
-            let s = value.as_str().ok_or_else(|| {
+            let text = value.as_str().ok_or_else(|| {
                 invalid("value must be a duration string (e.g. \"8h\")".to_owned())
             })?;
-            let seconds = parse_duration(s).map_err(|error| invalid(error.to_string()))?;
+            let seconds = parse_duration(text).map_err(|error| invalid(error.to_string()))?;
             Ok(FieldValue::Duration(seconds))
         }
         other => Err(ResourcesLoadError::UnsupportedConstantType {

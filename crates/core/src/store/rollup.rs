@@ -374,7 +374,13 @@ mod tests {
         reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
         schema: &Schema,
     ) -> Vec<Diagnostic> {
-        crate::store::derive::run(items, reverse_links, schema, &IndexMap::new())
+        crate::store::derive::run(
+            items,
+            reverse_links,
+            schema,
+            &IndexMap::new(),
+            &HashSet::new(),
+        )
     }
 
     // ── apply_aggregate (table-driven) ──────────────────────────────

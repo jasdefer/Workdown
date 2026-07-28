@@ -5,9 +5,13 @@
 //! (an expression's inputs before the field itself), so a chain like
 //! `effort → cost → budget` fills front to back, and a computed leaf
 //! value is in place before the same field's rollup aggregates it.
-//! Within one field, compute runs before aggregate. Cycles — already
-//! reported as schema diagnostics by `compute_check` — are simply not
-//! descended into; the fields involved end up without derived values.
+//! Within one field, compute runs before aggregate. Fields whose
+//! compute config failed the schema-level check (`compute_check`) —
+//! unknown references, type errors, cycle members — arrive in
+//! `disabled_compute_fields` and are skipped entirely, so a broken
+//! config surfaces once against `schema.yaml` and never per item. The
+//! ordering walk independently refuses to descend into cycles, so it
+//! always terminates.
 //!
 //! Ends with the deferred required check that coercion skipped for
 //! derivable fields: an item still blank on a `required` aggregate
@@ -28,12 +32,15 @@ use super::rollup;
 
 /// Run every derive pass. Mutates `items` in place; returns all
 /// diagnostics the passes produced. `constants` are the project
-/// constants from `resources.yaml`, resolved by compute expressions.
+/// constants from `resources.yaml`, resolved by compute expressions;
+/// `disabled_compute_fields` names the compute configs that failed
+/// `compute_check` and must not evaluate.
 pub(crate) fn run(
     items: &mut HashMap<WorkItemId, WorkItem>,
     reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
     schema: &Schema,
     constants: &IndexMap<String, FieldValue>,
+    disabled_compute_fields: &HashSet<String>,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -41,22 +48,20 @@ pub(crate) fn run(
         let field_definition = &schema.fields[&field_name];
 
         if let Some(config) = &field_definition.compute {
-            let leaves_only_over = field_definition.aggregate.as_ref().map(|aggregate| {
-                aggregate
-                    .over
-                    .clone()
-                    .unwrap_or_else(|| rollup::DEFAULT_OVER_FIELD.to_owned())
-            });
-            compute::run_for_field(
-                items,
-                reverse_links,
-                constants,
-                &field_name,
-                field_definition.field_type(),
-                config,
-                leaves_only_over.as_deref(),
-                &mut diagnostics,
-            );
+            if !disabled_compute_fields.contains(field_name.as_str()) {
+                let spec = compute::ComputeFieldSpec {
+                    name: &field_name,
+                    declared_type: field_definition.field_type(),
+                    config,
+                    leaves_only_over: field_definition.aggregate.as_ref().map(|aggregate| {
+                        aggregate
+                            .over
+                            .clone()
+                            .unwrap_or_else(|| rollup::DEFAULT_OVER_FIELD.to_owned())
+                    }),
+                };
+                compute::run_for_field(items, reverse_links, constants, &spec, &mut diagnostics);
+            }
         }
 
         if let Some(aggregate) = &field_definition.aggregate {
@@ -73,7 +78,7 @@ pub(crate) fn run(
         }
     }
 
-    required_check(items, schema, &mut diagnostics);
+    required_check(items, schema, disabled_compute_fields, &mut diagnostics);
     diagnostics
 }
 
@@ -82,6 +87,7 @@ pub(crate) fn run(
 fn required_check(
     items: &HashMap<WorkItemId, WorkItem>,
     schema: &Schema,
+    disabled_compute_fields: &HashSet<String>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     for (field_name, field_definition) in &schema.fields {
@@ -102,7 +108,7 @@ fn required_check(
             // the classic message when the inputs were all present (a
             // non-leaf of a compute+aggregate field with no children).
             let kind = match &field_definition.compute {
-                Some(config) => {
+                Some(config) if !disabled_compute_fields.contains(field_name.as_str()) => {
                     let missing_inputs = compute::missing_inputs(item, config);
                     if missing_inputs.is_empty() {
                         ItemDiagnosticKind::MissingRequired {
@@ -115,7 +121,10 @@ fn required_check(
                         }
                     }
                 }
-                None => ItemDiagnosticKind::MissingRequired {
+                // No compute, or a compute the schema-level check
+                // disabled — the blank value is reported plainly; the
+                // check's diagnostic carries the cause.
+                _ => ItemDiagnosticKind::MissingRequired {
                     field: field_name.clone(),
                 },
             };
@@ -228,7 +237,16 @@ mod tests {
         let schema = parse_schema(schema_yaml).expect("test schema must parse");
         let resources = parse_resources(resources_yaml).expect("test resources must parse");
         let reverse_links = reverse_links_of(items);
-        run(items, &reverse_links, &schema, &resources.constants)
+        // Mirror Store::load_with_resources: check-failed compute
+        // fields are skipped, exactly as in production.
+        let disabled_compute_fields = crate::compute_check::failed_fields(&schema, &resources);
+        run(
+            items,
+            &reverse_links,
+            &schema,
+            &resources.constants,
+            &disabled_compute_fields,
+        )
     }
 
     fn field<'a>(
@@ -528,6 +546,50 @@ fields:
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
         assert_eq!(field(&items, "task", "a"), None);
         assert_eq!(field(&items, "task", "b"), None);
+    }
+
+    #[test]
+    fn check_failed_compute_stays_quiet_even_with_error_on_missing() {
+        // The typo'd reference is a schema-level finding (reported once
+        // by compute_check); the items must not each repeat it as a
+        // missing-input error.
+        let schema_yaml = "\
+fields:
+  start_date:
+    type: date
+  end_date:
+    type: date
+    compute:
+      expression: strat_date + duration
+      error_on_missing: true
+";
+        let mut items = HashMap::from([item("task", vec![("start_date", date(2026, 1, 5))])]);
+        let diagnostics = run_derive(&mut items, schema_yaml, "");
+
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+        assert_eq!(field(&items, "task", "end_date"), None);
+    }
+
+    #[test]
+    fn required_field_with_check_failed_compute_reports_plain_missing_required() {
+        // The check's schema diagnostic carries the cause; the item
+        // reports its blank value without guessing at inputs of an
+        // expression that never ran.
+        let schema_yaml = "\
+fields:
+  end_date:
+    type: date
+    required: true
+    compute: strat_date + duration
+";
+        let mut items = HashMap::from([item("task", vec![])]);
+        let diagnostics = run_derive(&mut items, schema_yaml, "");
+
+        assert_eq!(diagnostics.len(), 1);
+        assert!(matches!(
+            item_kinds(&diagnostics)[0],
+            ItemDiagnosticKind::MissingRequired { field } if field == "end_date"
+        ));
     }
 
     #[test]

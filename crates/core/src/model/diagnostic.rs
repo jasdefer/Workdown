@@ -125,9 +125,9 @@ pub enum ItemDiagnosticKind {
     AggregateMissingValue { field: String },
 
     /// A computed field could not be evaluated on this item because
-    /// inputs are missing. Warning when the field's compute config sets
-    /// `error_on_missing: true`; error when the field is `required` and
-    /// the item ended up without a value.
+    /// inputs are missing. Emitted when the field's compute config sets
+    /// `error_on_missing: true`, and when the field is `required` and
+    /// the item ended up without a value — error severity either way.
     ComputeMissingInputs {
         field: String,
         missing_inputs: Vec<String>,

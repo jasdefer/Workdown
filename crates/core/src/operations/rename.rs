@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 
 use crate::model::config::Config;
 use crate::model::diagnostic::Diagnostic;
+use crate::model::resources::Resources;
 use crate::model::schema::{FieldType, Schema};
 use crate::model::work_item::is_valid_id;
 use crate::model::WorkItemId;
@@ -209,6 +210,10 @@ pub fn run_rename(
 /// phases don't re-borrow the config or re-load the store.
 struct RenameContext {
     schema: Schema,
+    /// Resources feed `$constants.<name>` in compute expressions —
+    /// loaded once so the pre- and post-write snapshots derive the same
+    /// values.
+    resources: Resources,
     items_path: PathBuf,
     schema_path: PathBuf,
     views_path: PathBuf,
@@ -250,7 +255,11 @@ fn preflight(
     let schema = parser::schema::load_schema(&schema_path)?;
 
     let items_path = project_root.join(&config.paths.work_items);
-    let store = Store::load(&items_path, &schema)?;
+    let resources_path = project_root.join(&config.paths.resources);
+    // A missing or malformed resources.yaml degrades to empty resources
+    // here — `workdown validate` owns reporting it.
+    let (resources, _) = crate::resources_check::load_and_check(&resources_path);
+    let store = Store::load_with_resources(&items_path, &schema, &resources)?;
 
     let renamed_item = store
         .get(old_id.as_str())
@@ -313,10 +322,11 @@ fn preflight(
 
     Ok(RenameContext {
         schema,
+        resources,
         items_path,
         schema_path,
         views_path: project_root.join(&config.paths.views),
-        resources_path: project_root.join(&config.paths.resources),
+        resources_path,
         templates_dir: project_root.join(&config.paths.templates),
         // Convention — `.workdown/config.yaml` is the standard location.
         // A non-default `--config` flag would miss this scan, which is
@@ -740,7 +750,8 @@ fn execute_plan(
 
     // Reload and diff. Pre-existing warnings remain visible in
     // `warnings`; `mutation_caused_warning` only flags new ones.
-    let reloaded = Store::load(&context.items_path, &context.schema)?;
+    let reloaded =
+        Store::load_with_resources(&context.items_path, &context.schema, &context.resources)?;
     let mut post_diagnostics: Vec<Diagnostic> = reloaded.diagnostics().to_vec();
     post_diagnostics.extend(crate::rules::evaluate(&reloaded, &context.schema));
 

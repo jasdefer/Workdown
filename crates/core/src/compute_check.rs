@@ -15,9 +15,11 @@
 //!
 //! Findings are error-severity [`Diagnostic`]s pinned to `schema.yaml`,
 //! not hard failures: a typo'd reference disables that computed field,
-//! not the project. The evaluation pass skips any field reported here.
+//! not the project. The store's derive pass asks [`failed_fields`] for
+//! the same findings and skips those fields, so a broken config never
+//! adds per-item noise on top of its schema diagnostic.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use crate::expression::{check_types, ExpressionType, ReferenceResolution, TypeContext};
@@ -30,7 +32,32 @@ use crate::model::FieldValue;
 /// Returns one diagnostic per finding; an empty vector means every
 /// computed field is safe to evaluate.
 pub fn evaluate(schema: &Schema, resources: &Resources, schema_path: &Path) -> Vec<Diagnostic> {
-    let mut diagnostics = Vec::new();
+    findings(schema, resources)
+        .into_iter()
+        .map(|finding| Diagnostic::config(Severity::Error, schema_path.to_path_buf(), finding.kind))
+        .collect()
+}
+
+/// Names of the compute fields with a failing config — the set the
+/// store's derive pass must skip. Same findings as [`evaluate`], as a
+/// set instead of rendered diagnostics.
+pub fn failed_fields(schema: &Schema, resources: &Resources) -> HashSet<String> {
+    findings(schema, resources)
+        .into_iter()
+        .flat_map(|finding| finding.disabled_fields)
+        .collect()
+}
+
+/// One check finding: the diagnostic kind plus the compute fields it
+/// disables (a cycle disables every field on its chain).
+struct Finding {
+    disabled_fields: Vec<String>,
+    kind: ConfigDiagnosticKind,
+}
+
+/// Run every check once, feeding both [`evaluate`] and [`failed_fields`].
+fn findings(schema: &Schema, resources: &Resources) -> Vec<Finding> {
+    let mut findings = Vec::new();
     let context = ProjectTypeContext { schema, resources };
 
     for (field_name, field_definition) in &schema.fields {
@@ -41,14 +68,14 @@ pub fn evaluate(schema: &Schema, resources: &Resources, schema_path: &Path) -> V
         let result_type = match check_types(&compute.expression, &context) {
             Ok(result_type) => result_type,
             Err(error) => {
-                diagnostics.push(compute_error(
-                    schema_path,
-                    ConfigDiagnosticKind::ComputeInvalidExpression {
+                findings.push(Finding {
+                    disabled_fields: vec![field_name.clone()],
+                    kind: ConfigDiagnosticKind::ComputeInvalidExpression {
                         field: field_name.clone(),
                         expression: compute.source.clone(),
                         detail: error.to_string(),
                     },
-                ));
+                });
                 continue;
             }
         };
@@ -59,24 +86,20 @@ pub fn evaluate(schema: &Schema, resources: &Resources, schema_path: &Path) -> V
             continue;
         };
         if !result_type.coerces_to(declared_type) {
-            diagnostics.push(compute_error(
-                schema_path,
-                ConfigDiagnosticKind::ComputeResultTypeMismatch {
+            findings.push(Finding {
+                disabled_fields: vec![field_name.clone()],
+                kind: ConfigDiagnosticKind::ComputeResultTypeMismatch {
                     field: field_name.clone(),
                     expression: compute.source.clone(),
                     result_type: result_type.to_string(),
                     declared_type: declared_type.to_string(),
                 },
-            ));
+            });
         }
     }
 
-    diagnostics.extend(detect_cycles(schema, schema_path));
-    diagnostics
-}
-
-fn compute_error(schema_path: &Path, kind: ConfigDiagnosticKind) -> Diagnostic {
-    Diagnostic::config(Severity::Error, schema_path.to_path_buf(), kind)
+    findings.extend(cycle_findings(schema));
+    findings
 }
 
 // ── Reference resolution ──────────────────────────────────────────────
@@ -158,23 +181,24 @@ enum VisitState {
 /// have outgoing edges, so every cycle consists purely of computed
 /// fields; each cycle is reported once, on the first field of it the
 /// walk encounters (deterministic: schema declaration order).
-fn detect_cycles(schema: &Schema, schema_path: &Path) -> Vec<Diagnostic> {
-    let mut diagnostics = Vec::new();
+fn cycle_findings(schema: &Schema) -> Vec<Finding> {
+    let mut findings = Vec::new();
     let mut states: HashMap<&str, VisitState> = HashMap::new();
 
     for (field_name, field_definition) in &schema.fields {
         if field_definition.compute.is_some() && !states.contains_key(field_name.as_str()) {
             let mut stack = Vec::new();
             visit(schema, field_name, &mut states, &mut stack, &mut |chain| {
-                diagnostics.push(compute_error(
-                    schema_path,
-                    ConfigDiagnosticKind::ComputeCycle { chain },
-                ));
+                findings.push(Finding {
+                    // The chain repeats its first field at the end.
+                    disabled_fields: chain[..chain.len() - 1].to_vec(),
+                    kind: ConfigDiagnosticKind::ComputeCycle { chain },
+                });
             });
         }
     }
 
-    diagnostics
+    findings
 }
 
 /// Depth-first walk from `field_name` along compute-reference edges.
@@ -517,5 +541,46 @@ fields:
     compute: start_date + duration
 ";
         assert!(check(schema_yaml, "").is_empty());
+    }
+
+    // ── failed_fields ─────────────────────────────────────────────────
+
+    fn failed(schema_yaml: &str, resources_yaml: &str) -> Vec<String> {
+        let schema = parse_schema(schema_yaml).expect("test schema must parse");
+        let resources = parse_resources(resources_yaml).expect("test resources must parse");
+        let mut names: Vec<String> = failed_fields(&schema, &resources).into_iter().collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn failed_fields_is_empty_for_a_valid_schema() {
+        let schema_yaml = format!(
+            "{SCHEDULING_FIELDS}  end_date:
+    type: date
+    compute: start_date + duration
+"
+        );
+        assert!(failed(&schema_yaml, "").is_empty());
+    }
+
+    #[test]
+    fn failed_fields_collects_broken_fields_and_whole_cycles() {
+        let schema_yaml = "\
+fields:
+  broken:
+    type: float
+    compute: typo * 2
+  healthy:
+    type: float
+    compute: 1 + 1
+  a:
+    type: float
+    compute: b * 1.0
+  b:
+    type: float
+    compute: a * 1.0
+";
+        assert_eq!(failed(schema_yaml, ""), vec!["a", "b", "broken"]);
     }
 }
