@@ -1398,7 +1398,7 @@ views:
     metrics:
       - aggregate: count
         label: Open items
-    where: ["status=to_do,in_progress"]
+    where: ["status in to_do,in_progress"]
   - id: effort-by-milestone
     type: treemap
     group: parent

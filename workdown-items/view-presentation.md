@@ -2,7 +2,7 @@
 id: view-presentation
 title: View & item presentation
 type: milestone
-status: in_progress
+status: done
 parent: phase-04-visualization
 depends_on:
 - server

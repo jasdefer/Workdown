@@ -12,13 +12,14 @@
 //! carry the `ts_rs` derive so `gen_types` emits matching TypeScript.
 //!
 //! Scope mirrors the guided builder's: a clause decomposes to a
-//! [`Condition`] when it is a single comparison on a *local* field, or an
-//! IN filter (`field=a,b`) on one local field — which folds back to a
-//! multi-value `Equal` condition so a multi-select round-trips. Everything
-//! else (other boolean trees, cross-field ORs, regex written as `field/…/`
-//! that isn't a lone comparison, cross-relation references like
-//! `parent.status`) falls back to [`Clause::Raw`] — consistent with
-//! [`crate::schema_data`] keeping cross-relation filters in the raw hatch.
+//! [`Condition`] when it is a single comparison on a *local* field, or a
+//! membership test (`field in a,b` / `field not in a,b`) on one local field —
+//! which the parser desugars into a flat same-field `Or` / `And` and this
+//! module folds back, so a multi-select round-trips. Everything else (other
+//! boolean trees, cross-field ORs, regex written as `field/…/` that isn't a
+//! lone comparison, cross-relation references like `parent.status`) falls
+//! back to [`Clause::Raw`] — consistent with [`crate::schema_data`] keeping
+//! cross-relation filters in the raw hatch.
 
 use serde::{Deserialize, Serialize};
 
@@ -27,17 +28,44 @@ use crate::query::types::{Comparison, FieldReference, Operator, Predicate};
 
 // ── Wire types ───────────────────────────────────────────────────────
 
-/// A single guided filter condition: one local field, one operator, and an
-/// optional value (absent for the presence checks `is_set` / `is_not_set`).
+/// A single guided filter condition: one local field, one operator, and its
+/// operand — a scalar `value` for most operators, a `values` list for `in` /
+/// `not in`, and neither for the presence checks.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct Condition {
     pub field: String,
     pub operator: Operator,
-    /// Absent for the presence checks `is_set` / `is_not_set`. `#[serde(default)]`
-    /// lets a request omit it; it serializes as `null` (the codebase's
-    /// convention for optional wire fields), not skipped.
+    /// The scalar operand. Absent for the presence checks `is_set` /
+    /// `is_not_set` and for the list-valued operators, which use
+    /// [`Condition::values`]. `#[serde(default)]` lets a request omit it; it
+    /// serializes as `null` (the codebase's convention for optional wire
+    /// fields), not skipped.
     #[serde(default)]
     pub value: Option<String>,
+    /// The operand list for `in` / `not in`, empty for every other operator.
+    /// Kept separate from [`Condition::value`] so the comma-join never enters
+    /// the data model: members travel as members, and a literal comma inside
+    /// one is simply a member containing a comma.
+    #[serde(default)]
+    pub values: Vec<String>,
+}
+
+/// Why a [`Condition`] cannot be turned into a clause string.
+///
+/// The guided builder cannot construct these — it picks the operand widget
+/// from the operator — so a mismatch means a malformed request rather than a
+/// user-authored file problem, and the write endpoint rejects it outright
+/// instead of saving with a warning.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ConditionError {
+    #[error("operator '{operator}' takes a list of values in 'values', not a scalar 'value'")]
+    ScalarOnListOperator { operator: &'static str },
+
+    #[error("operator '{operator}' takes a scalar 'value', not a list in 'values'")]
+    ListOnScalarOperator { operator: &'static str },
+
+    #[error("operator '{operator}' requires at least one non-empty value")]
+    EmptyValueList { operator: &'static str },
 }
 
 /// One clause of a view's filter in the UI's vocabulary: a guided
@@ -59,17 +87,41 @@ pub enum Clause {
 /// grammar [`parse_where`] accepts.
 ///
 /// For `Matches`, `value` already carries the full `/pattern/flags` form
-/// (that is how the parser stores it), so it is appended directly.
-/// An `Equal` value containing commas serializes to the IN form
-/// (`field=a,b`), which re-parses as an Or of same-field equals and folds
-/// back to the same multi-value condition — this is how the guided
-/// multi-select round-trips. The grammar has no escaping, so a literal
-/// comma inside a single `Equal` value is not representable; such a value
-/// silently becomes an IN filter.
-pub fn serialize_condition(condition: &Condition) -> String {
+/// (that is how the parser stores it), so it is appended directly. `In` /
+/// `NotIn` join their `values` with commas — the only place the comma-join
+/// happens, and only on the way out to the clause string.
+///
+/// Fails when the operand does not match the operator's arity; see
+/// [`ConditionError`].
+pub fn serialize_condition(condition: &Condition) -> Result<String, ConditionError> {
     let field = &condition.field;
+    let operator = condition.operator;
+
+    if operator.is_list_valued() {
+        if condition.value.is_some() {
+            return Err(ConditionError::ScalarOnListOperator {
+                operator: operator.token(),
+            });
+        }
+        if condition.values.is_empty()
+            || condition.values.iter().any(|value| value.trim().is_empty())
+        {
+            return Err(ConditionError::EmptyValueList {
+                operator: operator.token(),
+            });
+        }
+        let members = condition.values.join(",");
+        return Ok(format!("{field} {} {members}", operator.token()));
+    }
+
+    if !condition.values.is_empty() {
+        return Err(ConditionError::ListOnScalarOperator {
+            operator: operator.token(),
+        });
+    }
+
     let value = condition.value.as_deref().unwrap_or("");
-    match condition.operator {
+    Ok(match operator {
         Operator::Equal => format!("{field}={value}"),
         Operator::NotEqual => format!("{field}!={value}"),
         Operator::GreaterThan => format!("{field}>{value}"),
@@ -82,17 +134,18 @@ pub fn serialize_condition(condition: &Condition) -> String {
         Operator::Matches => format!("{field}{value}"),
         Operator::IsSet => format!("{field}?"),
         Operator::IsNotSet => format!("!{field}?"),
-    }
+        Operator::In | Operator::NotIn => unreachable!("handled above"),
+    })
 }
 
 /// Serialize a list of clauses to the `where:` strings persisted in
 /// `views.yaml`. Raw clauses pass through unchanged.
-pub fn clauses_to_strings(clauses: &[Clause]) -> Vec<String> {
+pub fn clauses_to_strings(clauses: &[Clause]) -> Result<Vec<String>, ConditionError> {
     clauses
         .iter()
         .map(|clause| match clause {
             Clause::Comparison(condition) => serialize_condition(condition),
-            Clause::Raw { raw } => raw.clone(),
+            Clause::Raw { raw } => Ok(raw.clone()),
         })
         .collect()
 }
@@ -136,32 +189,43 @@ fn condition_from_predicate(predicate: &Predicate) -> Option<Condition> {
                     field: local_field(&comparison.field)?,
                     operator: Operator::IsNotSet,
                     value: None,
+                    values: Vec::new(),
                 })
             }
             _ => None,
         },
-        // `field=a,b` parses to an Or of same-field equals; fold it back to
-        // one multi-value `Equal` condition so a multi-select round-trips.
-        Predicate::Or(branches) => condition_from_or(branches),
-        Predicate::And(_) => None,
+        // The two shapes `query::parse` desugars a membership test into.
+        Predicate::Or(branches) => condition_from_membership(branches, Operator::In),
+        Predicate::And(branches) => condition_from_membership(branches, Operator::NotIn),
     }
 }
 
-/// Fold an `Or` whose branches are all `field = value` on the *same* local
-/// field into a single `Equal` condition whose value is the comma-joined
-/// list. Any other `Or` shape (mixed fields, non-equal operators,
-/// cross-relation) returns `None` → raw.
-fn condition_from_or(branches: &[Predicate]) -> Option<Condition> {
+/// Fold the flat, same-field predicate a membership test desugars to back into
+/// one condition: an `Or` of `field = value` becomes `in`, an `And` of
+/// `field != value` becomes `not in`.
+///
+/// Any other shape — mixed fields, the wrong comparison operator, a
+/// cross-relation reference, a nested tree — returns `None` and the clause
+/// stays raw. That includes a hand-written `And` that happens to mix
+/// operators, which is exactly the conservative behavior the raw hatch exists
+/// for.
+fn condition_from_membership(branches: &[Predicate], operator: Operator) -> Option<Condition> {
     if branches.is_empty() {
         return None;
     }
+    let member_operator = if operator == Operator::NotIn {
+        Operator::NotEqual
+    } else {
+        Operator::Equal
+    };
+
     let mut field: Option<String> = None;
     let mut values = Vec::with_capacity(branches.len());
     for branch in branches {
         let Predicate::Comparison(comparison) = branch else {
             return None;
         };
-        if comparison.operator != Operator::Equal {
+        if comparison.operator != member_operator {
             return None;
         }
         let name = local_field(&comparison.field)?;
@@ -174,8 +238,9 @@ fn condition_from_or(branches: &[Predicate]) -> Option<Condition> {
     }
     Some(Condition {
         field: field?,
-        operator: Operator::Equal,
-        value: Some(values.join(",")),
+        operator,
+        value: None,
+        values,
     })
 }
 
@@ -189,6 +254,7 @@ fn condition_from_comparison(comparison: &Comparison) -> Option<Condition> {
         field,
         operator: comparison.operator,
         value,
+        values: Vec::new(),
     })
 }
 
@@ -212,6 +278,16 @@ mod tests {
             field: field.to_owned(),
             operator,
             value: value.map(str::to_owned),
+            values: Vec::new(),
+        }
+    }
+
+    fn membership(field: &str, operator: Operator, values: &[&str]) -> Condition {
+        Condition {
+            field: field.to_owned(),
+            operator,
+            value: None,
+            values: values.iter().map(|value| (*value).to_owned()).collect(),
         }
     }
 
@@ -230,9 +306,14 @@ mod tests {
             comparison("title", Operator::Matches, Some("/^fix-.*/i")),
             comparison("assignee", Operator::IsSet, None),
             comparison("assignee", Operator::IsNotSet, None),
+            membership("status", Operator::In, &["open", "in_progress"]),
+            membership("status", Operator::NotIn, &["done", "removed"]),
+            // Arity 1 must not collapse to `=` / `!=` on the way back.
+            membership("status", Operator::In, &["open"]),
+            membership("status", Operator::NotIn, &["done"]),
         ];
         for condition in cases {
-            let serialized = serialize_condition(&condition);
+            let serialized = serialize_condition(&condition).unwrap();
             let decomposed = decompose_clause(&serialized);
             assert_eq!(
                 decomposed,
@@ -245,13 +326,76 @@ mod tests {
     #[test]
     fn serialize_matches_reproduces_source_form() {
         let condition = comparison("title", Operator::Matches, Some("/^fix-.*/i"));
-        assert_eq!(serialize_condition(&condition), "title/^fix-.*/i");
+        assert_eq!(serialize_condition(&condition).unwrap(), "title/^fix-.*/i");
     }
 
     #[test]
     fn serialize_is_not_set_uses_bang_prefix() {
         let condition = comparison("assignee", Operator::IsNotSet, None);
-        assert_eq!(serialize_condition(&condition), "!assignee?");
+        assert_eq!(serialize_condition(&condition).unwrap(), "!assignee?");
+    }
+
+    #[test]
+    fn serialize_membership_joins_members_with_commas() {
+        let condition = membership("status", Operator::In, &["open", "in_progress"]);
+        assert_eq!(
+            serialize_condition(&condition).unwrap(),
+            "status in open,in_progress"
+        );
+        let condition = membership("status", Operator::NotIn, &["done", "removed"]);
+        assert_eq!(
+            serialize_condition(&condition).unwrap(),
+            "status not in done,removed"
+        );
+    }
+
+    /// A comma in an `=` value is a comma, not a hidden list.
+    #[test]
+    fn equal_value_containing_a_comma_round_trips_literally() {
+        let condition = comparison("title", Operator::Equal, Some("bug, crash"));
+        let serialized = serialize_condition(&condition).unwrap();
+        assert_eq!(serialized, "title=bug, crash");
+        assert_eq!(decompose_clause(&serialized), Clause::Comparison(condition));
+    }
+
+    // ── Operand / operator arity mismatches ─────────────────────────
+
+    #[test]
+    fn serialize_rejects_operand_arity_mismatches() {
+        let scalar_on_list = Condition {
+            field: "status".to_owned(),
+            operator: Operator::In,
+            value: Some("open".to_owned()),
+            values: vec!["open".to_owned()],
+        };
+        assert_eq!(
+            serialize_condition(&scalar_on_list),
+            Err(ConditionError::ScalarOnListOperator { operator: "in" })
+        );
+
+        let list_on_scalar = Condition {
+            field: "status".to_owned(),
+            operator: Operator::Equal,
+            value: Some("open".to_owned()),
+            values: vec!["open".to_owned()],
+        };
+        assert_eq!(
+            serialize_condition(&list_on_scalar),
+            Err(ConditionError::ListOnScalarOperator { operator: "=" })
+        );
+
+        for values in [vec![], vec!["open".to_owned(), String::new()]] {
+            let empty = Condition {
+                field: "status".to_owned(),
+                operator: Operator::NotIn,
+                value: None,
+                values,
+            };
+            assert_eq!(
+                serialize_condition(&empty),
+                Err(ConditionError::EmptyValueList { operator: "not in" })
+            );
+        }
     }
 
     // ── Decomposition: simple comparisons → guided ──────────────────
@@ -283,25 +427,36 @@ mod tests {
     // ── Decomposition: complex → raw ────────────────────────────────
 
     #[test]
-    fn decompose_in_syntax_folds_to_multi_value_condition() {
-        // `status=open,in_progress` (an Or of same-field equals) folds back
-        // into one multi-value `Equal` condition for the multi-select.
+    fn decompose_membership_folds_to_one_condition() {
         assert_eq!(
-            decompose_clause("status=open,in_progress"),
-            Clause::Comparison(comparison(
-                "status",
-                Operator::Equal,
-                Some("open,in_progress")
-            ))
+            decompose_clause("status in open,in_progress"),
+            Clause::Comparison(membership("status", Operator::In, &["open", "in_progress"]))
+        );
+        assert_eq!(
+            decompose_clause("status not in done,removed"),
+            Clause::Comparison(membership("status", Operator::NotIn, &["done", "removed"]))
         );
     }
 
+    /// A hand-written boolean tree that isn't the shape a membership test
+    /// desugars to stays raw rather than being coerced into a guided row.
     #[test]
-    fn in_syntax_round_trips() {
-        let condition = comparison("status", Operator::Equal, Some("open,in_progress,done"));
-        let serialized = serialize_condition(&condition);
-        assert_eq!(serialized, "status=open,in_progress,done");
-        assert_eq!(decompose_clause(&serialized), Clause::Comparison(condition));
+    fn decompose_mixed_operator_tree_falls_back_to_raw() {
+        // Not reachable through the grammar today (one clause carries one
+        // operator), but the fold must not assume that.
+        let mixed = Predicate::And(vec![
+            Predicate::Comparison(Comparison {
+                field: FieldReference::Local("status".to_owned()),
+                operator: Operator::NotEqual,
+                value: "done".to_owned(),
+            }),
+            Predicate::Comparison(Comparison {
+                field: FieldReference::Local("status".to_owned()),
+                operator: Operator::Equal,
+                value: "open".to_owned(),
+            }),
+        ]);
+        assert_eq!(condition_from_predicate(&mixed), None);
     }
 
     #[test]
@@ -331,17 +486,30 @@ mod tests {
     fn clauses_to_strings_mixes_guided_and_raw() {
         let clauses = vec![
             Clause::Comparison(comparison("status", Operator::Equal, Some("open"))),
+            Clause::Comparison(membership("type", Operator::In, &["milestone", "epic"])),
             Clause::Raw {
-                raw: "status=open,in_progress".to_owned(),
+                raw: "parent.status=done".to_owned(),
             },
         ];
         assert_eq!(
-            clauses_to_strings(&clauses),
+            clauses_to_strings(&clauses).unwrap(),
             vec![
                 "status=open".to_owned(),
-                "status=open,in_progress".to_owned()
+                "type in milestone,epic".to_owned(),
+                "parent.status=done".to_owned()
             ]
         );
+    }
+
+    #[test]
+    fn clauses_to_strings_propagates_a_malformed_condition() {
+        let clauses = vec![Clause::Comparison(Condition {
+            field: "status".to_owned(),
+            operator: Operator::In,
+            value: None,
+            values: Vec::new(),
+        })];
+        assert!(clauses_to_strings(&clauses).is_err());
     }
 
     #[test]
@@ -349,10 +517,12 @@ mod tests {
         let raws = vec![
             "status=open".to_owned(),
             "title~fix".to_owned(),
+            "type in milestone,epic".to_owned(),
+            "status not in done,removed".to_owned(),
             "parent.status=done".to_owned(), // cross-relation → raw
         ];
         let clauses = decompose_clauses(&raws);
         // Serializing the decomposed list reproduces the original strings.
-        assert_eq!(clauses_to_strings(&clauses), raws);
+        assert_eq!(clauses_to_strings(&clauses).unwrap(), raws);
     }
 }

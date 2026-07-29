@@ -65,18 +65,38 @@ A list of strings. Each string is a single expression using the `workdown query 
 
 ```yaml
 where:
-  - "type=issue"
+  - "type in milestone,epic"
   - "status!=removed"
   - "parent.status=in_progress"
 ```
 
-The same grammar covers equality, inequality, numeric comparison, substring match, regex, presence, and single-hop relation traversal (`parent.status`). See the documentation of `parse_where` for the full expression reference.
+The same grammar covers equality, inequality, list membership, numeric comparison, substring match, regex, presence, and single-hop relation traversal (`parent.status`). See the documentation of `parse_where` for the full expression reference.
 
 Field references inside `where:` expressions are validated against `schema.yaml`: local field names must be defined in the schema (or be `id`), and relation names must resolve to a `link`/`links` field or a known inverse name (e.g. `children` resolving to the inverse of `parent`).
 
 When the view renders, items are filtered by the combined predicate before any aggregation or extraction runs.
 
-OR nesting is not supported in v1 (the CLI's inline `status=open,in_progress` form covers the common case). A structured `or:` branch can be added later without breaking existing configs.
+### Membership — `in` / `not in`
+
+`status in open,in_progress` matches any of the listed values; `status not in done,removed` matches none of them. Members are separated by bare commas, and there is no escaping — a literal comma inside one member is not representable, which is what the raw escape hatch is for.
+
+`=` and `!=` are always literal, commas included: `title=bug, crash` means the title *is* `bug, crash`. Membership has its own operator precisely so that a comma never silently changes what a comparison means.
+
+The word operators are found only after every punctuation operator has missed, so `title=a in b` is an equality against `a in b`. Both tokens are whitespace-delimited.
+
+### Items with no value for the field
+
+A field the item never set satisfies the negative comparisons (`!=`, `not in`) and fails every positive one (`=`, `in`, `~`, regex, the ordering comparisons). So `status != removed` includes an item carrying no `status`, on the reading that an item without a status is certainly not removed — and `status != done` and `status not in done` therefore always agree.
+
+To exclude items with no value, AND the presence check as a second clause:
+
+```yaml
+where:
+  - "status!=removed"
+  - "status?"        # …and only items that actually have a status
+```
+
+OR nesting is not supported in v1 (`in` covers the common case). A structured `or:` branch can be added later without breaking existing configs.
 
 ## Display roles — `display:`
 
@@ -233,5 +253,5 @@ Existing configurations are unaffected — the change is purely additive.
 - **`output:` customization** — fixed paths per view id keep v1 simple. Revisit if users need custom locations.
 - **`dashboard`** — composition of multiple metrics / charts on a single page. Useful once `metric` has a few users.
 - **`calendar`** — one event per item placed on a date. Not widely needed for engineering-project workflows; add when asked for.
-- **OR nesting in `where`** — structured `or:`/`not:` branches. Today's AND-of-strings plus the inline `=a,b,c` form covers the common case.
+- **OR nesting in `where`** — structured `or:`/`not:` branches. Today's AND-of-strings plus the `in` operator covers the common case.
 - **Multi-hop relation traversal** — `grandparent.status` etc. Parser-level change, orthogonal to views.yaml shape.

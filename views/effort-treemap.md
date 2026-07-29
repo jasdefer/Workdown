@@ -2,9 +2,9 @@
 
 Hierarchical breakdown of `effort` summed up the `parent` chain.
 
-**Total: 3w 12h**
+**Total: 3w 1d 4h**
 
-- **3w 12h** (100%) — [Phase 04: Visualization](../workdown-items/phase-04-visualization.md)
+- **3w 16h** (98%) — [Phase 04: Visualization](../workdown-items/phase-04-visualization.md)
   - **5d 16h** (26%) — [Renderers](../workdown-items/renderers.md)
     - **16h** (12%) — [Design ViewData and extractors](../workdown-items/view-data-intermediate.md)
     - **12h** (9%) — [Gantt renderer](../workdown-items/render-gantt.md)
@@ -27,12 +27,12 @@ Hierarchical breakdown of `effort` summed up the `parent` chain.
     - **4h** (3%) — [Table renderer](../workdown-items/render-table.md)
     - **4h** (3%) — [Tree renderer](../workdown-items/render-tree.md)
     - **4h** (3%) — [Add per-view `title:` slot to views.yaml](../workdown-items/views-title-slot.md)
-  - **4d** (19%) — [Author and edit views from the UI](../workdown-items/view-authoring.md)
+  - **4d** (18%) — [Author and edit views from the UI](../workdown-items/view-authoring.md)
     - **2d** (50%) — [Expose schema metadata so the UI can offer valid choices](../workdown-items/schema-metadata-api.md)
     - **16h** (17%) — [Create a new view from the UI](../workdown-items/view-creation.md)
     - **16h** (17%) — [Build and edit a view's where filter from the UI](../workdown-items/view-filter-editor.md)
     - **16h** (17%) — [Persist view definitions to views.yaml](../workdown-items/view-write-backend.md)
-  - **3d 8h** (16%) — [Interactive UI (workdown serve)](../workdown-items/server.md)
+  - **3d 8h** (15%) — [Interactive UI (workdown serve)](../workdown-items/server.md)
     - **1d 16h** (50%) — [Remaining read-only views](../workdown-items/remaining-read-views.md)
     - **16h** (20%) — [First view end-to-end (board, read-only)](../workdown-items/first-view-end-to-end.md)
     - **16h** (20%) — [UI foundation — conventions and scaffolding before the first view](../workdown-items/ui-foundation.md)
@@ -49,7 +49,7 @@ Hierarchical breakdown of `effort` summed up the `parent` chain.
     - **4h** (7%) — [Add views path to config; ship default views.yaml](../workdown-items/views-config-path.md)
     - **4h** (7%) — [Editor-only JSON Schema for views.yaml](../workdown-items/views-json-schema.md)
     - **4h** (7%) — [Wire views validation into workdown validate](../workdown-items/views-validate-integration.md)
-  - **1d 20h** (9%) — [Item mutations](../workdown-items/item-mutations.md)
+  - **1d 20h** (8%) — [Item mutations](../workdown-items/item-mutations.md)
     - **12h** (27%) — [workdown set — replace a field value](../workdown-items/cli-set-command.md)
     - **8h** (18%) — [workdown rename — change an item's id](../workdown-items/cli-rename-command.md)
     - **8h** (18%) — [workdown set — type-aware modes (append, remove, delta)](../workdown-items/cli-set-modes.md)
@@ -63,14 +63,19 @@ Hierarchical breakdown of `effort` summed up the `parent` chain.
     - **4h** (20%) — [Collapse parallel View* slot variants and unify their validation helpers](../workdown-items/diagnostic-variant-cleanup.md)
     - **4h** (20%) — [Render module hygiene — escape helpers, test fixtures, common.rs naming](../workdown-items/render-module-hygiene.md)
     - **4h** (20%) — [Unify the upward chain walks and link-target reads](../workdown-items/walker-primitives.md)
-  - **12h** (2%) — [Polish & dogfood](../workdown-items/polish.md)
-    - **8h** (67%) — [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md)
-    - **4h** (33%) — [Validate resource references and render resource pickers](../workdown-items/resource-option-lists.md)
+  - **16h** (3%) — [Polish & dogfood](../workdown-items/polish.md)
+    - **8h** (50%) — [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md)
+    - **4h** (25%) — [Validate resource references and render resource pickers](../workdown-items/resource-option-lists.md)
+    - **4h** (25%) — [Validate where-clause operands against the field's value set](../workdown-items/where-clause-value-validation.md)
+- **12h** (2%) — [Time tracking](../workdown-items/time-tracking.md)
+  - **8h** (67%) — [Computed fields — same-item cross-field expressions](../workdown-items/computed-fields.md)
+  - **4h** (33%) — [Project-level constants in resources.yaml](../workdown-items/project-constants.md)
 
 ## Unplaced (missing `effort`)
 - [App shell navigation (views menu + future link slots)](../workdown-items/app-shell-navigation.md)
 - [Validate `defaults.display` in config.yaml against the schema](../workdown-items/display-defaults-validation.md)
 - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md)
+- [Mapped fields — derive a value by lookup table](../workdown-items/field-value-map.md)
 - [Default generator that reads dates from git history](../workdown-items/git-derived-default-generator.md)
 - [File watcher and SSE for live updates](../workdown-items/live-updates.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)

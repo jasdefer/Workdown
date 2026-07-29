@@ -1,7 +1,7 @@
 ---
 id: polish
 type: milestone
-status: to_do
+status: in_progress
 title: Polish & dogfood
 parent: phase-04-visualization
 depends_on: [view-authoring]

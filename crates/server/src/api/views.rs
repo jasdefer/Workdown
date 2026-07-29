@@ -134,8 +134,20 @@ async fn get_view(
                 )
             }
         };
+        // An operand that doesn't match its operator's arity is a malformed
+        // request, not a filter that renders badly — same 422 treatment as
+        // unparseable JSON above, and the same reason the write path rejects it.
+        let where_clauses = match clauses_to_strings(&clauses) {
+            Ok(where_clauses) => where_clauses,
+            Err(error) => {
+                return ApiResponse::failed(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    format!("invalid filter parameter: {error}"),
+                )
+            }
+        };
         let effective = View {
-            where_clauses: clauses_to_strings(&clauses),
+            where_clauses,
             ..view.clone()
         };
         let views_path = state.project_root.join(&state.config.paths.views);
@@ -276,8 +288,9 @@ async fn update_view_filter(
 /// - `404` — the view id in the path doesn't exist (filter change).
 /// - `409` — creating a view whose id is already taken.
 /// - `422` — well-formed but unprocessable: the project's schema or the
-///   existing `views.yaml` won't load, or the view definition is invalid
-///   (missing/unknown slot).
+///   existing `views.yaml` won't load, the view definition is invalid
+///   (missing/unknown slot), or a filter condition's operand doesn't match its
+///   operator's arity.
 /// - `500` — a server-side failure: serialization, a produced-invalid
 ///   invariant violation, or a write I/O error.
 fn view_write_error_status(error: &ViewWriteError) -> StatusCode {
@@ -289,6 +302,7 @@ fn view_write_error_status(error: &ViewWriteError) -> StatusCode {
         ViewWriteError::SchemaLoad(_)
         | ViewWriteError::ExistingInvalid { .. }
         | ViewWriteError::InvalidDefinition { .. }
+        | ViewWriteError::InvalidCondition(_)
         | ViewWriteError::InvalidName { .. } => StatusCode::UNPROCESSABLE_ENTITY,
 
         ViewWriteError::Serialize(_)

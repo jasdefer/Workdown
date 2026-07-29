@@ -31,7 +31,7 @@ views:
     end: end_date
     group: type
     where:
-      - "type=milestone,epic"
+      - "type in milestone,epic"
 
   - id: roadmap-by-duration
     type: gantt
@@ -39,7 +39,7 @@ views:
     duration: duration
     group: type
     where:
-      - "type=milestone,epic"
+      - "type in milestone,epic"
 
   - id: roadmap-by-predecessor
     type: gantt
@@ -48,7 +48,7 @@ views:
     after: depends_on
     group: type
     where:
-      - "type=milestone,epic"
+      - "type in milestone,epic"
 
   - id: roadmap-by-initiative
     type: gantt_by_initiative
@@ -56,7 +56,7 @@ views:
     end: end_date
     root_link: parent
     where:
-      - "type=milestone,epic"
+      - "type in milestone,epic"
 
   - id: roadmap-by-depth
     type: gantt_by_depth
@@ -64,7 +64,7 @@ views:
     end: end_date
     depth_link: parent
     where:
-      - "type=milestone,epic"
+      - "type in milestone,epic"
 
   - id: effort-treemap
     type: treemap

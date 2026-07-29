@@ -187,11 +187,58 @@ fn query_substring_contains() {
 }
 
 #[test]
-fn query_in_syntax() {
+fn query_in_operator() {
     let (_directory, root) = setup_project();
-    let result = run_query(&root, &["status=open,in_progress"], &[], &[]);
+    let result = run_query(&root, &["status in open,in_progress"], &[], &[]);
     let ids = sorted_ids(&result);
     assert_eq!(ids, vec!["bug-c", "epic-d", "task-a", "task-b"]);
+}
+
+#[test]
+fn query_not_in_operator() {
+    let (_directory, root) = setup_project();
+    let result = run_query(&root, &["status not in open,in_progress"], &[], &[]);
+    let ids = sorted_ids(&result);
+    assert_eq!(ids, vec!["task-e"]);
+}
+
+/// A comma in an `=` value is part of the value. No item has that literal
+/// status, so nothing matches — where the old grammar would have read it as a
+/// hidden OR and returned four items.
+#[test]
+fn query_equality_with_comma_is_literal() {
+    let (_directory, root) = setup_project();
+    let result = run_query(&root, &["status=open,in_progress"], &[], &[]);
+    assert!(sorted_ids(&result).is_empty());
+}
+
+/// Only `bug-c` sets `priority`, so the other four items have no value for it
+/// — and a negative comparison admits them.
+#[test]
+fn query_not_equal_admits_items_without_the_field() {
+    let (_directory, root) = setup_project();
+    let result = run_query(&root, &["priority!=critical"], &[], &[]);
+    let ids = sorted_ids(&result);
+    assert_eq!(ids, vec!["epic-d", "task-a", "task-b", "task-e"]);
+}
+
+/// The contract that made `not in` worth defining: it agrees with `!=`,
+/// including on the items that never set the field.
+#[test]
+fn query_not_in_agrees_with_not_equal() {
+    let (_directory, root) = setup_project();
+    let single = run_query(&root, &["priority!=critical"], &[], &[]);
+    let membership = run_query(&root, &["priority not in critical"], &[], &[]);
+    assert_eq!(sorted_ids(&single), sorted_ids(&membership));
+}
+
+/// AND-ing the presence check recovers the stricter reading — which is how a
+/// view's `where:` list combines clauses.
+#[test]
+fn query_presence_check_restores_strict_exclusion() {
+    let (_directory, root) = setup_project();
+    let result = run_query(&root, &["priority not in critical", "priority?"], &[], &[]);
+    assert!(sorted_ids(&result).is_empty());
 }
 
 #[test]

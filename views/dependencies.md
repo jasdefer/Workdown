@@ -4,6 +4,7 @@ Directed graph of items connected through `depends_on`, nested by `parent`.
 
 ```mermaid
 flowchart TD
+    field-value-map["Mapped fields — derive a value by lookup table"]
     subgraph multi-project-support ["Multi-project support"]
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]
     end
@@ -40,6 +41,7 @@ flowchart TD
             rules-current-date-reference["Rules can't reference the current date"]
             store-diagnostics-consistency["Make store-diagnostic surfacing consistent across commands"]
             virtual-id-in-structural-slots["Reject the virtual `id` in structural slots that read item fields"]
+            where-clause-value-validation["Validate where-clause operands against the field's value set"]
         end
         subgraph renderers ["Renderers"]
             aggregate-rollup["Compute schema-declared aggregate fields up the parent chain"]
@@ -87,8 +89,10 @@ flowchart TD
         end
     end
     subgraph time-tracking ["Time tracking"]
+        computed-fields["Computed fields — same-item cross-field expressions"]
         duration-comparison-rule["Cross-field comparison rule for duration values"]
         git-derived-default-generator["Default generator that reads dates from git history"]
+        project-constants["Project-level constants in resources.yaml"]
     end
     app-shell-navigation --> first-view-end-to-end
     cli-move-command --> cli-set-command
@@ -97,7 +101,9 @@ flowchart TD
     color-display-slot --> color-field-type
     color-display-slot --> view-display-config
     color-field-type --> mutations-slice
+    computed-fields --> project-constants
     display-defaults-validation --> view-display-config
+    duration-comparison-rule --> project-constants
     explicit-in-operator --> view-filter-editor
     first-view-end-to-end --> ui-foundation
     first-view-end-to-end --> walking-skeleton
@@ -155,4 +161,5 @@ flowchart TD
     views-validate-integration --> foundation-cleanup
     views-validate-integration --> views-config-path
     views-validate-integration --> views-cross-file-validation
+    where-clause-value-validation --> explicit-in-operator
 ```

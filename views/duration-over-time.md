@@ -307,6 +307,7 @@ milestone
 - [workdown unset — clear a field](../workdown-items/cli-unset-command.md) — missing `start_date`
 - [`color:` display role — choose which color field tints a view](../workdown-items/color-display-slot.md) — missing `start_date`
 - [Add `color` field type with background tinting](../workdown-items/color-field-type.md) — missing `start_date`
+- [Computed fields — same-item cross-field expressions](../workdown-items/computed-fields.md) — missing `start_date`
 - [Relocate cross-cutting helpers out of feature modules](../workdown-items/cross-cutting-helpers.md) — missing `start_date`
 - [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md) — missing `start_date`
 - [Collapse parallel View* slot variants and unify their validation helpers](../workdown-items/diagnostic-variant-cleanup.md) — missing `start_date`
@@ -314,6 +315,7 @@ milestone
 - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md) — missing `start_date`
 - [Add `duration` field type](../workdown-items/duration-field-type.md) — missing `start_date`
 - [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md) — missing `start_date`
+- [Mapped fields — derive a value by lookup table](../workdown-items/field-value-map.md) — missing `start_date`
 - [Store FieldValue::Date as chrono::NaiveDate](../workdown-items/field-value-native-date.md) — missing `start_date`
 - [First view end-to-end (board, read-only)](../workdown-items/first-view-end-to-end.md) — missing `start_date`
 - [Consolidate duplication and tighten types before more foundation work](../workdown-items/foundation-cleanup.md) — missing `start_date`
@@ -324,6 +326,7 @@ milestone
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — missing `start_date`
 - [Multi-project support](../workdown-items/multi-project-support.md) — missing `start_date`
 - [Mutations end-to-end](../workdown-items/mutations-slice.md) — missing `start_date`
+- [Project-level constants in resources.yaml](../workdown-items/project-constants.md) — missing `start_date`
 - [Remaining read-only views](../workdown-items/remaining-read-views.md) — missing `start_date`
 - [Bar chart renderer](../workdown-items/render-bar-chart.md) — missing `start_date`
 - [Board renderer](../workdown-items/render-board.md) — missing `start_date`
@@ -360,4 +363,5 @@ milestone
 - [Reject the virtual `id` in structural slots that read item fields](../workdown-items/virtual-id-in-structural-slots.md) — missing `start_date`
 - [Unify the upward chain walks and link-target reads](../workdown-items/walker-primitives.md) — missing `start_date`
 - [workdown serve skeleton with embedded UI](../workdown-items/walking-skeleton.md) — missing `start_date`
+- [Validate where-clause operands against the field's value set](../workdown-items/where-clause-value-validation.md) — missing `start_date`
 - [Split into core / cli / server workspace](../workdown-items/workspace-refactor.md) — missing `start_date`

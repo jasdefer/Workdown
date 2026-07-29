@@ -37,7 +37,7 @@
 	function addCondition(): void {
 		rows = [
 			...rows,
-			{ localId: nextId(), kind: 'comparison', field: '', operator: '', value: null }
+			{ localId: nextId(), kind: 'comparison', field: '', operator: '', value: null, values: [] }
 		];
 		// An empty row contributes no clause yet — nothing to emit until filled.
 	}

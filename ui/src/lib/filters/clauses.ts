@@ -19,8 +19,11 @@ export interface GuidedRow {
 	field: string;
 	/** Empty until an operator is picked. */
 	operator: Operator | '';
-	/** `null` for presence operators (`is set` / `is empty`). */
+	/** `null` for presence operators (`is set` / `is empty`) and for the
+	 * list-valued operators, which carry their members in `values`. */
 	value: string | null;
+	/** Members for `in` / `not in`; empty for every other operator. */
+	values: string[];
 }
 
 /** A raw clause row — the escape hatch, edited as plain text. */
@@ -44,7 +47,9 @@ const OPERATOR_LABELS: Record<Operator, string> = {
 	contains: 'contains (~)',
 	matches: 'matches regex',
 	is_set: 'is set',
-	is_not_set: 'is empty'
+	is_not_set: 'is empty',
+	in: 'is any of',
+	not_in: 'is none of'
 };
 
 export function operatorLabel(operator: Operator): string {
@@ -57,40 +62,51 @@ export function isPresenceOperator(operator: Operator | ''): boolean {
 }
 
 /**
- * Multi-value (IN) is only meaningful for `equal` — the grammar treats a
- * comma list as "any of" only there. The UI offers a multi-select for
- * `equal` on choice-like fields; every other operator is single-value.
+ * List-valued operators read their members from `values` and render a
+ * multi-select. `equal` is single-value — it means exactly "equals", commas
+ * included — so membership is its own operator now.
  */
 export function isMultiValueOperator(operator: Operator | ''): boolean {
-	return operator === 'equal';
+	return operator === 'in' || operator === 'not_in';
 }
 
 // ── Completeness ─────────────────────────────────────────────────────
 
 /**
  * Whether a row is filled in enough to preview/save. Half-built guided
- * rows (no field, no operator, empty value) are skipped so the server
- * never sees `status=`.
+ * rows (no field, no operator, no value picked) are skipped so the server
+ * never sees `status=` or an empty `in` list.
  */
 export function isRowComplete(row: Row): boolean {
 	if (row.kind === 'raw') return row.raw.trim() !== '';
 	if (row.field === '' || row.operator === '') return false;
 	if (isPresenceOperator(row.operator)) return true;
+	if (isMultiValueOperator(row.operator)) return row.values.length > 0;
 	return row.value !== null && row.value.trim() !== '';
 }
 
 // ── Row ↔ Clause ─────────────────────────────────────────────────────
 
-/** Convert a complete row to its wire clause, or `null` if incomplete. */
+/**
+ * Convert a complete row to its wire clause, or `null` if incomplete.
+ *
+ * The operand slots are mutually exclusive and chosen by the operator, which
+ * is the invariant the server enforces: a list operator sends `values` and a
+ * null `value`, everything else the reverse.
+ */
 export function rowToClause(row: Row): Clause | null {
 	if (!isRowComplete(row)) return null;
 	if (row.kind === 'raw') return { kind: 'raw', raw: row.raw.trim() };
 	const operator = row.operator as Operator;
+	if (isMultiValueOperator(operator)) {
+		return { kind: 'comparison', field: row.field, operator, value: null, values: row.values };
+	}
 	return {
 		kind: 'comparison',
 		field: row.field,
 		operator,
-		value: isPresenceOperator(operator) ? null : row.value
+		value: isPresenceOperator(operator) ? null : row.value,
+		values: []
 	};
 }
 
@@ -107,8 +123,28 @@ export function clauseToRow(clause: Clause, localId: number): Row {
 		kind: 'comparison',
 		field: clause.field,
 		operator: clause.operator,
-		value: clause.value
+		value: clause.value,
+		values: clause.values
 	};
+}
+
+/**
+ * Move a row's operand across an operator change, converting between the
+ * scalar and list forms instead of dropping what the user picked: the first
+ * member becomes the scalar, and a scalar becomes a one-member list.
+ *
+ * Presence operators take no operand at all, so both slots clear.
+ */
+export function withOperator(row: GuidedRow, operator: Operator | ''): GuidedRow {
+	if (operator === '' || isPresenceOperator(operator)) {
+		return { ...row, operator, value: null, values: [] };
+	}
+	if (isMultiValueOperator(operator)) {
+		const carried = row.values.length > 0 ? row.values : row.value ? [row.value] : [];
+		return { ...row, operator, value: null, values: carried };
+	}
+	const carried = row.value ?? row.values[0] ?? '';
+	return { ...row, operator, value: carried, values: [] };
 }
 
 /** Seed the editor's rows from a persisted, decomposed filter. */

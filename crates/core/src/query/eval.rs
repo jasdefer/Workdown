@@ -144,9 +144,17 @@ fn eval_single(
         _ => {}
     }
 
+    // A field with no value satisfies the negative comparisons and fails
+    // every positive one. `status != done` and `status not in done,removed`
+    // therefore both admit an item carrying no status, which is what makes
+    // the two ways of writing a negation agree — see `Operator::is_negative`.
+    //
+    // The stricter reading (an absent field matches nothing either way) stays
+    // available by adding the presence check as a second clause:
+    // `status != removed` + `status?`.
     let field_value = match field_value {
         Some(value) => value,
-        None => return Ok(false),
+        None => return Ok(comparison.operator.is_negative()),
     };
 
     match field_type {
@@ -179,6 +187,9 @@ fn eval_string(field_value: &FieldValue, comparison: &Comparison) -> Result<bool
         Operator::Contains => Ok(actual.contains(expected.as_str())),
         Operator::Matches => eval_regex(&actual, expected),
         Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
+        Operator::In | Operator::NotIn => {
+            unreachable!("desugared into Or/And by query::parse")
+        }
     }
 }
 
@@ -202,6 +213,9 @@ fn eval_integer(field_value: &FieldValue, comparison: &Comparison) -> Result<boo
         Operator::LessOrEqual => actual <= expected,
         Operator::Contains | Operator::Matches => false,
         Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
+        Operator::In | Operator::NotIn => {
+            unreachable!("desugared into Or/And by query::parse")
+        }
     })
 }
 
@@ -225,6 +239,9 @@ fn eval_float(field_value: &FieldValue, comparison: &Comparison) -> Result<bool,
         Operator::LessOrEqual => actual <= expected,
         Operator::Contains | Operator::Matches => false,
         Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
+        Operator::In | Operator::NotIn => {
+            unreachable!("desugared into Or/And by query::parse")
+        }
     })
 }
 
@@ -253,6 +270,9 @@ fn eval_duration(
         Operator::LessOrEqual => actual <= expected,
         Operator::Contains | Operator::Matches => false,
         Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
+        Operator::In | Operator::NotIn => {
+            unreachable!("desugared into Or/And by query::parse")
+        }
     })
 }
 
@@ -420,6 +440,7 @@ mod tests {
     use super::*;
     use crate::model::schema::{FieldDefinition, FieldTypeConfig};
     use crate::model::WorkItemId;
+    use crate::query::parse::parse_where;
     use crate::query::types::FieldReference;
     use indexmap::IndexMap;
     use std::path::PathBuf;
@@ -769,6 +790,130 @@ mod tests {
         let item = make_item("t1", vec![]);
         let predicate = comparison("points", Operator::GreaterThan, "3");
         assert!(!check(&item, &predicate, &schema).unwrap());
+    }
+
+    /// An absent field fails every positive comparison.
+    #[test]
+    fn missing_field_fails_positive_operators() {
+        let schema = test_schema();
+        let item = make_item("t1", vec![]);
+        for (field, operator, value) in [
+            ("status", Operator::Equal, "done"),
+            ("points", Operator::GreaterThan, "3"),
+            ("points", Operator::LessOrEqual, "3"),
+            ("title", Operator::Contains, "fix"),
+            ("title", Operator::Matches, "/^fix/"),
+            ("labels", Operator::Equal, "backend"),
+        ] {
+            let predicate = comparison(field, operator, value);
+            assert!(
+                !check(&item, &predicate, &schema).unwrap(),
+                "{field} {operator:?} {value} should not match an absent field"
+            );
+        }
+    }
+
+    /// …and satisfies the negative ones, so an item that never set a status
+    /// still counts as "not done".
+    #[test]
+    fn missing_field_satisfies_negative_operators() {
+        let schema = test_schema();
+        let item = make_item("t1", vec![]);
+        for (field, value) in [("status", "done"), ("points", "3"), ("labels", "backend")] {
+            let predicate = comparison(field, Operator::NotEqual, value);
+            assert!(
+                check(&item, &predicate, &schema).unwrap(),
+                "{field} != {value} should match an absent field"
+            );
+        }
+    }
+
+    /// The contract `not in` relies on: it agrees with `!=` for every item,
+    /// including one carrying no value for the field.
+    #[test]
+    fn not_in_agrees_with_not_equal_on_absent_field() {
+        let schema = test_schema();
+        let absent = make_item("t1", vec![]);
+        let present = make_item("t2", vec![("status", FieldValue::String("done".into()))]);
+
+        for item in [&absent, &present] {
+            let single = parse_where("status!=done").unwrap();
+            let membership = parse_where("status not in done").unwrap();
+            assert_eq!(
+                check(item, &single, &schema).unwrap(),
+                check(item, &membership, &schema).unwrap(),
+                "'status!=done' and 'status not in done' disagree on {}",
+                item.id
+            );
+        }
+    }
+
+    /// The stricter reading — exclude items with no value — stays reachable by
+    /// AND-ing the presence check, which is how a `where:` list combines.
+    #[test]
+    fn presence_check_restores_strict_exclusion() {
+        let schema = test_schema();
+        let absent = make_item("t1", vec![]);
+        let predicate = Predicate::And(vec![
+            parse_where("status!=done").unwrap(),
+            parse_where("status?").unwrap(),
+        ]);
+        assert!(!check(&absent, &predicate, &schema).unwrap());
+    }
+
+    #[test]
+    fn membership_matches_listed_values_only() {
+        let schema = test_schema();
+        let predicate = parse_where("status in open,in_progress").unwrap();
+        for (value, expected) in [("open", true), ("in_progress", true), ("done", false)] {
+            let item = make_item("t1", vec![("status", FieldValue::String(value.into()))]);
+            assert_eq!(
+                check(&item, &predicate, &schema).unwrap(),
+                expected,
+                "{value}"
+            );
+        }
+    }
+
+    #[test]
+    fn negated_membership_excludes_listed_values_only() {
+        let schema = test_schema();
+        let predicate = parse_where("status not in done,open").unwrap();
+        for (value, expected) in [("open", false), ("done", false), ("in_progress", true)] {
+            let item = make_item("t1", vec![("status", FieldValue::String(value.into()))]);
+            assert_eq!(
+                check(&item, &predicate, &schema).unwrap(),
+                expected,
+                "{value}"
+            );
+        }
+    }
+
+    /// On a collection field, `equal` means membership, so `in` asks whether
+    /// the collection holds any of the listed members.
+    #[test]
+    fn membership_on_a_collection_field() {
+        let schema = test_schema();
+        let item = make_item(
+            "t1",
+            vec![(
+                "labels",
+                FieldValue::Multichoice(vec!["backend".into(), "devops".into()]),
+            )],
+        );
+        assert!(check(
+            &item,
+            &parse_where("labels in backend,frontend").unwrap(),
+            &schema
+        )
+        .unwrap());
+        assert!(!check(&item, &parse_where("labels in frontend").unwrap(), &schema).unwrap());
+        assert!(!check(
+            &item,
+            &parse_where("labels not in devops,frontend").unwrap(),
+            &schema
+        )
+        .unwrap());
     }
 
     // ── And / Or / Not composition ──────────────────────────────

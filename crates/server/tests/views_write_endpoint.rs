@@ -552,7 +552,7 @@ async fn get_view_filter_decomposes_persisted_clauses() {
     let root = directory.path().to_path_buf();
     write_views(
         &root,
-        "views:\n  - id: board\n    type: board\n    field: status\n    where:\n      - \"status=open\"\n      - \"status=open,in_progress\"\n      - \"parent.status=done\"\n",
+        "views:\n  - id: board\n    type: board\n    field: status\n    where:\n      - \"status=open\"\n      - \"status in open,in_progress\"\n      - \"status not in done\"\n      - \"parent.status=done\"\n",
     );
 
     let response = get(state, "/api/views/board/filter").await;
@@ -560,20 +560,26 @@ async fn get_view_filter_decomposes_persisted_clauses() {
 
     let envelope = body_json(response).await;
     let clauses = envelope["data"].as_array().expect("clauses array");
-    assert_eq!(clauses.len(), 3);
+    assert_eq!(clauses.len(), 4);
     // A single comparison decomposes to a guided condition.
     assert_eq!(clauses[0]["kind"], "comparison");
     assert_eq!(clauses[0]["field"], "status");
     assert_eq!(clauses[0]["operator"], "equal");
     assert_eq!(clauses[0]["value"], "open");
-    // IN (multi-value) folds into one multi-value comparison.
+    // A membership test folds back into one condition carrying its members as
+    // a list, with the scalar slot null.
     assert_eq!(clauses[1]["kind"], "comparison");
     assert_eq!(clauses[1]["field"], "status");
-    assert_eq!(clauses[1]["operator"], "equal");
-    assert_eq!(clauses[1]["value"], "open,in_progress");
+    assert_eq!(clauses[1]["operator"], "in");
+    assert!(clauses[1]["value"].is_null());
+    assert_eq!(clauses[1]["values"][0], "open");
+    assert_eq!(clauses[1]["values"][1], "in_progress");
+    // A one-member `not in` keeps its operator rather than collapsing to `!=`.
+    assert_eq!(clauses[2]["operator"], "not_in");
+    assert_eq!(clauses[2]["values"][0], "done");
     // A cross-relation reference stays raw (guided rows are local-only).
-    assert_eq!(clauses[2]["kind"], "raw");
-    assert_eq!(clauses[2]["raw"], "parent.status=done");
+    assert_eq!(clauses[3]["kind"], "raw");
+    assert_eq!(clauses[3]["raw"], "parent.status=done");
 }
 
 #[tokio::test]

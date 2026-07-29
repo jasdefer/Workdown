@@ -16,6 +16,7 @@
 		isMultiValueOperator,
 		isPresenceOperator,
 		operatorLabel,
+		withOperator,
 		type GuidedRow
 	} from './clauses';
 
@@ -37,8 +38,11 @@
 		withCurrentOperator(fieldType ? schemaStore.operatorsFor(fieldType) : [], row.operator)
 	);
 	const showValue = $derived(row.operator !== '' && !isPresenceOperator(row.operator));
-	const isMulti = $derived(fieldType === 'choice' && isMultiValueOperator(row.operator));
-	const selectedValues = $derived(row.value ? row.value.split(',') : []);
+	// `in` / `not in` are offered for exactly the types with a known value set
+	// to pick members from, so the multi picker covers every case they appear in.
+	const isMulti = $derived(isMultiValueOperator(row.operator));
+	const picksFromChoices = $derived(fieldType === 'choice' || fieldType === 'multichoice');
+	const selectedValues = $derived(row.values);
 	const scalarValue = $derived(row.value ?? '');
 
 	function withCurrentOperator(offered: Operator[], current: Operator | ''): Operator[] {
@@ -49,23 +53,19 @@
 	function chooseField(name: string): void {
 		const nextType = schemaStore.field(name)?.field_type;
 		const nextOperators = nextType ? schemaStore.operatorsFor(nextType) : [];
-		// Drop the operator/value if the current operator no longer applies.
+		// Drop the operator and its operand if the operator no longer applies.
 		const keep = row.operator !== '' && nextOperators.includes(row.operator);
-		onchange({
-			...row,
-			field: name,
-			operator: keep ? row.operator : '',
-			value: keep ? row.value : null
-		});
+		if (keep) {
+			onchange({ ...row, field: name });
+			return;
+		}
+		onchange({ ...row, field: name, operator: '', value: null, values: [] });
 	}
 
 	function chooseOperator(next: Operator | ''): void {
-		if (next !== '' && isPresenceOperator(next)) {
-			onchange({ ...row, operator: next, value: null });
-			return;
-		}
-		// Entering a value operator from a presence one needs a value slot.
-		onchange({ ...row, operator: next, value: row.value ?? '' });
+		// Converts the operand between the scalar and list forms rather than
+		// carrying one across where it doesn't belong.
+		onchange(withOperator(row, next));
 	}
 
 	// Typed handler so ESLint sees `currentTarget` as an element, not `any`
@@ -82,7 +82,17 @@
 		const set = new Set(selectedValues);
 		if (checked) set.add(option);
 		else set.delete(option);
-		setValue([...set].join(','));
+		setValues([...set]);
+	}
+
+	// Members stay members — the comma-join now happens only in the Rust
+	// serializer, on the way out to the clause string.
+	function setValues(values: string[]): void {
+		onchange({ ...row, values });
+	}
+
+	function onMultiSelectChange(event: Event & { currentTarget: HTMLSelectElement }): void {
+		setValues(Array.from(event.currentTarget.selectedOptions, (option) => option.value));
 	}
 </script>
 
@@ -114,8 +124,8 @@
 
 	{#if showValue}
 		<div class="value">
-			{#if isMulti}
-				<!-- choice + `is`: multi-select builds an IN clause. -->
+			{#if isMulti && picksFromChoices}
+				<!-- `is any of` / `is none of`: pick several known values. -->
 				<div class="checks">
 					{#each fieldDef?.values ?? [] as option (option)}
 						<label class="check">
@@ -130,6 +140,13 @@
 						</label>
 					{/each}
 				</div>
+			{:else if isMulti}
+				<!-- Link-like fields: too many ids for checkboxes, so a list box. -->
+				<select multiple size="5" onchange={onMultiSelectChange}>
+					{#each schemaStore.items as id (id)}
+						<option value={id} selected={selectedValues.includes(id)}>{prettifyId(id)}</option>
+					{/each}
+				</select>
 			{:else if fieldType === 'choice' || fieldType === 'multichoice'}
 				<select
 					value={scalarValue}
@@ -206,6 +223,7 @@
 	}
 
 	select,
+	select[multiple],
 	input[type='text'],
 	input[type='number'],
 	input[type='date'] {

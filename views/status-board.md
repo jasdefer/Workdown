@@ -4,13 +4,14 @@ Cards grouped into columns by `status`.
 
 ## to_do
 - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md)
-- [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md)
+- [Mapped fields — derive a value by lookup table](../workdown-items/field-value-map.md)
 - [Default generator that reads dates from git history](../workdown-items/git-derived-default-generator.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Validate resource references and render resource pickers](../workdown-items/resource-option-lists.md)
 - [Rules can't reference the current date](../workdown-items/rules-current-date-reference.md)
 - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md)
 - [Reject the virtual `id` in structural slots that read item fields](../workdown-items/virtual-id-in-structural-slots.md)
+- [Validate where-clause operands against the field's value set](../workdown-items/where-clause-value-validation.md)
 
 ## in_progress
 _(no cards)_
@@ -28,11 +29,13 @@ _(no cards)_
 - [workdown unset — clear a field](../workdown-items/cli-unset-command.md)
 - [`color:` display role — choose which color field tints a view](../workdown-items/color-display-slot.md)
 - [Add `color` field type with background tinting](../workdown-items/color-field-type.md)
+- [Computed fields — same-item cross-field expressions](../workdown-items/computed-fields.md)
 - [Relocate cross-cutting helpers out of feature modules](../workdown-items/cross-cutting-helpers.md)
 - [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md)
 - [Collapse parallel View* slot variants and unify their validation helpers](../workdown-items/diagnostic-variant-cleanup.md)
 - [Validate `defaults.display` in config.yaml against the schema](../workdown-items/display-defaults-validation.md)
 - [Add `duration` field type](../workdown-items/duration-field-type.md)
+- [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md)
 - [Store FieldValue::Date as chrono::NaiveDate](../workdown-items/field-value-native-date.md)
 - [First view end-to-end (board, read-only)](../workdown-items/first-view-end-to-end.md)
 - [Consolidate duplication and tighten types before more foundation work](../workdown-items/foundation-cleanup.md)
@@ -40,6 +43,7 @@ _(no cards)_
 - [Gantt predecessor input mode](../workdown-items/gantt-predecessor-mode.md)
 - [File watcher and SSE for live updates](../workdown-items/live-updates.md)
 - [Mutations end-to-end](../workdown-items/mutations-slice.md)
+- [Project-level constants in resources.yaml](../workdown-items/project-constants.md)
 - [Remaining read-only views](../workdown-items/remaining-read-views.md)
 - [Bar chart renderer](../workdown-items/render-bar-chart.md)
 - [Board renderer](../workdown-items/render-board.md)

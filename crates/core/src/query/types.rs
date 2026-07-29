@@ -66,6 +66,55 @@ pub enum Operator {
     IsSet,
     /// Field is absent (no value).
     IsNotSet,
+    /// Field equals any of several values. Never reaches the evaluator —
+    /// [`crate::query::parse`] rewrites it into an [`Predicate::Or`] of
+    /// [`Operator::Equal`] comparisons before evaluation, and
+    /// [`crate::query::clause`] folds that shape back. It exists as an
+    /// operator so the wire format and the guided builder can name it.
+    In,
+    /// Field equals none of several values. Rewritten into an
+    /// [`Predicate::And`] of [`Operator::NotEqual`] comparisons, on the same
+    /// terms as [`Operator::In`].
+    NotIn,
+}
+
+impl Operator {
+    /// Whether this operator asserts the *absence* of a match rather than a
+    /// match. An item whose field has no value satisfies these and fails
+    /// every other value comparison — see [`crate::query::eval`].
+    ///
+    /// [`Operator::IsNotSet`] is deliberately not here: presence checks are
+    /// answered before the absent-value rule applies.
+    pub fn is_negative(self) -> bool {
+        matches!(self, Operator::NotEqual | Operator::NotIn)
+    }
+
+    /// Whether this operator takes a list of values (`values`) rather than a
+    /// single one (`value`).
+    pub fn is_list_valued(self) -> bool {
+        matches!(self, Operator::In | Operator::NotIn)
+    }
+
+    /// How this operator is spelled in the clause grammar. Used in diagnostics
+    /// and error messages so they quote what a user would type; the clause
+    /// *serializer* still formats each operator itself, because the operand's
+    /// position differs (`field?`, `!field?`, `field/pattern/`).
+    pub fn token(self) -> &'static str {
+        match self {
+            Operator::Equal => "=",
+            Operator::NotEqual => "!=",
+            Operator::GreaterThan => ">",
+            Operator::LessThan => "<",
+            Operator::GreaterOrEqual => ">=",
+            Operator::LessOrEqual => "<=",
+            Operator::Contains => "~",
+            Operator::Matches => "/…/",
+            Operator::IsSet => "?",
+            Operator::IsNotSet => "!?",
+            Operator::In => "in",
+            Operator::NotIn => "not in",
+        }
+    }
 }
 
 /// The operators the filter builder should *offer* for a field type — a
@@ -79,11 +128,12 @@ pub enum Operator {
 /// - `string` — equality plus substring (`contains`) and regex (`matches`).
 ///   Ordering is omitted: byte-wise string comparison surprises users
 ///   (case-sensitive, and `"10" < "9"`).
-/// - `choice` — equality only. Categories are matched whole, and
-///   lexicographic ordering of category names is meaningless.
+/// - `choice` — equality and list membership (`in` / `not in`). Categories
+///   are matched whole, and lexicographic ordering of category names is
+///   meaningless.
 /// - `date` — equality and ordering (ISO dates sort chronologically as
 ///   text); substring / regex omitted.
-/// - `link` — equality only; a link is an id reference.
+/// - `link` — equality and list membership; a link is an id reference.
 /// - `integer` / `float` / `duration` — ordered scalars: equality and
 ///   comparison.
 /// - `boolean` — equality only.
@@ -91,14 +141,21 @@ pub enum Operator {
 ///   `color == red` matches an item storing red's pinned hex literally).
 ///   Ordering and substring matching are meaningless, as for `choice`.
 /// - `multichoice` / `list` / `links` — collections: membership (`equal` /
-///   `not_equal`) plus per-element `contains` / `matches`.
+///   `not_equal`) plus per-element `contains` / `matches`, and `in` /
+///   `not in` against several members at once.
+///
+/// `In` / `NotIn` are offered only for the choice-like and link-like types —
+/// the ones where "any of these known values" is the natural question and the
+/// builder can render a picker. They stay reachable elsewhere through a
+/// hand-written clause, like the operators the evaluator supports but this
+/// list omits.
 pub fn operators_for(field_type: FieldType) -> Vec<Operator> {
     use FieldType::*;
     use Operator::*;
 
     let mut operators = match field_type {
         String => vec![Equal, NotEqual, Contains, Matches],
-        Choice | Link => vec![Equal, NotEqual],
+        Choice | Link => vec![Equal, NotEqual, In, NotIn],
         Date => vec![
             Equal,
             NotEqual,
@@ -116,7 +173,10 @@ pub fn operators_for(field_type: FieldType) -> Vec<Operator> {
             LessOrEqual,
         ],
         Boolean | Color => vec![Equal, NotEqual],
-        Multichoice | List | Links => vec![Equal, NotEqual, Contains, Matches],
+        Multichoice | Links => vec![Equal, NotEqual, In, NotIn, Contains, Matches],
+        // A `list` holds free-form strings, so there is no known value set to
+        // pick members from — `in` stays in the raw hatch here.
+        List => vec![Equal, NotEqual, Contains, Matches],
     };
     // Presence checks are type-agnostic — the evaluator answers them before
     // it ever looks at the field's type.
@@ -270,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn choice_and_link_offer_equality_only() {
+    fn choice_and_link_offer_equality_and_membership() {
         for field_type in [FieldType::Choice, FieldType::Link] {
             let operators = operators_for(field_type);
             assert_eq!(
@@ -278,12 +338,54 @@ mod tests {
                 vec![
                     Operator::Equal,
                     Operator::NotEqual,
+                    Operator::In,
+                    Operator::NotIn,
                     Operator::IsSet,
                     Operator::IsNotSet
                 ],
                 "{field_type}"
             );
         }
+    }
+
+    #[test]
+    fn membership_offered_for_choice_like_and_link_like_only() {
+        for field_type in [
+            FieldType::Choice,
+            FieldType::Multichoice,
+            FieldType::Link,
+            FieldType::Links,
+        ] {
+            let operators = operators_for(field_type);
+            assert!(operators.contains(&Operator::In), "{field_type}");
+            assert!(operators.contains(&Operator::NotIn), "{field_type}");
+        }
+        // No known value set to pick members from.
+        for field_type in [
+            FieldType::String,
+            FieldType::List,
+            FieldType::Integer,
+            FieldType::Float,
+            FieldType::Date,
+            FieldType::Duration,
+            FieldType::Boolean,
+            FieldType::Color,
+        ] {
+            let operators = operators_for(field_type);
+            assert!(!operators.contains(&Operator::In), "{field_type}");
+            assert!(!operators.contains(&Operator::NotIn), "{field_type}");
+        }
+    }
+
+    #[test]
+    fn negative_operators_are_not_equal_and_not_in() {
+        assert!(Operator::NotEqual.is_negative());
+        assert!(Operator::NotIn.is_negative());
+        assert!(!Operator::Equal.is_negative());
+        assert!(!Operator::In.is_negative());
+        assert!(!Operator::Contains.is_negative());
+        // Presence checks are answered before the absent-value rule.
+        assert!(!Operator::IsNotSet.is_negative());
     }
 
     #[test]

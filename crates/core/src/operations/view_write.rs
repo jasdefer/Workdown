@@ -71,6 +71,14 @@ pub enum ViewWriteError {
     #[error("invalid view definition: {detail}")]
     InvalidDefinition { detail: String },
 
+    /// A structured clause whose operand does not match its operator's arity.
+    /// The guided builder cannot produce one — it picks the operand widget from
+    /// the operator — so this is a malformed request rather than a
+    /// user-authored file problem, and it fails the write instead of riding
+    /// through as a warning.
+    #[error("invalid filter condition: {0}")]
+    InvalidCondition(#[from] crate::query::clause::ConditionError),
+
     #[error("invalid view name '{name}': {reason}")]
     InvalidName { name: String, reason: String },
 
@@ -169,7 +177,7 @@ fn prepare_definition(
         serde_yaml::Value::String("id".to_owned()),
         serde_yaml::Value::String(id.to_owned()),
     );
-    let where_clauses = clauses_to_strings(filter);
+    let where_clauses = clauses_to_strings(filter)?;
     if !where_clauses.is_empty() {
         mapping.insert(
             serde_yaml::Value::String("where".to_owned()),
@@ -211,7 +219,7 @@ pub fn set_view_filter(
         .ok_or_else(|| ViewWriteError::ViewNotFound {
             id: view_id.to_owned(),
         })?;
-    view.where_clauses = clauses_to_strings(clauses);
+    view.where_clauses = clauses_to_strings(clauses)?;
 
     finalize(views, &path, &schema, pre_diagnostics, view_id.to_owned())
 }
@@ -308,6 +316,16 @@ mod tests {
             field: field.to_owned(),
             operator,
             value: value.map(str::to_owned),
+            values: Vec::new(),
+        })
+    }
+
+    fn membership(field: &str, operator: Operator, values: &[&str]) -> Clause {
+        Clause::Comparison(Condition {
+            field: field.to_owned(),
+            operator,
+            value: None,
+            values: values.iter().map(|value| (*value).to_owned()).collect(),
         })
     }
 
@@ -543,6 +561,59 @@ fields:
         assert_eq!(
             reloaded.views[0].where_clauses,
             vec!["status=open", "title~fix"]
+        );
+    }
+
+    /// A membership condition reaches `views.yaml` as `in` / `not in`, with the
+    /// comma-join happening in the serializer and nowhere else.
+    #[test]
+    fn set_view_filter_writes_membership_clauses() {
+        let (_dir, root, config) = setup();
+        write_views(
+            &root,
+            "views:\n  - id: board\n    type: board\n    field: status\n",
+        );
+
+        let outcome = set_view_filter(
+            &config,
+            &root,
+            "board",
+            &[
+                membership("status", Operator::In, &["open", "in_progress"]),
+                membership("status", Operator::NotIn, &["done"]),
+            ],
+        )
+        .unwrap();
+
+        assert!(!outcome.mutation_caused_warning);
+        let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
+        assert_eq!(
+            reloaded.views[0].where_clauses,
+            vec!["status in open,in_progress", "status not in done"]
+        );
+    }
+
+    /// An operand that doesn't match its operator's arity fails the write
+    /// outright — the guided builder cannot produce one, so it is a malformed
+    /// request rather than a filter to save with a warning.
+    #[test]
+    fn set_view_filter_rejects_operand_arity_mismatch_without_writing() {
+        let (_dir, root, config) = setup();
+        let source = "views:\n  - id: board\n    type: board\n    field: status\n";
+        write_views(&root, source);
+
+        let error = set_view_filter(
+            &config,
+            &root,
+            "board",
+            &[condition("status", Operator::In, Some("open"))],
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, ViewWriteError::InvalidCondition(_)));
+        assert_eq!(
+            std::fs::read_to_string(root.join(".workdown/views.yaml")).unwrap(),
+            source
         );
     }
 
