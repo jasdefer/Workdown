@@ -18,9 +18,10 @@ title: Mapped fields — derive a value by lookup table
 > way to say the same thing.
 >
 > What the table had and the replacement does not: exhaustiveness checking
-> against a `choice` field's declared values. See [[conditional-derivation]]
-> for that trade, and for the note that `map:` may return later as sugar over
-> the same evaluator.
+> against a `choice` field's declared values. That loss is accepted for now;
+> if authoring multi-branch conditions proves tedious, `map:` may return
+> later as sugar over the same evaluator — a far better position than
+> maintaining two evaluators.
 
 A declarative `map:` config on a field: derive this field's value by
 looking up another field's value in a table. The motivating case is
@@ -61,6 +62,6 @@ load time, and trivially evaluatable.
 
 ## Scheduling
 
-Resolved: the milestone this was waiting for exists now. It is
-[[conditional-derivation]], and this item is superseded by
-[[conditional-field-value]] inside it rather than scheduled into it.
+Resolved: the work this was waiting for is scheduled under [[polish]], and
+this item is superseded by [[conditional-field-value]] rather than scheduled
+alongside it.

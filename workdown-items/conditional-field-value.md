@@ -3,15 +3,15 @@ id: conditional-field-value
 type: issue
 status: to_do
 title: "`when:` — derive a field value by first matching condition"
-parent: conditional-derivation
+parent: polish
 depends_on: [expression-predicates, evaluation-time-now]
 effort: "12h"
 ---
 
 With predicates in the grammar ([[expression-predicates]]) and a readable
 current date ([[evaluation-time-now]]), the remaining piece is a field config
-that picks a value by condition. This is the user-facing feature of
-[[conditional-derivation]]; the other two issues exist to make it possible.
+that picks a value by condition. This is the user-facing feature the other
+two issues exist to make possible.
 
 ```yaml
 urgency_color:
@@ -92,6 +92,6 @@ values. The cost is one more config shape beside `compute:` and `aggregate:`.
 ## Out of scope
 
 - A lookup-table shorthand. [[field-value-map]] is superseded by this issue;
-  see [[conditional-derivation]] for why, and for the exhaustiveness check that
-  decision gives up.
+  its record keeps the reasoning, and the exhaustiveness check that decision
+  gives up. `map:` may return later as sugar over the same evaluator.
 - Conditions over *other* items' fields.

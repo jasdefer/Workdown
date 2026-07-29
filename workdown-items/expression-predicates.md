@@ -3,7 +3,7 @@ id: expression-predicates
 type: issue
 status: to_do
 title: Comparisons, equality and booleans in the expression grammar
-parent: conditional-derivation
+parent: polish
 effort: "12h"
 ---
 
@@ -49,7 +49,7 @@ adds exactly that, and nothing that isn't needed for it.
   Bare-word means the lexer must distinguish a value from a field reference by
   position, which is doable but subtle. Weigh honestly.
 - **Combining predicates.** Do `and` / `or` / `not` belong here? The motivating
-  cases in [[conditional-derivation]] need none of them, and a `when:` list
+  cases in [[conditional-field-value]] need none of them, and a `when:` list
   already gives an implicit "or" across branches. Leaving them out keeps this
   issue small; the cost is that "done *and* overdue" needs two branches. Prefer
   leaving out unless it makes the acceptance cases awkward.
