@@ -655,4 +655,5 @@ effort (days)
 | 2026-07-31 | 3h 12min |
 
 ## Unplaced
+- [Conditional & time-aware derivation](../workdown-items/conditional-derivation.md) — missing `start_date`
 - [Time tracking](../workdown-items/time-tracking.md) — missing `start_date`

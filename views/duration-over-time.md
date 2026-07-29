@@ -308,14 +308,17 @@ milestone
 - [`color:` display role — choose which color field tints a view](../workdown-items/color-display-slot.md) — missing `start_date`
 - [Add `color` field type with background tinting](../workdown-items/color-field-type.md) — missing `start_date`
 - [Computed fields — same-item cross-field expressions](../workdown-items/computed-fields.md) — missing `start_date`
+- [Conditional & time-aware derivation](../workdown-items/conditional-derivation.md) — missing `start_date`
+- [`when:` — derive a field value by first matching condition](../workdown-items/conditional-field-value.md) — missing `start_date`
 - [Relocate cross-cutting helpers out of feature modules](../workdown-items/cross-cutting-helpers.md) — missing `start_date`
 - [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md) — missing `start_date`
 - [Collapse parallel View* slot variants and unify their validation helpers](../workdown-items/diagnostic-variant-cleanup.md) — missing `start_date`
 - [Validate `defaults.display` in config.yaml against the schema](../workdown-items/display-defaults-validation.md) — missing `start_date`
 - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md) — missing `start_date`
 - [Add `duration` field type](../workdown-items/duration-field-type.md) — missing `start_date`
+- [Resolve the current date at evaluation time, reproducibly](../workdown-items/evaluation-time-now.md) — missing `start_date`
 - [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md) — missing `start_date`
-- [Mapped fields — derive a value by lookup table](../workdown-items/field-value-map.md) — missing `start_date`
+- [Comparisons, equality and booleans in the expression grammar](../workdown-items/expression-predicates.md) — missing `start_date`
 - [Store FieldValue::Date as chrono::NaiveDate](../workdown-items/field-value-native-date.md) — missing `start_date`
 - [First view end-to-end (board, read-only)](../workdown-items/first-view-end-to-end.md) — missing `start_date`
 - [Consolidate duplication and tighten types before more foundation work](../workdown-items/foundation-cleanup.md) — missing `start_date`

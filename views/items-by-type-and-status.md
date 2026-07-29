@@ -41,10 +41,10 @@ milestone
 <rect x="140" y="125" width="34" height="34" opacity="1" fill="#FFFFFF" stroke="none"/>
 <rect x="174" y="55" width="35" height="35" opacity="1" fill="#0072B2" stroke="none"/>
 <rect x="174" y="90" width="35" height="35" opacity="1" fill="#EEEEEE" stroke="none"/>
-<rect x="174" y="125" width="35" height="34" opacity="1" fill="#DCECF4" stroke="none"/>
+<rect x="174" y="125" width="35" height="34" opacity="1" fill="#D3E7F2" stroke="none"/>
 <rect x="209" y="55" width="35" height="35" opacity="1" fill="#E5F0F7" stroke="none"/>
 <rect x="209" y="90" width="35" height="35" opacity="1" fill="#FBFDFE" stroke="none"/>
-<rect x="209" y="125" width="35" height="34" opacity="1" fill="#EEEEEE" stroke="none"/>
+<rect x="209" y="125" width="35" height="34" opacity="1" fill="#FFFFFF" stroke="none"/>
 <polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="359,20 359,179 "/>
 <text x="352" y="155" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="10.483870967741936" opacity="1" fill="#000000">
 10
@@ -138,5 +138,5 @@ milestone
 | --- | --- | --- | --- |
 | done |  | 59 | 7 |
 | in_progress | 1 |  | 2 |
-| to_do | 1 | 9 |  |
+| to_do | 1 | 11 | 1 |
 

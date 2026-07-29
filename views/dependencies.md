@@ -4,6 +4,12 @@ Directed graph of items connected through `depends_on`, nested by `parent`.
 
 ```mermaid
 flowchart TD
+    subgraph conditional-derivation ["Conditional & time-aware derivation"]
+        conditional-field-value["`when:` — derive a field value by first matching condition"]
+        evaluation-time-now["Resolve the current date at evaluation time, reproducibly"]
+        expression-predicates["Comparisons, equality and booleans in the expression grammar"]
+        rules-current-date-reference["Rules can't reference the current date"]
+    end
     field-value-map["Mapped fields — derive a value by lookup table"]
     subgraph multi-project-support ["Multi-project support"]
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]
@@ -38,7 +44,6 @@ flowchart TD
         subgraph polish ["Polish & dogfood"]
             explicit-in-operator["Explicit `in` operator; `=` becomes always-literal"]
             resource-option-lists["Validate resource references and render resource pickers"]
-            rules-current-date-reference["Rules can't reference the current date"]
             store-diagnostics-consistency["Make store-diagnostic surfacing consistent across commands"]
             virtual-id-in-structural-slots["Reject the virtual `id` in structural slots that read item fields"]
             where-clause-value-validation["Validate where-clause operands against the field's value set"]
@@ -102,6 +107,8 @@ flowchart TD
     color-display-slot --> view-display-config
     color-field-type --> mutations-slice
     computed-fields --> project-constants
+    conditional-field-value --> evaluation-time-now
+    conditional-field-value --> expression-predicates
     display-defaults-validation --> view-display-config
     duration-comparison-rule --> project-constants
     explicit-in-operator --> view-filter-editor
@@ -142,6 +149,7 @@ flowchart TD
     renderers --> foundation
     resource-option-lists --> mutations-slice
     resource-option-lists --> schema-metadata-api
+    rules-current-date-reference --> evaluation-time-now
     server --> foundation
     server --> item-mutations
     server --> renderers

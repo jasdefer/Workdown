@@ -3,8 +3,18 @@ id: rules-current-date-reference
 type: issue
 status: to_do
 title: Rules can't reference the current date
-parent: polish
+parent: conditional-derivation
+depends_on: [evaluation-time-now]
 ---
+
+> **Moved out of [[polish]].** This was parked there, but it is a rule-engine
+> feature rather than release readiness, and it needs exactly the primitive
+> [[evaluation-time-now]] delivers. Leaving it under [[polish]] would have made
+> that milestone — and so [[phase-04-visualization]] — unable to close until
+> this landed. The "one possible approach" below is superseded by that issue,
+> which owns the spelling, the type and the `--as-of` override; what remains
+> here is wiring the resolved value into the rule engine's `*_field` operators.
+
 
 ## Problem
 

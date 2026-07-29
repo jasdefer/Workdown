@@ -3,8 +3,10 @@
 Cards grouped into columns by `status`.
 
 ## to_do
+- [`when:` — derive a field value by first matching condition](../workdown-items/conditional-field-value.md)
 - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md)
-- [Mapped fields — derive a value by lookup table](../workdown-items/field-value-map.md)
+- [Resolve the current date at evaluation time, reproducibly](../workdown-items/evaluation-time-now.md)
+- [Comparisons, equality and booleans in the expression grammar](../workdown-items/expression-predicates.md)
 - [Default generator that reads dates from git history](../workdown-items/git-derived-default-generator.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Validate resource references and render resource pickers](../workdown-items/resource-option-lists.md)
@@ -78,7 +80,7 @@ _(no cards)_
 - [Split into core / cli / server workspace](../workdown-items/workspace-refactor.md)
 
 ## removed
-_(no cards)_
+- [Mapped fields — derive a value by lookup table](../workdown-items/field-value-map.md)
 
 ## No status
 _(no cards)_

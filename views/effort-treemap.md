@@ -2,9 +2,9 @@
 
 Hierarchical breakdown of `effort` summed up the `parent` chain.
 
-**Total: 3w 1d 4h**
+**Total: 3w 2d 12h**
 
-- **3w 16h** (98%) — [Phase 04: Visualization](../workdown-items/phase-04-visualization.md)
+- **3w 16h** (92%) — [Phase 04: Visualization](../workdown-items/phase-04-visualization.md)
   - **5d 16h** (26%) — [Renderers](../workdown-items/renderers.md)
     - **16h** (12%) — [Design ViewData and extractors](../workdown-items/view-data-intermediate.md)
     - **12h** (9%) — [Gantt renderer](../workdown-items/render-gantt.md)
@@ -67,6 +67,10 @@ Hierarchical breakdown of `effort` summed up the `parent` chain.
     - **8h** (50%) — [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md)
     - **4h** (25%) — [Validate resource references and render resource pickers](../workdown-items/resource-option-lists.md)
     - **4h** (25%) — [Validate where-clause operands against the field's value set](../workdown-items/where-clause-value-validation.md)
+- **1d 8h** (6%) — [Conditional & time-aware derivation](../workdown-items/conditional-derivation.md)
+  - **12h** (38%) — [`when:` — derive a field value by first matching condition](../workdown-items/conditional-field-value.md)
+  - **12h** (38%) — [Comparisons, equality and booleans in the expression grammar](../workdown-items/expression-predicates.md)
+  - **8h** (25%) — [Resolve the current date at evaluation time, reproducibly](../workdown-items/evaluation-time-now.md)
 - **12h** (2%) — [Time tracking](../workdown-items/time-tracking.md)
   - **8h** (67%) — [Computed fields — same-item cross-field expressions](../workdown-items/computed-fields.md)
   - **4h** (33%) — [Project-level constants in resources.yaml](../workdown-items/project-constants.md)
@@ -75,7 +79,6 @@ Hierarchical breakdown of `effort` summed up the `parent` chain.
 - [App shell navigation (views menu + future link slots)](../workdown-items/app-shell-navigation.md)
 - [Validate `defaults.display` in config.yaml against the schema](../workdown-items/display-defaults-validation.md)
 - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md)
-- [Mapped fields — derive a value by lookup table](../workdown-items/field-value-map.md)
 - [Default generator that reads dates from git history](../workdown-items/git-derived-default-generator.md)
 - [File watcher and SSE for live updates](../workdown-items/live-updates.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
