@@ -81,6 +81,14 @@ fields:
       function: sum
       error_on_missing: false
 
+  # Calendar time until the end date, evaluated against the current date
+  # ($today — pin with `--as-of` for reproducible renders). Negative once
+  # the end date has passed. Dogfoods evaluation-time-now (ADR-010).
+  days_remaining:
+    type: duration
+    required: false
+    compute: end_date - $today
+
 # ── Rules ──────────────────────────────────────────────────
 # Cross-field, cross-item, and collection-wide validation.
 # See schema.schema.json for the formal rule syntax definition.

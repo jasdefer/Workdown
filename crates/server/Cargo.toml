@@ -12,6 +12,8 @@ publish = false
 workdown-core = { path = "../core" }
 anyhow.workspace = true
 axum = "0.8"
+# The `--as-of` pinned evaluation date carried in AppState.
+chrono.workspace = true
 mime_guess = "2"
 # debug-embed feature is OFF by default — debug builds read ui/dist/ from
 # disk at runtime, release builds bake it in. Keeps `cargo check` / `cargo

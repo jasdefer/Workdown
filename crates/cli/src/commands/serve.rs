@@ -22,12 +22,21 @@ pub fn run_serve_command(
     config_path: &Path,
     port: Option<u16>,
     open: bool,
+    as_of: Option<chrono::NaiveDate>,
 ) -> Result<ExitCode> {
     let port_resolution = resolve_port(config, port);
+    if let Some(pinned_date) = as_of {
+        // Loud on purpose: a forgotten pin means trusting a stale board.
+        output::info(&format!(
+            "evaluating $today as {} for the lifetime of this server (pinned via --as-of)",
+            pinned_date.format("%Y-%m-%d"),
+        ));
+    }
     let state = AppState::new(
         project_root.to_path_buf(),
         config.clone(),
         config_path.to_path_buf(),
+        as_of,
     );
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

@@ -39,6 +39,11 @@ pub enum Command {
         /// Output format: human-readable or JSON
         #[arg(long, value_enum, default_value_t = ValidateFormat::Human)]
         format: ValidateFormat,
+
+        /// Evaluate `$today` as this date (YYYY-MM-DD) instead of the
+        /// current date, so a given commit validates identically on any day
+        #[arg(long = "as-of", value_name = "DATE")]
+        as_of: Option<chrono::NaiveDate>,
     },
     /// Create a new work item
     ///
@@ -79,11 +84,21 @@ pub enum Command {
         /// Omit the header row in tsv/csv output. Ignored for table/json.
         #[arg(long = "no-header")]
         no_header: bool,
+
+        /// Evaluate `$today` as this date (YYYY-MM-DD) instead of the
+        /// current date
+        #[arg(long = "as-of", value_name = "DATE")]
+        as_of: Option<chrono::NaiveDate>,
     },
     /// Render views to Markdown files under `views/`
     Render {
         /// Render only this view id (default: render all views)
         view_id: Option<String>,
+
+        /// Evaluate `$today` as this date (YYYY-MM-DD) instead of the
+        /// current date, so a given commit renders identically on any day
+        #[arg(long = "as-of", value_name = "DATE")]
+        as_of: Option<chrono::NaiveDate>,
     },
     /// List or show work item templates
     Templates {
@@ -184,6 +199,12 @@ pub enum Command {
         /// Open the URL in the default browser after the server is ready.
         #[arg(long)]
         open: bool,
+        /// Evaluate `$today` as this date (YYYY-MM-DD) for every request,
+        /// for the lifetime of the server — a time machine for previewing
+        /// how views will look on a future date. Without it, each request
+        /// evaluates at its own current date.
+        #[arg(long = "as-of", value_name = "DATE")]
+        as_of: Option<chrono::NaiveDate>,
     },
     /// Change a work item's id — moves the file and rewrites every
     /// incoming link/links reference.

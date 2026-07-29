@@ -44,14 +44,17 @@ pub(super) struct ComputeFieldSpec<'a> {
 }
 
 /// Evaluate `spec`'s expression for every eligible item, writing
-/// results into `items`.
+/// results into `items`. `evaluation_date` is what `$today` resolves
+/// to — passed in, never read from the clock here (see ADR-010).
 pub(super) fn run_for_field(
     items: &mut HashMap<WorkItemId, WorkItem>,
     reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
     constants: &IndexMap<String, FieldValue>,
+    evaluation_date: NaiveDate,
     spec: &ComputeFieldSpec<'_>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
+    let today = timestamp_of(evaluation_date);
     // Sorted for deterministic diagnostic order, like the rollup.
     let mut item_ids: Vec<WorkItemId> = items.keys().cloned().collect();
     item_ids.sort_by(|a, b| a.as_str().cmp(b.as_str()));
@@ -88,6 +91,7 @@ pub(super) fn run_for_field(
         let context = ItemValueContext {
             fields: &item.fields,
             constants,
+            today,
         };
         let outcome = match evaluate(&spec.config.expression, &context) {
             Ok(value) => match field_value_from(value, spec.declared_type, spec.config.round) {
@@ -162,6 +166,9 @@ fn is_leaf(
 struct ItemValueContext<'a> {
     fields: &'a HashMap<String, FieldValue>,
     constants: &'a IndexMap<String, FieldValue>,
+    /// The evaluation date as a midnight timestamp — what `$today`
+    /// resolves to for every item in this pass.
+    today: Value,
 }
 
 impl ValueContext for ItemValueContext<'_> {
@@ -172,10 +179,21 @@ impl ValueContext for ItemValueContext<'_> {
     fn constant(&self, name: &str) -> Option<Value> {
         self.constants.get(name).and_then(value_of)
     }
+
+    fn today(&self) -> Value {
+        self.today
+    }
 }
 
 fn epoch() -> NaiveDate {
     NaiveDate::from_ymd_opt(1970, 1, 1).expect("epoch is a valid date")
+}
+
+/// A calendar date as a midnight [`Value::Timestamp`] — the same
+/// conversion [`value_of`] applies to date field values.
+fn timestamp_of(date: NaiveDate) -> Value {
+    let days = date.signed_duration_since(epoch()).num_days();
+    Value::Timestamp(days * SECONDS_PER_DAY)
 }
 
 /// A field value as an evaluation [`Value`]. `None` for types outside
@@ -185,10 +203,7 @@ fn value_of(field_value: &FieldValue) -> Option<Value> {
         FieldValue::Integer(value) => Some(Value::Integer(*value)),
         FieldValue::Float(value) => Some(Value::Float(*value)),
         FieldValue::Duration(seconds) => Some(Value::Duration(*seconds)),
-        FieldValue::Date(date) => {
-            let days = date.signed_duration_since(epoch()).num_days();
-            Some(Value::Timestamp(days * SECONDS_PER_DAY))
-        }
+        FieldValue::Date(date) => Some(timestamp_of(*date)),
         _ => None,
     }
 }

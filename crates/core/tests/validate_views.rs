@@ -82,6 +82,7 @@ fn run_validate(project: &(TempDir, Config, PathBuf)) -> Vec<Diagnostic> {
         config,
         root.as_path(),
         std::path::Path::new(".workdown/config.yaml"),
+        None,
     )
     .unwrap()
     .diagnostics
@@ -233,7 +234,7 @@ defaults:
     fs::write(root.join("workdown-items/a.md"), "---\nstatus: open\n---\n").unwrap();
 
     let config = load_config(&root.join(".workdown/config.yaml")).unwrap();
-    let diagnostics = validate(&config, &root, Path::new(".workdown/config.yaml"))
+    let diagnostics = validate(&config, &root, Path::new(".workdown/config.yaml"), None)
         .unwrap()
         .diagnostics;
 

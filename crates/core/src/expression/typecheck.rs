@@ -117,6 +117,9 @@ pub fn check_types(
     match expression {
         Expression::IntegerLiteral { .. } => Ok(ExpressionType::Integer),
         Expression::FloatLiteral { .. } => Ok(ExpressionType::Float),
+        // `$today` is always resolvable and always a date; there is no
+        // reference to look up, so no context involvement.
+        Expression::TodayReference { .. } => Ok(ExpressionType::Date),
 
         Expression::FieldReference { name, span } => match context.field(name) {
             ReferenceResolution::Typed(expression_type) => Ok(expression_type),
@@ -395,6 +398,18 @@ mod tests {
         assert_eq!(inferred("count * 2"), Ok(ExpressionType::Integer));
         assert_eq!(inferred("count * 1.5"), Ok(ExpressionType::Float));
         assert_eq!(inferred("count / count"), Ok(ExpressionType::Float));
+    }
+
+    #[test]
+    fn today_is_a_date() {
+        assert_eq!(inferred("$today"), Ok(ExpressionType::Date));
+        assert_eq!(inferred("end_date - $today"), Ok(ExpressionType::Duration));
+        assert_eq!(inferred("$today + duration"), Ok(ExpressionType::Date));
+        // Dates don't add — `$today` behaves exactly like any date.
+        assert!(matches!(
+            inferred("$today + end_date"),
+            Err(ExpressionTypeError::InvalidOperation { .. })
+        ));
     }
 
     #[test]

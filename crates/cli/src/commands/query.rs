@@ -15,6 +15,8 @@ use workdown_core::store::Store;
 const LIST_SEPARATOR: char = ';';
 
 /// Run the query command: filter, sort, and display work items.
+/// `as_of` pins what `$today` resolves to in computed fields; `None`
+/// means the current local date.
 pub fn run_query(
     config: &Config,
     project_root: &Path,
@@ -22,6 +24,7 @@ pub fn run_query(
     sort_arguments: &[String],
     fields_argument: Option<&str>,
     output: QueryOutput,
+    as_of: Option<chrono::NaiveDate>,
 ) -> anyhow::Result<()> {
     let schema_path = project_root.join(&config.schema);
     let items_path = project_root.join(&config.paths.work_items);
@@ -32,7 +35,9 @@ pub fn run_query(
     // here — `workdown validate` owns reporting it.
     let (resources, _) =
         resources_check::load_and_check(&project_root.join(&config.paths.resources));
-    let store = Store::load_with_resources(&items_path, &schema, &resources)?;
+    let evaluation_date = as_of.unwrap_or_else(workdown_core::generators::current_local_date);
+    let store =
+        Store::load_with_resources_as_of(&items_path, &schema, &resources, evaluation_date)?;
 
     // Parse --where clauses into a single predicate (ANDed together).
     let predicate = parse_where_clauses(where_clauses)?;

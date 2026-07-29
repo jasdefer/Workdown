@@ -2539,6 +2539,7 @@ version = "0.2.0-alpha.2"
 dependencies = [
  "anyhow",
  "axum",
+ "chrono",
  "mime_guess",
  "notify-debouncer-full",
  "rust-embed",

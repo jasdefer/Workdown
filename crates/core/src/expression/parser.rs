@@ -129,9 +129,9 @@ impl Parser<'_> {
         self.primary()
     }
 
-    /// `primary → integer | float | field | constant | '(' expression ')'`
+    /// `primary → integer | float | field | constant | '$today' | '(' expression ')'`
     fn primary(&mut self) -> Result<Expression, ParseExpressionError> {
-        const EXPECTED: &str = "a field name, constant, number, or '('";
+        const EXPECTED: &str = "a field name, constant, '$today', number, or '('";
 
         let Some(token) = self.advance() else {
             return Err(ParseExpressionError::UnexpectedEnd { expected: EXPECTED });
@@ -146,6 +146,7 @@ impl Parser<'_> {
                 name,
                 span: token.span,
             }),
+            TokenKind::Today => Ok(Expression::TodayReference { span: token.span }),
             TokenKind::Integer(value) => Ok(Expression::IntegerLiteral {
                 value,
                 span: token.span,
@@ -187,6 +188,7 @@ fn respan(expression: Expression, span: Span) -> Expression {
     match expression {
         Expression::FieldReference { name, .. } => Expression::FieldReference { name, span },
         Expression::ConstantReference { name, .. } => Expression::ConstantReference { name, span },
+        Expression::TodayReference { .. } => Expression::TodayReference { span },
         Expression::IntegerLiteral { value, .. } => Expression::IntegerLiteral { value, span },
         Expression::FloatLiteral { value, .. } => Expression::FloatLiteral { value, span },
         Expression::Negate { operand, .. } => Expression::Negate { operand, span },
@@ -215,6 +217,7 @@ mod tests {
         match expression {
             Expression::FieldReference { name, .. } => name.clone(),
             Expression::ConstantReference { name, .. } => format!("${name}"),
+            Expression::TodayReference { .. } => "$today".to_owned(),
             Expression::IntegerLiteral { value, .. } => value.to_string(),
             Expression::FloatLiteral { value, .. } => value.to_string(),
             Expression::Negate { operand, .. } => format!("(neg {})", render(operand)),
@@ -259,6 +262,23 @@ mod tests {
             parsed("effort * $constants.daily_rate * 1.1"),
             "(* (* effort $daily_rate) 1.1)"
         );
+    }
+
+    #[test]
+    fn parses_today_reference() {
+        assert_eq!(parsed("end_date - $today"), "(- end_date $today)");
+        let expression = parse_expression("$today").unwrap();
+        assert_eq!(expression.span(), Span::new(0, 6));
+        assert!(expression.references_today());
+        assert!(expression.field_references().is_empty());
+    }
+
+    #[test]
+    fn references_today_sees_through_nesting() {
+        assert!(parse_expression("-(a + $today)")
+            .unwrap()
+            .references_today());
+        assert!(!parse_expression("a + b").unwrap().references_today());
     }
 
     #[test]

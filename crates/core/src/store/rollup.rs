@@ -379,6 +379,7 @@ mod tests {
             reverse_links,
             schema,
             &IndexMap::new(),
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 8).expect("valid date"),
             &HashSet::new(),
         )
     }

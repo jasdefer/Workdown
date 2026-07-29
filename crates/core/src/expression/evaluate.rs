@@ -37,6 +37,10 @@ pub enum Value {
 pub trait ValueContext {
     fn field(&self, name: &str) -> Option<Value>;
     fn constant(&self, name: &str) -> Option<Value>;
+    /// The evaluation date (`$today`) as a midnight timestamp. Resolved
+    /// once per run by the caller and handed in — evaluation never
+    /// reads the clock, so a pinned date pins every expression.
+    fn today(&self) -> Value;
 }
 
 /// Ways evaluation can fail for a specific item.
@@ -80,6 +84,7 @@ pub fn evaluate(
         Expression::ConstantReference { name, .. } => context
             .constant(name)
             .ok_or_else(|| EvaluateError::MissingInput { name: name.clone() }),
+        Expression::TodayReference { .. } => Ok(context.today()),
 
         Expression::Negate { operand, .. } => match evaluate(operand, context)? {
             Value::Integer(value) => value
@@ -246,6 +251,11 @@ mod tests {
         fn constant(&self, name: &str) -> Option<Value> {
             self.constants.get(name).copied()
         }
+
+        fn today(&self) -> Value {
+            // 2026-01-08 as a midnight timestamp: 20_461 days.
+            Value::Timestamp(20_461 * DAY)
+        }
     }
 
     const DAY: i64 = 86_400;
@@ -289,6 +299,13 @@ mod tests {
             evaluated("effort * $constants.daily_rate"),
             Ok(Value::Duration(6 * HOUR * 800))
         );
+    }
+
+    #[test]
+    fn today_resolves_through_the_context() {
+        // end_date is 20_465 days, the context's today is 20_461 days.
+        assert_eq!(evaluated("end_date - $today"), Ok(Value::Duration(4 * DAY)));
+        assert_eq!(evaluated("$today"), Ok(Value::Timestamp(20_461 * DAY)));
     }
 
     #[test]

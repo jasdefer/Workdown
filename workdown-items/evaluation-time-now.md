@@ -1,9 +1,9 @@
 ---
 id: evaluation-time-now
 type: issue
-status: to_do
+status: done
 title: Resolve the current date at evaluation time, reproducibly
-parent: conditional-derivation
+parent: polish
 effort: "8h"
 ---
 

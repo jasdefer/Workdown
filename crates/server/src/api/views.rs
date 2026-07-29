@@ -67,7 +67,12 @@ struct ViewQuery {
 }
 
 async fn list_views(State(state): State<AppState>) -> ApiResponse<Vec<ViewSummary>> {
-    match load_project(&state.config, &state.project_root, &state.config_path) {
+    match load_project(
+        &state.config,
+        &state.project_root,
+        &state.config_path,
+        state.evaluation_date_override,
+    ) {
         Err(error) => ApiResponse::rejected(vec![error.to_diagnostic()]),
         Ok(project) => {
             let summaries: Vec<ViewSummary> = project
@@ -85,7 +90,12 @@ async fn get_view(
     Path(id): Path<String>,
     Query(query): Query<ViewQuery>,
 ) -> ApiResponse<ViewData> {
-    let project = match load_project(&state.config, &state.project_root, &state.config_path) {
+    let project = match load_project(
+        &state.config,
+        &state.project_root,
+        &state.config_path,
+        state.evaluation_date_override,
+    ) {
         Err(error) => return ApiResponse::rejected(vec![error.to_diagnostic()]),
         Ok(project) => project,
     };
@@ -222,7 +232,12 @@ async fn get_view_filter(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResponse<Vec<Clause>> {
-    let project = match load_project(&state.config, &state.project_root, &state.config_path) {
+    let project = match load_project(
+        &state.config,
+        &state.project_root,
+        &state.config_path,
+        state.evaluation_date_override,
+    ) {
         Err(error) => return ApiResponse::rejected(vec![error.to_diagnostic()]),
         Ok(project) => project,
     };

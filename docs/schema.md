@@ -114,7 +114,7 @@ fields:
 
 | Option | Description |
 |--------|-------------|
-| `expression` | The expression. Field names, `$constants.<name>` references ([constants](#constants) from `resources.yaml`), numeric literals, `+ - * /`, and parentheses. |
+| `expression` | The expression. Field names, `$constants.<name>` references ([constants](#constants) from `resources.yaml`), `$today`, numeric literals, `+ - * /`, and parentheses. |
 | `round` | For date results with a sub-day remainder: `nearest` (default), `floor` (the last fully-used day), or `ceil` (the day the work spills into). Only valid on `date` fields. |
 | `error_on_missing` | Report an error when an item is missing an expression input, instead of silently leaving the field absent. Default: `false`. |
 
@@ -133,6 +133,17 @@ Computed values are never written to files. They are derived at load time and vi
 | mixed number arithmetic | `float` |
 
 Everything else — unknown references, `date + date`, a result type that doesn't fit the declared field type, expressions referencing each other in a cycle — is reported when the project loads.
+
+`$today` is the current date as a `date`, resolved once per run (ADR-010):
+
+```yaml
+fields:
+  days_remaining:
+    type: duration
+    compute: end_date - $today
+```
+
+An expression using `$today` makes derived values — and any rendered views built from them — depend on the day the command runs. Every evaluating command (`validate`, `query`, `render`, `serve`) takes `--as-of <YYYY-MM-DD>` to pin the date, so a given commit produces identical output on any day; `workdown render` prints a notice whenever the schema depends on the clock. Note the distinction from `default: $today`, which resolves once at `workdown add` time and writes a literal date into the file.
 
 Computed fields may reference other computed fields (evaluation runs in dependency order), and compose with aggregation:
 

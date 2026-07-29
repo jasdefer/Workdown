@@ -21,6 +21,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use chrono::NaiveDate;
 use indexmap::IndexMap;
 
 use crate::model::diagnostic::{Diagnostic, ItemDiagnosticKind};
@@ -33,6 +34,7 @@ use super::rollup;
 /// Run every derive pass. Mutates `items` in place; returns all
 /// diagnostics the passes produced. `constants` are the project
 /// constants from `resources.yaml`, resolved by compute expressions;
+/// `evaluation_date` is what `$today` resolves to; and
 /// `disabled_compute_fields` names the compute configs that failed
 /// `compute_check` and must not evaluate.
 pub(crate) fn run(
@@ -40,6 +42,7 @@ pub(crate) fn run(
     reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
     schema: &Schema,
     constants: &IndexMap<String, FieldValue>,
+    evaluation_date: NaiveDate,
     disabled_compute_fields: &HashSet<String>,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
@@ -60,7 +63,14 @@ pub(crate) fn run(
                             .unwrap_or_else(|| rollup::DEFAULT_OVER_FIELD.to_owned())
                     }),
                 };
-                compute::run_for_field(items, reverse_links, constants, &spec, &mut diagnostics);
+                compute::run_for_field(
+                    items,
+                    reverse_links,
+                    constants,
+                    evaluation_date,
+                    &spec,
+                    &mut diagnostics,
+                );
             }
         }
 
@@ -229,6 +239,11 @@ mod tests {
         reverse_links
     }
 
+    /// The fixed evaluation date every derive test runs under.
+    fn test_evaluation_date() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 1, 8).unwrap()
+    }
+
     fn run_derive(
         items: &mut HashMap<WorkItemId, WorkItem>,
         schema_yaml: &str,
@@ -245,6 +260,7 @@ mod tests {
             &reverse_links,
             &schema,
             &resources.constants,
+            test_evaluation_date(),
             &disabled_compute_fields,
         )
     }

@@ -48,7 +48,7 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
 
             match cmd {
                 cli::Command::Init { .. } => unreachable!(),
-                cli::Command::Validate { format } => {
+                cli::Command::Validate { format, as_of } => {
                     tracing::info!("validating work items");
                     let project_root = std::env::current_dir()
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
@@ -56,6 +56,7 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         &config,
                         &project_root,
                         &cli.config,
+                        *as_of,
                     )
                     .map_err(|e| anyhow::anyhow!("{e}"))?;
                     commands::validate::render(&result.diagnostics, *format);
@@ -78,6 +79,7 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     format,
                     delimiter,
                     no_header,
+                    as_of,
                 } => {
                     tracing::info!("querying work items");
                     let project_root = std::env::current_dir()
@@ -94,10 +96,11 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         sort,
                         fields.as_deref(),
                         output,
+                        *as_of,
                     )?;
                     Ok(ExitCode::SUCCESS)
                 }
-                cli::Command::Render { view_id } => {
+                cli::Command::Render { view_id, as_of } => {
                     tracing::info!("rendering views");
                     let project_root = std::env::current_dir()
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
@@ -106,6 +109,7 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         &project_root,
                         &cli.config,
                         view_id.as_deref(),
+                        *as_of,
                     )
                 }
                 cli::Command::Templates { action } => {
@@ -187,7 +191,7 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
                     commands::body::run_body_command(&config, &project_root, id, body)
                 }
-                cli::Command::Serve { port, open } => {
+                cli::Command::Serve { port, open, as_of } => {
                     tracing::info!("starting workdown serve");
                     let project_root = std::env::current_dir()
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
@@ -197,6 +201,7 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                         &cli.config,
                         *port,
                         *open,
+                        *as_of,
                     )
                 }
                 cli::Command::Rename {

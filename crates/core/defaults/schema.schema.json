@@ -328,7 +328,7 @@
     },
 
     "compute": {
-      "description": "Computed-field config: derive this field's value from an expression over the item's other fields, project constants ($constants.<name> from resources.yaml), and numeric literals, combined with + - * / and parentheses. Only valid for integer, float, date, and duration fields. A manually set frontmatter value always wins; compute fills only absent values.",
+      "description": "Computed-field config: derive this field's value from an expression over the item's other fields, project constants ($constants.<name> from resources.yaml), the evaluation date ($today, pinnable via --as-of), and numeric literals, combined with + - * / and parentheses. Only valid for integer, float, date, and duration fields. A manually set frontmatter value always wins; compute fills only absent values.",
       "oneOf": [
         {
           "type": "string",

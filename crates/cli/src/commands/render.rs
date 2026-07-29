@@ -17,6 +17,7 @@ use std::process::ExitCode;
 use workdown_core::model::calendar::WorkingCalendar;
 use workdown_core::model::config::Config;
 use workdown_core::model::diagnostic::Diagnostic;
+use workdown_core::model::schema::Schema;
 use workdown_core::model::views::{View, Views};
 use workdown_core::project::load_project;
 use workdown_core::store::Store;
@@ -30,15 +31,26 @@ pub fn run_render(
     project_root: &Path,
     config_path: &Path,
     view_id: Option<&str>,
+    as_of: Option<chrono::NaiveDate>,
 ) -> anyhow::Result<ExitCode> {
-    let project =
-        load_project(config, project_root, config_path).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let project = load_project(config, project_root, config_path, as_of)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     // Surface every collected diagnostic as a warning, matching the
     // pre-refactor behavior. Order preserved: store diagnostics first
     // (broken links, missing fields), then cycles + rules, then views.
     for diagnostic in &project.diagnostics {
         output::warning(&diagnostic.to_string());
+    }
+
+    // When any computed field reads `$today`, the rendered output is a
+    // function of the calendar, not just the repository — say so, so a
+    // surprising diff on an untouched repo has its explanation attached.
+    if schema_references_today(&project.schema) {
+        output::info(&format!(
+            "output depends on the current date (evaluated as of {}); pin with --as-of for reproducible renders",
+            project.evaluation_date.format("%Y-%m-%d"),
+        ));
     }
 
     let Some(views) = project.views.as_ref() else {
@@ -225,6 +237,16 @@ fn emit_unplaced_warnings(view: &View, view_data: &ViewData) {
 /// `Diagnostic::view_id()` returns `Some(_)` for every Config-scope
 /// diagnostic that names a view; we union them so callers can filter
 /// `views.views` in one pass.
+/// Whether any computed field's expression reads `$today` — the static
+/// signal that this project's derived values depend on the clock.
+fn schema_references_today(schema: &Schema) -> bool {
+    schema
+        .fields
+        .values()
+        .filter_map(|field_definition| field_definition.compute.as_ref())
+        .any(|config| config.expression.references_today())
+}
+
 fn invalid_view_ids(diagnostics: &[Diagnostic]) -> HashSet<String> {
     diagnostics
         .iter()

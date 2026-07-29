@@ -6,6 +6,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use chrono::NaiveDate;
 use tempfile::TempDir;
 use workdown_core::model::diagnostic::DiagnosticBody;
 use workdown_core::model::FieldValue;
@@ -69,7 +70,18 @@ fn setup_project(
 
 fn load(root: &Path) -> Project {
     let config = load_config(&root.join(".workdown/config.yaml")).unwrap();
-    load_project(&config, root, Path::new(".workdown/config.yaml")).unwrap()
+    load_project(&config, root, Path::new(".workdown/config.yaml"), None).unwrap()
+}
+
+fn load_as_of(root: &Path, evaluation_date: NaiveDate) -> Project {
+    let config = load_config(&root.join(".workdown/config.yaml")).unwrap();
+    load_project(
+        &config,
+        root,
+        Path::new(".workdown/config.yaml"),
+        Some(evaluation_date),
+    )
+    .unwrap()
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -151,4 +163,129 @@ fn check_failed_compute_is_one_schema_diagnostic_without_item_noise() {
         let item = project.store.get(id).expect("item must load");
         assert_eq!(item.fields.get("end_date"), None);
     }
+}
+
+// ── $today at evaluation time ───────────────────────────────────────
+
+/// Schema with a `days_remaining` field computed from `$today` — the
+/// motivating case in `evaluation-time-now`, needing no grammar beyond
+/// the existing `date - date → duration` rule.
+fn days_remaining_schema() -> String {
+    format!(
+        "{COMMON_FIELDS}  end_date:
+    type: date
+  days_remaining:
+    type: duration
+    compute: end_date - $today
+"
+    )
+}
+
+#[test]
+fn today_resolves_to_the_pinned_date() {
+    let (_directory, root) = setup_project(
+        &days_remaining_schema(),
+        "",
+        &[("task.md", "---\nend_date: 2026-08-10\n---\n")],
+    );
+
+    let pinned = NaiveDate::from_ymd_opt(2026, 8, 3).unwrap();
+    let project = load_as_of(&root, pinned);
+
+    assert!(
+        project.diagnostics.is_empty(),
+        "got: {:?}",
+        project.diagnostics
+    );
+    assert_eq!(project.evaluation_date, pinned);
+    let task = project.store.get("task").expect("task must load");
+    // 2026-08-10 minus 2026-08-03 is 7 days, as canonical seconds.
+    assert_eq!(
+        task.fields.get("days_remaining"),
+        Some(&FieldValue::Duration(7 * 86_400))
+    );
+}
+
+#[test]
+fn a_past_end_date_yields_a_negative_duration() {
+    let (_directory, root) = setup_project(
+        &days_remaining_schema(),
+        "",
+        &[("task.md", "---\nend_date: 2026-08-01\n---\n")],
+    );
+
+    let project = load_as_of(&root, NaiveDate::from_ymd_opt(2026, 8, 3).unwrap());
+
+    let task = project.store.get("task").expect("task must load");
+    assert_eq!(
+        task.fields.get("days_remaining"),
+        Some(&FieldValue::Duration(-2 * 86_400))
+    );
+}
+
+#[test]
+fn two_pinned_loads_derive_identical_values() {
+    let (_directory, root) = setup_project(
+        &days_remaining_schema(),
+        "",
+        &[
+            ("task-a.md", "---\nend_date: 2026-08-10\n---\n"),
+            ("task-b.md", "---\nend_date: 2026-09-01\n---\n"),
+        ],
+    );
+
+    let pinned = NaiveDate::from_ymd_opt(2026, 8, 3).unwrap();
+    let first = load_as_of(&root, pinned);
+    let second = load_as_of(&root, pinned);
+
+    for id in ["task-a", "task-b"] {
+        assert_eq!(
+            first.store.get(id).unwrap().fields.get("days_remaining"),
+            second.store.get(id).unwrap().fields.get("days_remaining"),
+            "{id}"
+        );
+    }
+}
+
+#[test]
+fn a_hand_written_value_beats_the_today_computation() {
+    let (_directory, root) = setup_project(
+        &days_remaining_schema(),
+        "",
+        &[(
+            "task.md",
+            "---\nend_date: 2026-08-10\ndays_remaining: \"99d\"\n---\n",
+        )],
+    );
+
+    let project = load_as_of(&root, NaiveDate::from_ymd_opt(2026, 8, 3).unwrap());
+
+    let task = project.store.get("task").expect("task must load");
+    assert_eq!(
+        task.fields.get("days_remaining"),
+        Some(&FieldValue::Duration(99 * 86_400))
+    );
+}
+
+#[test]
+fn without_an_override_the_evaluation_date_is_today() {
+    let (_directory, root) = setup_project(
+        &days_remaining_schema(),
+        "",
+        &[("task.md", "---\nend_date: 2026-08-10\n---\n")],
+    );
+
+    let project = load(&root);
+
+    // Sandwich the load between two clock reads instead of asserting an
+    // exact date, so the test survives a midnight rollover mid-run.
+    let after = workdown_core::generators::current_local_date();
+    assert!(project.evaluation_date <= after);
+    assert!(
+        after
+            .signed_duration_since(project.evaluation_date)
+            .num_days()
+            .abs()
+            <= 1
+    );
 }

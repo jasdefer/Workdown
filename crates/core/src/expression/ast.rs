@@ -38,6 +38,10 @@ pub enum Expression {
     FieldReference { name: String, span: Span },
     /// A reference to a project constant, e.g. `$constants.daily_rate`.
     ConstantReference { name: String, span: Span },
+    /// The evaluation date, `$today`. Resolved once per run by the
+    /// caller and injected through the evaluation context — evaluation
+    /// itself never reads the clock.
+    TodayReference { span: Span },
     /// A whole-number literal, e.g. `2`.
     IntegerLiteral { value: i64, span: Span },
     /// A fractional literal, e.g. `1.2`.
@@ -62,6 +66,7 @@ impl Expression {
         match self {
             Expression::FieldReference { span, .. }
             | Expression::ConstantReference { span, .. }
+            | Expression::TodayReference { span }
             | Expression::IntegerLiteral { span, .. }
             | Expression::FloatLiteral { span, .. }
             | Expression::Negate { span, .. }
@@ -76,6 +81,7 @@ impl Expression {
             match expression {
                 Expression::FieldReference { name, .. } => references.push(name),
                 Expression::ConstantReference { .. }
+                | Expression::TodayReference { .. }
                 | Expression::IntegerLiteral { .. }
                 | Expression::FloatLiteral { .. } => {}
                 Expression::Negate { operand, .. } => collect(operand, references),
@@ -89,6 +95,22 @@ impl Expression {
         let mut references = Vec::new();
         collect(self, &mut references);
         references
+    }
+
+    /// Whether this expression references the evaluation date (`$today`)
+    /// anywhere — the signal that its result depends on the clock.
+    pub fn references_today(&self) -> bool {
+        match self {
+            Expression::TodayReference { .. } => true,
+            Expression::FieldReference { .. }
+            | Expression::ConstantReference { .. }
+            | Expression::IntegerLiteral { .. }
+            | Expression::FloatLiteral { .. } => false,
+            Expression::Negate { operand, .. } => operand.references_today(),
+            Expression::Binary { left, right, .. } => {
+                left.references_today() || right.references_today()
+            }
+        }
     }
 }
 

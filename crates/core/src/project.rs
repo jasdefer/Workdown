@@ -46,6 +46,10 @@ pub struct Project {
     /// findings when `views.yaml` exists. May be empty for a healthy
     /// project.
     pub diagnostics: Vec<Diagnostic>,
+    /// The date `$today` resolved to during this load — the `--as-of`
+    /// override when one was given, the current local date otherwise.
+    /// Resolved exactly once per load (see ADR-010).
+    pub evaluation_date: chrono::NaiveDate,
 }
 
 /// Failures that prevent the loader from returning a [`Project`].
@@ -92,11 +96,20 @@ impl LoadError {
 /// the file's location, which `config_check` needs to pin its
 /// diagnostics. Passed relative to `project_root` or absolute; joining
 /// resolves both.
+///
+/// `evaluation_date_override` pins what `$today` resolves to during
+/// evaluation (the `--as-of` flag); `None` means the real current
+/// local date, resolved exactly once here so every consumer of this
+/// load — computed fields today, rules later — sees the same date
+/// (see ADR-010).
 pub fn load_project(
     config: &Config,
     project_root: &Path,
     config_path: &Path,
+    evaluation_date_override: Option<chrono::NaiveDate>,
 ) -> Result<Project, LoadError> {
+    let evaluation_date =
+        evaluation_date_override.unwrap_or_else(crate::generators::current_local_date);
     let schema_path = project_root.join(&config.schema);
     let items_path = project_root.join(&config.paths.work_items);
     let views_path = project_root.join(&config.paths.views);
@@ -114,12 +127,11 @@ pub fn load_project(
     // load failure.
     let (resources, resources_diagnostics) = resources_check::load_and_check(&resources_path);
 
-    let store = Store::load_with_resources(&items_path, &schema, &resources).map_err(|e| {
-        LoadError::Items {
+    let store = Store::load_with_resources_as_of(&items_path, &schema, &resources, evaluation_date)
+        .map_err(|e| LoadError::Items {
             path: items_path.clone(),
             detail: e.to_string(),
-        }
-    })?;
+        })?;
 
     let mut diagnostics: Vec<Diagnostic> = store.diagnostics().to_vec();
     diagnostics.extend(resources_diagnostics);
@@ -154,5 +166,6 @@ pub fn load_project(
         resources,
         calendar,
         diagnostics,
+        evaluation_date,
     })
 }
