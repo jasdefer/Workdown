@@ -321,17 +321,32 @@ The quantifiers (`all`, `any`, `none`) are only valid when the field reference t
 | `forbidden` | boolean | `true`: field must not be set |
 | `values` | array | Field must be one of these values |
 | `not` | value or array | Field must not equal this value (or any in the array) |
-| `eq_field` | field name | Field must equal the referenced field's value |
-| `lt_field` | field name | Field must be less than the referenced field's value |
-| `lte_field` | field name | Field must be less than or equal to the referenced field's value |
-| `gt_field` | field name | Field must be greater than the referenced field's value |
-| `gte_field` | field name | Field must be greater than or equal to the referenced field's value |
+| `eq_field` | field name or `$today` | Field must equal the referenced field's value |
+| `lt_field` | field name or `$today` | Field must be less than the referenced field's value |
+| `lte_field` | field name or `$today` | Field must be less than or equal to the referenced field's value |
+| `gt_field` | field name or `$today` | Field must be greater than the referenced field's value |
+| `gte_field` | field name or `$today` | Field must be greater than or equal to the referenced field's value |
 | `min_count` | integer | Related items must number at least this many |
 | `max_count` | integer | Related items must number at most this many |
 
 When multiple operators are specified in the same object, all must be satisfied (AND).
 
 Field-to-field comparisons (`eq_field`, `lte_field`, etc.) are skipped when either field is null. A missing value is not a validation error for comparisons — use `required` to enforce presence separately.
+
+The operand may also be `$today` — the evaluation date (ADR-010), so a rule can compare a field against the present:
+
+```yaml
+- name: future-start-for-todo
+  description: A to_do item must not have a start_date in the past.
+  severity: warning
+  match:
+    status: to_do
+  require:
+    start_date:
+      gte_field: $today
+```
+
+A rule using `$today` makes validation depend on the day it runs — the same files can pass on Monday and warn on Tuesday with no edits. That is the point (the calendar moved), but for reproducible runs every evaluating command takes `--as-of <YYYY-MM-DD>`, which pins `$today` for rules and computed fields alike.
 
 ### Count (collection-wide)
 

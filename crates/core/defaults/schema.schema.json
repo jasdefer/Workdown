@@ -374,6 +374,13 @@
       "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)?$"
     },
 
+    "comparison_operand": {
+      "type": "string",
+      "description": "What a *_field operator compares against: a field reference (same forms as elsewhere), or $today — the evaluation date, pinnable via --as-of (see ADR-010).",
+      "examples": ["end_date", "parent.start_date", "$today"],
+      "pattern": "^([a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)?|\\$today)$"
+    },
+
     "condition": {
       "description": "A condition that a field must satisfy. The YAML/JSON type determines the meaning: a scalar means equality, an array means membership (one of), an object uses an explicit operator.",
       "oneOf": [
@@ -498,24 +505,24 @@
               ]
             },
             "eq_field": {
-              "$ref": "#/$defs/field_reference",
-              "description": "Field must equal the value of the referenced field."
+              "$ref": "#/$defs/comparison_operand",
+              "description": "Field must equal the value of the referenced field (or $today)."
             },
             "lt_field": {
-              "$ref": "#/$defs/field_reference",
-              "description": "Field must be less than the value of the referenced field."
+              "$ref": "#/$defs/comparison_operand",
+              "description": "Field must be less than the value of the referenced field (or $today)."
             },
             "lte_field": {
-              "$ref": "#/$defs/field_reference",
-              "description": "Field must be less than or equal to the value of the referenced field."
+              "$ref": "#/$defs/comparison_operand",
+              "description": "Field must be less than or equal to the value of the referenced field (or $today)."
             },
             "gt_field": {
-              "$ref": "#/$defs/field_reference",
-              "description": "Field must be greater than the value of the referenced field."
+              "$ref": "#/$defs/comparison_operand",
+              "description": "Field must be greater than the value of the referenced field (or $today)."
             },
             "gte_field": {
-              "$ref": "#/$defs/field_reference",
-              "description": "Field must be greater than or equal to the value of the referenced field."
+              "$ref": "#/$defs/comparison_operand",
+              "description": "Field must be greater than or equal to the value of the referenced field (or $today)."
             },
             "min_count": {
               "type": "integer",

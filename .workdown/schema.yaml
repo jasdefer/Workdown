@@ -132,6 +132,18 @@ rules:
       start_date:
         lte_field: end_date
 
+  # A to_do item whose start date has passed without being picked up is
+  # a planning problem worth surfacing. Compares against the evaluation
+  # date ($today — pin with `--as-of` for reproducible runs, ADR-010).
+  - name: future-start-for-todo
+    description: A to_do item must not have a start_date in the past.
+    severity: warning
+    match:
+      status: to_do
+    require:
+      start_date:
+        gte_field: $today
+
   # Milestones are scheduled by hand (start/end set on the milestone
   # itself), unlike epics, which derive their span by aggregating their
   # children — so this is scoped to milestones. The `parent` guard means

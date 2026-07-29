@@ -1,7 +1,7 @@
 ---
 id: rules-current-date-reference
 type: issue
-status: to_do
+status: done
 title: Rules can't reference the current date
 parent: polish
 depends_on: [evaluation-time-now]

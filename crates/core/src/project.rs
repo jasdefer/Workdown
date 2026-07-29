@@ -136,7 +136,11 @@ pub fn load_project(
     let mut diagnostics: Vec<Diagnostic> = store.diagnostics().to_vec();
     diagnostics.extend(resources_diagnostics);
     diagnostics.extend(store.detect_cycles(&schema));
-    diagnostics.extend(crate::rules::evaluate(&store, &schema));
+    diagnostics.extend(crate::rules::evaluate_as_of(
+        &store,
+        &schema,
+        evaluation_date,
+    ));
 
     // Parse views.yaml exactly once: load_and_check returns the parsed
     // views (None when absent or unparseable) together with its check
