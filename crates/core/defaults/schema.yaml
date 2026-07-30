@@ -50,6 +50,29 @@ fields:
     type: date
     required: false
 
+  # Derived by condition — nothing to set by hand: the first matching
+  # branch supplies the value, and a manually set color on an item
+  # always wins. Tints cards and bars everywhere via the
+  # `display: color:` role in config.yaml.
+  status_color:
+    type: color
+    when:
+      - if: status == "done"
+        then: green
+      - if: status == "in_progress"
+        then: blue
+      - if: status == "review"
+        then: purple
+      - if: status == "closed"
+        then: gray
+      # Time-aware branches work too. This one needs an `end_date`
+      # field (see the aggregated-fields section below) and makes
+      # rendered output depend on the day the command runs — pin with
+      # `--as-of <date>` for reproducible renders:
+      # - if: end_date < $today
+      #   then: red
+    default: gray
+
   # Relations
   parent:
     type: link

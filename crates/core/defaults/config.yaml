@@ -25,6 +25,8 @@ defaults:
   # no tint; unset falls back to the first color field in schema order).
   display:
     title: title
+    # Tint item surfaces by the schema's condition-derived color field.
+    color: status_color
 
 # Working calendar — days of the week that count as workload-bearing.
 # Optional; defaults to monday..friday when omitted. Used by workload
