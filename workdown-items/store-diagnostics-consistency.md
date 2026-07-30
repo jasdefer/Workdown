@@ -1,7 +1,7 @@
 ---
 id: store-diagnostics-consistency
 type: issue
-status: to_do
+status: done
 title: Make store-diagnostic surfacing consistent across commands
 parent: polish
 ---
@@ -35,9 +35,37 @@ to all commands. Likely either:
 Apply the chosen policy uniformly to `query`, `render`, and any future
 read-only command. `validate` keeps its dedicated reporting path.
 
+## Decisions taken (2026-07-30)
+
+1. **`query` loads via `load_project`** and surfaces the full project
+   diagnostics, same as `render`. Consistency-by-construction: one
+   loader, one surfacing helper; query's hand-rolled schema/resources/
+   store loading is deleted. View diagnostics appearing in query output
+   is accepted — diagnostics are empty in a healthy repo.
+2. **Severity-faithful printing.** Error-severity diagnostics print
+   with the error glyph, warnings with the warning glyph, instead of
+   everything-as-warning. Both still continue.
+3. **Warn-and-continue, exit 0.** Each command has one job; `validate`
+   is the gate and exits non-zero on errors. No `--strict` flag until a
+   concrete need appears.
+4. **`--quiet` untouched.** It keeps affecting only the `tracing`
+   level. Wiring it into `output::*` would change every command's
+   success/info lines — separate question, if ever.
+5. **Shared helper in `cli::output`** (`surface_diagnostics`), called
+   by `render` and `query`; future read-only commands inherit the
+   policy by calling it.
+6. **No `$today` reproducibility notice in `query`.** The render notice
+   exists because committed output changing without a commit is
+   surprising; query output is ephemeral and date-dependence is
+   expected there.
+
 ## Out of scope
 
 - Restructuring the diagnostic split between `Store::load` and
   `validate.rs`. The current split (per-item in store, cross-cutting in
   validate) is intentional.
 - Changing `validate` output.
+- Mutation commands (`set`, `unset`, `move`, `body`, `rename`, `add`):
+  their post-write policy (surface reload warnings, fail only when the
+  mutation caused one) is deliberate and stays.
+- `serve` — surfaces diagnostics through the web banner.

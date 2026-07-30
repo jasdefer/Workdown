@@ -6,6 +6,8 @@
 use comfy_table::presets::UTF8_FULL_CONDENSED;
 use comfy_table::{ContentArrangement, Table};
 use console::{style, Term};
+use workdown_core::model::diagnostic::Diagnostic;
+use workdown_core::model::schema::Severity;
 
 // ── Styled messages ──────────────────────────────────────────────────
 
@@ -31,6 +33,23 @@ pub fn error(message: &str) {
 pub fn info(message: &str) {
     let term = Term::stderr();
     let _ = term.write_line(&format!("{} {message}", style("→").cyan().bold()));
+}
+
+// ── Diagnostic surfacing ─────────────────────────────────────────────
+
+/// Print every collected diagnostic to stderr and continue — the shared
+/// policy for read-only commands (`render`, `query`, future ones).
+///
+/// Severity-faithful: errors get the error glyph, warnings the warning
+/// glyph. Neither affects the exit code — `workdown validate` is the
+/// command whose job is to gate. Collection order is preserved.
+pub fn surface_diagnostics(diagnostics: &[Diagnostic]) {
+    for diagnostic in diagnostics {
+        match diagnostic.severity {
+            Severity::Error => error(&diagnostic.to_string()),
+            Severity::Warning => warning(&diagnostic.to_string()),
+        }
+    }
 }
 
 /// Print a header line (bold, underlined).

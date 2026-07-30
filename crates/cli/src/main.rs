@@ -92,6 +92,7 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     commands::query::run_query(
                         &config,
                         &project_root,
+                        &cli.config,
                         where_clauses,
                         sort,
                         fields.as_deref(),

@@ -4,12 +4,10 @@ use std::path::Path;
 
 use crate::cli::{self, QueryFormat, QueryOutput};
 use workdown_core::model::config::Config;
-use workdown_core::parser;
+use workdown_core::project::load_project;
 use workdown_core::query;
 use workdown_core::query::format::DelimitedOptions;
 use workdown_core::query::types::{Predicate, QueryRequest, SortDirection, SortSpec};
-use workdown_core::resources_check;
-use workdown_core::store::Store;
 
 /// In-cell separator for list/multichoice/links values in delimited output.
 const LIST_SEPARATOR: char = ';';
@@ -17,27 +15,27 @@ const LIST_SEPARATOR: char = ';';
 /// Run the query command: filter, sort, and display work items.
 /// `as_of` pins what `$today` resolves to in computed fields; `None`
 /// means the current local date.
+#[allow(clippy::too_many_arguments)]
 pub fn run_query(
     config: &Config,
     project_root: &Path,
+    config_path: &Path,
     where_clauses: &[String],
     sort_arguments: &[String],
     fields_argument: Option<&str>,
     output: QueryOutput,
     as_of: Option<chrono::NaiveDate>,
 ) -> anyhow::Result<()> {
-    let schema_path = project_root.join(&config.schema);
-    let items_path = project_root.join(&config.paths.work_items);
+    let project = load_project(config, project_root, config_path, as_of)
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
 
-    let schema = parser::schema::load_schema(&schema_path)?;
-    // Resources feed `$constants.<name>` in compute expressions; a
-    // missing or malformed resources.yaml degrades to empty resources
-    // here — `workdown validate` owns reporting it.
-    let (resources, _) =
-        resources_check::load_and_check(&project_root.join(&config.paths.resources));
-    let evaluation_date = as_of.unwrap_or_else(workdown_core::generators::current_local_date);
-    let store =
-        Store::load_with_resources_as_of(&items_path, &schema, &resources, evaluation_date)?;
+    // Query results run over whatever loaded — say so when parts of the
+    // project are broken instead of returning silently distorted rows.
+    // Warnings go to stderr, so piped table/JSON/CSV output stays clean.
+    cli::output::surface_diagnostics(&project.diagnostics);
+
+    let store = &project.store;
+    let schema = &project.schema;
 
     // Parse --where clauses into a single predicate (ANDed together).
     let predicate = parse_where_clauses(where_clauses)?;
@@ -56,7 +54,7 @@ pub fn run_query(
 
     match output.format {
         QueryFormat::Table => {
-            let result = query::engine::execute(&request, &store, &schema)?;
+            let result = query::engine::execute(&request, store, schema)?;
             if result.items.is_empty() {
                 cli::output::info("No matching items");
             } else {
@@ -75,12 +73,12 @@ pub fn run_query(
             }
         }
         QueryFormat::Json => {
-            let result = query::engine::execute(&request, &store, &schema)?;
+            let result = query::engine::execute(&request, store, schema)?;
             println!("{}", query::format::render_json(&result));
         }
         QueryFormat::Tsv | QueryFormat::Csv => {
             let options = build_delimited_options(output)?;
-            let (columns, items) = query::engine::filter_and_sort(&request, &store, &schema)?;
+            let (columns, items) = query::engine::filter_and_sort(&request, store, schema)?;
             let rendered = query::format::render_delimited(&items, &columns, &options)?;
             print!("{rendered}");
         }

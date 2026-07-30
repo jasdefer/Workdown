@@ -36,12 +36,9 @@ pub fn run_render(
     let project = load_project(config, project_root, config_path, as_of)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    // Surface every collected diagnostic as a warning, matching the
-    // pre-refactor behavior. Order preserved: store diagnostics first
-    // (broken links, missing fields), then cycles + rules, then views.
-    for diagnostic in &project.diagnostics {
-        output::warning(&diagnostic.to_string());
-    }
+    // Order preserved: store diagnostics first (broken links, missing
+    // fields), then cycles + rules, then views.
+    output::surface_diagnostics(&project.diagnostics);
 
     // When any computed field reads `$today`, the rendered output is a
     // function of the calendar, not just the repository — say so, so a
