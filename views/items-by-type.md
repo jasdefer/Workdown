@@ -151,7 +151,7 @@ milestone
 <polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="751,130 751,135 "/>
 <rect x="197" y="102" width="16" height="27" opacity="1" fill="#E69F00" stroke="none"/>
 <rect x="197" y="75" width="554" height="27" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="197" y="47" width="79" height="28" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="197" y="47" width="71" height="28" opacity="1" fill="#E69F00" stroke="none"/>
 </svg>
 
 ## Values
@@ -160,5 +160,5 @@ milestone
 | --- | --- |
 | epic | 2 |
 | issue | 70 |
-| milestone | 10 |
+| milestone | 9 |
 

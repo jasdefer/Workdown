@@ -14,6 +14,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::expression::Expression;
+use crate::model::FieldValue;
 
 // Re-export rule-engine types so existing `use crate::model::schema::X` paths keep working.
 pub use super::assertion::{Assertion, AssertionOperator};
@@ -94,6 +95,10 @@ pub struct FieldDefinition {
 
     /// Compute config for computed fields (same item, cross-field).
     pub compute: Option<ComputeConfig>,
+
+    /// Conditional config: derive the value by first matching condition.
+    /// Mutually exclusive with `compute`.
+    pub when: Option<WhenConfig>,
 }
 
 impl FieldDefinition {
@@ -108,6 +113,7 @@ impl FieldDefinition {
             resource: None,
             aggregate: None,
             compute: None,
+            when: None,
         }
     }
 
@@ -137,6 +143,32 @@ impl FieldDefinition {
             }
             _ => None,
         }
+    }
+
+    /// Whether this field's value is derived same-item — by a `compute:`
+    /// expression or a `when:` config. (`aggregate` is cross-item and
+    /// deliberately not included.)
+    pub fn is_derived(&self) -> bool {
+        self.compute.is_some() || self.when.is_some()
+    }
+
+    /// Names of the fields this field's derivation reads — the compute
+    /// expression's references, or every `when:` condition's references
+    /// across all branches. In source order, duplicates included; empty
+    /// for underived fields. These are the edges of the dependency graph
+    /// behind evaluation order and cycle detection.
+    pub fn derived_references(&self) -> Vec<&str> {
+        if let Some(config) = &self.compute {
+            return config.expression.field_references();
+        }
+        if let Some(when_config) = &self.when {
+            return when_config
+                .branches
+                .iter()
+                .flat_map(|branch| branch.condition.field_references())
+                .collect();
+        }
+        Vec::new()
     }
 }
 
@@ -251,6 +283,12 @@ pub(crate) struct RawFieldDefinition {
     /// like `min`/`max`.
     #[serde(default)]
     pub compute: Option<serde_yaml::Value>,
+
+    /// Conditional config: a list of `if` / `then` branches. Kept raw
+    /// here and attached type-aware after field conversion, because
+    /// coercing each `then:` literal needs the typed field config.
+    #[serde(default)]
+    pub when: Option<serde_yaml::Value>,
 }
 
 /// The 12 built-in field types.
@@ -443,6 +481,38 @@ pub enum RoundMode {
     Nearest,
     Floor,
     Ceil,
+}
+
+/// Configuration of a conditional field (`when:` in `schema.yaml`): the
+/// value is picked by the first branch whose condition holds, top to
+/// bottom, with an optional evaluated fallback.
+///
+/// Produced by the schema parser; conditions are parsed but not yet
+/// type-checked (that needs `resources.yaml` and happens in
+/// `compute_check`, exactly like [`ComputeConfig`] expressions). Like
+/// computed values, conditional values are derived at load, never
+/// written to files, and lose to a hand-written frontmatter value.
+#[derive(Debug, Clone)]
+pub struct WhenConfig {
+    /// The branches, in declaration order. First match wins.
+    pub branches: Vec<WhenBranch>,
+    /// The value when no branch matches. Shares the `default:` keyword
+    /// with add-time defaults but is *evaluated*, never stamped into a
+    /// file — a stamped default would permanently shadow every branch.
+    /// `None` leaves the field unset when nothing matches.
+    pub default: Option<FieldValue>,
+}
+
+/// One branch of a [`WhenConfig`]: a boolean condition and the literal
+/// value the field takes when this is the first branch to match.
+#[derive(Debug, Clone)]
+pub struct WhenBranch {
+    /// The parsed condition; must type-check as boolean.
+    pub condition: Expression,
+    /// The condition exactly as written, kept so diagnostics can quote it.
+    pub condition_source: String,
+    /// The `then:` literal, already coerced to the field's declared type.
+    pub value: FieldValue,
 }
 
 // ── Field-map predicates ────────────────────────────────────────────

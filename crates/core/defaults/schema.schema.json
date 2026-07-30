@@ -104,12 +104,20 @@
         "compute": {
           "$ref": "#/$defs/compute",
           "description": "Compute config for computed fields: the value derives from an expression over the item's other fields."
+        },
+        "when": {
+          "$ref": "#/$defs/when",
+          "description": "Conditional config: derive the value by first matching condition. Next to 'when', 'default' is the evaluated fallback when no branch matches — never written to files."
         }
       },
       "dependentSchemas": {
         "compute": {
           "not": { "required": ["default"] },
           "description": "'compute' and 'default' cannot be combined — both fill in absent values."
+        },
+        "when": {
+          "not": { "required": ["compute"] },
+          "description": "'when' and 'compute' cannot be combined — both derive the field's value."
         }
       },
       "allOf": [
@@ -357,6 +365,26 @@
           "additionalProperties": false
         }
       ]
+    },
+
+    "when": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Conditional-field config: branches checked top to bottom, first matching condition supplies the value. A branch whose condition cannot be answered (a referenced field is absent) does not match and evaluation falls through. The field-level 'default' is the evaluated fallback. Derived at load, never written to files; a manually set frontmatter value always wins. Cannot be combined with 'compute'.",
+      "items": {
+        "type": "object",
+        "required": ["if", "then"],
+        "properties": {
+          "if": {
+            "type": "string",
+            "description": "A boolean expression, e.g. 'status == \"done\"' or 'end_date < $today'. Same grammar as compute expressions; string literals are quoted."
+          },
+          "then": {
+            "description": "The value the field takes when this branch is the first to match. A literal of the field's declared type."
+          }
+        },
+        "additionalProperties": false
+      }
     },
 
     "rules": {

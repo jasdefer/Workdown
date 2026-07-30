@@ -45,6 +45,8 @@ Field names are lowercase letters, digits, and underscores, starting with a lett
 | `description` | string | Human-readable explanation. |
 | `resource` | string | Name of a resource section in `resources.yaml`. Valid for `string` and `list` types. See [Resources](#resources). |
 | `aggregate` | object | Aggregation config for computed fields (see below). |
+| `compute` | string or object | Derive the value from an expression (see [Computed fields](#computed-fields)). |
+| `when` | array | Derive the value by first matching condition (see [Conditional fields](#conditional-fields)). Next to `when`, `default` is the evaluated fallback, never written to files. |
 | `inverse` | string | Inverse relationship name for rules dot-notation. Only valid for `link` and `links` types. See [Rules](#rules). |
 
 ### Generators
@@ -162,6 +164,31 @@ Computed fields may reference other computed fields (evaluation runs in dependen
 - A field with **both** `compute` and `aggregate` computes on *leaf* items only; the aggregate fills everything above. `end_date` on a milestone is the `max` of its children's ends — not its rolled-up `start + duration`, which would be blind to gaps between children.
 
 Per-item problems are reported without blocking the load: missing inputs (with `error_on_missing` or on a `required` computed field, naming the inputs that are absent) and runtime failures such as division by zero.
+
+### Conditional fields
+
+Where `compute` calculates a value, `when` *chooses* one: a list of branches checked top to bottom, and the first condition that holds supplies the value.
+
+```yaml
+fields:
+  urgency_color:
+    type: color
+    when:
+      - if: status == "done"
+        then: green
+      - if: end_date < $today
+        then: red
+    default: gray
+```
+
+- **First match wins.** Branch order is meaning: put the most specific condition first. There are no `and`/`or` combinators — conjunctions are expressed by bailing out on complements in earlier branches, disjunctions by two branches with the same `then`.
+- **`if`** is a boolean expression in the same grammar as `compute` (comparisons, `$today`, `$constants.<name>`, quoted string literals). Each condition must type-check as boolean; a broken one is a single diagnostic against `schema.yaml` naming the field and branch number, and disables the field — never one error per item.
+- **`then`** is a literal of the field's declared type, validated at load.
+- **A branch whose condition cannot be answered** — a referenced field is absent on the item — does not match, and evaluation falls through to the next branch, mirroring how rules skip comparisons on absent operands.
+- **`default`** next to `when` is the *evaluated* fallback when no branch matches. Unlike an ordinary add-time default it is never written into any file (a stamped value would permanently shadow every branch), and it must be a plain literal, not a generator.
+- With no match and no `default` the field stays unset — on a `required` field that is a per-item diagnostic naming the unmatched branches and any absent condition inputs.
+
+Conditional fields compose like computed ones: `when` and `compute` are mutually exclusive on one field, but `when` + `aggregate` means conditions fill leaf items and the rollup fills ancestors. Conditions may read computed fields and vice versa — all derived fields share one dependency graph, evaluated in reference order, with cycles rejected at load. Values are derived at load, visible everywhere, and a hand-written frontmatter value always wins.
 
 ---
 

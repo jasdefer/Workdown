@@ -4,12 +4,6 @@ Directed graph of items connected through `depends_on`, nested by `parent`.
 
 ```mermaid
 flowchart TD
-    subgraph conditional-derivation ["Conditional & time-aware derivation"]
-        conditional-field-value["`when:` — derive a field value by first matching condition"]
-        evaluation-time-now["Resolve the current date at evaluation time, reproducibly"]
-        expression-predicates["Comparisons, equality and booleans in the expression grammar"]
-        rules-current-date-reference["Rules can't reference the current date"]
-    end
     field-value-map["Mapped fields — derive a value by lookup table"]
     subgraph multi-project-support ["Multi-project support"]
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]
@@ -42,8 +36,12 @@ flowchart TD
             cli-unset-command["workdown unset — clear a field"]
         end
         subgraph polish ["Polish & dogfood"]
+            conditional-field-value["`when:` — derive a field value by first matching condition"]
+            evaluation-time-now["Resolve the current date at evaluation time, reproducibly"]
             explicit-in-operator["Explicit `in` operator; `=` becomes always-literal"]
+            expression-predicates["Comparisons, equality and booleans in the expression grammar"]
             resource-option-lists["Validate resource references and render resource pickers"]
+            rules-current-date-reference["Rules can't reference the current date"]
             store-diagnostics-consistency["Make store-diagnostic surfacing consistent across commands"]
             virtual-id-in-structural-slots["Reject the virtual `id` in structural slots that read item fields"]
             where-clause-value-validation["Validate where-clause operands against the field's value set"]

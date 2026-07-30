@@ -21,3 +21,5 @@ defaults:
   # `display:` block in views.yaml overrides these per role.
   display:
     title: title
+    # Tint cards and bars by the schema's condition-derived color field.
+    color: color

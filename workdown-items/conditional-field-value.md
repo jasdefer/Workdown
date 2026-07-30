@@ -1,7 +1,7 @@
 ---
 id: conditional-field-value
 type: issue
-status: to_do
+status: done
 title: "`when:` — derive a field value by first matching condition"
 parent: polish
 depends_on: [expression-predicates, evaluation-time-now]
@@ -17,11 +17,11 @@ two issues exist to make possible.
 urgency_color:
   type: color
   when:
-    - if: status == done
+    - if: status == "done"
       then: green
-    - if: end_date > $today
-      then: blue
-  default: grey
+    - if: end_date < $today
+      then: red
+  default: gray
 ```
 
 First match wins, top to bottom. `default:` applies when no branch matches;
@@ -60,24 +60,28 @@ values. The cost is one more config shape beside `compute:` and `aggregate:`.
   `.workdown/schema.yaml` and a view using `display.color` is the obvious
   dogfood.
 
-## Decisions to make
+## Decisions taken (2026-07-30)
 
-- **Interaction with `compute:` and `aggregate:` on one field.** `compute` +
-  `when` on the same field are two answers to "what is this value", so
-  mutually exclusive is the likely call — but confirm, and decide whether it is
-  a load-time error or a documented precedence. `when` + `aggregate` is a real
-  combination worth thinking about: conditions fill leaves, the rollup fills
-  ancestors, exactly the pattern ADR-009 describes for compute + aggregate.
-- **Cycle handling.** Compute references are cycle-checked; `when:` conditions
-  reference fields too, so they must join the same graph rather than get their
-  own check.
-- **Whether `then` may be an expression** rather than a literal. Literals cover
-  every motivating case and keep validation simple. An expression is more
-  uniform with `compute:`. Prefer literal-only in v1 and say so.
-- **An unmatched field with `required: true`.** Compute has
-  `ComputeMissingInputs` for the analogous case, naming the absent inputs
-  rather than the symptom. Decide what the equivalent diagnostic says here —
-  "no branch matched and no default" is the honest message.
+- **`compute` + `when` on one field is a schema parse error** — two answers
+  to "what is this value", rejected like `compute` + `default`. `when` +
+  `aggregate` is supported: conditions fill leaves, the rollup fills
+  ancestors, exactly the ADR-009 pattern.
+- **One dependency graph.** `when:` condition references join the same
+  graph as compute references, for both cycle detection and evaluation
+  order — a condition may read a computed field and vice versa.
+- **`then` is literal-only.** `$today` in `then:` (the "ongoing gantt bar"
+  case) is the first candidate if then-expressions ever come; recorded,
+  not built.
+- **Absent condition inputs mean fall-through.** A branch that cannot be
+  answered does not match; evaluation moves to the next branch, mirroring
+  the rule engine's absent-operand skip. Unset + `required` is a per-item
+  diagnostic naming the unmatched branches and the absent inputs; with a
+  `default:` present, `required` can never fire.
+- **`default:` next to `when:` is the evaluated fallback** — same keyword
+  as add-time defaults, different mechanism, because a stamped default
+  would permanently shadow every branch (hand-written values win). It
+  must be a plain literal; generator tokens are rejected. It never
+  reaches `workdown add`.
 
 ## Acceptance
 

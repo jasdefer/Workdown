@@ -136,6 +136,24 @@ pub enum ItemDiagnosticKind {
     /// A computed field's evaluation failed on this item's actual
     /// values (division by zero, overflow, non-finite result).
     ComputeFailed { field: String, detail: String },
+
+    /// A required conditional field stayed unset: no `when:` branch
+    /// matched and no default is declared. `missing_inputs` lists the
+    /// condition inputs absent on this item — the reason branches could
+    /// not be answered — when that is (part of) the cause.
+    WhenUnmatched {
+        field: String,
+        missing_inputs: Vec<String>,
+    },
+
+    /// A `when:` branch condition failed on this item's actual values
+    /// (arithmetic inside the comparison overflowed, …). The branch is
+    /// skipped; evaluation falls through to the next one.
+    WhenConditionFailed {
+        field: String,
+        branch_number: usize,
+        detail: String,
+    },
 }
 
 // ── Files scope ──────────────────────────────────────────────────────
@@ -362,9 +380,20 @@ pub enum ConfigDiagnosticKind {
         declared_type: String,
     },
 
-    /// `compute:` expressions reference each other in a loop. `chain`
-    /// lists the fields in order, first one repeated at the end.
+    /// Derived fields (`compute:` expressions and `when:` conditions)
+    /// reference each other in a loop. `chain` lists the fields in
+    /// order, first one repeated at the end.
     ComputeCycle { chain: Vec<String> },
+
+    /// A `when:` branch condition in `schema.yaml` failed type checking
+    /// — an unknown reference, an undefined comparison, or a result
+    /// that isn't boolean. `detail` carries the specific finding.
+    WhenInvalidCondition {
+        field: String,
+        branch_number: usize,
+        condition: String,
+        detail: String,
+    },
 }
 
 // ── Field value errors ───────────────────────────────────────────────
@@ -544,7 +573,8 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
         | ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch { .. }
         | ConfigDiagnosticKind::ComputeInvalidExpression { .. }
         | ConfigDiagnosticKind::ComputeResultTypeMismatch { .. }
-        | ConfigDiagnosticKind::ComputeCycle { .. } => None,
+        | ConfigDiagnosticKind::ComputeCycle { .. }
+        | ConfigDiagnosticKind::WhenInvalidCondition { .. } => None,
     }
 }
 
@@ -654,6 +684,37 @@ impl std::fmt::Display for ItemDiagnosticKind {
             }
             ItemDiagnosticKind::ComputeFailed { field, detail } => {
                 write!(f, "computed field '{field}' failed to evaluate: {detail}")
+            }
+            ItemDiagnosticKind::WhenUnmatched {
+                field,
+                missing_inputs,
+            } => {
+                write!(
+                    f,
+                    "required conditional field '{field}': no 'when:' branch matched and no default is declared"
+                )?;
+                if !missing_inputs.is_empty() {
+                    write!(
+                        f,
+                        " (absent condition inputs: {})",
+                        missing_inputs
+                            .iter()
+                            .map(|input| format!("'{input}'"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )?;
+                }
+                Ok(())
+            }
+            ItemDiagnosticKind::WhenConditionFailed {
+                field,
+                branch_number,
+                detail,
+            } => {
+                write!(
+                    f,
+                    "conditional field '{field}': branch {branch_number} condition failed and was skipped: {detail}"
+                )
             }
         }
     }
@@ -869,10 +930,19 @@ impl std::fmt::Display for ConfigDiagnosticKind {
             ConfigDiagnosticKind::ComputeCycle { chain } => {
                 write!(
                     f,
-                    "compute expressions form a reference cycle: {}",
+                    "derived fields form a reference cycle: {}",
                     chain.join(" -> ")
                 )
             }
+            ConfigDiagnosticKind::WhenInvalidCondition {
+                field,
+                branch_number,
+                condition,
+                detail,
+            } => write!(
+                f,
+                "field '{field}', 'when' branch {branch_number}, condition '{condition}': {detail}"
+            ),
         }
     }
 }

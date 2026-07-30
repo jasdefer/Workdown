@@ -16,17 +16,16 @@
 | [color-display-slot](../workdown-items/color-display-slot.md) | issue | done | [view-presentation](../workdown-items/view-presentation.md) | [color-field-type](../workdown-items/color-field-type.md), [view-display-config](../workdown-items/view-display-config.md) |
 | [color-field-type](../workdown-items/color-field-type.md) | issue | done | [view-presentation](../workdown-items/view-presentation.md) | [mutations-slice](../workdown-items/mutations-slice.md) |
 | [computed-fields](../workdown-items/computed-fields.md) | issue | done | [time-tracking](../workdown-items/time-tracking.md) | [project-constants](../workdown-items/project-constants.md) |
-| [conditional-derivation](../workdown-items/conditional-derivation.md) | milestone | to_do |  |  |
-| [conditional-field-value](../workdown-items/conditional-field-value.md) | issue | to_do | [conditional-derivation](../workdown-items/conditional-derivation.md) | [expression-predicates](../workdown-items/expression-predicates.md), [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
+| [conditional-field-value](../workdown-items/conditional-field-value.md) | issue | to_do | [polish](../workdown-items/polish.md) | [expression-predicates](../workdown-items/expression-predicates.md), [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
 | [cross-cutting-helpers](../workdown-items/cross-cutting-helpers.md) | issue | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md) | issue | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [diagnostic-variant-cleanup](../workdown-items/diagnostic-variant-cleanup.md) | issue | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [display-defaults-validation](../workdown-items/display-defaults-validation.md) | issue | done | [view-presentation](../workdown-items/view-presentation.md) | [view-display-config](../workdown-items/view-display-config.md) |
 | [duration-comparison-rule](../workdown-items/duration-comparison-rule.md) | issue | to_do | [time-tracking](../workdown-items/time-tracking.md) | [project-constants](../workdown-items/project-constants.md) |
 | [duration-field-type](../workdown-items/duration-field-type.md) | issue | done | [renderers](../workdown-items/renderers.md) |  |
-| [evaluation-time-now](../workdown-items/evaluation-time-now.md) | issue | to_do | [conditional-derivation](../workdown-items/conditional-derivation.md) |  |
+| [evaluation-time-now](../workdown-items/evaluation-time-now.md) | issue | done | [polish](../workdown-items/polish.md) |  |
 | [explicit-in-operator](../workdown-items/explicit-in-operator.md) | issue | done | [polish](../workdown-items/polish.md) | [view-filter-editor](../workdown-items/view-filter-editor.md) |
-| [expression-predicates](../workdown-items/expression-predicates.md) | issue | to_do | [conditional-derivation](../workdown-items/conditional-derivation.md) |  |
+| [expression-predicates](../workdown-items/expression-predicates.md) | issue | done | [polish](../workdown-items/polish.md) |  |
 | [field-value-map](../workdown-items/field-value-map.md) | issue | removed |  |  |
 | [field-value-native-date](../workdown-items/field-value-native-date.md) | issue | done | [renderers](../workdown-items/renderers.md) |  |
 | [first-view-end-to-end](../workdown-items/first-view-end-to-end.md) | issue | done | [server](../workdown-items/server.md) | [walking-skeleton](../workdown-items/walking-skeleton.md), [ui-foundation](../workdown-items/ui-foundation.md) |
@@ -61,7 +60,7 @@
 | [render-workload](../workdown-items/render-workload.md) | issue | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [renderers](../workdown-items/renderers.md) | milestone | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md) |
 | [resource-option-lists](../workdown-items/resource-option-lists.md) | issue | to_do | [polish](../workdown-items/polish.md) | [mutations-slice](../workdown-items/mutations-slice.md), [schema-metadata-api](../workdown-items/schema-metadata-api.md) |
-| [rules-current-date-reference](../workdown-items/rules-current-date-reference.md) | issue | to_do | [conditional-derivation](../workdown-items/conditional-derivation.md) | [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
+| [rules-current-date-reference](../workdown-items/rules-current-date-reference.md) | issue | done | [polish](../workdown-items/polish.md) | [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
 | [schema-metadata-api](../workdown-items/schema-metadata-api.md) | issue | done | [view-authoring](../workdown-items/view-authoring.md) |  |
 | [server](../workdown-items/server.md) | milestone | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md), [item-mutations](../workdown-items/item-mutations.md), [renderers](../workdown-items/renderers.md) |
 | [store-diagnostics-consistency](../workdown-items/store-diagnostics-consistency.md) | issue | to_do | [polish](../workdown-items/polish.md) |  |

@@ -150,7 +150,7 @@ pub(super) fn missing_inputs(item: &WorkItem, config: &ComputeConfig) -> Vec<Str
 
 /// True if no item references `item_id` via `over_field` — nothing has
 /// it as their parent in the aggregate hierarchy.
-fn is_leaf(
+pub(super) fn is_leaf(
     reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
     item_id: &WorkItemId,
     over_field: &str,
@@ -163,12 +163,14 @@ fn is_leaf(
 
 // ── Value conversion ──────────────────────────────────────────────────
 
-struct ItemValueContext<'a> {
-    fields: &'a HashMap<String, FieldValue>,
-    constants: &'a IndexMap<String, FieldValue>,
+/// [`ValueContext`] over one item's fields plus the project constants
+/// and the evaluation date. Shared with the conditional pass.
+pub(super) struct ItemValueContext<'a> {
+    pub(super) fields: &'a HashMap<String, FieldValue>,
+    pub(super) constants: &'a IndexMap<String, FieldValue>,
     /// The evaluation date as a midnight timestamp — what `$today`
     /// resolves to for every item in this pass.
-    today: Value,
+    pub(super) today: Value,
 }
 
 impl ValueContext for ItemValueContext<'_> {
@@ -191,7 +193,7 @@ fn epoch() -> NaiveDate {
 
 /// A calendar date as a midnight [`Value::Timestamp`] — the same
 /// conversion [`value_of`] applies to date field values.
-fn timestamp_of(date: NaiveDate) -> Value {
+pub(super) fn timestamp_of(date: NaiveDate) -> Value {
     let days = date.signed_duration_since(epoch()).num_days();
     Value::Timestamp(days * SECONDS_PER_DAY)
 }

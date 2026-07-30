@@ -67,9 +67,23 @@ fields:
       function: sum
       error_on_missing: false
 
+  # Derived by condition (first match wins) — dogfoods
+  # conditional-field-value. Evaluated against $today, so the tint is a
+  # function of the calendar; pin with `--as-of` for reproducible
+  # renders. A hand-written color on an item always wins.
   color:
     type: color
     required: false
+    when:
+      - if: status == "done"
+        then: green
+      - if: status == "removed"
+        then: gray
+      - if: status == "in_progress"
+        then: blue
+      - if: end_date < $today
+        then: red      # not done, past its end date: overdue
+    default: gray
 
   # Per-issue work estimate, independent of the calendar span carried by
   # start_date/end_date/duration. Set on leaf issues; rolls up as a total

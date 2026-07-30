@@ -8,8 +8,9 @@
 //! collected as [`Diagnostic`]s — the store loads as much as it can and
 //! reports all findings.
 
-mod coerce;
+pub(crate) mod coerce;
 mod compute;
+mod conditional;
 mod cycles;
 mod derive;
 mod rollup;

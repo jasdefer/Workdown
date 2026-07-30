@@ -18,5 +18,5 @@ gantt
     Phase 04 Visualization :phase-04-visualization, 2026-04-20, 2026-07-17
 ```
 
-> _3 items dropped:_
-> _- missing 'start_date': "Conditional & time-aware derivation", "Multi-project support", "Time tracking"_
+> _2 items dropped:_
+> _- missing 'start_date': "Multi-project support", "Time tracking"_

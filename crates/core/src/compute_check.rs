@@ -100,6 +100,30 @@ fn findings(schema: &Schema, resources: &Resources) -> Vec<Finding> {
         }
     }
 
+    // `when:` conditions: each branch must type-check as boolean, to
+    // the same one-diagnostic-against-schema.yaml standard as compute.
+    for (field_name, field_definition) in &schema.fields {
+        let Some(when_config) = &field_definition.when else {
+            continue;
+        };
+        for (index, branch) in when_config.branches.iter().enumerate() {
+            let detail = match check_types(&branch.condition, &context) {
+                Ok(ExpressionType::Boolean) => continue,
+                Ok(other) => format!("condition has type {other}, expected boolean"),
+                Err(error) => error.to_string(),
+            };
+            findings.push(Finding {
+                disabled_fields: vec![field_name.clone()],
+                kind: ConfigDiagnosticKind::WhenInvalidCondition {
+                    field: field_name.clone(),
+                    branch_number: index + 1,
+                    condition: branch.condition_source.clone(),
+                    detail,
+                },
+            });
+        }
+    }
+
     findings.extend(cycle_findings(schema));
     findings
 }
@@ -185,16 +209,17 @@ enum VisitState {
     Done,
 }
 
-/// Find reference cycles among compute expressions. Only computed fields
-/// have outgoing edges, so every cycle consists purely of computed
-/// fields; each cycle is reported once, on the first field of it the
-/// walk encounters (deterministic: schema declaration order).
+/// Find reference cycles among derived fields (`compute:` expressions
+/// and `when:` conditions share one dependency graph). Only derived
+/// fields have outgoing edges, so every cycle consists purely of them;
+/// each cycle is reported once, on the first field of it the walk
+/// encounters (deterministic: schema declaration order).
 fn cycle_findings(schema: &Schema) -> Vec<Finding> {
     let mut findings = Vec::new();
     let mut states: HashMap<&str, VisitState> = HashMap::new();
 
     for (field_name, field_definition) in &schema.fields {
-        if field_definition.compute.is_some() && !states.contains_key(field_name.as_str()) {
+        if field_definition.is_derived() && !states.contains_key(field_name.as_str()) {
             let mut stack = Vec::new();
             visit(schema, field_name, &mut states, &mut stack, &mut |chain| {
                 findings.push(Finding {
@@ -209,7 +234,7 @@ fn cycle_findings(schema: &Schema) -> Vec<Finding> {
     findings
 }
 
-/// Depth-first walk from `field_name` along compute-reference edges.
+/// Depth-first walk from `field_name` along derived-reference edges.
 fn visit<'a>(
     schema: &'a Schema,
     field_name: &'a str,
@@ -220,18 +245,14 @@ fn visit<'a>(
     states.insert(field_name, VisitState::InProgress);
     stack.push(field_name);
 
-    let compute = schema
-        .fields
-        .get(field_name)
-        .and_then(|field_definition| field_definition.compute.as_ref());
-    if let Some(compute) = compute {
-        for referenced in compute.expression.field_references() {
+    if let Some(field_definition) = schema.fields.get(field_name) {
+        for referenced in field_definition.derived_references() {
             // Resolve to the schema's own key so the borrow outlives us.
             let Some((referenced, referenced_definition)) = schema.fields.get_key_value(referenced)
             else {
                 continue; // unknown reference — reported by the type check
             };
-            if referenced_definition.compute.is_none() {
+            if !referenced_definition.is_derived() {
                 continue; // no outgoing edges, cannot be part of a cycle
             }
             match states.get(referenced.as_str()) {
@@ -525,6 +546,102 @@ fields:
             kinds(&diagnostics)[0],
             ConfigDiagnosticKind::ComputeResultTypeMismatch { result_type, .. }
                 if result_type == "boolean"
+        ));
+    }
+
+    // ── when: conditions ───────────────────────────────────────────────
+
+    #[test]
+    fn boolean_when_conditions_are_clean() {
+        let schema_yaml = "\
+fields:
+  status:
+    type: choice
+    values: [open, done]
+  end_date:
+    type: date
+  urgency_color:
+    type: color
+    when:
+      - if: status == \"done\"
+        then: green
+      - if: end_date > $today
+        then: blue
+    default: gray
+";
+        let diagnostics = check(schema_yaml, "");
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn non_boolean_when_condition_is_reported_with_branch_number() {
+        let schema_yaml = "\
+fields:
+  start_date:
+    type: date
+  end_date:
+    type: date
+  tint:
+    type: color
+    when:
+      - if: end_date > start_date
+        then: green
+      - if: end_date - start_date
+        then: red
+";
+        let diagnostics = check(schema_yaml, "");
+        assert!(matches!(
+            kinds(&diagnostics)[0],
+            ConfigDiagnosticKind::WhenInvalidCondition { field, branch_number, detail, .. }
+                if field == "tint"
+                    && *branch_number == 2
+                    && detail.contains("has type duration, expected boolean")
+        ));
+    }
+
+    #[test]
+    fn unknown_reference_in_when_condition_is_reported() {
+        let schema_yaml = "\
+fields:
+  tint:
+    type: color
+    when:
+      - if: statsu == \"done\"
+        then: green
+";
+        let diagnostics = check(schema_yaml, "");
+        assert!(matches!(
+            kinds(&diagnostics)[0],
+            ConfigDiagnosticKind::WhenInvalidCondition { detail, .. }
+                if detail.contains("unknown field 'statsu'")
+        ));
+        assert!(failed_fields(
+            &crate::parser::schema::parse_schema(schema_yaml).unwrap(),
+            &Resources::default()
+        )
+        .contains("tint"));
+    }
+
+    #[test]
+    fn cycle_through_a_when_condition_is_reported() {
+        // a computes from b; b's condition reads a — a loop across the
+        // two derivation kinds, caught by the shared graph.
+        let schema_yaml = "\
+fields:
+  a:
+    type: boolean
+    compute: b == true
+  b:
+    type: boolean
+    when:
+      - if: a == true
+        then: false
+";
+        let diagnostics = check(schema_yaml, "");
+        assert!(matches!(
+            kinds(&diagnostics)[0],
+            ConfigDiagnosticKind::ComputeCycle { chain }
+                if chain.first().map(String::as_str) == Some("a") && chain.len() == 3
         ));
     }
 

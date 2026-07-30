@@ -319,6 +319,246 @@ fn boolean_fields_compute_from_predicates() {
     );
 }
 
+// ── when: conditional fields ────────────────────────────────────────
+
+/// The acceptance example from `conditional-field-value`: a color
+/// picked by first matching condition, with an evaluated fallback.
+fn urgency_color_schema() -> String {
+    format!(
+        "{COMMON_FIELDS}  end_date:
+    type: date
+  urgency_color:
+    type: color
+    when:
+      - if: status == \"done\"
+        then: green
+      - if: end_date < $today
+        then: red
+    default: gray
+"
+    )
+}
+
+fn color_of(project: &Project, id: &str) -> Option<FieldValue> {
+    project
+        .store
+        .get(id)
+        .expect("item must load")
+        .fields
+        .get("urgency_color")
+        .cloned()
+}
+
+#[test]
+fn when_picks_the_first_matching_branch() {
+    let (_directory, root) = setup_project(
+        &urgency_color_schema(),
+        "",
+        &[
+            // done AND overdue: first branch wins.
+            ("done.md", "---\nstatus: done\nend_date: 2026-07-01\n---\n"),
+            ("late.md", "---\nstatus: open\nend_date: 2026-07-01\n---\n"),
+            (
+                "upcoming.md",
+                "---\nstatus: open\nend_date: 2026-09-01\n---\n",
+            ),
+        ],
+    );
+
+    let project = load_as_of(&root, NaiveDate::from_ymd_opt(2026, 8, 3).unwrap());
+
+    assert!(
+        project.diagnostics.is_empty(),
+        "got: {:?}",
+        project.diagnostics
+    );
+    assert_eq!(
+        color_of(&project, "done"),
+        Some(FieldValue::Color("green".to_owned()))
+    );
+    assert_eq!(
+        color_of(&project, "late"),
+        Some(FieldValue::Color("red".to_owned()))
+    );
+    assert_eq!(
+        color_of(&project, "upcoming"),
+        Some(FieldValue::Color("gray".to_owned()))
+    );
+}
+
+#[test]
+fn when_branch_with_absent_input_falls_through() {
+    let (_directory, root) = setup_project(
+        &urgency_color_schema(),
+        "",
+        &[
+            // No status: branch 1 cannot be answered, branch 2 catches it.
+            ("late.md", "---\nend_date: 2026-07-01\n---\n"),
+            // Neither status nor end_date: the default catches it.
+            ("blank.md", "---\ntitle: Blank\n---\n"),
+        ],
+    );
+
+    let project = load_as_of(&root, NaiveDate::from_ymd_opt(2026, 8, 3).unwrap());
+
+    assert_eq!(
+        color_of(&project, "late"),
+        Some(FieldValue::Color("red".to_owned()))
+    );
+    assert_eq!(
+        color_of(&project, "blank"),
+        Some(FieldValue::Color("gray".to_owned()))
+    );
+}
+
+#[test]
+fn a_hand_written_value_beats_every_branch() {
+    let (_directory, root) = setup_project(
+        &urgency_color_schema(),
+        "",
+        &[(
+            "done.md",
+            "---\nstatus: done\nurgency_color: \"#123456\"\n---\n",
+        )],
+    );
+
+    let project = load_as_of(&root, NaiveDate::from_ymd_opt(2026, 8, 3).unwrap());
+
+    assert_eq!(
+        color_of(&project, "done"),
+        Some(FieldValue::Color("#123456".to_owned()))
+    );
+}
+
+#[test]
+fn required_when_without_default_reports_the_unmatched_item() {
+    let schema_yaml = format!(
+        "{COMMON_FIELDS}  urgency_color:
+    type: color
+    required: true
+    when:
+      - if: status == \"done\"
+        then: green
+"
+    );
+    let (_directory, root) = setup_project(
+        &schema_yaml,
+        "",
+        &[
+            ("open.md", "---\nstatus: open\n---\n"),
+            ("no-status.md", "---\ntitle: X\n---\n"),
+        ],
+    );
+
+    let project = load_as_of(&root, NaiveDate::from_ymd_opt(2026, 8, 3).unwrap());
+
+    let unmatched: Vec<&workdown_core::model::diagnostic::Diagnostic> = project
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.message.contains("no 'when:' branch matched"))
+        .collect();
+    assert_eq!(unmatched.len(), 2, "got: {:?}", project.diagnostics);
+    // The item without a status has the absent input named — the reason
+    // the branch could not be answered.
+    assert!(project.diagnostics.iter().any(|diagnostic| diagnostic
+        .message
+        .contains("absent condition inputs: 'status'")));
+}
+
+#[test]
+fn when_composes_with_aggregate_on_leaves() {
+    let schema_yaml = format!(
+        "{COMMON_FIELDS}  end_date:
+    type: date
+  priority_score:
+    type: integer
+    when:
+      - if: end_date < $today
+        then: 50
+    default: 10
+    aggregate:
+      function: max
+"
+    );
+    let (_directory, root) = setup_project(
+        &schema_yaml,
+        "",
+        &[
+            ("epic.md", "---\ntitle: Epic\n---\n"),
+            (
+                "late-child.md",
+                "---\nparent: epic\nend_date: 2026-07-01\n---\n",
+            ),
+            ("calm-child.md", "---\nparent: epic\n---\n"),
+        ],
+    );
+
+    let project = load_as_of(&root, NaiveDate::from_ymd_opt(2026, 8, 3).unwrap());
+
+    let score = |id: &str| {
+        project
+            .store
+            .get(id)
+            .unwrap()
+            .fields
+            .get("priority_score")
+            .cloned()
+    };
+    // Leaves get their conditional score; the parent aggregates the max
+    // instead of evaluating conditions of its own.
+    assert_eq!(score("late-child"), Some(FieldValue::Integer(50)));
+    assert_eq!(score("calm-child"), Some(FieldValue::Integer(10)));
+    assert_eq!(score("epic"), Some(FieldValue::Integer(50)));
+}
+
+#[test]
+fn when_conditions_read_computed_fields() {
+    let schema_yaml = format!(
+        "{COMMON_FIELDS}  end_date:
+    type: date
+  days_remaining:
+    type: duration
+    compute: end_date - $today
+  urgency_color:
+    type: color
+    when:
+      - if: days_remaining < $constants.warning_threshold
+        then: red
+    default: gray
+"
+    );
+    let resources_yaml = "\
+constants:
+  warning_threshold:
+    type: duration
+    value: \"1w\"
+";
+    let (_directory, root) = setup_project(
+        &schema_yaml,
+        resources_yaml,
+        &[
+            ("soon.md", "---\nend_date: 2026-08-05\n---\n"),
+            ("far.md", "---\nend_date: 2026-10-01\n---\n"),
+        ],
+    );
+
+    let project = load_as_of(&root, NaiveDate::from_ymd_opt(2026, 8, 3).unwrap());
+
+    assert!(
+        project.diagnostics.is_empty(),
+        "got: {:?}",
+        project.diagnostics
+    );
+    assert_eq!(
+        color_of(&project, "soon"),
+        Some(FieldValue::Color("red".to_owned()))
+    );
+    assert_eq!(
+        color_of(&project, "far"),
+        Some(FieldValue::Color("gray".to_owned()))
+    );
+}
+
 #[test]
 fn without_an_override_the_evaluation_date_is_today() {
     let (_directory, root) = setup_project(

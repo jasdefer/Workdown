@@ -308,7 +308,6 @@ milestone
 - [`color:` display role — choose which color field tints a view](../workdown-items/color-display-slot.md) — missing `start_date`
 - [Add `color` field type with background tinting](../workdown-items/color-field-type.md) — missing `start_date`
 - [Computed fields — same-item cross-field expressions](../workdown-items/computed-fields.md) — missing `start_date`
-- [Conditional & time-aware derivation](../workdown-items/conditional-derivation.md) — missing `start_date`
 - [`when:` — derive a field value by first matching condition](../workdown-items/conditional-field-value.md) — missing `start_date`
 - [Relocate cross-cutting helpers out of feature modules](../workdown-items/cross-cutting-helpers.md) — missing `start_date`
 - [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md) — missing `start_date`

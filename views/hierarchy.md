@@ -2,11 +2,6 @@
 
 Hierarchical outline following `parent` upward to roots.
 
-- [Conditional & time-aware derivation](../workdown-items/conditional-derivation.md) — type: milestone · status: to_do
-  - [`when:` — derive a field value by first matching condition](../workdown-items/conditional-field-value.md) — type: issue · status: to_do
-  - [Resolve the current date at evaluation time, reproducibly](../workdown-items/evaluation-time-now.md) — type: issue · status: to_do
-  - [Comparisons, equality and booleans in the expression grammar](../workdown-items/expression-predicates.md) — type: issue · status: to_do
-  - [Rules can't reference the current date](../workdown-items/rules-current-date-reference.md) — type: issue · status: to_do
 - [Mapped fields — derive a value by lookup table](../workdown-items/field-value-map.md) — type: issue · status: removed
 - [Multi-project support](../workdown-items/multi-project-support.md) — type: epic · status: to_do
   - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — type: issue · status: to_do
@@ -35,8 +30,12 @@ Hierarchical outline following `parent` upward to roots.
     - [workdown set — type-aware modes (append, remove, delta)](../workdown-items/cli-set-modes.md) — type: issue · status: done
     - [workdown unset — clear a field](../workdown-items/cli-unset-command.md) — type: issue · status: done
   - [Polish & dogfood](../workdown-items/polish.md) — type: milestone · status: in_progress
+    - [`when:` — derive a field value by first matching condition](../workdown-items/conditional-field-value.md) — type: issue · status: to_do
+    - [Resolve the current date at evaluation time, reproducibly](../workdown-items/evaluation-time-now.md) — type: issue · status: done
     - [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md) — type: issue · status: done
+    - [Comparisons, equality and booleans in the expression grammar](../workdown-items/expression-predicates.md) — type: issue · status: done
     - [Validate resource references and render resource pickers](../workdown-items/resource-option-lists.md) — type: issue · status: to_do
+    - [Rules can't reference the current date](../workdown-items/rules-current-date-reference.md) — type: issue · status: done
     - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md) — type: issue · status: to_do
     - [Reject the virtual `id` in structural slots that read item fields](../workdown-items/virtual-id-in-structural-slots.md) — type: issue · status: to_do
     - [Validate where-clause operands against the field's value set](../workdown-items/where-clause-value-validation.md) — type: issue · status: to_do
