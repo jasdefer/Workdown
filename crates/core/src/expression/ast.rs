@@ -46,6 +46,12 @@ pub enum Expression {
     IntegerLiteral { value: i64, span: Span },
     /// A fractional literal, e.g. `1.2`.
     FloatLiteral { value: f64, span: Span },
+    /// A quoted string literal, e.g. `"done"`. Quotes keep literals
+    /// visibly distinct from field references, so a typo'd field name
+    /// stays an unknown-field error instead of silently becoming text.
+    StringLiteral { value: String, span: Span },
+    /// A boolean literal, `true` or `false` (reserved words).
+    BooleanLiteral { value: bool, span: Span },
     /// A negated subexpression, e.g. `-effort`.
     Negate {
         operand: Box<Expression>,
@@ -54,6 +60,15 @@ pub enum Expression {
     /// Two subexpressions combined with an arithmetic operator.
     Binary {
         operator: BinaryOperator,
+        left: Box<Expression>,
+        right: Box<Expression>,
+        span: Span,
+    },
+    /// Two subexpressions combined with a comparison operator,
+    /// producing a boolean. Non-associative: `a < b < c` is a parse
+    /// error, not a chained comparison.
+    Comparison {
+        operator: ComparisonOperator,
         left: Box<Expression>,
         right: Box<Expression>,
         span: Span,
@@ -69,8 +84,11 @@ impl Expression {
             | Expression::TodayReference { span }
             | Expression::IntegerLiteral { span, .. }
             | Expression::FloatLiteral { span, .. }
+            | Expression::StringLiteral { span, .. }
+            | Expression::BooleanLiteral { span, .. }
             | Expression::Negate { span, .. }
-            | Expression::Binary { span, .. } => *span,
+            | Expression::Binary { span, .. }
+            | Expression::Comparison { span, .. } => *span,
         }
     }
 
@@ -83,9 +101,12 @@ impl Expression {
                 Expression::ConstantReference { .. }
                 | Expression::TodayReference { .. }
                 | Expression::IntegerLiteral { .. }
-                | Expression::FloatLiteral { .. } => {}
+                | Expression::FloatLiteral { .. }
+                | Expression::StringLiteral { .. }
+                | Expression::BooleanLiteral { .. } => {}
                 Expression::Negate { operand, .. } => collect(operand, references),
-                Expression::Binary { left, right, .. } => {
+                Expression::Binary { left, right, .. }
+                | Expression::Comparison { left, right, .. } => {
                     collect(left, references);
                     collect(right, references);
                 }
@@ -105,9 +126,11 @@ impl Expression {
             Expression::FieldReference { .. }
             | Expression::ConstantReference { .. }
             | Expression::IntegerLiteral { .. }
-            | Expression::FloatLiteral { .. } => false,
+            | Expression::FloatLiteral { .. }
+            | Expression::StringLiteral { .. }
+            | Expression::BooleanLiteral { .. } => false,
             Expression::Negate { operand, .. } => operand.references_today(),
-            Expression::Binary { left, right, .. } => {
+            Expression::Binary { left, right, .. } | Expression::Comparison { left, right, .. } => {
                 left.references_today() || right.references_today()
             }
         }
@@ -130,6 +153,44 @@ impl std::fmt::Display for BinaryOperator {
             BinaryOperator::Subtract => "-",
             BinaryOperator::Multiply => "*",
             BinaryOperator::Divide => "/",
+        };
+        write!(formatter, "{symbol}")
+    }
+}
+
+/// The six comparison operators. All produce a boolean; the ordering
+/// four apply to types with a meaningful order, equality additionally
+/// to text, boolean, and color.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComparisonOperator {
+    Equal,
+    NotEqual,
+    LessThan,
+    LessOrEqual,
+    GreaterThan,
+    GreaterOrEqual,
+}
+
+impl ComparisonOperator {
+    /// Whether this operator only asks about equality, which more types
+    /// support than ordering.
+    pub fn is_equality(self) -> bool {
+        matches!(
+            self,
+            ComparisonOperator::Equal | ComparisonOperator::NotEqual
+        )
+    }
+}
+
+impl std::fmt::Display for ComparisonOperator {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let symbol = match self {
+            ComparisonOperator::Equal => "==",
+            ComparisonOperator::NotEqual => "!=",
+            ComparisonOperator::LessThan => "<",
+            ComparisonOperator::LessOrEqual => "<=",
+            ComparisonOperator::GreaterThan => ">",
+            ComparisonOperator::GreaterOrEqual => ">=",
         };
         write!(formatter, "{symbol}")
     }

@@ -91,7 +91,7 @@ pub(super) fn run_for_field(
         let context = ItemValueContext {
             fields: &item.fields,
             constants,
-            today,
+            today: today.clone(),
         };
         let outcome = match evaluate(&spec.config.expression, &context) {
             Ok(value) => match field_value_from(value, spec.declared_type, spec.config.round) {
@@ -181,7 +181,7 @@ impl ValueContext for ItemValueContext<'_> {
     }
 
     fn today(&self) -> Value {
-        self.today
+        self.today.clone()
     }
 }
 
@@ -204,6 +204,14 @@ fn value_of(field_value: &FieldValue) -> Option<Value> {
         FieldValue::Float(value) => Some(Value::Float(*value)),
         FieldValue::Duration(seconds) => Some(Value::Duration(*seconds)),
         FieldValue::Date(date) => Some(timestamp_of(*date)),
+        FieldValue::Boolean(flag) => Some(Value::Boolean(*flag)),
+        FieldValue::String(text) | FieldValue::Choice(text) => Some(Value::Text(text.clone())),
+        // Canonical color (palette name or hex) resolves to display hex
+        // on the way in, so equality inside evaluation is hex equality.
+        FieldValue::Color(canonical) => Some(Value::Color(
+            crate::model::color::resolve_color_to_hex(canonical)
+                .unwrap_or_else(|| canonical.clone()),
+        )),
         _ => None,
     }
 }
@@ -223,6 +231,7 @@ fn field_value_from(
         (Value::Integer(value), FieldType::Float) => Some(FieldValue::Float(value as f64)),
         (Value::Float(value), FieldType::Float) => Some(FieldValue::Float(value)),
         (Value::Duration(seconds), FieldType::Duration) => Some(FieldValue::Duration(seconds)),
+        (Value::Boolean(flag), FieldType::Boolean) => Some(FieldValue::Boolean(flag)),
         (Value::Timestamp(seconds), FieldType::Date) => {
             // The rounding shift must not wrap: a timestamp near
             // `i64::MAX` (reachable through duration arithmetic) skips
@@ -284,7 +293,7 @@ mod tests {
             (RoundMode::Ceil, 6),
         ] {
             assert_eq!(
-                field_value_from(four_hours_in, FieldType::Date, round),
+                field_value_from(four_hours_in.clone(), FieldType::Date, round),
                 Some(date(2026, 1, expected_day)),
                 "{round:?}"
             );
@@ -319,9 +328,55 @@ mod tests {
     }
 
     #[test]
-    fn non_scalar_field_values_do_not_convert() {
-        assert_eq!(value_of(&FieldValue::String("x".to_owned())), None);
-        assert_eq!(value_of(&FieldValue::Boolean(true)), None);
+    fn collection_field_values_do_not_convert() {
+        assert_eq!(value_of(&FieldValue::List(vec!["x".to_owned()])), None);
+        assert_eq!(
+            value_of(&FieldValue::Multichoice(vec!["a".to_owned()])),
+            None
+        );
+    }
+
+    #[test]
+    fn equality_participating_values_convert() {
+        assert_eq!(
+            value_of(&FieldValue::String("x".to_owned())),
+            Some(Value::Text("x".to_owned()))
+        );
+        assert_eq!(
+            value_of(&FieldValue::Choice("done".to_owned())),
+            Some(Value::Text("done".to_owned()))
+        );
+        assert_eq!(
+            value_of(&FieldValue::Boolean(true)),
+            Some(Value::Boolean(true))
+        );
+        // A palette name resolves to its pinned hex on the way in.
+        assert_eq!(
+            value_of(&FieldValue::Color("red".to_owned())),
+            Some(Value::Color("#ef4444".to_owned()))
+        );
+    }
+
+    #[test]
+    fn boolean_result_fits_a_boolean_field() {
+        assert_eq!(
+            field_value_from(Value::Boolean(true), FieldType::Boolean, RoundMode::Nearest),
+            Some(FieldValue::Boolean(true))
+        );
+        // A boolean result does not fit any other type, and text
+        // results fit nothing (no computable text fields).
+        assert_eq!(
+            field_value_from(Value::Boolean(true), FieldType::Integer, RoundMode::Nearest),
+            None
+        );
+        assert_eq!(
+            field_value_from(
+                Value::Text("done".to_owned()),
+                FieldType::Boolean,
+                RoundMode::Nearest
+            ),
+            None
+        );
     }
 
     #[test]

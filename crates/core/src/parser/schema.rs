@@ -304,13 +304,17 @@ fn validate_compute_config(
 
     let type_supports_compute = matches!(
         field.field_type,
-        FieldType::Integer | FieldType::Float | FieldType::Date | FieldType::Duration
+        FieldType::Integer
+            | FieldType::Float
+            | FieldType::Date
+            | FieldType::Duration
+            | FieldType::Boolean
     );
     if !type_supports_compute {
         errors.push(field_error(
             name,
             format!(
-                "'compute' is only valid for integer, float, date, and duration fields (this field is {})",
+                "'compute' is only valid for integer, float, date, duration, and boolean fields (this field is {})",
                 field.field_type
             ),
         ));
@@ -1958,7 +1962,7 @@ fields:
 ";
         assert_validation_error_contains(
             yaml,
-            "'compute' is only valid for integer, float, date, and duration fields (this field is choice)",
+            "'compute' is only valid for integer, float, date, duration, and boolean fields (this field is choice)",
         );
     }
 

@@ -1,10 +1,11 @@
 //! Tokenizer for compute expressions.
 //!
-//! Produces a flat token list from the source string. The only
-//! multi-character subtleties are identifiers, numeric literals (integer
-//! or fractional, no exponents), and dollar references — `$` is legal
-//! solely as the exact keyword `$today` or the start of the exact shape
-//! `$constants.<name>`.
+//! Produces a flat token list from the source string. The
+//! multi-character subtleties: identifiers (with `true` / `false`
+//! reserved), numeric literals (integer or fractional, no exponents),
+//! quoted string literals (no escapes), two-character comparison
+//! operators, and dollar references — `$` is legal solely as the exact
+//! keyword `$today` or the start of the exact shape `$constants.<name>`.
 
 use super::ast::Span;
 
@@ -27,12 +28,24 @@ pub(super) enum TokenKind {
     Integer(i64),
     /// A fractional literal.
     Float(f64),
+    /// A quoted string literal (the content, quotes stripped).
+    StringLiteral(String),
+    /// The reserved word `true`.
+    True,
+    /// The reserved word `false`.
+    False,
     Plus,
     Minus,
     Star,
     Slash,
     LeftParen,
     RightParen,
+    EqualEqual,
+    BangEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
 }
 
 /// Errors produced while tokenizing.
@@ -51,6 +64,14 @@ pub enum LexError {
 
     #[error("number '{literal}' at column {column} is malformed (a fraction needs digits after the dot)")]
     MalformedNumber { literal: String, column: usize },
+
+    #[error("string literal starting at column {column} is missing its closing '\"'")]
+    UnterminatedString { column: usize },
+
+    #[error(
+        "'{found}' at column {column} is not an operator — equality is '==', inequality is '!='"
+    )]
+    IncompleteComparison { found: char, column: usize },
 }
 
 /// The exact prefix a constant reference must carry.
@@ -94,6 +115,46 @@ pub(super) fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                 tokens.push(single(TokenKind::RightParen, position));
                 position += 1;
             }
+            b'=' | b'!' => {
+                if bytes.get(position + 1) == Some(&b'=') {
+                    let kind = if byte == b'=' {
+                        TokenKind::EqualEqual
+                    } else {
+                        TokenKind::BangEqual
+                    };
+                    tokens.push(Token {
+                        kind,
+                        span: Span::new(position, position + 2),
+                    });
+                    position += 2;
+                } else {
+                    return Err(LexError::IncompleteComparison {
+                        found: byte as char,
+                        column: position + 1,
+                    });
+                }
+            }
+            b'<' | b'>' => {
+                let is_or_equal = bytes.get(position + 1) == Some(&b'=');
+                let kind = match (byte, is_or_equal) {
+                    (b'<', false) => TokenKind::Less,
+                    (b'<', true) => TokenKind::LessEqual,
+                    (b'>', false) => TokenKind::Greater,
+                    (b'>', true) => TokenKind::GreaterEqual,
+                    _ => unreachable!("outer match narrowed byte to < or >"),
+                };
+                let length = if is_or_equal { 2 } else { 1 };
+                tokens.push(Token {
+                    kind,
+                    span: Span::new(position, position + length),
+                });
+                position += length;
+            }
+            b'"' => {
+                let (token, next) = lex_string_literal(source, position)?;
+                tokens.push(token);
+                position = next;
+            }
             b'0'..=b'9' => {
                 let (token, next) = lex_number(source, position)?;
                 tokens.push(token);
@@ -106,8 +167,14 @@ pub(super) fn lex(source: &str) -> Result<Vec<Token>, LexError> {
             }
             _ if is_identifier_start(byte) => {
                 let end = identifier_end(bytes, position);
+                // `true` / `false` are reserved words, never field names.
+                let kind = match &source[position..end] {
+                    "true" => TokenKind::True,
+                    "false" => TokenKind::False,
+                    word => TokenKind::Identifier(word.to_owned()),
+                };
                 tokens.push(Token {
-                    kind: TokenKind::Identifier(source[position..end].to_owned()),
+                    kind,
                     span: Span::new(position, end),
                 });
                 position = end;
@@ -196,6 +263,29 @@ fn lex_number(source: &str, start: usize) -> Result<(Token, usize), LexError> {
     };
 
     Ok((Token { kind, span }, end))
+}
+
+/// Lex a `"…"` string literal starting at the `"` at `start`. No escape
+/// sequences: the literal runs to the next `"`, so a value containing a
+/// double quote is not expressible — acceptable for the choice values
+/// and color names literals exist to name.
+fn lex_string_literal(source: &str, start: usize) -> Result<(Token, usize), LexError> {
+    let bytes = source.as_bytes();
+    let content_start = start + 1;
+    let mut end = content_start;
+    while end < bytes.len() && bytes[end] != b'"' {
+        end += 1;
+    }
+    if end >= bytes.len() {
+        return Err(LexError::UnterminatedString { column: start + 1 });
+    }
+    Ok((
+        Token {
+            kind: TokenKind::StringLiteral(source[content_start..end].to_owned()),
+            span: Span::new(start, end + 1),
+        },
+        end + 1,
+    ))
 }
 
 /// Lex a dollar reference starting at the `$` at `start`: the `$today`
@@ -369,6 +459,89 @@ mod tests {
         assert_eq!(
             kinds("$today+1"),
             vec![TokenKind::Today, TokenKind::Plus, TokenKind::Integer(1)]
+        );
+    }
+
+    #[test]
+    fn lexes_comparison_operators() {
+        assert_eq!(
+            kinds("a == b != c < d <= e > f >= g"),
+            vec![
+                TokenKind::Identifier("a".to_owned()),
+                TokenKind::EqualEqual,
+                TokenKind::Identifier("b".to_owned()),
+                TokenKind::BangEqual,
+                TokenKind::Identifier("c".to_owned()),
+                TokenKind::Less,
+                TokenKind::Identifier("d".to_owned()),
+                TokenKind::LessEqual,
+                TokenKind::Identifier("e".to_owned()),
+                TokenKind::Greater,
+                TokenKind::Identifier("f".to_owned()),
+                TokenKind::GreaterEqual,
+                TokenKind::Identifier("g".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn single_equals_and_bang_are_errors_with_guidance() {
+        for (source, expected_char) in [("a = b", '='), ("a ! b", '!')] {
+            let error = lex(source).unwrap_err();
+            assert_eq!(
+                error,
+                LexError::IncompleteComparison {
+                    found: expected_char,
+                    column: 3
+                },
+                "source {source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn lexes_string_literal_without_escapes() {
+        assert_eq!(
+            kinds("status == \"in progress\""),
+            vec![
+                TokenKind::Identifier("status".to_owned()),
+                TokenKind::EqualEqual,
+                TokenKind::StringLiteral("in progress".to_owned()),
+            ]
+        );
+        let tokens = lex("\"done\"").unwrap();
+        assert_eq!(tokens[0].span, Span::new(0, 6));
+    }
+
+    #[test]
+    fn empty_string_literal_lexes() {
+        assert_eq!(kinds("\"\""), vec![TokenKind::StringLiteral(String::new())]);
+    }
+
+    #[test]
+    fn unterminated_string_is_an_error() {
+        assert_eq!(
+            lex("status == \"done").unwrap_err(),
+            LexError::UnterminatedString { column: 11 }
+        );
+    }
+
+    #[test]
+    fn true_and_false_are_reserved_words() {
+        assert_eq!(
+            kinds("flag == true"),
+            vec![
+                TokenKind::Identifier("flag".to_owned()),
+                TokenKind::EqualEqual,
+                TokenKind::True,
+            ]
+        );
+        assert_eq!(kinds("false"), vec![TokenKind::False]);
+        // Word boundary: an identifier merely starting with the word
+        // stays an identifier.
+        assert_eq!(
+            kinds("truthy"),
+            vec![TokenKind::Identifier("truthy".to_owned())]
         );
     }
 

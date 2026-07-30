@@ -8,7 +8,9 @@
 //! references, because constants live in `resources.yaml` — so this
 //! module, running once both files are loaded, checks that:
 //!
-//! - every referenced field and constant exists and has arithmetic,
+//! - every referenced field and constant exists and participates in the
+//!   expression algebra (arithmetic types, or the equality-only text,
+//!   boolean, and color types),
 //! - each expression's result type fits its field's declared type
 //!   (with the one `integer → float` widening the algebra allows),
 //! - compute references don't form a cycle.
@@ -135,6 +137,8 @@ impl TypeContext for ProjectTypeContext<'_> {
             Some(FieldValue::Float(_)) => ReferenceResolution::Typed(ExpressionType::Float),
             Some(FieldValue::Date(_)) => ReferenceResolution::Typed(ExpressionType::Date),
             Some(FieldValue::Duration(_)) => ReferenceResolution::Typed(ExpressionType::Duration),
+            Some(FieldValue::Boolean(_)) => ReferenceResolution::Typed(ExpressionType::Boolean),
+            Some(FieldValue::String(_)) => ReferenceResolution::Typed(ExpressionType::Text),
             Some(other) => ReferenceResolution::Unsupported {
                 type_name: value_type_name(other).to_owned(),
             },
@@ -143,14 +147,18 @@ impl TypeContext for ProjectTypeContext<'_> {
 }
 
 /// The [`ExpressionType`] a declared field type participates as, or
-/// `None` for types without arithmetic.
+/// `None` for the collection types, which no expression operator
+/// accepts.
 fn expression_type_of(field_type: FieldType) -> Option<ExpressionType> {
     match field_type {
         FieldType::Integer => Some(ExpressionType::Integer),
         FieldType::Float => Some(ExpressionType::Float),
         FieldType::Date => Some(ExpressionType::Date),
         FieldType::Duration => Some(ExpressionType::Duration),
-        _ => None,
+        FieldType::Boolean => Some(ExpressionType::Boolean),
+        FieldType::String | FieldType::Choice => Some(ExpressionType::Text),
+        FieldType::Color => Some(ExpressionType::Color),
+        FieldType::Multichoice | FieldType::List | FieldType::Link | FieldType::Links => None,
     }
 }
 
@@ -350,7 +358,9 @@ constants:
     }
 
     #[test]
-    fn reference_to_field_without_arithmetic_is_reported() {
+    fn arithmetic_on_a_choice_field_is_reported() {
+        // A choice reference types as text (usable in equality), so the
+        // finding is the undefined *operation*, not the reference.
         let schema_yaml = "\
 fields:
   status:
@@ -364,7 +374,25 @@ fields:
         assert!(matches!(
             kinds(&diagnostics)[0],
             ConfigDiagnosticKind::ComputeInvalidExpression { detail, .. }
-                if detail.contains("choice")
+                if detail.contains("cannot apply '*' to text and integer")
+        ));
+    }
+
+    #[test]
+    fn reference_to_collection_field_is_reported() {
+        let schema_yaml = "\
+fields:
+  tags:
+    type: list
+  weight:
+    type: float
+    compute: tags * 2
+";
+        let diagnostics = check(schema_yaml, "");
+        assert!(matches!(
+            kinds(&diagnostics)[0],
+            ConfigDiagnosticKind::ComputeInvalidExpression { detail, .. }
+                if detail.contains("list")
         ));
     }
 
@@ -454,10 +482,49 @@ constants:
     value: WD
 ";
         let diagnostics = check(schema_yaml, resources_yaml);
+        // The constant types as text; multiplying it is the error.
         assert!(matches!(
             kinds(&diagnostics)[0],
             ConfigDiagnosticKind::ComputeInvalidExpression { detail, .. }
-                if detail.contains("string")
+                if detail.contains("cannot apply '*' to text and integer")
+        ));
+    }
+
+    #[test]
+    fn boolean_compute_with_predicates_is_clean() {
+        let schema_yaml = "\
+fields:
+  status:
+    type: choice
+    values: [open, done]
+  end_date:
+    type: date
+  is_overdue:
+    type: boolean
+    compute: end_date < $today
+  is_done:
+    type: boolean
+    compute: status == \"done\"
+";
+        let diagnostics = check(schema_yaml, "");
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn boolean_result_on_a_non_boolean_field_is_a_type_mismatch() {
+        let schema_yaml = "\
+fields:
+  end_date:
+    type: date
+  overdue_days:
+    type: duration
+    compute: end_date < $today
+";
+        let diagnostics = check(schema_yaml, "");
+        assert!(matches!(
+            kinds(&diagnostics)[0],
+            ConfigDiagnosticKind::ComputeResultTypeMismatch { result_type, .. }
+                if result_type == "boolean"
         ));
     }
 

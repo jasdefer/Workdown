@@ -10,16 +10,19 @@
 //!
 //! Values are the evaluator's own [`Value`] enum, resolved through a
 //! caller-supplied [`ValueContext`] — the module stays free of schema
-//! and item knowledge, like the type checker. Dates travel as
-//! [`Value::Timestamp`], seconds since the Unix epoch, so sub-day
-//! precision survives intermediate steps (`start + 4h + 4h` must equal
-//! `start + 8h`); the *caller* rounds the final timestamp onto a
-//! calendar day with its configured rounding mode.
+//! and item knowledge, like the type checker (the one exception is the
+//! color palette, a value-domain table needed to compare a color against
+//! a text literal naming one). Dates travel as [`Value::Timestamp`],
+//! seconds since the Unix epoch, so sub-day precision survives
+//! intermediate steps (`start + 4h + 4h` must equal `start + 8h`); the
+//! *caller* rounds the final timestamp onto a calendar day with its
+//! configured rounding mode.
 
-use super::ast::{BinaryOperator, Expression};
+use super::ast::{BinaryOperator, ComparisonOperator, Expression};
+use crate::model::color::{parse_color, resolve_color_to_hex};
 
 /// A value during evaluation.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Integer(i64),
     Float(f64),
@@ -29,6 +32,13 @@ pub enum Value {
     /// evaluation as midnight timestamps and leave with whatever
     /// sub-day remainder the arithmetic produced.
     Timestamp(i64),
+    /// A boolean, produced by comparisons and boolean literals.
+    Boolean(bool),
+    /// Text: a string or choice field value, or a quoted literal.
+    Text(String),
+    /// A color as its resolved `#rrggbb` hex — the caller resolves on
+    /// the way in, so equality here is plain string equality.
+    Color(String),
 }
 
 /// Resolves field and constant references to their current values for
@@ -85,6 +95,8 @@ pub fn evaluate(
             .constant(name)
             .ok_or_else(|| EvaluateError::MissingInput { name: name.clone() }),
         Expression::TodayReference { .. } => Ok(context.today()),
+        Expression::StringLiteral { value, .. } => Ok(Value::Text(value.clone())),
+        Expression::BooleanLiteral { value, .. } => Ok(Value::Boolean(*value)),
 
         Expression::Negate { operand, .. } => match evaluate(operand, context)? {
             Value::Integer(value) => value
@@ -96,7 +108,9 @@ pub fn evaluate(
                 .checked_neg()
                 .map(Value::Duration)
                 .ok_or(EvaluateError::Overflow),
-            Value::Timestamp(_) => Err(EvaluateError::InvalidOperation),
+            Value::Timestamp(_) | Value::Boolean(_) | Value::Text(_) | Value::Color(_) => {
+                Err(EvaluateError::InvalidOperation)
+            }
         },
 
         Expression::Binary {
@@ -109,7 +123,82 @@ pub fn evaluate(
             let right = evaluate(right, context)?;
             apply(*operator, left, right)
         }
+
+        Expression::Comparison {
+            operator,
+            left,
+            right,
+            ..
+        } => {
+            let left = evaluate(left, context)?;
+            let right = evaluate(right, context)?;
+            apply_comparison(*operator, left, right)
+        }
     }
+}
+
+/// Apply one comparison to two values — the runtime half of
+/// `typecheck::comparison_is_defined`, with the same pairings.
+fn apply_comparison(
+    operator: ComparisonOperator,
+    left: Value,
+    right: Value,
+) -> Result<Value, EvaluateError> {
+    use std::cmp::Ordering;
+
+    // Orderable pairings answer every operator.
+    let ordering: Option<Ordering> = match (&left, &right) {
+        (a, b) if both_numbers(a, b) => as_float(a).partial_cmp(&as_float(b)),
+        (Value::Timestamp(a), Value::Timestamp(b)) => Some(a.cmp(b)),
+        (Value::Duration(a), Value::Duration(b)) => Some(a.cmp(b)),
+        _ => None,
+    };
+    if let Some(ordering) = ordering {
+        let holds = match operator {
+            ComparisonOperator::Equal => ordering == Ordering::Equal,
+            ComparisonOperator::NotEqual => ordering != Ordering::Equal,
+            ComparisonOperator::LessThan => ordering == Ordering::Less,
+            ComparisonOperator::LessOrEqual => ordering != Ordering::Greater,
+            ComparisonOperator::GreaterThan => ordering == Ordering::Greater,
+            ComparisonOperator::GreaterOrEqual => ordering != Ordering::Less,
+        };
+        return Ok(Value::Boolean(holds));
+    }
+
+    // Equality-only pairings.
+    if operator.is_equality() {
+        let equal: Option<bool> = match (&left, &right) {
+            (Value::Text(a), Value::Text(b)) => Some(a == b),
+            (Value::Boolean(a), Value::Boolean(b)) => Some(a == b),
+            // Colors are already resolved hex on both sides.
+            (Value::Color(a), Value::Color(b)) => Some(a == b),
+            (Value::Color(hex), Value::Text(text)) | (Value::Text(text), Value::Color(hex)) => {
+                Some(text_names_color(text, hex))
+            }
+            _ => None,
+        };
+        if let Some(equal) = equal {
+            let holds = if operator == ComparisonOperator::NotEqual {
+                !equal
+            } else {
+                equal
+            };
+            return Ok(Value::Boolean(holds));
+        }
+    }
+
+    // Undefined pairing — already reported by the schema-level check.
+    Err(EvaluateError::InvalidOperation)
+}
+
+/// Whether a text value names the given resolved color hex: parsed as a
+/// color (palette name or hex) and resolved, does it match? Text that
+/// parses as no color names no color — the comparison is simply false.
+fn text_names_color(text: &str, hex: &str) -> bool {
+    parse_color(text)
+        .ok()
+        .and_then(|canonical| resolve_color_to_hex(&canonical))
+        .is_some_and(|resolved| resolved == hex)
 }
 
 /// Apply one operator to two values — the runtime half of the algebra.
@@ -122,7 +211,7 @@ fn apply(operator: BinaryOperator, left: Value, right: Value) -> Result<Value, E
             (Integer(a), Integer(b)) => {
                 a.checked_add(b).map(Integer).ok_or(EvaluateError::Overflow)
             }
-            (a, b) if both_numbers(a, b) => finite(as_float(a) + as_float(b)),
+            (a, b) if both_numbers(&a, &b) => finite(as_float(&a) + as_float(&b)),
             (Timestamp(t), Duration(d)) | (Duration(d), Timestamp(t)) => t
                 .checked_add(d)
                 .map(Timestamp)
@@ -137,7 +226,7 @@ fn apply(operator: BinaryOperator, left: Value, right: Value) -> Result<Value, E
             (Integer(a), Integer(b)) => {
                 a.checked_sub(b).map(Integer).ok_or(EvaluateError::Overflow)
             }
-            (a, b) if both_numbers(a, b) => finite(as_float(a) - as_float(b)),
+            (a, b) if both_numbers(&a, &b) => finite(as_float(&a) - as_float(&b)),
             (Timestamp(t), Duration(d)) => t
                 .checked_sub(d)
                 .map(Timestamp)
@@ -156,23 +245,23 @@ fn apply(operator: BinaryOperator, left: Value, right: Value) -> Result<Value, E
             (Integer(a), Integer(b)) => {
                 a.checked_mul(b).map(Integer).ok_or(EvaluateError::Overflow)
             }
-            (a, b) if both_numbers(a, b) => finite(as_float(a) * as_float(b)),
-            (Duration(d), scale) | (scale, Duration(d)) if is_number(scale) => {
-                scale_duration(d, as_float(scale))
+            (a, b) if both_numbers(&a, &b) => finite(as_float(&a) * as_float(&b)),
+            (Duration(d), scale) | (scale, Duration(d)) if is_number(&scale) => {
+                scale_duration(d, as_float(&scale))
             }
             _ => Err(EvaluateError::InvalidOperation),
         },
         BinaryOperator::Divide => match (left, right) {
             // Division never truncates: integer / integer is a float.
-            (a, b) if both_numbers(a, b) => {
-                let divisor = as_float(b);
+            (a, b) if both_numbers(&a, &b) => {
+                let divisor = as_float(&b);
                 if divisor == 0.0 {
                     return Err(EvaluateError::DivisionByZero);
                 }
-                finite(as_float(a) / divisor)
+                finite(as_float(&a) / divisor)
             }
-            (Duration(d), scale) if is_number(scale) => {
-                let divisor = as_float(scale);
+            (Duration(d), scale) if is_number(&scale) => {
+                let divisor = as_float(&scale);
                 if divisor == 0.0 {
                     return Err(EvaluateError::DivisionByZero);
                 }
@@ -189,22 +278,20 @@ fn apply(operator: BinaryOperator, left: Value, right: Value) -> Result<Value, E
     }
 }
 
-fn is_number(value: Value) -> bool {
+fn is_number(value: &Value) -> bool {
     matches!(value, Value::Integer(_) | Value::Float(_))
 }
 
-fn both_numbers(left: Value, right: Value) -> bool {
+fn both_numbers(left: &Value, right: &Value) -> bool {
     is_number(left) && is_number(right)
 }
 
 /// Numeric value as f64. Only called on values `is_number` accepted.
-fn as_float(value: Value) -> f64 {
+fn as_float(value: &Value) -> f64 {
     match value {
-        Value::Integer(value) => value as f64,
-        Value::Float(value) => value,
-        Value::Duration(_) | Value::Timestamp(_) => {
-            unreachable!("as_float is only called on numbers")
-        }
+        Value::Integer(value) => *value as f64,
+        Value::Float(value) => *value,
+        _ => unreachable!("as_float is only called on numbers"),
     }
 }
 
@@ -245,11 +332,11 @@ mod tests {
 
     impl ValueContext for MapContext {
         fn field(&self, name: &str) -> Option<Value> {
-            self.fields.get(name).copied()
+            self.fields.get(name).cloned()
         }
 
         fn constant(&self, name: &str) -> Option<Value> {
-            self.constants.get(name).copied()
+            self.constants.get(name).cloned()
         }
 
         fn today(&self) -> Value {
@@ -272,6 +359,10 @@ mod tests {
                 ("duration", Value::Duration(7 * DAY)),
                 ("effort", Value::Duration(6 * HOUR)),
                 ("zero_duration", Value::Duration(0)),
+                ("status", Value::Text("done".to_owned())),
+                ("flag", Value::Boolean(true)),
+                // Red's pinned hex, as the conversion layer resolves it.
+                ("tint", Value::Color("#ef4444".to_owned())),
             ]),
             constants: HashMap::from([("daily_rate", Value::Float(800.0))]),
         }
@@ -397,6 +488,65 @@ mod tests {
         );
         assert_eq!(
             evaluated("-start_date"),
+            Err(EvaluateError::InvalidOperation)
+        );
+    }
+
+    // ── Comparisons ────────────────────────────────────────────────────
+
+    #[test]
+    fn ordering_comparisons_on_dates_durations_and_numbers() {
+        assert_eq!(evaluated("end_date > start_date"), Ok(Value::Boolean(true)));
+        assert_eq!(evaluated("end_date > $today"), Ok(Value::Boolean(true)));
+        assert_eq!(evaluated("effort <= duration"), Ok(Value::Boolean(true)));
+        assert_eq!(evaluated("count < weight"), Ok(Value::Boolean(false)));
+        assert_eq!(evaluated("count >= 4"), Ok(Value::Boolean(true)));
+        assert_eq!(
+            evaluated("end_date - start_date >= duration"),
+            Ok(Value::Boolean(true))
+        );
+    }
+
+    #[test]
+    fn equality_on_text_boolean_and_numbers() {
+        assert_eq!(evaluated("status == \"done\""), Ok(Value::Boolean(true)));
+        assert_eq!(evaluated("status != \"done\""), Ok(Value::Boolean(false)));
+        assert_eq!(evaluated("status == \"open\""), Ok(Value::Boolean(false)));
+        assert_eq!(evaluated("flag == true"), Ok(Value::Boolean(true)));
+        assert_eq!(evaluated("flag != false"), Ok(Value::Boolean(true)));
+        assert_eq!(evaluated("count == 4"), Ok(Value::Boolean(true)));
+        assert_eq!(evaluated("count == weight"), Ok(Value::Boolean(false)));
+    }
+
+    #[test]
+    fn color_equality_resolves_names_to_hex() {
+        // The tint field holds red's resolved hex; both the palette
+        // name and the hex literal must match it.
+        assert_eq!(evaluated("tint == \"red\""), Ok(Value::Boolean(true)));
+        assert_eq!(evaluated("tint == \"#ef4444\""), Ok(Value::Boolean(true)));
+        assert_eq!(evaluated("tint == \"green\""), Ok(Value::Boolean(false)));
+        assert_eq!(evaluated("tint != \"green\""), Ok(Value::Boolean(true)));
+        // Text naming no color names nothing — unequal, not an error.
+        assert_eq!(
+            evaluated("tint == \"not-a-color\""),
+            Ok(Value::Boolean(false))
+        );
+    }
+
+    #[test]
+    fn undefined_comparison_pairings_are_invalid_operations() {
+        // Already rejected by the schema-level check; the runtime
+        // mirror skips defensively.
+        assert_eq!(
+            evaluated("duration < 5"),
+            Err(EvaluateError::InvalidOperation)
+        );
+        assert_eq!(
+            evaluated("status < \"done\""),
+            Err(EvaluateError::InvalidOperation)
+        );
+        assert_eq!(
+            evaluated("flag == status"),
             Err(EvaluateError::InvalidOperation)
         );
     }

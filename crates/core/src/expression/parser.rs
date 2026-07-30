@@ -1,16 +1,19 @@
 //! Recursive-descent parser for compute expressions.
 //!
-//! Grammar (standard arithmetic precedence, `*` `/` over `+` `-`, all
-//! left-associative):
+//! Grammar (standard precedence: `*` `/` over `+` `-` over the
+//! comparisons; arithmetic is left-associative, comparison is
+//! non-associative — `a < b < c` is a parse error, not a chain):
 //!
 //! ```text
-//! expression → term  (('+' | '-') term)*
+//! expression → additive (('==' | '!=' | '<' | '<=' | '>' | '>=') additive)?
+//! additive   → term  (('+' | '-') term)*
 //! term       → unary (('*' | '/') unary)*
 //! unary      → '-' unary | primary
-//! primary    → integer | float | field | constant | '(' expression ')'
+//! primary    → integer | float | string | boolean | field | constant
+//!            | '$today' | '(' expression ')'
 //! ```
 
-use super::ast::{BinaryOperator, Expression, Span};
+use super::ast::{BinaryOperator, ComparisonOperator, Expression, Span};
 use super::lexer::{lex, LexError, Token, TokenKind};
 
 /// Errors produced while parsing an expression string.
@@ -80,8 +83,30 @@ impl Parser<'_> {
         }
     }
 
-    /// `expression → term (('+' | '-') term)*`
+    /// `expression → additive (compop additive)?` — at most one
+    /// comparison; a second comparison operator afterwards falls
+    /// through to the caller's "expected end of expression" error.
     fn expression(&mut self) -> Result<Expression, ParseExpressionError> {
+        let left = self.additive()?;
+        let Some(operator) = self
+            .peek()
+            .and_then(|token| comparison_operator(&token.kind))
+        else {
+            return Ok(left);
+        };
+        self.advance();
+        let right = self.additive()?;
+        let span = left.span().merge(right.span());
+        Ok(Expression::Comparison {
+            operator,
+            left: Box::new(left),
+            right: Box::new(right),
+            span,
+        })
+    }
+
+    /// `additive → term (('+' | '-') term)*`
+    fn additive(&mut self) -> Result<Expression, ParseExpressionError> {
         let mut left = self.term()?;
         while let Some(token) = self.peek() {
             let operator = match token.kind {
@@ -129,9 +154,9 @@ impl Parser<'_> {
         self.primary()
     }
 
-    /// `primary → integer | float | field | constant | '$today' | '(' expression ')'`
+    /// `primary → integer | float | string | boolean | field | constant | '$today' | '(' expression ')'`
     fn primary(&mut self) -> Result<Expression, ParseExpressionError> {
-        const EXPECTED: &str = "a field name, constant, '$today', number, or '('";
+        const EXPECTED: &str = "a field name, constant, '$today', number, string, boolean, or '('";
 
         let Some(token) = self.advance() else {
             return Err(ParseExpressionError::UnexpectedEnd { expected: EXPECTED });
@@ -153,6 +178,18 @@ impl Parser<'_> {
             }),
             TokenKind::Float(value) => Ok(Expression::FloatLiteral {
                 value,
+                span: token.span,
+            }),
+            TokenKind::StringLiteral(value) => Ok(Expression::StringLiteral {
+                value,
+                span: token.span,
+            }),
+            TokenKind::True => Ok(Expression::BooleanLiteral {
+                value: true,
+                span: token.span,
+            }),
+            TokenKind::False => Ok(Expression::BooleanLiteral {
+                value: false,
                 span: token.span,
             }),
             TokenKind::LeftParen => {
@@ -182,6 +219,19 @@ fn binary(operator: BinaryOperator, left: Expression, right: Expression) -> Expr
     }
 }
 
+/// The comparison operator a token spells, if any.
+fn comparison_operator(kind: &TokenKind) -> Option<ComparisonOperator> {
+    match kind {
+        TokenKind::EqualEqual => Some(ComparisonOperator::Equal),
+        TokenKind::BangEqual => Some(ComparisonOperator::NotEqual),
+        TokenKind::Less => Some(ComparisonOperator::LessThan),
+        TokenKind::LessEqual => Some(ComparisonOperator::LessOrEqual),
+        TokenKind::Greater => Some(ComparisonOperator::GreaterThan),
+        TokenKind::GreaterEqual => Some(ComparisonOperator::GreaterOrEqual),
+        _ => None,
+    }
+}
+
 /// Widen `expression`'s span to `span` (used to make a parenthesized group
 /// carry the parens' range).
 fn respan(expression: Expression, span: Span) -> Expression {
@@ -191,6 +241,8 @@ fn respan(expression: Expression, span: Span) -> Expression {
         Expression::TodayReference { .. } => Expression::TodayReference { span },
         Expression::IntegerLiteral { value, .. } => Expression::IntegerLiteral { value, span },
         Expression::FloatLiteral { value, .. } => Expression::FloatLiteral { value, span },
+        Expression::StringLiteral { value, .. } => Expression::StringLiteral { value, span },
+        Expression::BooleanLiteral { value, .. } => Expression::BooleanLiteral { value, span },
         Expression::Negate { operand, .. } => Expression::Negate { operand, span },
         Expression::Binary {
             operator,
@@ -198,6 +250,17 @@ fn respan(expression: Expression, span: Span) -> Expression {
             right,
             ..
         } => Expression::Binary {
+            operator,
+            left,
+            right,
+            span,
+        },
+        Expression::Comparison {
+            operator,
+            left,
+            right,
+            ..
+        } => Expression::Comparison {
             operator,
             left,
             right,
@@ -220,8 +283,16 @@ mod tests {
             Expression::TodayReference { .. } => "$today".to_owned(),
             Expression::IntegerLiteral { value, .. } => value.to_string(),
             Expression::FloatLiteral { value, .. } => value.to_string(),
+            Expression::StringLiteral { value, .. } => format!("{value:?}"),
+            Expression::BooleanLiteral { value, .. } => value.to_string(),
             Expression::Negate { operand, .. } => format!("(neg {})", render(operand)),
             Expression::Binary {
+                operator,
+                left,
+                right,
+                ..
+            } => format!("({operator} {} {})", render(left), render(right)),
+            Expression::Comparison {
                 operator,
                 left,
                 right,
@@ -262,6 +333,68 @@ mod tests {
             parsed("effort * $constants.daily_rate * 1.1"),
             "(* (* effort $daily_rate) 1.1)"
         );
+    }
+
+    #[test]
+    fn arithmetic_binds_tighter_than_comparison() {
+        assert_eq!(parsed("a + b < c * d"), "(< (+ a b) (* c d))");
+        assert_eq!(
+            parsed("end_date - start_date >= duration"),
+            "(>= (- end_date start_date) duration)"
+        );
+    }
+
+    #[test]
+    fn parses_all_comparison_operators() {
+        assert_eq!(parsed("a == b"), "(== a b)");
+        assert_eq!(parsed("a != b"), "(!= a b)");
+        assert_eq!(parsed("a < b"), "(< a b)");
+        assert_eq!(parsed("a <= b"), "(<= a b)");
+        assert_eq!(parsed("a > b"), "(> a b)");
+        assert_eq!(parsed("a >= b"), "(>= a b)");
+    }
+
+    #[test]
+    fn parses_string_and_boolean_literals() {
+        assert_eq!(parsed("status == \"done\""), "(== status \"done\")");
+        assert_eq!(parsed("flag == true"), "(== flag true)");
+        assert_eq!(parsed("flag != false"), "(!= flag false)");
+    }
+
+    #[test]
+    fn chained_comparison_is_an_error() {
+        let error = parse_expression("a < b < c").unwrap_err();
+        assert!(matches!(
+            error,
+            ParseExpressionError::UnexpectedToken {
+                expected: "end of expression",
+                column: 7,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parenthesized_comparison_nests() {
+        assert_eq!(parsed("(a < b) == true"), "(== (< a b) true)");
+    }
+
+    #[test]
+    fn comparison_span_covers_both_operands() {
+        let expression = parse_expression("ab == cd").unwrap();
+        assert_eq!(expression.span(), Span::new(0, 8));
+    }
+
+    #[test]
+    fn comparison_operands_count_as_field_references() {
+        let expression = parse_expression("end_date > start_date").unwrap();
+        assert_eq!(
+            expression.field_references(),
+            vec!["end_date", "start_date"]
+        );
+        assert!(parse_expression("end_date > $today")
+            .unwrap()
+            .references_today());
     }
 
     #[test]

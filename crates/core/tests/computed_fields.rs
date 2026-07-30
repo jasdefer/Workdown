@@ -268,6 +268,58 @@ fn a_hand_written_value_beats_the_today_computation() {
 }
 
 #[test]
+fn boolean_fields_compute_from_predicates() {
+    let schema_yaml = format!(
+        "{COMMON_FIELDS}  end_date:
+    type: date
+  is_overdue:
+    type: boolean
+    compute: end_date < $today
+  is_done:
+    type: boolean
+    compute: status == \"done\"
+"
+    );
+    let (_directory, root) = setup_project(
+        &schema_yaml,
+        "",
+        &[
+            ("late.md", "---\nstatus: open\nend_date: 2026-07-01\n---\n"),
+            (
+                "upcoming.md",
+                "---\nstatus: done\nend_date: 2026-09-01\n---\n",
+            ),
+        ],
+    );
+
+    let project = load_as_of(&root, NaiveDate::from_ymd_opt(2026, 8, 3).unwrap());
+
+    assert!(
+        project.diagnostics.is_empty(),
+        "got: {:?}",
+        project.diagnostics
+    );
+    let late = project.store.get("late").expect("late must load");
+    assert_eq!(
+        late.fields.get("is_overdue"),
+        Some(&FieldValue::Boolean(true))
+    );
+    assert_eq!(
+        late.fields.get("is_done"),
+        Some(&FieldValue::Boolean(false))
+    );
+    let upcoming = project.store.get("upcoming").expect("upcoming must load");
+    assert_eq!(
+        upcoming.fields.get("is_overdue"),
+        Some(&FieldValue::Boolean(false))
+    );
+    assert_eq!(
+        upcoming.fields.get("is_done"),
+        Some(&FieldValue::Boolean(true))
+    );
+}
+
+#[test]
 fn without_an_override_the_evaluation_date_is_today() {
     let (_directory, root) = setup_project(
         &days_remaining_schema(),

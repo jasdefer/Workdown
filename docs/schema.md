@@ -114,13 +114,13 @@ fields:
 
 | Option | Description |
 |--------|-------------|
-| `expression` | The expression. Field names, `$constants.<name>` references ([constants](#constants) from `resources.yaml`), `$today`, numeric literals, `+ - * /`, and parentheses. |
+| `expression` | The expression. Field names, `$constants.<name>` references ([constants](#constants) from `resources.yaml`), `$today`, numeric literals, quoted string literals (`"done"`), `true`/`false`, arithmetic (`+ - * /`), comparisons (`== != < <= > >=`), and parentheses. |
 | `round` | For date results with a sub-day remainder: `nearest` (default), `floor` (the last fully-used day), or `ceil` (the day the work spills into). Only valid on `date` fields. |
 | `error_on_missing` | Report an error when an item is missing an expression input, instead of silently leaving the field absent. Default: `false`. |
 
 Computed values are never written to files. They are derived at load time and visible everywhere — `workdown query`, every view, rules — indistinguishable from set values. A value written in frontmatter always wins; compute fills only absent fields.
 
-`compute` is only valid on `integer`, `float`, `date`, and `duration` fields, and cannot be combined with `default`. Expressions are type-checked at load time against a closed algebra:
+`compute` is only valid on `integer`, `float`, `date`, `duration`, and `boolean` fields, and cannot be combined with `default`. Expressions are type-checked at load time against a closed algebra:
 
 | Expression | Result type |
 |-----------|-------------|
@@ -131,6 +131,17 @@ Computed values are never written to files. They are derived at load time and vi
 | `duration / duration` | `float` |
 | `integer op integer` | `integer` (except `/`, which is always `float`) |
 | mixed number arithmetic | `float` |
+| `number cmp number`, `date cmp date`, `duration cmp duration` | `boolean` (`cmp` is any of `== != < <= > >=`) |
+| `text == text`, `boolean == boolean`, `color == color-or-text` | `boolean` (equality and `!=` only) |
+
+Comparisons follow the same strictness as the arithmetic: `duration < 5` is an error (5 of what — hours? days?), and ordering a `choice` or `string` is meaningless and rejected. String literals are always quoted (`status == "done"`), so a typo'd field name stays an unknown-field error instead of silently becoming text; `true` and `false` are reserved words. At most one comparison per expression — there are no `and`/`or` combinators; multi-condition logic is expressed by ordering `when:` branches (first match wins). Color equality compares resolved hex, so `tint == "red"` matches whether the field holds the palette name or its hex.
+
+```yaml
+fields:
+  is_overdue:
+    type: boolean
+    compute: end_date < $today
+```
 
 Everything else — unknown references, `date + date`, a result type that doesn't fit the declared field type, expressions referencing each other in a cycle — is reported when the project loads.
 
