@@ -8,7 +8,11 @@
 //! After [`evaluate`] returns no errors, every field name referenced by
 //! `views.yaml` is either present in `schema.fields`, is a recognized
 //! relation name (forward link/links field name, or an inverse name from
-//! `schema.inverse_table`), or is the virtual `"id"` field. Renderers and
+//! `schema.inverse_table`), or is the virtual `"id"` field in a slot that
+//! accepts it — text display roles (resolved specially at extraction) and
+//! `where:` clauses. Structural slots (board `field`, chart grouping, axes,
+//! date windows, aggregate values) read `item.fields`, where `id` never
+//! appears, so they reject it as a dead configuration. Renderers and
 //! extractors can rely on that invariant without re-checking.
 //!
 //! The companion helper [`parse_errors_to_diagnostics`] converts load-time
@@ -421,8 +425,13 @@ fn check_display(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>)
 // ── Slot helper ──────────────────────────────────────────────────────
 
 /// Check one slot's field reference. Emits:
+/// - [`ConfigDiagnosticKind::ViewVirtualIdNotAllowed`] for the virtual
+///   `"id"` — every `check_slot` caller is a structural slot reading
+///   `item.fields`, where `id` never appears, so accepting it would be
+///   a silently dead view (text display roles resolve `id` specially
+///   and are checked in `display_check`, not here),
 /// - [`ConfigDiagnosticKind::ViewUnknownField`] if `field_name` isn't defined in
-///   `schema.fields` and isn't the virtual `"id"`,
+///   `schema.fields`,
 /// - [`ConfigDiagnosticKind::ViewFieldTypeMismatch`] if `allowed` is non-empty and
 ///   the field's type isn't in the list.
 ///
@@ -439,6 +448,10 @@ fn check_slot(
     out: &mut Vec<Diagnostic>,
 ) {
     if field_name == "id" {
+        out.push(ctx.error(ConfigDiagnosticKind::ViewVirtualIdNotAllowed {
+            view_id: view_id.to_owned(),
+            slot,
+        }));
         return;
     }
 
@@ -479,6 +492,14 @@ fn check_graph_field(
     field_name: &str,
     out: &mut Vec<Diagnostic>,
 ) {
+    if field_name == "id" {
+        out.push(ctx.error(ConfigDiagnosticKind::ViewVirtualIdNotAllowed {
+            view_id: view_id.to_owned(),
+            slot: "field",
+        }));
+        return;
+    }
+
     if let Some(def) = ctx.schema.fields.get(field_name) {
         match def.field_type() {
             FieldType::Link | FieldType::Links => {}
@@ -533,6 +554,16 @@ fn check_link_slot(
     arity: LinkArity,
     out: &mut Vec<Diagnostic>,
 ) {
+    // Without this, `id` falls into the unknown-field arm below — a
+    // misleading message for a field that does exist, just not here.
+    if field_name == "id" {
+        out.push(ctx.error(ConfigDiagnosticKind::ViewVirtualIdNotAllowed {
+            view_id: view_id.to_owned(),
+            slot,
+        }));
+        return;
+    }
+
     let Some(def) = ctx.schema.fields.get(field_name) else {
         if ctx.schema.inverse_table.contains_key(field_name) {
             out.push(ctx.error(ConfigDiagnosticKind::ViewSlotInverseNotAllowed {
@@ -692,6 +723,10 @@ fn check_aggregate_value_slot(
     out: &mut Vec<Diagnostic>,
 ) {
     if field_name == "id" {
+        out.push(ctx.error(ConfigDiagnosticKind::ViewVirtualIdNotAllowed {
+            view_id: view_id.to_owned(),
+            slot: "value",
+        }));
         return;
     }
     let Some(def) = ctx.schema.fields.get(field_name) else {
@@ -771,6 +806,12 @@ fn check_metric_row_value_slot(
     out: &mut Vec<Diagnostic>,
 ) {
     if field_name == "id" {
+        out.push(
+            ctx.error(ConfigDiagnosticKind::ViewMetricRowVirtualIdNotAllowed {
+                view_id: view_id.to_owned(),
+                metric_index,
+            }),
+        );
         return;
     }
     let Some(def) = ctx.schema.fields.get(field_name) else {
@@ -1133,6 +1174,132 @@ mod tests {
                 },
             ),
             &schema,
+            test_views_path(),
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn id_rejected_in_board_field() {
+        // `field: id` would put every item in "unplaced" — the fields
+        // map never contains the virtual id.
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Board { field: "id".into() }),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewVirtualIdNotAllowed { slot, .. } if *slot == "field"
+        ));
+    }
+
+    #[test]
+    fn id_rejected_in_existence_only_slot() {
+        // Heatmap axes pass an empty `allowed` list (any type goes) —
+        // the virtual-id rejection must fire before that shortcut.
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Heatmap {
+                x: "id".into(),
+                y: "status".into(),
+                value: None,
+                aggregate: Aggregate::Count,
+                bucket: None,
+            }),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewVirtualIdNotAllowed { slot, .. } if *slot == "x"
+        ));
+    }
+
+    #[test]
+    fn id_rejected_in_link_slot() {
+        // Link-walk slots used to report `id` as an unknown field —
+        // misleading for a field that exists, just not in `item.fields`.
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Graph {
+                field: "depends_on".into(),
+                group_by: Some("id".into()),
+            }),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewVirtualIdNotAllowed { slot, .. } if *slot == "group_by"
+        ));
+    }
+
+    #[test]
+    fn id_rejected_in_graph_field() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Graph {
+                field: "id".into(),
+                group_by: None,
+            }),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewVirtualIdNotAllowed { slot, .. } if *slot == "field"
+        ));
+    }
+
+    #[test]
+    fn id_rejected_in_aggregate_value_slot() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::BarChart {
+                group_by: "status".into(),
+                value: Some("id".into()),
+                aggregate: Aggregate::Sum,
+            }),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewVirtualIdNotAllowed { slot, .. } if *slot == "value"
+        ));
+    }
+
+    #[test]
+    fn id_rejected_in_metric_row_value() {
+        let diagnostics = evaluate(
+            &one_view(ViewKind::Metric {
+                metrics: vec![MetricRow {
+                    label: None,
+                    aggregate: Aggregate::Sum,
+                    value: Some("id".into()),
+                    where_clauses: vec![],
+                }],
+            }),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewMetricRowVirtualIdNotAllowed { metric_index, .. }
+                if *metric_index == 0
+        ));
+    }
+
+    #[test]
+    fn id_accepted_in_where_clause() {
+        // Filtering by id is legitimate; resolving it at evaluation is
+        // tracked in `virtual-id-in-query-eval`.
+        let diagnostics = evaluate(
+            &view_with_where(ViewKind::Table, vec!["id=some-item".into()]),
+            &simple_schema(),
             test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");

@@ -243,6 +243,21 @@ pub enum ConfigDiagnosticKind {
         field_name: String,
     },
 
+    /// A structural view slot references the virtual `id`. The id lives
+    /// on the item, not in its fields map, so structural extraction
+    /// (board columns, chart grouping, axes, date windows) finds no
+    /// value and the view renders empty. Text display roles resolve
+    /// `id` specially and keep accepting it.
+    ViewVirtualIdNotAllowed { view_id: String, slot: &'static str },
+
+    /// A metric row's `value` slot references the virtual `id` — the
+    /// same dead configuration as [`Self::ViewVirtualIdNotAllowed`],
+    /// pinned to the row.
+    ViewMetricRowVirtualIdNotAllowed {
+        view_id: String,
+        metric_index: usize,
+    },
+
     /// A view references a field whose schema type is incompatible with the slot.
     ViewFieldTypeMismatch {
         view_id: String,
@@ -563,7 +578,9 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
         | ConfigDiagnosticKind::ViewMetricRowUnknownField { view_id, .. }
         | ConfigDiagnosticKind::ViewMetricRowAggregateTypeMismatch { view_id, .. }
         | ConfigDiagnosticKind::ViewMetricRowCountWithValue { view_id, .. }
-        | ConfigDiagnosticKind::ViewMetricRowWhereParseError { view_id, .. } => Some(view_id),
+        | ConfigDiagnosticKind::ViewMetricRowWhereParseError { view_id, .. }
+        | ConfigDiagnosticKind::ViewVirtualIdNotAllowed { view_id, .. }
+        | ConfigDiagnosticKind::ViewMetricRowVirtualIdNotAllowed { view_id, .. } => Some(view_id),
 
         // Config-defaults and schema-compute diagnostics are
         // project-wide, not pinned to a view. Returning `None` keeps
@@ -790,6 +807,17 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                     "view '{view_id}', slot '{slot}': unknown field '{field_name}'"
                 )
             }
+            ConfigDiagnosticKind::ViewVirtualIdNotAllowed { view_id, slot } => write!(
+                f,
+                "view '{view_id}', slot '{slot}': the virtual 'id' cannot drive this slot (it is not stored on item fields) — use a schema field"
+            ),
+            ConfigDiagnosticKind::ViewMetricRowVirtualIdNotAllowed {
+                view_id,
+                metric_index,
+            } => write!(
+                f,
+                "view '{view_id}', metrics[{metric_index}].value: the virtual 'id' cannot drive this slot (it is not stored on item fields) — use a schema field"
+            ),
             ConfigDiagnosticKind::ViewFieldTypeMismatch {
                 view_id,
                 slot,
