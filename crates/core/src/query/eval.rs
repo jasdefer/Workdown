@@ -540,14 +540,17 @@ mod tests {
         }
     }
 
-    /// Build a work item with the given fields.
+    /// Build a work item with the given fields, including the `id`
+    /// projection that `coerce_fields` adds to every loaded item.
     fn make_item(id: &str, fields: Vec<(&str, FieldValue)>) -> WorkItem {
+        let mut map: std::collections::HashMap<String, FieldValue> = fields
+            .into_iter()
+            .map(|(key, value)| (key.to_owned(), value))
+            .collect();
+        map.insert("id".to_owned(), FieldValue::String(id.to_owned()));
         WorkItem {
             id: WorkItemId::from(id.to_owned()),
-            fields: fields
-                .into_iter()
-                .map(|(key, value)| (key.to_owned(), value))
-                .collect(),
+            fields: map,
             body: String::new(),
             source_path: PathBuf::from(format!("{id}.md")),
         }
@@ -1068,6 +1071,48 @@ mod tests {
         assert!(check(&item, &predicate, &schema).unwrap());
     }
 
+    // ── Filtering on the id ─────────────────────────────────────
+
+    /// The reported bug: `id=alpha` matched nothing at all.
+    #[test]
+    fn id_equality_matches() {
+        let schema = test_schema();
+        let item = make_item("alpha", vec![]);
+        assert!(check(&item, &comparison("id", Operator::Equal, "alpha"), &schema).unwrap());
+        assert!(!check(&item, &comparison("id", Operator::Equal, "beta"), &schema).unwrap());
+    }
+
+    /// The id is a string by construction, so the full string operator set
+    /// applies — and it is never absent, so `id?` always holds.
+    #[test]
+    fn id_supports_string_operators() {
+        let schema = test_schema();
+        let item = make_item("auth-login", vec![]);
+        for (operator, value, expected) in [
+            (Operator::NotEqual, "other", true),
+            (Operator::Contains, "login", true),
+            (Operator::Contains, "logout", false),
+            (Operator::Matches, "/^auth-/", true),
+            (Operator::Matches, "/^billing-/", false),
+            (Operator::IsSet, "", true),
+            (Operator::IsNotSet, "", false),
+        ] {
+            assert_eq!(
+                check(&item, &comparison("id", operator, value), &schema).unwrap(),
+                expected,
+                "id {operator:?} {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn id_membership() {
+        let schema = test_schema();
+        let item = make_item("alpha", vec![]);
+        assert!(check(&item, &parse_where("id in alpha,beta").unwrap(), &schema).unwrap());
+        assert!(!check(&item, &parse_where("id in beta,gamma").unwrap(), &schema).unwrap());
+    }
+
     // ── Cross-item (related-field) predicates ───────────────────
 
     /// Load a store from a set of in-memory markdown files.
@@ -1287,6 +1332,93 @@ mod tests {
         let predicate = related_comparison("title", "whatever", Operator::Equal, "x");
         let result = matches_predicate(item, &predicate, &schema, &store);
         assert!(matches!(result, Err(QueryEvalError::NotARelation { .. })));
+    }
+
+    /// `parent.id` resolves through the projection on the *target* item, so
+    /// it works without the traversal knowing anything about ids. These run
+    /// against a loaded store, exercising the real coercion path.
+    #[test]
+    fn related_forward_link_on_id() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![
+                ("epic.md", "---\nstatus: open\n---\n"),
+                ("task-a.md", "---\nstatus: done\nparent: epic\n---\n"),
+            ],
+        );
+        let item = store.get("task-a").unwrap();
+        assert!(matches_predicate(
+            item,
+            &related_comparison("parent", "id", Operator::Equal, "epic"),
+            &schema,
+            &store
+        )
+        .unwrap());
+        assert!(!matches_predicate(
+            item,
+            &related_comparison("parent", "id", Operator::Equal, "other"),
+            &schema,
+            &store
+        )
+        .unwrap());
+    }
+
+    /// The inverse direction, which had no way to be expressed before:
+    /// "items that have a child called `child-b`".
+    #[test]
+    fn related_inverse_on_id() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![
+                ("epic.md", "---\nstatus: open\n---\n"),
+                ("child-a.md", "---\nstatus: done\nparent: epic\n---\n"),
+                ("child-b.md", "---\nstatus: open\nparent: epic\n---\n"),
+            ],
+        );
+        let item = store.get("epic").unwrap();
+        assert!(matches_predicate(
+            item,
+            &related_comparison("children", "id", Operator::Equal, "child-b"),
+            &schema,
+            &store
+        )
+        .unwrap());
+        assert!(!matches_predicate(
+            item,
+            &related_comparison("children", "id", Operator::Equal, "child-z"),
+            &schema,
+            &store
+        )
+        .unwrap());
+    }
+
+    /// An item whose id comes from an explicit frontmatter key, rather than
+    /// its filename, is filterable on exactly that id — the parser resolves
+    /// both sources into the same place before the projection is built.
+    #[test]
+    fn id_from_frontmatter_key_is_filterable() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![("some-file.md", "---\nid: real-id\nstatus: open\n---\n")],
+        );
+        let item = store.get("real-id").unwrap();
+        assert!(matches_predicate(
+            item,
+            &comparison("id", Operator::Equal, "real-id"),
+            &schema,
+            &store
+        )
+        .unwrap());
+        assert!(!matches_predicate(
+            item,
+            &comparison("id", Operator::Equal, "some-file"),
+            &schema,
+            &store
+        )
+        .unwrap());
     }
 
     #[test]

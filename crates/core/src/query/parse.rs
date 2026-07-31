@@ -47,6 +47,16 @@ pub enum QueryParseError {
 /// | Is-set | `assignee?` | field is present |
 /// | Is-not-set | `!assignee?` | field is absent |
 ///
+/// # Fields
+///
+/// Any field defined in `schema.yaml`, plus `id`. The id is addressable
+/// like any other field — it is projected into every item's field map at
+/// load (see `store::coerce::coerce_fields`) — and compares as a string,
+/// so the full string operator set applies: `id=alpha`, `id in a,b`,
+/// `id/^auth-/`. It is never absent, so `id?` always holds. A single dot
+/// traverses one relation, on either side: `parent.status`, `parent.id`,
+/// `children.id`.
+///
 /// # Operator precedence
 ///
 /// An expression is split at the first operator token found, scanning the

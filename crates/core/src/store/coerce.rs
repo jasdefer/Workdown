@@ -26,7 +26,19 @@ pub(crate) fn coerce_fields(
     let mut fields = HashMap::new();
     let mut diagnostics = Vec::new();
 
-    // Coerce each schema-defined field (skip `id` — already on RawWorkItem.id).
+    // The id is identity, not frontmatter — the parser has already resolved
+    // it from the filename or an explicit `id:` key into `raw.id`. Project it
+    // into the field map so every reader (query filters, sorting, relation
+    // traversal) can address it by name like any other field. It is a string
+    // by construction, whatever a schema happens to declare for `id`.
+    fields.insert(
+        "id".to_owned(),
+        FieldValue::String(raw.id.as_str().to_owned()),
+    );
+
+    // Coerce each schema-defined field. `id` is already built above, and is
+    // never read from frontmatter, so a schema entry for it — including
+    // `required: true` or a non-string type — must not be processed here.
     for (name, def) in &schema.fields {
         if name == "id" {
             continue;
@@ -1187,7 +1199,7 @@ mod tests {
         );
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
-        assert_eq!(fields.len(), 1);
+        assert!(!fields.contains_key("bogus"));
         assert!(diagnostics.iter().any(|diagnostic| {
             diagnostic.severity == Severity::Warning
                 && matches_item_kind(diagnostic, |kind| {
@@ -1204,7 +1216,7 @@ mod tests {
         let raw = raw_item("t", vec![]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
-        assert!(fields.is_empty());
+        assert!(!fields.contains_key("title"));
         assert!(diagnostics.iter().any(|diagnostic| matches_item_kind(
             diagnostic,
             |kind| matches!(kind, ItemDiagnosticKind::MissingRequired { field } if field == "title")
@@ -1226,8 +1238,12 @@ mod tests {
         )));
     }
 
+    /// The id reaches the field map as a projection of the item's identity,
+    /// so readers can address it by name. It comes from `raw.id` — which the
+    /// parser has already resolved from the filename or an explicit `id:`
+    /// key — never from the frontmatter map.
     #[test]
-    fn id_field_skipped() {
+    fn id_projected_into_field_map() {
         let s = schema(vec![
             (
                 "id",
@@ -1242,8 +1258,39 @@ mod tests {
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
-        assert!(!fields.contains_key("id"));
+        assert_eq!(fields["id"], FieldValue::String("t".into()));
         assert_eq!(fields["title"], FieldValue::String("Hi".into()));
+    }
+
+    /// The projection is identity, not a schema-driven field: a schema that
+    /// declares `id` with a different type or marks it required must not
+    /// re-type it, blank it, or produce a `MissingRequired`.
+    #[test]
+    fn id_projection_ignores_its_schema_declaration() {
+        let mut id_def = FieldDefinition::new(FieldTypeConfig::Integer {
+            min: None,
+            max: None,
+        });
+        id_def.required = true;
+        let s = schema(vec![("id", id_def)]);
+        let raw = raw_item("t", vec![]);
+        let (fields, diagnostics) = coerce_fields(&raw, &s);
+
+        assert_eq!(fields["id"], FieldValue::String("t".into()));
+        assert!(diagnostics.is_empty());
+    }
+
+    /// An item whose schema does not mention `id` at all still gets one.
+    #[test]
+    fn id_projected_without_a_schema_declaration() {
+        let s = schema(vec![(
+            "title",
+            FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
+        )]);
+        let raw = raw_item("t", vec![("title", yaml_str("Hi"))]);
+        let (fields, _) = coerce_fields(&raw, &s);
+
+        assert_eq!(fields["id"], FieldValue::String("t".into()));
     }
 
     #[test]
@@ -1259,7 +1306,8 @@ mod tests {
         let raw = raw_item("t", vec![("status", yaml_str("invalid"))]);
         let (fields, diagnostics) = coerce_fields(&raw, &s);
 
-        assert!(fields.is_empty());
+        assert!(!fields.contains_key("title"));
+        assert!(!fields.contains_key("status"));
         assert_eq!(diagnostics.len(), 2);
     }
 }

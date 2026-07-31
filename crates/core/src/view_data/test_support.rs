@@ -11,11 +11,15 @@ use crate::model::schema::{FieldDefinition, FieldTypeConfig, Schema};
 use crate::model::{FieldValue, WorkItem, WorkItemId};
 use crate::store::Store;
 
+/// Build a work item, including the `id` projection that `coerce_fields`
+/// adds to every loaded item — so extractors are exercised against items
+/// shaped the way production builds them.
 pub(crate) fn make_item(id: &str, fields: Vec<(&str, FieldValue)>, body: &str) -> WorkItem {
     let mut map = HashMap::new();
     for (name, value) in fields {
         map.insert(name.to_owned(), value);
     }
+    map.insert("id".to_owned(), FieldValue::String(id.to_owned()));
     WorkItem {
         id: WorkItemId::from(id.to_owned()),
         fields: map,

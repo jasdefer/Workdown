@@ -117,8 +117,14 @@ pub struct ItemRef {
 pub fn build_card(item: &WorkItem, schema: &Schema, view: &View) -> Card {
     let mut fields = Vec::new();
     for field_name in effective_fields(view, schema) {
+        // The id is carried on the card itself, never as a field row — it
+        // reaches `item.fields` as a projection of the item's identity, and a
+        // schema may or may not declare it, so neither is a reliable guard.
+        if field_name == "id" {
+            continue;
+        }
         let Some(config) = schema.fields.get(field_name) else {
-            continue; // the virtual `id` — carried on the card itself
+            continue;
         };
         if let Some(value) = item.fields.get(field_name) {
             fields.push(CardField {
@@ -503,6 +509,39 @@ mod tests {
         );
         let empty = view_with_fields(Some(vec![]));
         assert!(effective_fields(&empty, &schema).is_empty());
+    }
+
+    /// A card carries the id as its own identity, so it must never also
+    /// appear as a field row. Neither guard that used to produce this by
+    /// accident survives: a schema may declare `id` (the shipped default
+    /// does), and the item now carries an `id` value in its field map.
+    #[test]
+    fn card_never_lists_the_id_as_a_field() {
+        let schema = make_schema(vec![
+            ("id", FieldTypeConfig::String { pattern: None }),
+            (
+                "status",
+                FieldTypeConfig::Choice {
+                    values: vec!["open".into()],
+                },
+            ),
+        ]);
+        let item = make_item(
+            "task-a",
+            vec![("status", FieldValue::Choice("open".into()))],
+            "",
+        );
+
+        for fields_role in [None, Some(vec!["id", "status"])] {
+            let card = build_card(&item, &schema, &view_with_fields(fields_role));
+            let names: Vec<&str> = card
+                .fields
+                .iter()
+                .map(|field| field.name.as_str())
+                .collect();
+            assert_eq!(names, vec!["status"]);
+            assert_eq!(card.id.as_str(), "task-a");
+        }
     }
 
     fn two_color_schema() -> Schema {
