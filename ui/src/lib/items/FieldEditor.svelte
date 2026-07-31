@@ -18,6 +18,7 @@
 	import type { FieldSchema } from '$lib/api/generated/FieldSchema';
 	import type { FieldValue } from '$lib/api/generated/FieldValue';
 	import type { PaletteColor } from '$lib/api/generated/PaletteColor';
+	import type { ResourceOption } from '$lib/api/generated/ResourceOption';
 	import Chip from '$lib/ui/Chip.svelte';
 	import { prettifyId } from '$lib/views/prettify';
 
@@ -28,14 +29,44 @@
 		items: string[];
 		/** The built-in color palette — option set for color swatches. */
 		palette?: PaletteColor[];
+		/**
+		 * Entries of the resource backing this field, if any — the option
+		 * set for a `resource:`-backed picker. Empty means free text, which
+		 * is also what core does when a section is missing or empty.
+		 */
+		resourceOptions?: ResourceOption[];
 		disabled?: boolean;
 		oncommit: (mutation: FieldMutation) => void;
 	}
 
-	let { field, value, items, palette = [], disabled = false, oncommit }: Props = $props();
+	let {
+		field,
+		value,
+		items,
+		palette = [],
+		resourceOptions = [],
+		disabled = false,
+		oncommit
+	}: Props = $props();
 
 	const asArray = $derived(Array.isArray(value) ? (value as string[]) : []);
 	const asScalar = $derived(value === null ? '' : String(value));
+
+	const picksFromResource = $derived(
+		resourceOptions.length > 0 && (field.field_type === 'string' || field.field_type === 'list')
+	);
+
+	// A stored value the resource no longer lists — a person who left, a
+	// typo, an id renamed in resources.yaml. A plain select cannot show it:
+	// it would render blank and the next commit would erase it, on exactly
+	// the items the server is warning about. So it joins the options,
+	// marked, and survives until someone picks something else.
+	const strayValues = $derived.by(() => {
+		if (!picksFromResource) return [];
+		const known = new Set(resourceOptions.map((option) => option.id));
+		const current = field.field_type === 'list' ? asArray : asScalar === '' ? [] : [asScalar];
+		return current.filter((entry) => !known.has(entry));
+	});
 
 	// The current color value resolved to hex — palette names resolve
 	// through the served map, hex passes through. Drives the native
@@ -82,7 +113,38 @@
 	}
 </script>
 
-{#if field.field_type === 'boolean'}
+{#if picksFromResource && field.field_type === 'list'}
+	<select
+		multiple
+		size={Math.min(Math.max(resourceOptions.length + strayValues.length, 2), 8)}
+		{disabled}
+		onchange={(event) => {
+			replace([...event.currentTarget.selectedOptions].map((option) => option.value));
+		}}
+	>
+		{#each resourceOptions as option (option.id)}
+			<option value={option.id} selected={asArray.includes(option.id)}>{option.label}</option>
+		{/each}
+		{#each strayValues as stray (stray)}
+			<option value={stray} selected>{stray} (unknown)</option>
+		{/each}
+	</select>
+{:else if picksFromResource}
+	<select
+		{disabled}
+		onchange={(event) => {
+			commitScalar(event.currentTarget.value, false);
+		}}
+	>
+		{#if !field.required}<option value="" selected={asScalar === ''}>—</option>{/if}
+		{#each resourceOptions as option (option.id)}
+			<option value={option.id} selected={asScalar === option.id}>{option.label}</option>
+		{/each}
+		{#each strayValues as stray (stray)}
+			<option value={stray} selected>{stray} (unknown)</option>
+		{/each}
+	</select>
+{:else if field.field_type === 'boolean'}
 	<input
 		type="checkbox"
 		checked={value === true}
@@ -255,7 +317,9 @@
 		}}
 	/>
 {:else}
-	<!-- string, duration, and resource-backed fields: free text. -->
+	<!-- string and duration: free text. A resource-backed field lands here
+	     too when its section is missing or empty — nothing to pick from,
+	     and core isn't validating it either. -->
 	<input
 		type="text"
 		value={asScalar}

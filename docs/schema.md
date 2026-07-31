@@ -250,6 +250,27 @@ fields:
 
 The `resource` option is valid on `string` and `list` fields. When set, the CLI validates that the field value matches an `id` from the referenced resource section. For `list` fields, every entry in the list must match.
 
+### How resource values are validated
+
+A value that isn't an entry of its section is a **warning**, not an error: the file still saves, `workdown validate` still exits zero, and the value still renders, groups and filters. `resources.yaml` is data that lags reality, and a new hire assigned before anyone edits the file shouldn't fail a CI run. The warning appears the moment you write the value:
+
+```
+$ workdown set implement-login assignee justus
+✔ implement-login: assignee: alice → justus
+! item 'implement-login', field 'assignee': 'justus' is not an entry in resource 'people'
+```
+
+Where the value came from doesn't matter — hand-written, stamped from a `default:`, or derived by `compute:`/`when:`. An unset field never warns; a missing *required* field is already its own error.
+
+Two situations switch the per-item check off, each reported once against `schema.yaml` instead of on every item:
+
+| Situation | Severity | Meaning |
+|---|---|---|
+| The section isn't declared in `resources.yaml` | error | A typo in `schema.yaml` — `resource: peple` |
+| The section is empty, or there is no `resources.yaml` | warning | The list isn't filled in yet; nothing to validate against |
+
+A field's `default:` is held to the same standard, also against `schema.yaml`: a literal default outside a populated section is an error (every item `workdown add` creates would carry an unknown value), and a generator default (`$uuid`, `$filename`, `$filename_pretty`) is an error outright — no generator can produce a resource entry.
+
 ### Use cases
 
 - **People**: assignees, reviewers, reporters — `resource: people`
@@ -258,7 +279,7 @@ The `resource` option is valid on `string` and `list` fields. When set, the CLI 
 - **Components/modules**: categorizing by codebase area — define your own
 - **Releases/milestones**: targeting versions — define your own
 
-Resources are flexible. The CLI only enforces that `id` values are unique within a resource and that fields referencing a resource use valid ids. Everything else is up to you.
+Resources are flexible. The CLI reads each entry's `id` (the value stored on items) and its optional `name` (the label pickers show); every other attribute is yours to use as documentation. The only rule it enforces is the one above — that fields referencing a resource use valid ids.
 
 ### Constants
 

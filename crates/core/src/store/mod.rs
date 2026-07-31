@@ -13,6 +13,7 @@ mod compute;
 mod conditional;
 mod cycles;
 mod derive;
+mod resource_refs;
 mod rollup;
 
 use std::collections::HashMap;
@@ -196,6 +197,11 @@ impl Store {
             evaluation_date,
             &disabled_compute_fields,
         ));
+
+        // 6. Check `resource:`-backed values against `resources.yaml`.
+        // After the derive passes so a stamped default or a `when:`
+        // result is held to the same standard as a hand-written value.
+        diagnostics.extend(resource_refs::check(&items, schema, resources));
 
         Ok(Store {
             items,

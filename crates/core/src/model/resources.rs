@@ -19,8 +19,9 @@
 //! would mean inventing a schema for `resources.yaml`, which is out of
 //! scope. See the `schema-metadata-api` issue.
 //!
-//! Loading does not validate that an item's stored value matches a known
-//! resource id — that check lives in the `resource-option-lists` issue.
+//! Loading does not validate anything. Whether a field's section exists
+//! and is populated is checked in [`crate::resources_check`]; whether an
+//! item's stored value matches a known entry is checked in the store.
 
 use indexmap::IndexMap;
 
@@ -40,6 +41,16 @@ pub struct Resources {
     /// section, in declaration order. Values are already coerced to the
     /// scalar type each constant declares.
     pub constants: IndexMap<String, FieldValue>,
+    /// Whether a `resources.yaml` document was successfully parsed into
+    /// this value. Load provenance rather than data, but the
+    /// resource-reference check needs it to tell two situations apart:
+    /// a section name the document does not declare is a typo (error),
+    /// while no document at all is just an unconfigured project
+    /// (warning). A file that failed to parse leaves this `false` — its
+    /// read error already explains the absence, and downgrading the
+    /// follow-on findings avoids stacking a second complaint on one
+    /// cause.
+    pub document_loaded: bool,
 }
 
 impl Resources {

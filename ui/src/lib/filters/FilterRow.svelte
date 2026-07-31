@@ -42,6 +42,11 @@
 	// to pick members from, so the multi picker covers every case they appear in.
 	const isMulti = $derived(isMultiValueOperator(row.operator));
 	const picksFromChoices = $derived(fieldType === 'choice' || fieldType === 'multichoice');
+	// A `resource:`-backed field filters by the stored id, so the picker
+	// offers labels and sets ids — the same join the item editor makes.
+	// Empty when the section is missing or has no entries, which falls the
+	// row back to free text.
+	const resourceOptions = $derived(schemaStore.resourceOptions(fieldDef));
 	const selectedValues = $derived(row.values);
 	const scalarValue = $derived(row.value ?? '');
 
@@ -140,11 +145,32 @@
 						</label>
 					{/each}
 				</div>
+			{:else if isMulti && resourceOptions.length > 0}
+				<!-- `is any of` over a resource: pick several entries by label. -->
+				<select multiple size="5" onchange={onMultiSelectChange}>
+					{#each resourceOptions as option (option.id)}
+						<option value={option.id} selected={selectedValues.includes(option.id)}
+							>{option.label}</option
+						>
+					{/each}
+				</select>
 			{:else if isMulti}
 				<!-- Link-like fields: too many ids for checkboxes, so a list box. -->
 				<select multiple size="5" onchange={onMultiSelectChange}>
 					{#each schemaStore.items as id (id)}
 						<option value={id} selected={selectedValues.includes(id)}>{prettifyId(id)}</option>
+					{/each}
+				</select>
+			{:else if resourceOptions.length > 0}
+				<select
+					value={scalarValue}
+					onchange={(event) => {
+						setValue(event.currentTarget.value);
+					}}
+				>
+					<option value="" disabled>Value…</option>
+					{#each resourceOptions as option (option.id)}
+						<option value={option.id}>{option.label}</option>
 					{/each}
 				</select>
 			{:else if fieldType === 'choice' || fieldType === 'multichoice'}
@@ -200,7 +226,8 @@
 					{/each}
 				</select>
 			{:else}
-				<!-- string, duration, resource-backed: free text. -->
+				<!-- string and duration: free text. A resource-backed field
+				     lands here too when its list is missing or empty. -->
 				<input
 					type="text"
 					value={scalarValue}

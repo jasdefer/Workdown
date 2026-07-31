@@ -156,6 +156,10 @@ pub fn load_project(
         &schema_path,
     ));
 
+    // `resource:` links need the same pairing. The per-item value check
+    // lives in the store instead, so the mutation commands get it too.
+    diagnostics.extend(resources_check::evaluate(&schema, &resources, &schema_path));
+
     // Validate config.yaml's project-wide display-role defaults against
     // the schema. No file read here — the parsed config is already in
     // hand; only its path is needed to pin the diagnostics.

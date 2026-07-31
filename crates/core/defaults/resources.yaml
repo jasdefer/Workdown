@@ -3,13 +3,16 @@
 # Link a field to a resource with `resource: <name>` in schema.yaml.
 # See resources.schema.json for the formal structure.
 
+# Sample entries — replace them with your team. A field pointing at an
+# empty list can't be validated, so `assignee` in schema.yaml only warns
+# about unknown people once this list has entries of its own.
 people:
-  # - id: alice
-  #   name: Alice Smith
-  #   email: alice@example.com
-  # - id: bob
-  #   name: Bob Jones
-  #   email: bob@example.com
+  - id: alice
+    name: Alice Smith
+    email: alice@example.com
+  - id: bob
+    name: Bob Jones
+    email: bob@example.com
 
 # Add more resource types as needed, e.g.:
 #

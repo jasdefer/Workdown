@@ -116,6 +116,7 @@
 								value={draftValue(field.name)}
 								items={schemaStore.items}
 								palette={schemaStore.palette}
+								resourceOptions={schemaStore.resourceOptions(field)}
 								disabled={submitting}
 								oncommit={(mutation: FieldMutation) => {
 									applyToDraft(field.name, mutation);

@@ -361,6 +361,21 @@ pub enum Generator {
     MaxPlusOne,
 }
 
+impl Generator {
+    /// The `$`-prefixed token this generator is written as in
+    /// `schema.yaml` — the inverse of [`DefaultValue`]'s deserializer,
+    /// and the form every diagnostic quotes it back in.
+    pub fn token(&self) -> &'static str {
+        match self {
+            Generator::Filename => "$filename",
+            Generator::FilenamePretty => "$filename_pretty",
+            Generator::Uuid => "$uuid",
+            Generator::Today => "$today",
+            Generator::MaxPlusOne => "$max_plus_one",
+        }
+    }
+}
+
 impl<'de> Deserialize<'de> for DefaultValue {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

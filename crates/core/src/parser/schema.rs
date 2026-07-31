@@ -282,7 +282,7 @@ fn attach_when_configs(
                     &field_name,
                     format!(
                         "'default' next to 'when' is the evaluated fallback and must be a plain value, not the '{}' generator",
-                        generator_token(&generator),
+                        generator.token(),
                     ),
                 ));
                 None
@@ -384,17 +384,6 @@ fn default_literal_as_yaml(literal: &DefaultValue) -> serde_yaml::Value {
         }
         DefaultValue::Bool(flag) => serde_yaml::Value::Bool(*flag),
         DefaultValue::Generator(_) => serde_yaml::Value::Null,
-    }
-}
-
-/// The user-facing token for a generator, for error messages.
-fn generator_token(generator: &Generator) -> &'static str {
-    match generator {
-        Generator::Filename => "$filename",
-        Generator::FilenamePretty => "$filename_pretty",
-        Generator::Uuid => "$uuid",
-        Generator::Today => "$today",
-        Generator::MaxPlusOne => "$max_plus_one",
     }
 }
 
@@ -1077,11 +1066,11 @@ fn validate_default_compatibility(
                 }
             };
             if !compatible {
-                let gen_name = generator_token(gen);
+                let generator_name = gen.token();
                 errors.push(field_error(
                     name,
                     format!(
-                        "generator '{gen_name}' is not compatible with type '{}'",
+                        "generator '{generator_name}' is not compatible with type '{}'",
                         field.field_type
                     ),
                 ));

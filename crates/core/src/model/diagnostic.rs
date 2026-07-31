@@ -110,6 +110,23 @@ pub enum ItemDiagnosticKind {
         target_id: WorkItemId,
     },
 
+    /// A `resource:`-backed field holds a value that is not an `id` in
+    /// the referenced section of `resources.yaml`. One diagnostic per
+    /// unknown value, so a `list` field naming three strangers reports
+    /// all three — the same granularity as [`Self::BrokenLink`], the
+    /// structurally identical check.
+    ///
+    /// Warning, not error: unlike a broken link, which leaves tree and
+    /// graph traversal with nowhere to go, an unrecognized resource
+    /// value still renders, groups and filters. `resources.yaml` is
+    /// people data that lags reality, and a new hire assigned before
+    /// anyone edits the file must not fail `workdown validate` in CI.
+    UnknownResourceRef {
+        field: String,
+        section: String,
+        value: String,
+    },
+
     /// A schema rule was violated by this item.
     RuleViolation { rule: String, detail: String },
 
@@ -400,6 +417,39 @@ pub enum ConfigDiagnosticKind {
     /// order, first one repeated at the end.
     ComputeCycle { chain: Vec<String> },
 
+    /// A field's `resource:` names a section that `resources.yaml` does
+    /// not declare. A typo, so error severity — and the per-item check
+    /// for that field switches off, since every value would otherwise
+    /// report the same missing section against the wrong file.
+    ResourceSectionUnknown { field: String, section: String },
+
+    /// A field's `resource:` names a section that exists but has no
+    /// entries (or `resources.yaml` is absent entirely). Warning, not
+    /// error: the list simply isn't filled in yet. The per-item check
+    /// for that field stays off until it is — one finding here beats
+    /// the same finding repeated on every item.
+    ResourceSectionEmpty { field: String, section: String },
+
+    /// A resource-backed field's literal `default:` is not an entry in
+    /// its section, so every item `workdown add` creates would carry an
+    /// unknown value. The `choice` counterpart is a parse-time schema
+    /// error; this one needs `resources.yaml` loaded, so it lands here.
+    ResourceDefaultUnknown {
+        field: String,
+        section: String,
+        value: String,
+    },
+
+    /// A resource-backed field's `default:` is a generator. `$uuid`,
+    /// `$filename` and `$filename_pretty` are type-compatible with
+    /// `string` and so pass the parser, but none of them can ever
+    /// produce an entry of a resource section.
+    ResourceDefaultGenerator {
+        field: String,
+        section: String,
+        generator: String,
+    },
+
     /// A `when:` branch condition in `schema.yaml` failed type checking
     /// — an unknown reference, an undefined comparison, or a result
     /// that isn't boolean. `detail` carries the specific finding.
@@ -591,6 +641,10 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
         | ConfigDiagnosticKind::ComputeInvalidExpression { .. }
         | ConfigDiagnosticKind::ComputeResultTypeMismatch { .. }
         | ConfigDiagnosticKind::ComputeCycle { .. }
+        | ConfigDiagnosticKind::ResourceSectionUnknown { .. }
+        | ConfigDiagnosticKind::ResourceSectionEmpty { .. }
+        | ConfigDiagnosticKind::ResourceDefaultUnknown { .. }
+        | ConfigDiagnosticKind::ResourceDefaultGenerator { .. }
         | ConfigDiagnosticKind::WhenInvalidCondition { .. } => None,
     }
 }
@@ -666,6 +720,16 @@ impl std::fmt::Display for ItemDiagnosticKind {
             }
             ItemDiagnosticKind::BrokenLink { field, target_id } => {
                 write!(f, "field '{field}': broken link to '{target_id}'")
+            }
+            ItemDiagnosticKind::UnknownResourceRef {
+                field,
+                section,
+                value,
+            } => {
+                write!(
+                    f,
+                    "field '{field}': '{value}' is not an entry in resource '{section}'"
+                )
             }
             ItemDiagnosticKind::RuleViolation { rule, detail } => {
                 write!(f, "rule '{rule}': {detail}")
@@ -962,6 +1026,30 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                     chain.join(" -> ")
                 )
             }
+            ConfigDiagnosticKind::ResourceSectionUnknown { field, section } => write!(
+                f,
+                "field '{field}' references resource '{section}', which is not declared in resources.yaml"
+            ),
+            ConfigDiagnosticKind::ResourceSectionEmpty { field, section } => write!(
+                f,
+                "field '{field}' references resource '{section}', which has no entries — its values are not validated"
+            ),
+            ConfigDiagnosticKind::ResourceDefaultUnknown {
+                field,
+                section,
+                value,
+            } => write!(
+                f,
+                "field '{field}': default '{value}' is not an entry in resource '{section}'"
+            ),
+            ConfigDiagnosticKind::ResourceDefaultGenerator {
+                field,
+                section,
+                generator,
+            } => write!(
+                f,
+                "field '{field}': generator default '{generator}' can never produce an entry in resource '{section}'"
+            ),
             ConfigDiagnosticKind::WhenInvalidCondition {
                 field,
                 branch_number,

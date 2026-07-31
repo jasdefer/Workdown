@@ -844,6 +844,68 @@ mod tests {
         assert!(has_broken_link);
     }
 
+    #[test]
+    fn set_with_unknown_resource_value_warns_at_write_time() {
+        use crate::model::diagnostic::{DiagnosticBody, ItemDiagnosticKind};
+        use crate::model::schema::Severity;
+        use test_support::setup_resource_project;
+
+        let (_directory, root) = setup_resource_project();
+        let config = load_test_config(&root);
+        write_item(&root, "task-1", "---\nstatus: open\n---\n");
+
+        let outcome = run_set(
+            &config,
+            &root,
+            &WorkItemId::from("task-1".to_owned()),
+            "assignee",
+            SetOperation::Replace(serde_yaml::Value::String("carol".to_owned())),
+        )
+        .unwrap();
+
+        // The whole reason this check sits in `Store::load` rather than
+        // in a project-level pass: `set` builds its own store, so a
+        // project-level check would let this write land in silence.
+        assert!(outcome.mutation_caused_warning);
+        let unknown_reference = outcome
+            .warnings
+            .iter()
+            .find(|diagnostic| match &diagnostic.body {
+                DiagnosticBody::Item(item) => matches!(
+                    &item.kind,
+                    ItemDiagnosticKind::UnknownResourceRef { field, value, .. }
+                        if field == "assignee" && value == "carol"
+                ),
+                _ => false,
+            })
+            .expect("an unknown assignee must warn");
+        assert_eq!(unknown_reference.severity, Severity::Warning);
+
+        // Save-with-warning: the value is on disk regardless.
+        assert!(read_item(&root, "task-1").contains("assignee: carol"));
+    }
+
+    #[test]
+    fn set_with_known_resource_value_is_silent() {
+        use test_support::setup_resource_project;
+
+        let (_directory, root) = setup_resource_project();
+        let config = load_test_config(&root);
+        write_item(&root, "task-1", "---\nstatus: open\n---\n");
+
+        let outcome = run_set(
+            &config,
+            &root,
+            &WorkItemId::from("task-1".to_owned()),
+            "assignee",
+            SetOperation::Replace(serde_yaml::Value::String("alice".to_owned())),
+        )
+        .unwrap();
+
+        assert!(!outcome.mutation_caused_warning);
+        assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
+    }
+
     // ── Unset ────────────────────────────────────────────────────────
 
     #[test]
