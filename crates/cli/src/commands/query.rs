@@ -8,6 +8,7 @@ use workdown_core::project::load_project;
 use workdown_core::query;
 use workdown_core::query::format::DelimitedOptions;
 use workdown_core::query::types::{Predicate, QueryRequest, SortDirection, SortSpec};
+use workdown_core::where_check;
 
 /// In-cell separator for list/multichoice/links values in delimited output.
 const LIST_SEPARATOR: char = ';';
@@ -39,6 +40,20 @@ pub fn run_query(
 
     // Parse --where clauses into a single predicate (ANDed together).
     let predicate = parse_where_clauses(where_clauses)?;
+
+    // An operand that can never match makes an ad-hoc query look like a
+    // project with no matching items. Say which clause is responsible —
+    // on stderr, so piped table/JSON/CSV output stays clean.
+    if let Some(predicate) = predicate.as_ref() {
+        for violation in where_check::check_predicate(predicate, schema, &project.resources, store)
+        {
+            cli::output::warning(&format!(
+                "filter on '{}': {}",
+                violation.field,
+                violation.detail()
+            ));
+        }
+    }
 
     // Parse --sort arguments into sort specs.
     let sort = parse_sort_arguments(sort_arguments);

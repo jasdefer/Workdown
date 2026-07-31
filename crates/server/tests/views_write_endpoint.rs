@@ -381,6 +381,46 @@ async fn preview_with_unknown_field_is_unrenderable() {
     assert!(!envelope["diagnostics"].as_array().unwrap().is_empty());
 }
 
+/// The severity split at the endpoint: an operand that can never match
+/// is a *warning*, so unlike an unknown field it must not push the view
+/// into the unrenderable tier. The rows still come back, with the
+/// warning riding along in `diagnostics`.
+#[tokio::test]
+async fn preview_with_unmatchable_value_still_renders_with_a_warning() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(
+        &root,
+        "views:\n  - id: t\n    type: table\n    display:\n      fields: [id, status]\n",
+    );
+    write_item(&root, "task-open", "---\nstatus: open\n---\n");
+
+    let uri = format!(
+        "/api/views/t{}",
+        filter_param(json!([
+            { "kind": "comparison", "field": "status", "operator": "equal", "value": "nonsense" }
+        ]))
+    );
+    let response = get(state, &uri).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    // Tier 3, not tier 2: data is present.
+    let rows = envelope["data"]["rows"].as_array().expect("rows array");
+    assert!(rows.is_empty(), "the filter genuinely matches nothing");
+
+    let diagnostics = envelope["diagnostics"].as_array().unwrap();
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0]["severity"], "warning");
+    assert!(
+        diagnostics[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("nonsense"),
+        "{diagnostics:?}"
+    );
+}
+
 /// Column names of a table response, for the display-role tests below.
 async fn column_names(response: axum::http::Response<Body>) -> Vec<String> {
     let envelope = body_json(response).await;

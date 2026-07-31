@@ -23,6 +23,7 @@ use std::path::Path;
 
 use crate::display_check::{check_display_roles, RoleViolation};
 use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic, FileDiagnosticKind};
+use crate::model::resources::Resources;
 use crate::model::schema::{
     is_relation_anchor, FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity,
 };
@@ -30,6 +31,8 @@ use crate::model::views::{Aggregate, MetricRow, View, ViewKind, Views};
 use crate::parser::views::{ViewsLoadError, ViewsValidationError};
 use crate::query::parse::parse_where;
 use crate::query::types::{FieldReference, Predicate};
+use crate::store::Store;
+use crate::where_check;
 
 // ── Public API ──────────────────────────────────────────────────────
 
@@ -39,6 +42,11 @@ use crate::query::types::{FieldReference, Predicate};
 /// `views.yaml` path (set as `source_path` on every emitted diagnostic).
 struct ViewCheckContext<'a> {
     schema: &'a Schema,
+    /// Resources and items are needed only by the operand checks in
+    /// [`crate::where_check`] — a `resource:`-backed field's entries and
+    /// the work item ids are option sets that live outside the schema.
+    resources: &'a Resources,
+    store: &'a Store,
     views_path: &'a Path,
 }
 
@@ -47,15 +55,37 @@ impl ViewCheckContext<'_> {
     fn error(&self, kind: ConfigDiagnosticKind) -> Diagnostic {
         Diagnostic::config(Severity::Error, self.views_path.to_path_buf(), kind)
     }
+
+    /// As [`ViewCheckContext::error`], for a finding that leaves the view
+    /// renderable. See this module's severity contract.
+    fn warning(&self, kind: ConfigDiagnosticKind) -> Diagnostic {
+        Diagnostic::config(Severity::Warning, self.views_path.to_path_buf(), kind)
+    }
 }
 
 /// Run all cross-file checks on a parsed `views.yaml` against a schema.
 ///
 /// Returns one [`Diagnostic`] per problem found; does not stop at the first.
-/// All diagnostics produced here have [`Severity::Error`] — there are no
-/// warnings in v1.
-pub fn evaluate(views: &Views, schema: &Schema, views_path: &Path) -> Vec<Diagnostic> {
-    let ctx = ViewCheckContext { schema, views_path };
+///
+/// Severity carries meaning for callers: an [`Severity::Error`] describes a
+/// view that cannot produce output, and `workdown render` and the server's
+/// per-view endpoint both skip such a view. A [`Severity::Warning`] describes
+/// a view that renders fine but is probably not what its author meant — a
+/// `where:` operand that can never match, say — and must not suppress the
+/// view. Both callers filter on severity for exactly that reason.
+pub fn evaluate(
+    views: &Views,
+    schema: &Schema,
+    resources: &Resources,
+    store: &Store,
+    views_path: &Path,
+) -> Vec<Diagnostic> {
+    let ctx = ViewCheckContext {
+        schema,
+        resources,
+        store,
+        views_path,
+    };
     let mut out = Vec::new();
     for view in &views.views {
         check_view(view, &ctx, &mut out);
@@ -75,13 +105,18 @@ pub fn evaluate(views: &Views, schema: &Schema, views_path: &Path) -> Vec<Diagno
 /// with the load error routed through [`parse_errors_to_diagnostics`].
 /// On a successful parse returns `(Some(views), diagnostics)`, where the
 /// diagnostics are the semantic check results (often empty).
-pub fn load_and_check(views_path: &Path, schema: &Schema) -> (Option<Views>, Vec<Diagnostic>) {
+pub fn load_and_check(
+    views_path: &Path,
+    schema: &Schema,
+    resources: &Resources,
+    store: &Store,
+) -> (Option<Views>, Vec<Diagnostic>) {
     if !views_path.exists() {
         return (None, Vec::new());
     }
     match crate::parser::views::load_views(views_path) {
         Ok(views) => {
-            let diagnostics = evaluate(&views, schema, views_path);
+            let diagnostics = evaluate(&views, schema, resources, store, views_path);
             (Some(views), diagnostics)
         }
         Err(err) => (None, parse_errors_to_diagnostics(err, views_path)),
@@ -784,7 +819,22 @@ fn check_metric_row(
     }
     for raw in &row.where_clauses {
         match parse_where(raw) {
-            Ok(predicate) => walk_metric_row_predicate(&predicate, view_id, metric_index, ctx, out),
+            Ok(predicate) => {
+                walk_metric_row_predicate(&predicate, view_id, metric_index, ctx, out);
+                for violation in
+                    where_check::check_predicate(&predicate, ctx.schema, ctx.resources, ctx.store)
+                {
+                    out.push(
+                        ctx.warning(ConfigDiagnosticKind::ViewMetricRowWhereUnknownValue {
+                            view_id: view_id.to_owned(),
+                            metric_index,
+                            raw: raw.clone(),
+                            field_name: violation.field.clone(),
+                            detail: violation.detail(),
+                        }),
+                    );
+                }
+            }
             Err(err) => out.push(
                 ctx.error(ConfigDiagnosticKind::ViewMetricRowWhereParseError {
                     view_id: view_id.to_owned(),
@@ -918,7 +968,22 @@ fn check_where_clauses(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagno
     let view_id = view.id.as_str();
     for raw in &view.where_clauses {
         match parse_where(raw) {
-            Ok(predicate) => walk_predicate(&predicate, view_id, ctx, out),
+            Ok(predicate) => {
+                walk_predicate(&predicate, view_id, ctx, out);
+                // Operand checking runs after the field walk and never
+                // instead of it: an operand judged against a field that
+                // doesn't exist would be noise on top of the real error.
+                for violation in
+                    where_check::check_predicate(&predicate, ctx.schema, ctx.resources, ctx.store)
+                {
+                    out.push(ctx.warning(ConfigDiagnosticKind::ViewWhereUnknownValue {
+                        view_id: view_id.to_owned(),
+                        raw: raw.clone(),
+                        field_name: violation.field.clone(),
+                        detail: violation.detail(),
+                    }));
+                }
+            }
             Err(err) => out.push(ctx.error(ConfigDiagnosticKind::ViewWhereParseError {
                 view_id: view_id.to_owned(),
                 raw: raw.clone(),
@@ -996,6 +1061,38 @@ mod tests {
     /// Standard `views.yaml` path used across tests.
     fn test_views_path() -> &'static Path {
         Path::new("views.yaml")
+    }
+
+    /// Run [`evaluate`] against an empty project: no `resources.yaml`, no
+    /// work items. Most cases here check slot and field-reference rules,
+    /// which read only the schema; the operand checks in
+    /// [`crate::where_check`] have nothing to match against and stay
+    /// quiet, except where a clause names an item id — those tests use
+    /// [`check_views_with_items`] instead.
+    fn check_views(views: &Views, schema: &Schema, views_path: &Path) -> Vec<Diagnostic> {
+        check_views_with_items(views, schema, views_path, &[])
+    }
+
+    /// As [`check_views`], with a store built from `item_ids` so that
+    /// clauses referencing items have something to resolve against.
+    fn check_views_with_items(
+        views: &Views,
+        schema: &Schema,
+        views_path: &Path,
+        item_ids: &[&str],
+    ) -> Vec<Diagnostic> {
+        let dir = tempfile::tempdir().expect("tempdir");
+        for id in item_ids {
+            std::fs::write(dir.path().join(format!("{id}.md")), "---\n---\n").expect("write item");
+        }
+        let store = crate::store::Store::load(dir.path(), schema).expect("load store");
+        evaluate(
+            views,
+            schema,
+            &crate::model::resources::Resources::default(),
+            &store,
+            views_path,
+        )
     }
 
     /// Extract the inner `ConfigDiagnosticKind` from a Config-scope diagnostic,
@@ -1117,7 +1214,7 @@ mod tests {
 
     #[test]
     fn unknown_field_in_board() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Board {
                 field: "nonexistent".into(),
             }),
@@ -1136,7 +1233,7 @@ mod tests {
 
     #[test]
     fn unknown_display_field_in_table_errors() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_display(
                 ViewKind::Table,
                 DisplayConfig {
@@ -1165,7 +1262,7 @@ mod tests {
                 values: vec!["open".into()],
             },
         )]);
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_display(
                 ViewKind::Table,
                 DisplayConfig {
@@ -1183,7 +1280,7 @@ mod tests {
     fn id_rejected_in_board_field() {
         // `field: id` would put every item in "unplaced" — the fields
         // map never contains the virtual id.
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Board { field: "id".into() }),
             &simple_schema(),
             test_views_path(),
@@ -1199,7 +1296,7 @@ mod tests {
     fn id_rejected_in_existence_only_slot() {
         // Heatmap axes pass an empty `allowed` list (any type goes) —
         // the virtual-id rejection must fire before that shortcut.
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Heatmap {
                 x: "id".into(),
                 y: "status".into(),
@@ -1221,7 +1318,7 @@ mod tests {
     fn id_rejected_in_link_slot() {
         // Link-walk slots used to report `id` as an unknown field —
         // misleading for a field that exists, just not in `item.fields`.
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Graph {
                 field: "depends_on".into(),
                 group_by: Some("id".into()),
@@ -1238,7 +1335,7 @@ mod tests {
 
     #[test]
     fn id_rejected_in_graph_field() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Graph {
                 field: "id".into(),
                 group_by: None,
@@ -1255,7 +1352,7 @@ mod tests {
 
     #[test]
     fn id_rejected_in_aggregate_value_slot() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::BarChart {
                 group_by: "status".into(),
                 value: Some("id".into()),
@@ -1273,7 +1370,7 @@ mod tests {
 
     #[test]
     fn id_rejected_in_metric_row_value() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Metric {
                 metrics: vec![MetricRow {
                     label: None,
@@ -1295,19 +1392,132 @@ mod tests {
 
     #[test]
     fn id_accepted_in_where_clause() {
-        // Filtering by id is legitimate; resolving it at evaluation is
-        // tracked in `virtual-id-in-query-eval`.
-        let diagnostics = evaluate(
+        // Filtering by id is legitimate — provided the id exists. The
+        // virtual `id` has no schema entry but the tightest option set
+        // there is, so the operand is checked against the item set.
+        let diagnostics = check_views_with_items(
             &view_with_where(ViewKind::Table, vec!["id=some-item".into()]),
+            &simple_schema(),
+            test_views_path(),
+            &["some-item"],
+        );
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn id_where_clause_naming_a_missing_item_warns() {
+        let diagnostics = check_views_with_items(
+            &view_with_where(ViewKind::Table, vec!["id=no-such-item".into()]),
+            &simple_schema(),
+            test_views_path(),
+            &["some-item"],
+        );
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewWhereUnknownValue { field_name, detail, .. }
+                if field_name == "id" && detail.contains("existing work item id")
+        ));
+    }
+
+    // ── Where-clause operands ──────────────────────────────────
+    //
+    // The rules live in `where_check` and are tested there; these cover
+    // the wrapping — severity, which diagnostic kind, and that a metric
+    // row's parallel path gets the same treatment.
+
+    #[test]
+    fn where_clause_with_unknown_choice_value_warns() {
+        let diagnostics = check_views(
+            &view_with_where(ViewKind::Table, vec!["status=nonsense".into()]),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        // A warning, not an error: the view still renders. `render` and
+        // the server both filter on severity for exactly this case.
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewWhereUnknownValue { raw, field_name, detail, .. }
+                if raw == "status=nonsense"
+                    && field_name == "status"
+                    && detail.contains("open")
+        ));
+    }
+
+    /// The regression that made this check urgent: a filter written when
+    /// `type=a,b` still meant membership now compares against the literal
+    /// string, matching nothing.
+    #[test]
+    fn stale_implicit_membership_filter_warns_with_a_hint() {
+        let diagnostics = check_views(
+            &view_with_where(ViewKind::Table, vec!["status=open,done".into()]),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewWhereUnknownValue { detail, .. }
+                if detail.contains("did you mean 'status in open,done'?")
+        ));
+    }
+
+    #[test]
+    fn matches_clause_produces_no_value_warning() {
+        let diagnostics = check_views(
+            &view_with_where(ViewKind::Table, vec!["status/^nonsense$/".into()]),
             &simple_schema(),
             test_views_path(),
         );
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
 
+    /// An operand judged against a field that doesn't exist would stack a
+    /// second complaint on one cause — the unknown field is the finding.
+    #[test]
+    fn unknown_field_in_where_reports_only_the_field() {
+        let diagnostics = check_views(
+            &view_with_where(ViewKind::Table, vec!["nonexistent=whatever".into()]),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert_eq!(diagnostics[0].severity, Severity::Error);
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewUnknownField { slot, .. } if *slot == "where"
+        ));
+    }
+
+    #[test]
+    fn metric_row_where_operand_is_checked_too() {
+        let diagnostics = check_views(
+            &one_view(ViewKind::Metric {
+                metrics: vec![MetricRow {
+                    label: None,
+                    aggregate: Aggregate::Count,
+                    value: None,
+                    where_clauses: vec!["status=nonsense".into()],
+                }],
+            }),
+            &simple_schema(),
+            test_views_path(),
+        );
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert!(matches!(
+            view_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ViewMetricRowWhereUnknownValue { metric_index, field_name, .. }
+                if *metric_index == 0 && field_name == "status"
+        ));
+    }
+
     #[test]
     fn unknown_subtitle_field_errors() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_display(
                 ViewKind::Table,
                 DisplayConfig {
@@ -1332,7 +1542,7 @@ mod tests {
             ("team_color", FieldTypeConfig::Color),
             ("risk_color", FieldTypeConfig::Color),
         ]);
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_display(
                 ViewKind::Table,
                 DisplayConfig {
@@ -1351,7 +1561,7 @@ mod tests {
         // `color: none` disables tinting; it references no field, so
         // there is nothing to check — even in a schema with no color
         // fields at all.
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_display(
                 ViewKind::Table,
                 DisplayConfig {
@@ -1367,7 +1577,7 @@ mod tests {
 
     #[test]
     fn unknown_color_role_field_errors() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_display(
                 ViewKind::Table,
                 DisplayConfig {
@@ -1388,7 +1598,7 @@ mod tests {
 
     #[test]
     fn color_role_field_must_be_color_typed() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_display(
                 ViewKind::Table,
                 DisplayConfig {
@@ -1412,7 +1622,7 @@ mod tests {
         // The virtual `id` is accepted by every text role, but it can
         // never feed a tint — silently accepting it would just be a
         // dead config.
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_display(
                 ViewKind::Table,
                 DisplayConfig {
@@ -1435,7 +1645,7 @@ mod tests {
 
     #[test]
     fn tree_field_must_be_link() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Tree {
                 field: "status".into(), // choice, not link
             }),
@@ -1451,7 +1661,7 @@ mod tests {
 
     #[test]
     fn unknown_display_field_in_tree_errors() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_display(
                 ViewKind::Tree {
                     field: "parent".into(),
@@ -1474,7 +1684,7 @@ mod tests {
 
     #[test]
     fn graph_field_rejects_non_link_types() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Graph {
                 field: "status".into(), // choice, not link/links
                 group_by: None,
@@ -1491,7 +1701,7 @@ mod tests {
 
     #[test]
     fn graph_field_accepts_single_link() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Graph {
                 field: "parent".into(),
                 group_by: None,
@@ -1504,7 +1714,7 @@ mod tests {
 
     #[test]
     fn graph_field_accepts_inverse_name() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Graph {
                 field: "children".into(), // inverse of parent
                 group_by: None,
@@ -1517,7 +1727,7 @@ mod tests {
 
     #[test]
     fn graph_field_rejects_unknown_name() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Graph {
                 field: "nonexistent".into(),
                 group_by: None,
@@ -1536,7 +1746,7 @@ mod tests {
 
     #[test]
     fn graph_group_by_accepts_link_with_cycles_disabled() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Graph {
                 field: "depends_on".into(),
                 group_by: Some("parent".into()),
@@ -1549,7 +1759,7 @@ mod tests {
 
     #[test]
     fn graph_group_by_rejects_links_field() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Graph {
                 field: "parent".into(),
                 group_by: Some("depends_on".into()), // links, not link
@@ -1566,7 +1776,7 @@ mod tests {
 
     #[test]
     fn graph_group_by_rejects_unknown_field() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Graph {
                 field: "depends_on".into(),
                 group_by: Some("nonexistent".into()),
@@ -1583,7 +1793,7 @@ mod tests {
 
     #[test]
     fn graph_group_by_rejects_inverse_name() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Graph {
                 field: "depends_on".into(),
                 group_by: Some("children".into()), // inverse of parent
@@ -1616,7 +1826,7 @@ mod tests {
                 },
             ),
         ]);
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Graph {
                 field: "depends_on".into(),
                 group_by: Some("topic".into()),
@@ -1633,7 +1843,7 @@ mod tests {
 
     #[test]
     fn gantt_start_must_be_date() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Gantt {
                 start: "effort".into(), // integer
                 end: Some("end_date".into()),
@@ -1655,7 +1865,7 @@ mod tests {
     #[test]
     fn gantt_group_accepts_choice_string_link_and_links() {
         for field in ["status", "title", "parent", "depends_on"] {
-            let diagnostics = evaluate(
+            let diagnostics = check_views(
                 &one_view(ViewKind::Gantt {
                     start: "start_date".into(),
                     end: Some("end_date".into()),
@@ -1675,7 +1885,7 @@ mod tests {
 
     #[test]
     fn gantt_group_rejects_non_value_field_types() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Gantt {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
@@ -1695,7 +1905,7 @@ mod tests {
 
     #[test]
     fn gantt_neither_end_nor_duration_errors() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Gantt {
                 start: "start_date".into(),
                 end: None,
@@ -1714,7 +1924,7 @@ mod tests {
 
     #[test]
     fn gantt_both_end_and_duration_errors() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Gantt {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
@@ -1733,7 +1943,7 @@ mod tests {
 
     #[test]
     fn gantt_duration_must_be_duration_field() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Gantt {
                 start: "start_date".into(),
                 end: None,
@@ -1753,7 +1963,7 @@ mod tests {
 
     #[test]
     fn gantt_duration_with_correct_type_passes() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Gantt {
                 start: "start_date".into(),
                 end: None,
@@ -1774,7 +1984,7 @@ mod tests {
 
     #[test]
     fn gantt_after_with_duration_passes() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Gantt {
                 start: "start_date".into(),
                 end: None,
@@ -1793,7 +2003,7 @@ mod tests {
 
     #[test]
     fn gantt_after_accepts_single_link() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Gantt {
                 start: "start_date".into(),
                 end: None,
@@ -1812,7 +2022,7 @@ mod tests {
 
     #[test]
     fn gantt_after_without_duration_errors() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Gantt {
                 start: "start_date".into(),
                 end: None,
@@ -1831,7 +2041,7 @@ mod tests {
 
     #[test]
     fn gantt_after_with_end_errors() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Gantt {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
@@ -1850,7 +2060,7 @@ mod tests {
 
     #[test]
     fn gantt_after_must_be_link_or_links() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Gantt {
                 start: "start_date".into(),
                 end: None,
@@ -1870,7 +2080,7 @@ mod tests {
 
     #[test]
     fn gantt_after_rejects_unknown_field() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Gantt {
                 start: "start_date".into(),
                 end: None,
@@ -1890,7 +2100,7 @@ mod tests {
 
     #[test]
     fn gantt_after_rejects_inverse_name() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Gantt {
                 start: "start_date".into(),
                 end: None,
@@ -1927,7 +2137,7 @@ mod tests {
                 },
             ),
         ]);
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Gantt {
                 start: "start_date".into(),
                 end: None,
@@ -1949,7 +2159,7 @@ mod tests {
 
     #[test]
     fn gantt_by_initiative_accepts_link_with_cycles_disabled() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::GanttByInitiative {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
@@ -1965,7 +2175,7 @@ mod tests {
 
     #[test]
     fn gantt_by_initiative_root_link_rejects_unknown_field() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::GanttByInitiative {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
@@ -1986,7 +2196,7 @@ mod tests {
     #[test]
     fn gantt_by_initiative_root_link_rejects_links_field() {
         // Links is rejected — initiative partition requires single-target.
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::GanttByInitiative {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
@@ -2006,7 +2216,7 @@ mod tests {
 
     #[test]
     fn gantt_by_initiative_root_link_rejects_inverse_name() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::GanttByInitiative {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
@@ -2037,7 +2247,7 @@ mod tests {
                 },
             ),
         ]);
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::GanttByInitiative {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
@@ -2058,7 +2268,7 @@ mod tests {
     #[test]
     fn gantt_by_initiative_input_mode_rules_mirror_basic_gantt() {
         // Both end and duration set → conflict (same as basic gantt).
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::GanttByInitiative {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
@@ -2079,7 +2289,7 @@ mod tests {
 
     #[test]
     fn gantt_by_depth_accepts_link_with_cycles_disabled() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::GanttByDepth {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
@@ -2095,7 +2305,7 @@ mod tests {
 
     #[test]
     fn gantt_by_depth_depth_link_rejects_unknown_field() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::GanttByDepth {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
@@ -2116,7 +2326,7 @@ mod tests {
     #[test]
     fn gantt_by_depth_depth_link_rejects_links_field() {
         // Links is rejected — depth requires single-target.
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::GanttByDepth {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
@@ -2136,7 +2346,7 @@ mod tests {
 
     #[test]
     fn gantt_by_depth_depth_link_rejects_inverse_name() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::GanttByDepth {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
@@ -2167,7 +2377,7 @@ mod tests {
                 },
             ),
         ]);
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::GanttByDepth {
                 start: "start_date".into(),
                 end: Some("end_date".into()),
@@ -2187,7 +2397,7 @@ mod tests {
 
     #[test]
     fn workload_effort_must_be_numeric_or_duration() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Workload {
                 start: "start_date".into(),
                 end: "end_date".into(),
@@ -2205,7 +2415,7 @@ mod tests {
 
     #[test]
     fn workload_effort_accepts_duration() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Workload {
                 start: "start_date".into(),
                 end: "end_date".into(),
@@ -2220,7 +2430,7 @@ mod tests {
 
     #[test]
     fn bar_chart_sum_rejects_non_numeric_value() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::BarChart {
                 group_by: "status".into(),
                 value: Some("title".into()), // string
@@ -2239,7 +2449,7 @@ mod tests {
 
     #[test]
     fn bar_chart_sum_rejects_date_value() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::BarChart {
                 group_by: "status".into(),
                 value: Some("end_date".into()),
@@ -2257,7 +2467,7 @@ mod tests {
 
     #[test]
     fn bar_chart_avg_accepts_date_value() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::BarChart {
                 group_by: "status".into(),
                 value: Some("end_date".into()),
@@ -2271,7 +2481,7 @@ mod tests {
 
     #[test]
     fn bar_chart_group_by_accepts_any_field_type() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::BarChart {
                 group_by: "effort".into(), // integer — now allowed
                 value: None,
@@ -2285,7 +2495,7 @@ mod tests {
 
     #[test]
     fn metric_avg_accepts_date_value() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Metric {
                 metrics: vec![MetricRow {
                     label: None,
@@ -2302,7 +2512,7 @@ mod tests {
 
     #[test]
     fn heatmap_axis_accepts_any_field_type() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Heatmap {
                 x: "effort".into(), // integer — now allowed
                 y: "title".into(),  // string — still allowed
@@ -2318,7 +2528,7 @@ mod tests {
 
     #[test]
     fn line_chart_accepts_date_x_numeric_y() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::LineChart {
                 x: "start_date".into(),
                 y: "effort".into(),
@@ -2332,7 +2542,7 @@ mod tests {
 
     #[test]
     fn line_chart_rejects_date_y() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::LineChart {
                 x: "effort".into(),
                 y: "start_date".into(),
@@ -2352,7 +2562,7 @@ mod tests {
 
     #[test]
     fn heatmap_bucket_without_date_axis_errors() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Heatmap {
                 x: "status".into(),   // choice
                 y: "assignee".into(), // string
@@ -2371,7 +2581,7 @@ mod tests {
 
     #[test]
     fn heatmap_bucket_with_date_axis_passes() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Heatmap {
                 x: "end_date".into(),
                 y: "assignee".into(),
@@ -2395,7 +2605,7 @@ mod tests {
 
     #[test]
     fn treemap_group_rejects_non_link() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Treemap {
                 group: "status".into(), // choice, not link
                 size: "effort".into(),
@@ -2412,7 +2622,7 @@ mod tests {
 
     #[test]
     fn treemap_group_accepts_link() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Treemap {
                 group: "parent".into(),
                 size: "effort".into(),
@@ -2425,7 +2635,7 @@ mod tests {
 
     #[test]
     fn treemap_size_accepts_duration() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Treemap {
                 group: "parent".into(),
                 size: "estimate".into(),
@@ -2438,7 +2648,7 @@ mod tests {
 
     #[test]
     fn line_chart_y_accepts_duration() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::LineChart {
                 x: "start_date".into(),
                 y: "estimate".into(),
@@ -2452,7 +2662,7 @@ mod tests {
 
     #[test]
     fn line_chart_x_accepts_duration() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::LineChart {
                 x: "estimate".into(),
                 y: "effort".into(),
@@ -2467,7 +2677,7 @@ mod tests {
     #[test]
     fn line_chart_group_accepts_choice_string_link_and_links() {
         for field in ["status", "title", "parent", "depends_on"] {
-            let diagnostics = evaluate(
+            let diagnostics = check_views(
                 &one_view(ViewKind::LineChart {
                     x: "estimate".into(),
                     y: "effort".into(),
@@ -2485,7 +2695,7 @@ mod tests {
 
     #[test]
     fn line_chart_group_rejects_non_value_field_types() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::LineChart {
                 x: "estimate".into(),
                 y: "effort".into(),
@@ -2505,7 +2715,7 @@ mod tests {
 
     #[test]
     fn metric_count_with_value_errors() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Metric {
                 metrics: vec![MetricRow {
                     label: None,
@@ -2528,7 +2738,7 @@ mod tests {
     fn metric_count_with_unknown_value_emits_both_diagnostics() {
         // Existence check runs regardless of the count-with-value error —
         // they're orthogonal problems.
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Metric {
                 metrics: vec![MetricRow {
                     label: None,
@@ -2553,7 +2763,7 @@ mod tests {
 
     #[test]
     fn metric_sum_with_value_passes() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Metric {
                 metrics: vec![MetricRow {
                     label: None,
@@ -2570,7 +2780,7 @@ mod tests {
 
     #[test]
     fn metric_per_row_where_parse_error_pinpoints_index() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Metric {
                 metrics: vec![
                     MetricRow {
@@ -2599,7 +2809,7 @@ mod tests {
 
     #[test]
     fn metric_per_row_where_unknown_field_pinpoints_index() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &one_view(ViewKind::Metric {
                 metrics: vec![MetricRow {
                     label: None,
@@ -2622,7 +2832,7 @@ mod tests {
 
     #[test]
     fn where_parse_error() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_where(
                 ViewKind::Board {
                     field: "status".into(),
@@ -2640,7 +2850,7 @@ mod tests {
 
     #[test]
     fn where_unknown_local_field() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_where(
                 ViewKind::Board {
                     field: "status".into(),
@@ -2659,7 +2869,7 @@ mod tests {
 
     #[test]
     fn where_forward_relation_accepted() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_where(
                 ViewKind::Board {
                     field: "status".into(),
@@ -2674,7 +2884,7 @@ mod tests {
 
     #[test]
     fn where_inverse_relation_accepted() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_where(
                 ViewKind::Board {
                     field: "status".into(),
@@ -2689,7 +2899,7 @@ mod tests {
 
     #[test]
     fn where_unknown_relation_emits_diagnostic() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_where(
                 ViewKind::Board {
                     field: "status".into(),
@@ -2709,7 +2919,7 @@ mod tests {
     #[test]
     fn where_string_field_not_valid_as_relation() {
         // `assignee` is a string — can't be traversed.
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_where(
                 ViewKind::Board {
                     field: "status".into(),
@@ -2730,7 +2940,7 @@ mod tests {
 
     #[test]
     fn title_string_field_accepted() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_title(
                 ViewKind::Board {
                     field: "status".into(),
@@ -2745,7 +2955,7 @@ mod tests {
 
     #[test]
     fn title_choice_field_accepted() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_title(
                 ViewKind::Board {
                     field: "status".into(),
@@ -2762,7 +2972,7 @@ mod tests {
     fn title_id_accepted_though_redundant() {
         // `id` is the fallback when title is unset — setting it explicitly
         // is harmless and must not trip existence / type checks.
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_title(
                 ViewKind::Board {
                     field: "status".into(),
@@ -2777,7 +2987,7 @@ mod tests {
 
     #[test]
     fn title_unknown_field_rejected() {
-        let diagnostics = evaluate(
+        let diagnostics = check_views(
             &view_with_title(
                 ViewKind::Board {
                     field: "status".into(),
@@ -2802,7 +3012,7 @@ mod tests {
         // Display roles are existence-only: every field value renders as
         // text, so an integer or link title is legal (if unusual).
         for title_field in ["effort", "parent"] {
-            let diagnostics = evaluate(
+            let diagnostics = check_views(
                 &view_with_title(
                     ViewKind::Board {
                         field: "status".into(),

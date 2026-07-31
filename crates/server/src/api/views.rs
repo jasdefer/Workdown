@@ -31,6 +31,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 
 use workdown_core::model::diagnostic::Diagnostic;
+use workdown_core::model::schema::Severity;
 use workdown_core::model::views::{DisplayConfig, View, ViewSummary, Views};
 use workdown_core::mutation_data::{CreateView, SetViewFilter, ViewMutationResult};
 use workdown_core::operations::view_write::{create_view, set_view_filter, ViewWriteError};
@@ -187,6 +188,8 @@ async fn get_view(
         diagnostics.extend(views_check::evaluate(
             &candidate,
             &project.schema,
+            &project.resources,
+            &project.store,
             &views_path,
         ));
         (effective, diagnostics)
@@ -194,14 +197,20 @@ async fn get_view(
         (view.clone(), project.diagnostics.clone())
     };
 
-    // Tier 2: this specific view has a config diagnostic pinned to it
-    // (e.g. references a missing field, gantt config conflict) — with the
+    // Tier 2: this specific view has a config *error* pinned to it (e.g.
+    // references a missing field, gantt config conflict) — with the
     // effective filter in place. The view can't render; surface the
     // diagnostics instead of data.
-    let has_view_config_issue = diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.view_id() == Some(view.id.as_str()));
-    if has_view_config_issue {
+    //
+    // Severity is what separates the tiers here. A warning pinned to this
+    // view (a `where:` operand that can never match, say) describes a view
+    // that renders perfectly well; withholding the data over it would hide
+    // more than it explains. Such findings ride along in the tier-3
+    // response's `diagnostics` instead.
+    let has_view_config_error = diagnostics.iter().any(|diagnostic| {
+        diagnostic.severity == Severity::Error && diagnostic.view_id() == Some(view.id.as_str())
+    });
+    if has_view_config_error {
         return ApiResponse::unrenderable(diagnostics);
     }
 
@@ -302,10 +311,10 @@ async fn update_view_filter(
 ///
 /// - `404` — the view id in the path doesn't exist (filter change).
 /// - `409` — creating a view whose id is already taken.
-/// - `422` — well-formed but unprocessable: the project's schema or the
-///   existing `views.yaml` won't load, the view definition is invalid
-///   (missing/unknown slot), or a filter condition's operand doesn't match its
-///   operator's arity.
+/// - `422` — well-formed but unprocessable: the project's schema, work
+///   items, or existing `views.yaml` won't load, the view definition is
+///   invalid (missing/unknown slot), or a filter condition's operand doesn't
+///   match its operator's arity.
 /// - `500` — a server-side failure: serialization, a produced-invalid
 ///   invariant violation, or a write I/O error.
 fn view_write_error_status(error: &ViewWriteError) -> StatusCode {
@@ -315,6 +324,7 @@ fn view_write_error_status(error: &ViewWriteError) -> StatusCode {
         ViewWriteError::DuplicateId { .. } => StatusCode::CONFLICT,
 
         ViewWriteError::SchemaLoad(_)
+        | ViewWriteError::ItemsLoad { .. }
         | ViewWriteError::ExistingInvalid { .. }
         | ViewWriteError::InvalidDefinition { .. }
         | ViewWriteError::InvalidCondition(_)

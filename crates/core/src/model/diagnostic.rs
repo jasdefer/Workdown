@@ -227,11 +227,16 @@ pub struct ConfigDiagnostic {
 /// Cross-file failures against a config file — `views.yaml` for the
 /// `View*` variants, `config.yaml` for the `ConfigDisplay*` variants.
 ///
-/// The `View*` variants carry a `view_id` and pin the failure to one
-/// view (that view is unrenderable, the rest keep working); the
-/// `ConfigDisplay*` variants are project-wide and carry none — a bad
-/// default degrades every view to its fallback instead of blanking
-/// anything (see `view_id_of` below).
+/// The `View*` variants carry a `view_id` and pin the finding to one
+/// view, leaving the rest working; the `ConfigDisplay*` variants are
+/// project-wide and carry none — a bad default degrades every view to
+/// its fallback instead of blanking anything (see `view_id_of` below).
+///
+/// A pinned `View*` variant does not by itself mean the view is
+/// unrenderable — severity decides that. Errors describe a view that
+/// cannot produce output and callers skip it; warnings (today, the
+/// `*WhereUnknownValue` pair) describe a view that renders fine but
+/// probably isn't what its author meant, and must not suppress it.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConfigDiagnosticKind {
@@ -289,6 +294,20 @@ pub enum ConfigDiagnosticKind {
     ViewWhereParseError {
         view_id: String,
         raw: String,
+        detail: String,
+    },
+
+    /// A `where:` clause parses and names a real field, but compares it
+    /// against an operand that could never match — a value outside the
+    /// field's option set, or one that cannot be read as its type. The
+    /// view still renders, so this is the one `View*` variant carrying
+    /// [`Severity::Warning`]; see [`crate::where_check`].
+    ViewWhereUnknownValue {
+        view_id: String,
+        raw: String,
+        field_name: String,
+        /// The rendered explanation from
+        /// [`crate::where_check::ValueViolation::detail`].
         detail: String,
     },
 
@@ -367,6 +386,18 @@ pub enum ConfigDiagnosticKind {
         view_id: String,
         metric_index: usize,
         raw: String,
+        detail: String,
+    },
+
+    /// A metric row's per-row `where:` compares a field against an
+    /// operand that could never match. The metric-row twin of
+    /// [`ConfigDiagnosticKind::ViewWhereUnknownValue`], and a warning for
+    /// the same reason.
+    ViewMetricRowWhereUnknownValue {
+        view_id: String,
+        metric_index: usize,
+        raw: String,
+        field_name: String,
         detail: String,
     },
 
@@ -616,6 +647,8 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
         | ConfigDiagnosticKind::ViewUnknownField { view_id, .. }
         | ConfigDiagnosticKind::ViewFieldTypeMismatch { view_id, .. }
         | ConfigDiagnosticKind::ViewWhereParseError { view_id, .. }
+        | ConfigDiagnosticKind::ViewWhereUnknownValue { view_id, .. }
+        | ConfigDiagnosticKind::ViewMetricRowWhereUnknownValue { view_id, .. }
         | ConfigDiagnosticKind::ViewBucketWithoutDateAxis { view_id }
         | ConfigDiagnosticKind::ViewCountAggregateWithValue { view_id }
         | ConfigDiagnosticKind::ViewAggregateTypeMismatch { view_id, .. }
@@ -899,6 +932,15 @@ impl std::fmt::Display for ConfigDiagnosticKind {
             } => {
                 write!(f, "view '{view_id}', where clause '{raw}': {detail}")
             }
+            ConfigDiagnosticKind::ViewWhereUnknownValue {
+                view_id,
+                raw,
+                field_name,
+                detail,
+            } => write!(
+                f,
+                "view '{view_id}', where clause '{raw}': field '{field_name}' — {detail}"
+            ),
             ConfigDiagnosticKind::ViewBucketWithoutDateAxis { view_id } => {
                 write!(
                     f,
@@ -989,6 +1031,16 @@ impl std::fmt::Display for ConfigDiagnosticKind {
             } => write!(
                 f,
                 "view '{view_id}', metrics[{metric_index}].where clause '{raw}': {detail}"
+            ),
+            ConfigDiagnosticKind::ViewMetricRowWhereUnknownValue {
+                view_id,
+                metric_index,
+                raw,
+                field_name,
+                detail,
+            } => write!(
+                f,
+                "view '{view_id}', metrics[{metric_index}].where clause '{raw}': field '{field_name}' — {detail}"
             ),
             ConfigDiagnosticKind::ConfigDisplayUnknownField { slot, field_name } => {
                 write!(f, "config default '{slot}': unknown field '{field_name}'")

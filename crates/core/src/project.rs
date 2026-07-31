@@ -145,7 +145,8 @@ pub fn load_project(
     // Parse views.yaml exactly once: load_and_check returns the parsed
     // views (None when absent or unparseable) together with its check
     // diagnostics, so we never re-read the file to populate `views`.
-    let (views, views_diagnostics) = views_check::load_and_check(&views_path, &schema);
+    let (views, views_diagnostics) =
+        views_check::load_and_check(&views_path, &schema, &resources, &store);
     diagnostics.extend(views_diagnostics);
 
     // Compute configs need both schema and resources (constant types),

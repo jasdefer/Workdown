@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use workdown_core::model::config::Config;
 use workdown_core::model::diagnostic::{ConfigDiagnosticKind, Diagnostic, DiagnosticBody};
+use workdown_core::model::schema::Severity;
 use workdown_core::operations::validate::validate;
 use workdown_core::parser::config::load_config;
 
@@ -194,6 +195,54 @@ fn missing_views_yaml_is_silently_skipped() {
         view_level.is_empty(),
         "expected silent skip, got: {view_level:?}"
     );
+}
+
+/// A `where:` operand that can never match reaches `validate` as a
+/// *warning*, so the run still passes. This is the wiring that keeps
+/// `render` writing the view: both gates key off severity, and an
+/// operand problem is the first view finding that isn't an error.
+#[test]
+fn where_clause_operand_warns_without_failing_validation() {
+    let views = "\
+views:
+  - id: status-board
+    type: board
+    field: status
+    where: [\"status=nonsense\"]
+";
+    let project = setup_project(
+        schema_with_status(),
+        Some(views),
+        &[("a.md", "---\nstatus: open\n---\n")],
+    );
+
+    let (_tmp, config, root) = &project;
+    let result = validate(
+        config,
+        root.as_path(),
+        Path::new(".workdown/config.yaml"),
+        None,
+    )
+    .unwrap();
+
+    assert!(
+        !result.has_errors,
+        "a bad operand must not fail validation: {:?}",
+        result.diagnostics
+    );
+
+    let view_level = view_diagnostics(&result.diagnostics);
+    assert_eq!(view_level.len(), 1, "got: {view_level:?}");
+    assert_eq!(view_level[0].severity, Severity::Warning);
+    assert!(matches!(
+        &view_level[0].body,
+        DiagnosticBody::Config(config_diagnostic)
+            if matches!(
+                &config_diagnostic.kind,
+                ConfigDiagnosticKind::ViewWhereUnknownValue { field_name, .. }
+                    if field_name == "status"
+            )
+    ));
 }
 
 // ── config.yaml defaults validation (wiring) ─────────────────────────────
