@@ -73,7 +73,7 @@
 				<input
 					class="raw-input"
 					type="text"
-					placeholder="raw clause, e.g. status=open,done"
+					placeholder="raw clause, e.g. status in open,done"
 					value={row.raw}
 					onchange={(event) => {
 						updateRow({ ...row, raw: event.currentTarget.value });

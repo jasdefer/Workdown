@@ -11,9 +11,12 @@
 //! `schema.inverse_table`), or is the virtual `"id"` field in a slot that
 //! accepts it — text display roles (resolved specially at extraction) and
 //! `where:` clauses. Structural slots (board `field`, chart grouping, axes,
-//! date windows, aggregate values) read `item.fields`, where `id` never
-//! appears, so they reject it as a dead configuration. Renderers and
-//! extractors can rely on that invariant without re-checking.
+//! date windows, aggregate values) reject it: the id is unique per item,
+//! so grouping or plotting by it degenerates into one group per item.
+//! The id *is* projected into `item.fields` at load, so such a view would
+//! technically render — the rejection is policy against a meaningless
+//! configuration, and renderers can rely on validated views never naming
+//! `id` in a structural slot.
 //!
 //! The companion helper [`parse_errors_to_diagnostics`] converts load-time
 //! errors from [`crate::parser::views`] into the same diagnostic stream,
@@ -461,18 +464,18 @@ fn check_display(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>)
 
 /// Check one slot's field reference. Emits:
 /// - [`ConfigDiagnosticKind::ViewVirtualIdNotAllowed`] for the virtual
-///   `"id"` — every `check_slot` caller is a structural slot reading
-///   `item.fields`, where `id` never appears, so accepting it would be
-///   a silently dead view (text display roles resolve `id` specially
-///   and are checked in `display_check`, not here),
+///   `"id"` — every `check_slot` caller is a structural slot, and the
+///   id is unique per item, so grouping or plotting by it is
+///   meaningless (text display roles resolve `id` specially and are
+///   checked in `display_check`, not here),
 /// - [`ConfigDiagnosticKind::ViewUnknownField`] if `field_name` isn't defined in
 ///   `schema.fields`,
 /// - [`ConfigDiagnosticKind::ViewFieldTypeMismatch`] if `allowed` is non-empty and
 ///   the field's type isn't in the list.
 ///
 /// Passing an empty `allowed` performs an existence-only check (used
-/// by slots that accept any field type, e.g. `graph.group_by` and the
-/// line chart's `x`/`y`).
+/// by slots that accept any field type, e.g. the bar chart's
+/// `group_by` and the heatmap's `x`/`y`).
 fn check_slot(
     ctx: &ViewCheckContext,
     view_id: &str,
@@ -1278,8 +1281,8 @@ mod tests {
 
     #[test]
     fn id_rejected_in_board_field() {
-        // `field: id` would put every item in "unplaced" — the fields
-        // map never contains the virtual id.
+        // `field: id` would put every item in a column of its own — a
+        // unique key groups nothing.
         let diagnostics = check_views(
             &one_view(ViewKind::Board { field: "id".into() }),
             &simple_schema(),
@@ -1317,7 +1320,8 @@ mod tests {
     #[test]
     fn id_rejected_in_link_slot() {
         // Link-walk slots used to report `id` as an unknown field —
-        // misleading for a field that exists, just not in `item.fields`.
+        // misleading for a field that exists; the dedicated rejection
+        // names the real problem (a unique key groups nothing).
         let diagnostics = check_views(
             &one_view(ViewKind::Graph {
                 field: "depends_on".into(),

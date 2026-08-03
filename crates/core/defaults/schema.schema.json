@@ -116,8 +116,12 @@
           "description": "'compute' and 'default' cannot be combined — both fill in absent values."
         },
         "when": {
-          "not": { "required": ["compute"] },
-          "description": "'when' and 'compute' cannot be combined — both derive the field's value."
+          "allOf": [
+            { "not": { "required": ["compute"] } },
+            { "properties": { "default": { "not": { "type": "string", "pattern": "^\\$" } } } },
+            { "properties": { "type": { "not": { "enum": ["link", "links"] } } } }
+          ],
+          "description": "'when' cannot be combined with 'compute' (both derive the field's value) or a generator 'default' (next to 'when' the fallback is evaluated, never stamped), and is not supported on link/links fields (a derived relation would be invisible to reverse links and reference checks)."
         }
       },
       "allOf": [

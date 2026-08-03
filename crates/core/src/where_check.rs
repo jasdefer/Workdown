@@ -14,10 +14,16 @@
 //!
 //! Two kinds of "could never match" live here:
 //!
-//! - the field has a **closed option set** and the operand is not in it —
-//!   a `choice`/`multichoice` field's declared `values`, a
-//!   `resource:`-backed field's section entries, or, for `link`/`links`
-//!   and the virtual `id`, the set of work item ids;
+//! - the field has a **closed option set** and the operand is not in it.
+//!   Only two sets are closed by construction: a `choice`/`multichoice`
+//!   field's declared `values` (coercion drops anything else) and, for
+//!   the virtual `id`, the ids that exist. A `resource:`-backed field's
+//!   section entries and a `link`/`links` field's item ids are policy,
+//!   not fact — an unknown resource ref is a warning *by design* (the
+//!   new hire assigned before resources.yaml caught up), a broken link
+//!   stays on its item, and the evaluator matches both — so those sets
+//!   are widened by the values items actually hold before the clause is
+//!   judged;
 //! - the field has a **type the operand cannot be read as** — a `date`
 //!   that isn't a date, a `duration` that isn't a duration.
 //!
@@ -43,6 +49,7 @@ use std::collections::HashSet;
 
 use crate::model::resources::Resources;
 use crate::model::schema::{FieldTypeConfig, Schema};
+use crate::model::FieldValue;
 use crate::query::types::{Comparison, FieldReference, Operator, Predicate};
 use crate::resources_check::validatable_fields;
 use crate::store::Store;
@@ -238,16 +245,22 @@ enum ValueCheck {
 
 fn resolve_check(field_name: &str, context: &CheckContext) -> Option<ValueCheck> {
     // The virtual `id` has no schema entry but the tightest option set of
-    // all: the items that exist.
+    // all: the items that exist — by construction, nothing else can ever
+    // be an item's id.
     if field_name == "id" {
-        return Some(item_id_check(context));
+        return Some(ValueCheck::OptionSet {
+            expected: "an existing work item id".to_owned(),
+            members: known_item_ids(context),
+        });
     }
 
     // `resource:` is orthogonal to the field's type, so it is asked
     // first — a `string` field backed by a section has an option set
     // where a plain `string` has none.
     if let Some(entries) = context.resource_entries(field_name) {
-        let members: HashSet<String> = entries.iter().map(|entry| (*entry).to_owned()).collect();
+        let mut members: HashSet<String> =
+            entries.iter().map(|entry| (*entry).to_owned()).collect();
+        members.extend(held_values(field_name, context.store));
         return Some(ValueCheck::OptionSet {
             expected: describe_option_set(&members),
             members,
@@ -265,7 +278,17 @@ fn resolve_check(field_name: &str, context: &CheckContext) -> Option<ValueCheck>
                 members,
             }
         }
-        FieldTypeConfig::Link { .. } | FieldTypeConfig::Links { .. } => item_id_check(context),
+        // Item ids plus whatever the field actually holds: a broken
+        // link is an error elsewhere, but the value stays on the item
+        // and a clause naming it does match.
+        FieldTypeConfig::Link { .. } | FieldTypeConfig::Links { .. } => {
+            let mut members = known_item_ids(context);
+            members.extend(held_values(field_name, context.store));
+            ValueCheck::OptionSet {
+                expected: "an existing work item id".to_owned(),
+                members,
+            }
+        }
         FieldTypeConfig::Date => ValueCheck::Parses {
             expected: "a date (YYYY-MM-DD)".to_owned(),
             parses: |value| chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok(),
@@ -301,15 +324,37 @@ fn resolve_check(field_name: &str, context: &CheckContext) -> Option<ValueCheck>
     })
 }
 
-fn item_id_check(context: &CheckContext) -> ValueCheck {
-    ValueCheck::OptionSet {
-        expected: "an existing work item id".to_owned(),
-        members: context
-            .store
-            .all_items()
-            .map(|item| item.id.as_str().to_owned())
-            .collect(),
+fn known_item_ids(context: &CheckContext) -> HashSet<String> {
+    context
+        .store
+        .all_items()
+        .map(|item| item.id.as_str().to_owned())
+        .collect()
+}
+
+/// Every whole value items currently hold in `field_name` — the strings
+/// equality actually compares against. Values outside a field's declared
+/// set are legal data (an unknown resource ref warns, a broken link
+/// errors — both stay on their item and both match), so a set that
+/// ignored them would call clauses dead that match today.
+fn held_values(field_name: &str, store: &Store) -> Vec<String> {
+    let mut values = Vec::new();
+    for item in store.all_items() {
+        match item.fields.get(field_name) {
+            Some(
+                FieldValue::String(value) | FieldValue::Choice(value) | FieldValue::Color(value),
+            ) => values.push(value.clone()),
+            Some(FieldValue::Link(target)) => values.push(target.as_str().to_owned()),
+            Some(FieldValue::Multichoice(members) | FieldValue::List(members)) => {
+                values.extend(members.iter().cloned());
+            }
+            Some(FieldValue::Links(targets)) => {
+                values.extend(targets.iter().map(|target| target.as_str().to_owned()));
+            }
+            _ => {}
+        }
     }
+    values
 }
 
 // ── Message shaping ──────────────────────────────────────────────────
@@ -489,6 +534,24 @@ mod tests {
         check_predicate(&predicate, &schema, &resources(), &store)
     }
 
+    /// Check one clause against a store built from explicit items —
+    /// `(id, frontmatter)` pairs — for the cases where what items *hold*
+    /// matters, not just what the schema declares.
+    fn check_with_items(clause: &str, items: &[(&str, &str)]) -> Vec<ValueViolation> {
+        let schema = schema();
+        let dir = tempfile::tempdir().unwrap();
+        for (id, frontmatter) in items {
+            std::fs::write(
+                dir.path().join(format!("{id}.md")),
+                format!("---\n{frontmatter}---\n"),
+            )
+            .unwrap();
+        }
+        let store = Store::load(dir.path(), &schema).unwrap();
+        let predicate = parse_where(clause).expect("clause parses");
+        check_predicate(&predicate, &schema, &resources(), &store)
+    }
+
     /// Assert a clause is clean.
     fn assert_clean(clause: &str) {
         let violations = check(clause);
@@ -563,6 +626,41 @@ mod tests {
     fn links_operand_checks_against_item_ids() {
         assert_clean("depends_on=task-a");
         assert_eq!(assert_one("depends_on=task-z").field, "depends_on");
+    }
+
+    #[test]
+    fn a_resource_value_an_item_holds_is_clean() {
+        // `assignee: carol` is legal data — an unknown resource ref is a
+        // warning by design — and the evaluator matches it, so the
+        // clause is not dead and must not be reported.
+        let items = [("onboard-carol", "assignee: carol\n")];
+        let violations = check_with_items("assignee=carol", &items);
+        assert!(violations.is_empty(), "got: {violations:?}");
+
+        // A value neither declared nor held is still a typo worth
+        // naming — and the option list now includes the held value.
+        let mut violations = check_with_items("assignee=carrol", &items);
+        assert_eq!(violations.len(), 1, "got: {violations:?}");
+        assert_eq!(violations.remove(0).expected, "one of: alice, bob, carol");
+    }
+
+    #[test]
+    fn a_broken_link_an_item_holds_is_clean() {
+        // The broken reference is reported where it lives (the item);
+        // filtering for it *finds* that item, which is exactly how one
+        // hunts the breakage down.
+        let items = [("task-a", "parent: ghost\n")];
+        let violations = check_with_items("parent=ghost", &items);
+        assert!(violations.is_empty(), "got: {violations:?}");
+        assert_eq!(check_with_items("parent=phantom", &items).len(), 1);
+    }
+
+    #[test]
+    fn the_virtual_id_set_is_not_widened_by_held_values() {
+        // Nothing can *be* an id except the items that exist — a broken
+        // link target held in `parent` is still not anyone's id.
+        let items = [("task-a", "parent: ghost\n")];
+        assert_eq!(check_with_items("id=ghost", &items).len(), 1);
     }
 
     #[test]

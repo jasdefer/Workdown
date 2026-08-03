@@ -80,7 +80,7 @@ When the view renders, items are filtered by the combined predicate before any a
 
 ### Membership — `in` / `not in`
 
-`status in open,in_progress` matches any of the listed values; `status not in done,removed` matches none of them. Members are separated by bare commas, and there is no escaping — a literal comma inside one member is not representable, which is what the raw escape hatch is for.
+`status in open,in_progress` matches any of the listed values; `status not in done,removed` matches none of them. Members are separated by bare commas, and there is no escaping — a literal comma inside one member is not representable. To match a value that contains a comma, use `=`, which is always literal.
 
 `=` and `!=` are always literal, commas included: `title=bug, crash` means the title *is* `bug, crash`. Membership has its own operator precisely so that a comma never silently changes what a comparison means.
 
@@ -95,8 +95,9 @@ Two things make an operand unmatchable:
 | Field | Operand must be |
 |---|---|
 | `choice`, `multichoice` | one of the declared `values:` |
-| a `resource:`-backed `string`/`list` | an entry of that section |
-| `link`, `links`, and the virtual `id` | an existing work item id |
+| a `resource:`-backed `string`/`list` | an entry of that section, or a value some item actually holds |
+| `link`, `links` | an existing work item id, or a value some item actually holds |
+| the virtual `id` | an existing work item id |
 | `date` | a date in `YYYY-MM-DD` form |
 | `integer`, `float`, `duration` | readable as that type |
 | `boolean` | `true` or `false` |
@@ -108,6 +109,7 @@ Only the comparisons that test a whole value are checked: `=`, `!=`, and the `in
 - **`~` (contains) is never checked.** It reads as a substring test on every type, including per element of a collection, so a partial value is the point: `labels~end` legitimately matches `backend`.
 - **Regex operands are never checked** — a pattern is not a value.
 - **A field whose `resource:` section is missing or empty is skipped**, because `resources.yaml` validation already reports that cause once against `schema.yaml`; repeating it per clause would point at the wrong file.
+- **Values items actually hold are never reported**, even when they fall outside the declared set. An unknown resource reference is a warning by design (the new hire assigned before `resources.yaml` caught up), and a broken link stays on its item — filtering for either finds those items, so such a clause is not dead.
 
 A stale filter from before the `in` operator existed gets a targeted nudge: `type=milestone,epic` (once an implicit membership test, now a literal string comparison) reports *"did you mean `type in milestone,epic`?"*.
 
@@ -168,7 +170,7 @@ Every view writes a single Markdown file. Filenames are `<id>.md`, written into 
 <directory>/<id>.md
 ```
 
-Filenames are not customizable — they always derive from `id`. The directory is. `workdown render` creates the directory if it does not exist. Re-running without item changes produces identical files (CI-diff clean).
+Filenames are not customizable — they always derive from `id`. The directory is. `workdown render` creates the directory if it does not exist. Re-running without item changes produces identical files (CI-diff clean) — unless the schema derives values from `$today`, in which case the output is a function of the calendar too; pin with `--as-of <YYYY-MM-DD>` for byte-identical renders.
 
 The live server does not consume these files — it re-runs the renderers against the current working tree. Static files are for committed, shareable snapshots (READMEs, GitHub previews, CI artifacts).
 

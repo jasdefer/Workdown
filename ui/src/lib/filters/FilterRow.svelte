@@ -38,10 +38,13 @@
 		withCurrentOperator(fieldType ? schemaStore.operatorsFor(fieldType) : [], row.operator)
 	);
 	const showValue = $derived(row.operator !== '' && !isPresenceOperator(row.operator));
-	// `in` / `not in` are offered for exactly the types with a known value set
-	// to pick members from, so the multi picker covers every case they appear in.
+	// `in` / `not in` are offered for the types with a known value set to
+	// pick members from — but a hand-written clause carries them on any
+	// field, so the widgets below pick by field type and fall back to
+	// free-text members rather than guessing by elimination.
 	const isMulti = $derived(isMultiValueOperator(row.operator));
 	const picksFromChoices = $derived(fieldType === 'choice' || fieldType === 'multichoice');
+	const isRelation = $derived(fieldType === 'link' || fieldType === 'links');
 	// A `resource:`-backed field filters by the stored id, so the picker
 	// offers labels and sets ids — the same join the item editor makes.
 	// Empty when the section is missing or has no entries, which falls the
@@ -49,6 +52,28 @@
 	const resourceOptions = $derived(schemaStore.resourceOptions(fieldDef));
 	const selectedValues = $derived(row.values);
 	const scalarValue = $derived(row.value ?? '');
+
+	// The closed option set the row's widget offers, or null when the
+	// field is free-form and any value is at home in a text input.
+	const offeredValues = $derived.by<string[] | null>(() => {
+		if (resourceOptions.length > 0) return resourceOptions.map((option) => option.id);
+		if (picksFromChoices) return fieldDef?.values ?? [];
+		if (isRelation) return schemaStore.items;
+		return null;
+	});
+
+	// Values present in the row that the widget's options don't list — a
+	// departed person, a broken link, a hand-edited clause. A plain
+	// select cannot show them: they render invisible, and the next edit
+	// silently drops them from the filter. Same treatment as the item
+	// editor: they join the options, marked, until someone picks
+	// something else.
+	const strayValues = $derived.by(() => {
+		if (offeredValues === null) return [];
+		const known = new Set(offeredValues);
+		const present = isMulti ? selectedValues : scalarValue === '' ? [] : [scalarValue];
+		return present.filter((entry) => !known.has(entry));
+	});
 
 	function withCurrentOperator(offered: Operator[], current: Operator | ''): Operator[] {
 		if (current === '' || offered.includes(current)) return offered;
@@ -99,6 +124,20 @@
 	function onMultiSelectChange(event: Event & { currentTarget: HTMLSelectElement }): void {
 		setValues(Array.from(event.currentTarget.selectedOptions, (option) => option.value));
 	}
+
+	function updateMember(memberIndex: number, memberValue: string): void {
+		const values = [...selectedValues];
+		values[memberIndex] = memberValue;
+		setValues(values);
+	}
+
+	function removeMember(memberIndex: number): void {
+		setValues(selectedValues.filter((_, index) => index !== memberIndex));
+	}
+
+	function addMember(): void {
+		setValues([...selectedValues, '']);
+	}
 </script>
 
 <div class="row">
@@ -144,6 +183,18 @@
 							{option}
 						</label>
 					{/each}
+					{#each strayValues as stray (stray)}
+						<label class="check">
+							<input
+								type="checkbox"
+								checked
+								onchange={(event) => {
+									toggleValue(stray, event.currentTarget.checked);
+								}}
+							/>
+							{stray} (unknown)
+						</label>
+					{/each}
 				</div>
 			{:else if isMulti && resourceOptions.length > 0}
 				<!-- `is any of` over a resource: pick several entries by label. -->
@@ -153,14 +204,47 @@
 							>{option.label}</option
 						>
 					{/each}
+					{#each strayValues as stray (stray)}
+						<option value={stray} selected>{stray} (unknown)</option>
+					{/each}
 				</select>
-			{:else if isMulti}
-				<!-- Link-like fields: too many ids for checkboxes, so a list box. -->
+			{:else if isMulti && isRelation}
+				<!-- Relations: too many ids for checkboxes, so a list box. -->
 				<select multiple size="5" onchange={onMultiSelectChange}>
 					{#each schemaStore.items as id (id)}
 						<option value={id} selected={selectedValues.includes(id)}>{prettifyId(id)}</option>
 					{/each}
+					{#each strayValues as stray (stray)}
+						<option value={stray} selected>{stray} (unknown)</option>
+					{/each}
 				</select>
+			{:else if isMulti}
+				<!-- Free-form members — `in` on a string or list field has no
+				     option set to pick from, so members are typed, one input
+				     each. Members stay members; the comma-join (and its
+				     comma rejection) lives in the Rust serializer. -->
+				<div class="members">
+					{#each selectedValues as member, memberIndex (memberIndex)}
+						<div class="member">
+							<input
+								type="text"
+								value={member}
+								onchange={(event) => {
+									updateMember(memberIndex, event.currentTarget.value);
+								}}
+							/>
+							<button
+								type="button"
+								class="remove"
+								aria-label="Remove value"
+								onclick={() => {
+									removeMember(memberIndex);
+								}}>×</button
+							>
+						</div>
+					{/each}
+					<button type="button" class="add" onclick={addMember}>+ value</button>
+				</div>
 			{:else if resourceOptions.length > 0}
 				<select
 					value={scalarValue}
@@ -171,6 +255,9 @@
 					<option value="" disabled>Value…</option>
 					{#each resourceOptions as option (option.id)}
 						<option value={option.id}>{option.label}</option>
+					{/each}
+					{#each strayValues as stray (stray)}
+						<option value={stray}>{stray} (unknown)</option>
 					{/each}
 				</select>
 			{:else if fieldType === 'choice' || fieldType === 'multichoice'}
@@ -183,6 +270,9 @@
 					<option value="" disabled>Value…</option>
 					{#each fieldDef?.values ?? [] as option (option)}
 						<option value={option}>{option}</option>
+					{/each}
+					{#each strayValues as stray (stray)}
+						<option value={stray}>{stray} (unknown)</option>
 					{/each}
 				</select>
 			{:else if fieldType === 'boolean'}
@@ -223,6 +313,9 @@
 					<option value="" disabled>Value…</option>
 					{#each schemaStore.items as id (id)}
 						<option value={id}>{prettifyId(id)}</option>
+					{/each}
+					{#each strayValues as stray (stray)}
+						<option value={stray}>{stray} (unknown)</option>
 					{/each}
 				</select>
 			{:else}
@@ -292,6 +385,33 @@
 		align-items: center;
 		gap: 0.25rem;
 		font-size: var(--text-sm);
+	}
+
+	.members {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+	}
+
+	.member {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.member input {
+		flex: 1;
+	}
+
+	.add {
+		align-self: flex-start;
+		background: none;
+		border: 1px dashed var(--color-border);
+		border-radius: var(--radius-sm);
+		color: var(--color-fg-muted);
+		cursor: pointer;
+		font-size: var(--text-sm);
+		padding: 0.125rem var(--space-2);
 	}
 
 	.remove {

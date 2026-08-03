@@ -412,6 +412,99 @@ fn when_branch_with_absent_input_falls_through() {
 }
 
 #[test]
+fn required_when_aggregate_non_leaf_gets_the_classic_message() {
+    // The conditional pass is leaves-only when the field also
+    // aggregates, so a parent's branches never ran — "no 'when:' branch
+    // matched" would be false there. The parent gets the classic
+    // missing-required message; the child, whose branches genuinely all
+    // failed, keeps the specific one.
+    let schema_yaml = format!(
+        "{COMMON_FIELDS}  review_date:
+    type: date
+    required: true
+    when:
+      - if: status == \"done\"
+        then: 2026-01-01
+    aggregate:
+      function: max
+"
+    );
+    let (_directory, root) = setup_project(
+        &schema_yaml,
+        "",
+        &[
+            ("epic.md", "---\nstatus: open\n---\n"),
+            ("task.md", "---\nstatus: open\nparent: epic\n---\n"),
+        ],
+    );
+
+    let project = load(&root);
+
+    let message_for = |file_name: &str| -> String {
+        let matches: Vec<_> = project
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                diagnostic
+                    .source_path()
+                    .is_some_and(|path| path.ends_with(file_name))
+            })
+            .collect();
+        assert_eq!(matches.len(), 1, "{file_name}: {:?}", project.diagnostics);
+        matches[0].message.clone()
+    };
+
+    assert!(
+        message_for("epic.md").contains("required field 'review_date' is missing"),
+        "the non-leaf must not be told its branches failed"
+    );
+    assert!(message_for("task.md").contains("no 'when:' branch matched"));
+}
+
+#[test]
+fn when_branch_with_failing_condition_warns_and_falls_through() {
+    // A condition that fails *at runtime* on this item's actual values
+    // (here: division by a zero duration) must warn, skip the branch,
+    // and keep going — later branches and the default still apply.
+    let schema_yaml = format!(
+        "{COMMON_FIELDS}  spent:
+    type: duration
+  estimate:
+    type: duration
+  flag:
+    type: color
+    when:
+      - if: spent / estimate > 0.5
+        then: red
+      - if: spent > estimate
+        then: blue
+    default: green
+"
+    );
+    let (_directory, root) = setup_project(
+        &schema_yaml,
+        "",
+        &[("task.md", "---\nspent: 2h\nestimate: 0s\n---\n")],
+    );
+
+    let project = load(&root);
+
+    let failures: Vec<_> = project
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.message.contains("branch 1 condition failed"))
+        .collect();
+    assert_eq!(failures.len(), 1, "got: {:?}", project.diagnostics);
+
+    // Branch 2 still matched: the failure cost one branch, not the field.
+    let task = project.store.get("task").expect("task must load");
+    assert_eq!(
+        task.fields.get("flag"),
+        Some(&FieldValue::Color("blue".to_owned()))
+    );
+}
+
+#[test]
 fn a_hand_written_value_beats_every_branch() {
     let (_directory, root) = setup_project(
         &urgency_color_schema(),

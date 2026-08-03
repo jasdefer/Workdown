@@ -215,7 +215,10 @@ fn validate_fields(
 }
 
 /// `when` and `compute` are two answers to "what is this field's value"
-/// — never both.
+/// — never both. And `when` cannot derive a relation: reverse links and
+/// broken-link detection are built from hand-written values before the
+/// derive passes run, so a derived link would exist for cycle detection
+/// but be invisible to tree views, rollups, and reference checks.
 fn validate_when_compatibility(
     name: &str,
     field: &RawFieldDefinition,
@@ -225,6 +228,16 @@ fn validate_when_compatibility(
         errors.push(field_error(
             name,
             "'when' and 'compute' cannot be combined — both derive the field's value",
+        ));
+    }
+
+    if field.when.is_some() && matches!(field.field_type, FieldType::Link | FieldType::Links) {
+        errors.push(field_error(
+            name,
+            format!(
+                "'when' is not supported on {} fields — a derived relation would be invisible to reverse links and reference checks",
+                field.field_type
+            ),
         ));
     }
 }
@@ -2208,6 +2221,25 @@ fields:
         then: 5
 ";
         assert_validation_error_contains(yaml, "'when' and 'compute' cannot be combined");
+    }
+
+    #[test]
+    fn when_is_rejected_on_relation_fields() {
+        // Reverse links and broken-link detection are built before the
+        // derive passes, so a when-derived link would be a phantom edge:
+        // seen by cycle detection, invisible everywhere else.
+        let yaml = "\
+fields:
+  status:
+    type: choice
+    values: [open, done]
+  parent:
+    type: link
+    when:
+      - if: status == \"done\"
+        then: archive-epic
+";
+        assert_validation_error_contains(yaml, "'when' is not supported on link fields");
     }
 
     #[test]

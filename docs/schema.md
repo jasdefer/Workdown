@@ -78,6 +78,7 @@ fields:
 | Option | Description |
 |--------|-------------|
 | `function` | The aggregation function. See table below. |
+| `over` | The `link` field whose hierarchy the rollup climbs. Default: `parent`. |
 | `error_on_missing` | Whether to report an error if a leaf item is missing this field. Default: `false`. |
 
 Available aggregate functions by type:
@@ -156,7 +157,7 @@ fields:
     compute: end_date - $today
 ```
 
-An expression using `$today` makes derived values — and any rendered views built from them — depend on the day the command runs. Every evaluating command (`validate`, `query`, `render`, `serve`) takes `--as-of <YYYY-MM-DD>` to pin the date, so a given commit produces identical output on any day; `workdown render` prints a notice whenever the schema depends on the clock. Note the distinction from `default: $today`, which resolves once at `workdown add` time and writes a literal date into the file.
+An expression using `$today` makes derived values — and any rendered views built from them — depend on the day the command runs. Every evaluating command (`validate`, `query`, `render`, `serve`) takes `--as-of <YYYY-MM-DD>` to pin the date, so a given commit produces identical output on any day; `workdown render` prints a notice when a computed field reads the clock. Note the distinction from `default: $today`, which resolves once at `workdown add` time and writes a literal date into the file.
 
 Computed fields may reference other computed fields (evaluation runs in dependency order), and compose with aggregation:
 
@@ -186,9 +187,11 @@ fields:
 - **`then`** is a literal of the field's declared type, validated at load.
 - **A branch whose condition cannot be answered** — a referenced field is absent on the item — does not match, and evaluation falls through to the next branch, mirroring how rules skip comparisons on absent operands.
 - **`default`** next to `when` is the *evaluated* fallback when no branch matches. Unlike an ordinary add-time default it is never written into any file (a stamped value would permanently shadow every branch), and it must be a plain literal, not a generator.
-- With no match and no `default` the field stays unset — on a `required` field that is a per-item diagnostic naming the unmatched branches and any absent condition inputs.
+- With no match and no `default` the field stays unset — on a `required` field that is a per-item diagnostic reporting that no branch matched, naming any condition inputs absent on the item.
 
 Conditional fields compose like computed ones: `when` and `compute` are mutually exclusive on one field, but `when` + `aggregate` means conditions fill leaf items and the rollup fills ancestors. Conditions may read computed fields and vice versa — all derived fields share one dependency graph, evaluated in reference order, with cycles rejected at load. Values are derived at load, visible everywhere, and a hand-written frontmatter value always wins.
+
+`when` is not supported on `link` and `links` fields: relations (reverse links, tree structure, broken-reference checks) are built from hand-written values, so a derived link would be a phantom edge. Declaring one is a schema error.
 
 ---
 

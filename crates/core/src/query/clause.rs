@@ -44,8 +44,11 @@ pub struct Condition {
     pub value: Option<String>,
     /// The operand list for `in` / `not in`, empty for every other operator.
     /// Kept separate from [`Condition::value`] so the comma-join never enters
-    /// the data model: members travel as members, and a literal comma inside
-    /// one is simply a member containing a comma.
+    /// the data model: members travel as members. The clause *string* the
+    /// list serializes into separates members with commas and has no
+    /// escaping, so a member containing a comma is rejected at
+    /// serialization ([`ConditionError::CommaInListMember`]) — a scalar
+    /// `=` comparison is the way to match a value with a literal comma.
     #[serde(default)]
     pub values: Vec<String>,
 }
@@ -66,6 +69,15 @@ pub enum ConditionError {
 
     #[error("operator '{operator}' requires at least one non-empty value")]
     EmptyValueList { operator: &'static str },
+
+    /// The clause text separates list members with commas and has no
+    /// escaping, so a comma-bearing member would silently re-parse as
+    /// two members. Rejected here instead; a scalar `=` comparison
+    /// matches a value with a literal comma.
+    #[error(
+        "operator '{operator}': a value list member cannot contain a comma — use '=' to match a value with a literal comma"
+    )]
+    CommaInListMember { operator: &'static str },
 }
 
 /// One clause of a view's filter in the UI's vocabulary: a guided
@@ -107,6 +119,11 @@ pub fn serialize_condition(condition: &Condition) -> Result<String, ConditionErr
             || condition.values.iter().any(|value| value.trim().is_empty())
         {
             return Err(ConditionError::EmptyValueList {
+                operator: operator.token(),
+            });
+        }
+        if condition.values.iter().any(|value| value.contains(',')) {
+            return Err(ConditionError::CommaInListMember {
                 operator: operator.token(),
             });
         }
@@ -396,6 +413,17 @@ mod tests {
                 Err(ConditionError::EmptyValueList { operator: "not in" })
             );
         }
+    }
+
+    /// A comma inside an `in` member would re-parse as two members —
+    /// the clause text has no escaping, so serialization refuses it.
+    #[test]
+    fn serialize_rejects_a_comma_inside_a_list_member() {
+        let condition = membership("status", Operator::In, &["needs review, blocked", "done"]);
+        assert_eq!(
+            serialize_condition(&condition),
+            Err(ConditionError::CommaInListMember { operator: "in" })
+        );
     }
 
     // ── Decomposition: simple comparisons → guided ──────────────────

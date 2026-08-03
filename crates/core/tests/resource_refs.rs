@@ -291,6 +291,40 @@ fn absent_resources_file_warns_rather_than_erroring() {
 }
 
 #[test]
+fn malformed_resources_file_is_one_read_error_with_downgraded_sections() {
+    // A resources.yaml that fails to parse must not cascade: one Error
+    // against the file itself, and the schema's sections downgrade to
+    // the same "nothing to validate against" warnings an absent file
+    // gets — never `ResourceSectionUnknown` errors (the section may
+    // well exist in the broken file), never per-item noise.
+    let project = setup_project(
+        SCHEMA_WITH_ASSIGNEE,
+        Some("people: [\n"),
+        &[("login.md", "---\nassignee: carol\n---\n")],
+    );
+    let diagnostics = run_validate(&project);
+
+    assert!(unknown_resource_refs(&diagnostics).is_empty());
+
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity == Severity::Error)
+        .collect();
+    let (_tmp, _config, root) = &project;
+    assert_eq!(errors.len(), 1, "got: {diagnostics:?}");
+    assert_eq!(
+        errors[0].source_path(),
+        Some(root.join(".workdown/resources.yaml").as_path())
+    );
+
+    let kinds = config_kinds(&diagnostics);
+    assert_eq!(kinds.len(), 2, "one per referencing field: {kinds:?}");
+    assert!(kinds
+        .iter()
+        .all(|kind| matches!(kind, ConfigDiagnosticKind::ResourceSectionEmpty { .. })));
+}
+
+#[test]
 fn misspelled_section_errors_against_the_schema() {
     let schema = "\
 fields:

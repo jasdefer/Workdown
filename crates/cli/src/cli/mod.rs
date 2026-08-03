@@ -222,6 +222,10 @@ pub enum Command {
     ///
     /// Refuses to overwrite a pre-commit hook it did not install;
     /// re-running is safe and switches modes in place.
+    ///
+    /// Known limitation: the hook renders from the working tree, not
+    /// the index, so a partially staged work item (`git add -p`)
+    /// yields views that also reflect its unstaged hunks.
     InstallHooks {
         /// Fail the commit on stale views instead of staging the
         /// re-rendered files automatically

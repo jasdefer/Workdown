@@ -585,6 +585,58 @@ async fn preview_with_malformed_filter_returns_422() {
     assert!(envelope["error"].is_string());
 }
 
+#[tokio::test]
+async fn preview_with_arity_mismatched_condition_returns_422() {
+    // `in` carries its members in `values`; a scalar `value` is a
+    // malformed request the guided builder cannot produce, so it is
+    // rejected outright rather than previewed or saved-with-warning.
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(
+        &root,
+        "views:\n  - id: t\n    type: table\n    display:\n      fields: [id, status]\n",
+    );
+
+    let uri = format!(
+        "/api/views/t{}",
+        filter_param(json!([
+            { "kind": "comparison", "field": "status", "operator": "in", "value": "open" }
+        ]))
+    );
+    let response = get(state, &uri).await;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+    let envelope = body_json(response).await;
+    assert!(envelope["error"].is_string());
+}
+
+#[tokio::test]
+async fn patch_filter_with_comma_member_returns_422_and_writes_nothing() {
+    // A comma inside an `in` member cannot be represented in the clause
+    // text (members are comma-separated, with no escaping): the
+    // serializer refuses it, the endpoint maps that to a hard 422, and
+    // the file stays exactly as it was.
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    let original = "views:\n  - id: board\n    type: board\n    field: status\n";
+    write_views(&root, original);
+
+    let response = patch(
+        state,
+        "/api/views/board",
+        json!({ "clauses": [
+            { "kind": "comparison", "field": "status", "operator": "in",
+              "values": ["needs review, blocked", "done"] }
+        ] }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+    let envelope = body_json(response).await;
+    assert!(envelope["error"].is_string());
+    assert_eq!(read_views(&root), original, "file must be untouched");
+}
+
 // ── Seed (GET /api/views/:id/filter) ─────────────────────────────────
 
 #[tokio::test]

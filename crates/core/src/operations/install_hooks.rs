@@ -17,6 +17,13 @@
 //!   and mode switches stay idempotent.
 //! - A missing `workdown` binary fails the commit loudly at hook
 //!   runtime, naming both fixes.
+//!
+//! Known limitation, inherent to auto-fixing pre-commit hooks: the
+//! render reads the *working tree*, not the index. A partially staged
+//! work item (`git add -p`) therefore produces views that also reflect
+//! its unstaged hunks, and those views are what gets staged (Stage) or
+//! compared (Check). Commit work items fully staged when the rendered
+//! views must match the commit exactly.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -34,7 +41,8 @@ const HOOK_FILENAME: &str = "pre-commit";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HookMode {
     /// Re-render and `git add` the output directory, so the fresh views
-    /// land in the commit being made.
+    /// land in the commit being made. Renders from the working tree —
+    /// see the module doc's known limitation on partial staging.
     Stage,
     /// Re-render, then fail the commit and let the user review and
     /// stage the changes themselves.
@@ -115,7 +123,7 @@ pub fn hook_script(template: &HookTemplate) -> String {
     ));
     script.push_str(&format!(
         "# Keeps the rendered views in {} in sync with the work items.\n",
-        sh_quote(&template.output_dir)
+        comment_safe(&template.output_dir)
     ));
     script.push_str(&format!("# {mode_line}\n\n"));
 
@@ -155,13 +163,14 @@ pub fn hook_script(template: &HookTemplate) -> String {
         }
         HookMode::Check => {
             script.push_str(&format!("if ! git diff --quiet -- {output}; then\n"));
+            // The path lands inside a double-quoted message: close the
+            // quotes around it so the single-quoted form from
+            // `sh_quote` applies — sh concatenates adjacent strings.
             script.push_str(&format!(
-                "    echo \"pre-commit: rendered views in {} were stale; they have been re-rendered.\" >&2\n",
-                template.output_dir
+                "    echo \"pre-commit: rendered views in \"{output}\" were stale; they have been re-rendered.\" >&2\n"
             ));
             script.push_str(&format!(
-                "    echo \"review the changes, run 'git add {}', and commit again.\" >&2\n",
-                template.output_dir
+                "    echo \"review the changes, run 'git add \"{output}\"', and commit again.\" >&2\n"
             ));
             script.push_str("    exit 1\nfi\n");
         }
@@ -240,6 +249,12 @@ fn sh_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
+/// Make a string safe for a `#` comment line: quoting cannot help
+/// there, only keeping the value on one line can.
+fn comment_safe(value: &str) -> String {
+    value.replace(['\n', '\r'], " ")
+}
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -266,6 +281,31 @@ mod tests {
         assert!(script.contains(HOOK_MARKER));
         assert!(script.contains("workdown render || exit 1\ngit add -- 'views'"));
         assert!(!script.contains("commit again"));
+    }
+
+    #[test]
+    fn check_script_quotes_output_dir_in_messages() {
+        // A hostile output directory must never reach sh unquoted —
+        // neither as a syntax error nor as a command substitution.
+        let mut hostile = template(HookMode::Check);
+        hostile.output_dir = "views\"$(boom)".to_owned();
+        let script = hook_script(&hostile);
+        assert!(!script.contains("in views\"$(boom) were stale"));
+        assert!(!script.contains("git add views\"$(boom)"));
+        assert!(script.contains("'views\"$(boom)'"));
+    }
+
+    #[test]
+    fn comment_line_survives_a_newline_in_the_output_dir() {
+        let mut hostile = template(HookMode::Check);
+        hostile.output_dir = "views\nrm -rf /".to_owned();
+        let script = hook_script(&hostile);
+        let comment_line = script
+            .lines()
+            .find(|line| line.contains("Keeps the rendered views"))
+            .expect("comment line present");
+        assert!(comment_line.starts_with('#'));
+        assert!(comment_line.contains("views rm -rf /"));
     }
 
     #[test]

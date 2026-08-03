@@ -21,8 +21,8 @@ statement about "now" inexpressible.
   algebra; no other grammar change.
 - The date is an **explicit input**, resolved exactly once per load at
   the top of project loading and threaded down — never read ambiently
-  inside evaluation. Every consumer of one load (computed fields today,
-  rules when they gain date references) sees the same value.
+  inside evaluation. Every consumer of one load (computed fields,
+  `when:` conditions, date-referencing rules) sees the same value.
 - Every evaluating command (`validate`, `query`, `render`, `serve`)
   accepts `--as-of <DATE>` to pin it. Unpinned, it is the current local
   date. A pinned run of a given commit is byte-reproducible on any day.

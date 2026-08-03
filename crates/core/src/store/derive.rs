@@ -113,7 +113,13 @@ pub(crate) fn run(
         }
     }
 
-    required_check(items, schema, disabled_compute_fields, &mut diagnostics);
+    required_check(
+        items,
+        reverse_links,
+        schema,
+        disabled_compute_fields,
+        &mut diagnostics,
+    );
     diagnostics
 }
 
@@ -121,6 +127,7 @@ pub(crate) fn run(
 /// the derive passes may have filled them in).
 fn required_check(
     items: &HashMap<WorkItemId, WorkItem>,
+    reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
     schema: &Schema,
     disabled_compute_fields: &HashSet<String>,
     diagnostics: &mut Vec<Diagnostic>,
@@ -142,10 +149,24 @@ fn required_check(
             // Name the actual cause instead of just the blank output: a
             // computed field's absent inputs, or a conditional field's
             // unmatched branches. Falls back to the classic message when
-            // there is no cause to name (a non-leaf of a derive+aggregate
-            // field with no children), and when the schema-level check
-            // disabled the config — its diagnostic carries the cause.
-            let kind = if disabled {
+            // there is no per-input or per-branch cause to name — the
+            // same-item pass never ran here (a non-leaf of a
+            // derive+aggregate field, where the rollup found nothing to
+            // aggregate), a computed field's inputs are all present, or
+            // the schema-level check disabled the config and its
+            // diagnostic carries the cause.
+            let pass_skipped_this_item = field_definition.is_derived()
+                && field_definition
+                    .aggregate
+                    .as_ref()
+                    .is_some_and(|aggregate| {
+                        let over = aggregate
+                            .over
+                            .as_deref()
+                            .unwrap_or(rollup::DEFAULT_OVER_FIELD);
+                        !compute::is_leaf(reverse_links, item_id, over)
+                    });
+            let kind = if disabled || pass_skipped_this_item {
                 ItemDiagnosticKind::MissingRequired {
                     field: field_name.clone(),
                 }
