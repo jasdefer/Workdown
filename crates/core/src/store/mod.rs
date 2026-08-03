@@ -8,10 +8,12 @@
 //! collected as [`Diagnostic`]s — the store loads as much as it can and
 //! reports all findings.
 
-mod coerce;
+pub(crate) mod coerce;
 mod compute;
+mod conditional;
 mod cycles;
 mod derive;
+mod resource_refs;
 mod rollup;
 
 use std::collections::HashMap;
@@ -61,11 +63,32 @@ impl Store {
 
     /// Scan `items_dir` for `.md` files and load them into the store,
     /// resolving `$constants.<name>` references in compute expressions
-    /// against the given resources.
+    /// against the given resources. `$today` resolves to the current
+    /// local date — callers with an `--as-of` override use
+    /// [`Store::load_with_resources_as_of`] instead.
     pub fn load_with_resources(
         items_dir: &Path,
         schema: &Schema,
         resources: &Resources,
+    ) -> Result<Store, std::io::Error> {
+        Self::load_with_resources_as_of(
+            items_dir,
+            schema,
+            resources,
+            crate::generators::current_local_date(),
+        )
+    }
+
+    /// Scan `items_dir` for `.md` files and load them into the store,
+    /// resolving `$constants.<name>` references against the given
+    /// resources and `$today` to `evaluation_date`. The date is an
+    /// explicit input so a pinned run is reproducible (see ADR-010);
+    /// this function never reads the clock.
+    pub fn load_with_resources_as_of(
+        items_dir: &Path,
+        schema: &Schema,
+        resources: &Resources,
+        evaluation_date: chrono::NaiveDate,
     ) -> Result<Store, std::io::Error> {
         let mut diagnostics = Vec::new();
 
@@ -171,8 +194,14 @@ impl Store {
             &reverse_links,
             schema,
             &resources.constants,
+            evaluation_date,
             &disabled_compute_fields,
         ));
+
+        // 6. Check `resource:`-backed values against `resources.yaml`.
+        // After the derive passes so a stamped default or a `when:`
+        // result is held to the same standard as a hand-written value.
+        diagnostics.extend(resource_refs::check(&items, schema, resources));
 
         Ok(Store {
             items,

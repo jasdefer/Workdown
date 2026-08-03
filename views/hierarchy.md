@@ -2,9 +2,17 @@
 
 Hierarchical outline following `parent` upward to roots.
 
+- [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md) — type: issue · status: to_do
+- [Mapped fields — derive a value by lookup table](../workdown-items/field-value-map.md) — type: issue · status: removed
+- [Miscellaneous improvements](../workdown-items/misc-work.md) — type: milestone · status: to_do
+  - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md) — type: issue · status: to_do
+  - [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md) — type: bug · status: to_do
+  - [A view over tags](../workdown-items/tags-view.md) — type: issue · status: to_do
+  - [Move value coercion out of the store to break the parser↔store cycle](../workdown-items/value-coercion-layering.md) — type: issue · status: to_do
+  - [Collapse the metric-row duplicates of the generic view checks](../workdown-items/views-check-metric-row-dedup.md) — type: issue · status: to_do
 - [Multi-project support](../workdown-items/multi-project-support.md) — type: epic · status: to_do
   - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — type: issue · status: to_do
-- [Phase 04: Visualization](../workdown-items/phase-04-visualization.md) — type: epic · status: in_progress
+- [Phase 04: Visualization](../workdown-items/phase-04-visualization.md) — type: epic · status: done
   - [Code-quality cleanup](../workdown-items/code-quality.md) — type: milestone · status: done
     - [Relocate cross-cutting helpers out of feature modules](../workdown-items/cross-cutting-helpers.md) — type: issue · status: done
     - [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md) — type: issue · status: done
@@ -28,12 +36,21 @@ Hierarchical outline following `parent` upward to roots.
     - [workdown set — replace a field value](../workdown-items/cli-set-command.md) — type: issue · status: done
     - [workdown set — type-aware modes (append, remove, delta)](../workdown-items/cli-set-modes.md) — type: issue · status: done
     - [workdown unset — clear a field](../workdown-items/cli-unset-command.md) — type: issue · status: done
-  - [Polish & dogfood](../workdown-items/polish.md) — type: milestone · status: to_do
-    - [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md) — type: issue · status: to_do
-    - [Validate resource references and render resource pickers](../workdown-items/resource-option-lists.md) — type: issue · status: to_do
-    - [Rules can't reference the current date](../workdown-items/rules-current-date-reference.md) — type: issue · status: to_do
-    - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md) — type: issue · status: to_do
-    - [Reject the virtual `id` in structural slots that read item fields](../workdown-items/virtual-id-in-structural-slots.md) — type: issue · status: to_do
+  - [Polish & dogfood](../workdown-items/polish.md) — type: milestone · status: done
+    - [`when:` — derive a field value by first matching condition](../workdown-items/conditional-field-value.md) — type: issue · status: done
+    - [Resolve the current date at evaluation time, reproducibly](../workdown-items/evaluation-time-now.md) — type: issue · status: done
+    - [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md) — type: issue · status: done
+    - [Comparisons, equality and booleans in the expression grammar](../workdown-items/expression-predicates.md) — type: issue · status: done
+    - [Reusable GitHub Action to keep rendered views in sync](../workdown-items/github-render-action.md) — type: issue · status: removed
+    - [Optional --install-hooks for pre-commit render](../workdown-items/init-install-hooks.md) — type: issue · status: done
+    - [README: document the visualization workflow](../workdown-items/readme-visualization-update.md) — type: issue · status: done
+    - [Show a resource entry's label where views display its id](../workdown-items/resource-label-display.md) — type: issue · status: removed
+    - [Validate resource references and render resource pickers](../workdown-items/resource-option-lists.md) — type: issue · status: done
+    - [Rules can't reference the current date](../workdown-items/rules-current-date-reference.md) — type: issue · status: done
+    - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md) — type: issue · status: done
+    - [Resolve the virtual `id` in query evaluation and sorting](../workdown-items/virtual-id-in-query-eval.md) — type: issue · status: done
+    - [Reject the virtual `id` in structural slots that read item fields](../workdown-items/virtual-id-in-structural-slots.md) — type: issue · status: done
+    - [Validate where-clause operands against the field's value set](../workdown-items/where-clause-value-validation.md) — type: issue · status: done
   - [Renderers](../workdown-items/renderers.md) — type: milestone · status: done
     - [Compute schema-declared aggregate fields up the parent chain](../workdown-items/aggregate-rollup.md) — type: issue · status: done
     - [Add `duration` field type](../workdown-items/duration-field-type.md) — type: issue · status: done
@@ -69,11 +86,15 @@ Hierarchical outline following `parent` upward to roots.
     - [Create a new view from the UI](../workdown-items/view-creation.md) — type: issue · status: done
     - [Build and edit a view's where filter from the UI](../workdown-items/view-filter-editor.md) — type: issue · status: done
     - [Persist view definitions to views.yaml](../workdown-items/view-write-backend.md) — type: issue · status: done
-  - [View & item presentation](../workdown-items/view-presentation.md) — type: milestone · status: in_progress
+  - [View & item presentation](../workdown-items/view-presentation.md) — type: milestone · status: done
     - [`color:` display role — choose which color field tints a view](../workdown-items/color-display-slot.md) — type: issue · status: done
     - [Add `color` field type with background tinting](../workdown-items/color-field-type.md) — type: issue · status: done
     - [Validate `defaults.display` in config.yaml against the schema](../workdown-items/display-defaults-validation.md) — type: issue · status: done
     - [Per-view-kind display configuration (which fields show where)](../workdown-items/view-display-config.md) — type: issue · status: done
-- [Time tracking](../workdown-items/time-tracking.md) — type: milestone · status: to_do
+- [Time tracking](../workdown-items/time-tracking.md) — type: milestone · status: in_progress
+  - [Computed fields — same-item cross-field expressions](../workdown-items/computed-fields.md) — type: issue · status: done
   - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md) — type: issue · status: to_do
   - [Default generator that reads dates from git history](../workdown-items/git-derived-default-generator.md) — type: issue · status: to_do
+  - [Project-level constants in resources.yaml](../workdown-items/project-constants.md) — type: issue · status: done
+- [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md) — type: issue · status: to_do
+- [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md) — type: issue · status: to_do

@@ -22,8 +22,9 @@ use crate::model::views::{
 use crate::model::weekday::Weekday;
 
 /// Default output directory written by `workdown render` when
-/// `views.yaml` does not set a `directory:` key.
-const DEFAULT_OUTPUT_DIR: &str = "views";
+/// `views.yaml` does not set a `directory:` key. Public because the
+/// hook installer needs the same fallback when `views.yaml` is absent.
+pub const DEFAULT_OUTPUT_DIR: &str = "views";
 
 // ── Public API ────────────────────────────────────────────────────────
 
@@ -1398,7 +1399,7 @@ views:
     metrics:
       - aggregate: count
         label: Open items
-    where: ["status=to_do,in_progress"]
+    where: ["status in to_do,in_progress"]
   - id: effort-by-milestone
     type: treemap
     group: parent

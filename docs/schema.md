@@ -45,6 +45,8 @@ Field names are lowercase letters, digits, and underscores, starting with a lett
 | `description` | string | Human-readable explanation. |
 | `resource` | string | Name of a resource section in `resources.yaml`. Valid for `string` and `list` types. See [Resources](#resources). |
 | `aggregate` | object | Aggregation config for computed fields (see below). |
+| `compute` | string or object | Derive the value from an expression (see [Computed fields](#computed-fields)). |
+| `when` | array | Derive the value by first matching condition (see [Conditional fields](#conditional-fields)). Next to `when`, `default` is the evaluated fallback, never written to files. |
 | `inverse` | string | Inverse relationship name for rules dot-notation. Only valid for `link` and `links` types. See [Rules](#rules). |
 
 ### Generators
@@ -76,6 +78,7 @@ fields:
 | Option | Description |
 |--------|-------------|
 | `function` | The aggregation function. See table below. |
+| `over` | The `link` field whose hierarchy the rollup climbs. Default: `parent`. |
 | `error_on_missing` | Whether to report an error if a leaf item is missing this field. Default: `false`. |
 
 Available aggregate functions by type:
@@ -114,13 +117,13 @@ fields:
 
 | Option | Description |
 |--------|-------------|
-| `expression` | The expression. Field names, `$constants.<name>` references ([constants](#constants) from `resources.yaml`), numeric literals, `+ - * /`, and parentheses. |
+| `expression` | The expression. Field names, `$constants.<name>` references ([constants](#constants) from `resources.yaml`), `$today`, numeric literals, quoted string literals (`"done"`), `true`/`false`, arithmetic (`+ - * /`), comparisons (`== != < <= > >=`), and parentheses. |
 | `round` | For date results with a sub-day remainder: `nearest` (default), `floor` (the last fully-used day), or `ceil` (the day the work spills into). Only valid on `date` fields. |
 | `error_on_missing` | Report an error when an item is missing an expression input, instead of silently leaving the field absent. Default: `false`. |
 
 Computed values are never written to files. They are derived at load time and visible everywhere — `workdown query`, every view, rules — indistinguishable from set values. A value written in frontmatter always wins; compute fills only absent fields.
 
-`compute` is only valid on `integer`, `float`, `date`, and `duration` fields, and cannot be combined with `default`. Expressions are type-checked at load time against a closed algebra:
+`compute` is only valid on `integer`, `float`, `date`, `duration`, and `boolean` fields, and cannot be combined with `default`. Expressions are type-checked at load time against a closed algebra:
 
 | Expression | Result type |
 |-----------|-------------|
@@ -131,8 +134,30 @@ Computed values are never written to files. They are derived at load time and vi
 | `duration / duration` | `float` |
 | `integer op integer` | `integer` (except `/`, which is always `float`) |
 | mixed number arithmetic | `float` |
+| `number cmp number`, `date cmp date`, `duration cmp duration` | `boolean` (`cmp` is any of `== != < <= > >=`) |
+| `text == text`, `boolean == boolean`, `color == color-or-text` | `boolean` (equality and `!=` only) |
+
+Comparisons follow the same strictness as the arithmetic: `duration < 5` is an error (5 of what — hours? days?), and ordering a `choice` or `string` is meaningless and rejected. String literals are always quoted (`status == "done"`), so a typo'd field name stays an unknown-field error instead of silently becoming text; `true` and `false` are reserved words. At most one comparison per expression — there are no `and`/`or` combinators; multi-condition logic is expressed by ordering `when:` branches (first match wins). Color equality compares resolved hex, so `tint == "red"` matches whether the field holds the palette name or its hex.
+
+```yaml
+fields:
+  is_overdue:
+    type: boolean
+    compute: end_date < $today
+```
 
 Everything else — unknown references, `date + date`, a result type that doesn't fit the declared field type, expressions referencing each other in a cycle — is reported when the project loads.
+
+`$today` is the current date as a `date`, resolved once per run (ADR-010):
+
+```yaml
+fields:
+  days_remaining:
+    type: duration
+    compute: end_date - $today
+```
+
+An expression using `$today` makes derived values — and any rendered views built from them — depend on the day the command runs. Every evaluating command (`validate`, `query`, `render`, `serve`) takes `--as-of <YYYY-MM-DD>` to pin the date, so a given commit produces identical output on any day; `workdown render` prints a notice when a computed field reads the clock. Note the distinction from `default: $today`, which resolves once at `workdown add` time and writes a literal date into the file.
 
 Computed fields may reference other computed fields (evaluation runs in dependency order), and compose with aggregation:
 
@@ -140,6 +165,33 @@ Computed fields may reference other computed fields (evaluation runs in dependen
 - A field with **both** `compute` and `aggregate` computes on *leaf* items only; the aggregate fills everything above. `end_date` on a milestone is the `max` of its children's ends — not its rolled-up `start + duration`, which would be blind to gaps between children.
 
 Per-item problems are reported without blocking the load: missing inputs (with `error_on_missing` or on a `required` computed field, naming the inputs that are absent) and runtime failures such as division by zero.
+
+### Conditional fields
+
+Where `compute` calculates a value, `when` *chooses* one: a list of branches checked top to bottom, and the first condition that holds supplies the value.
+
+```yaml
+fields:
+  urgency_color:
+    type: color
+    when:
+      - if: status == "done"
+        then: green
+      - if: end_date < $today
+        then: red
+    default: gray
+```
+
+- **First match wins.** Branch order is meaning: put the most specific condition first. There are no `and`/`or` combinators — conjunctions are expressed by bailing out on complements in earlier branches, disjunctions by two branches with the same `then`.
+- **`if`** is a boolean expression in the same grammar as `compute` (comparisons, `$today`, `$constants.<name>`, quoted string literals). Each condition must type-check as boolean; a broken one is a single diagnostic against `schema.yaml` naming the field and branch number, and disables the field — never one error per item.
+- **`then`** is a literal of the field's declared type, validated at load.
+- **A branch whose condition cannot be answered** — a referenced field is absent on the item — does not match, and evaluation falls through to the next branch, mirroring how rules skip comparisons on absent operands.
+- **`default`** next to `when` is the *evaluated* fallback when no branch matches. Unlike an ordinary add-time default it is never written into any file (a stamped value would permanently shadow every branch), and it must be a plain literal, not a generator.
+- With no match and no `default` the field stays unset — on a `required` field that is a per-item diagnostic reporting that no branch matched, naming any condition inputs absent on the item.
+
+Conditional fields compose like computed ones: `when` and `compute` are mutually exclusive on one field, but `when` + `aggregate` means conditions fill leaf items and the rollup fills ancestors. Conditions may read computed fields and vice versa — all derived fields share one dependency graph, evaluated in reference order, with cycles rejected at load. Values are derived at load, visible everywhere, and a hand-written frontmatter value always wins.
+
+`when` is not supported on `link` and `links` fields: relations (reverse links, tree structure, broken-reference checks) are built from hand-written values, so a derived link would be a phantom edge. Declaring one is a schema error.
 
 ---
 
@@ -201,6 +253,27 @@ fields:
 
 The `resource` option is valid on `string` and `list` fields. When set, the CLI validates that the field value matches an `id` from the referenced resource section. For `list` fields, every entry in the list must match.
 
+### How resource values are validated
+
+A value that isn't an entry of its section is a **warning**, not an error: the file still saves, `workdown validate` still exits zero, and the value still renders, groups and filters. `resources.yaml` is data that lags reality, and a new hire assigned before anyone edits the file shouldn't fail a CI run. The warning appears the moment you write the value:
+
+```
+$ workdown set implement-login assignee justus
+✔ implement-login: assignee: alice → justus
+! item 'implement-login', field 'assignee': 'justus' is not an entry in resource 'people'
+```
+
+Where the value came from doesn't matter — hand-written, stamped from a `default:`, or derived by `compute:`/`when:`. An unset field never warns; a missing *required* field is already its own error.
+
+Two situations switch the per-item check off, each reported once against `schema.yaml` instead of on every item:
+
+| Situation | Severity | Meaning |
+|---|---|---|
+| The section isn't declared in `resources.yaml` | error | A typo in `schema.yaml` — `resource: peple` |
+| The section is empty, or there is no `resources.yaml` | warning | The list isn't filled in yet; nothing to validate against |
+
+A field's `default:` is held to the same standard, also against `schema.yaml`: a literal default outside a populated section is an error (every item `workdown add` creates would carry an unknown value), and a generator default (`$uuid`, `$filename`, `$filename_pretty`) is an error outright — no generator can produce a resource entry.
+
 ### Use cases
 
 - **People**: assignees, reviewers, reporters — `resource: people`
@@ -209,7 +282,7 @@ The `resource` option is valid on `string` and `list` fields. When set, the CLI 
 - **Components/modules**: categorizing by codebase area — define your own
 - **Releases/milestones**: targeting versions — define your own
 
-Resources are flexible. The CLI only enforces that `id` values are unique within a resource and that fields referencing a resource use valid ids. Everything else is up to you.
+Resources are flexible. The CLI reads each entry's `id` (the value stored on items) and its optional `name` (the label pickers show); every other attribute is yours to use as documentation. The only rule it enforces is the one above — that fields referencing a resource use valid ids.
 
 ### Constants
 
@@ -310,17 +383,32 @@ The quantifiers (`all`, `any`, `none`) are only valid when the field reference t
 | `forbidden` | boolean | `true`: field must not be set |
 | `values` | array | Field must be one of these values |
 | `not` | value or array | Field must not equal this value (or any in the array) |
-| `eq_field` | field name | Field must equal the referenced field's value |
-| `lt_field` | field name | Field must be less than the referenced field's value |
-| `lte_field` | field name | Field must be less than or equal to the referenced field's value |
-| `gt_field` | field name | Field must be greater than the referenced field's value |
-| `gte_field` | field name | Field must be greater than or equal to the referenced field's value |
+| `eq_field` | field name or `$today` | Field must equal the referenced field's value |
+| `lt_field` | field name or `$today` | Field must be less than the referenced field's value |
+| `lte_field` | field name or `$today` | Field must be less than or equal to the referenced field's value |
+| `gt_field` | field name or `$today` | Field must be greater than the referenced field's value |
+| `gte_field` | field name or `$today` | Field must be greater than or equal to the referenced field's value |
 | `min_count` | integer | Related items must number at least this many |
 | `max_count` | integer | Related items must number at most this many |
 
 When multiple operators are specified in the same object, all must be satisfied (AND).
 
 Field-to-field comparisons (`eq_field`, `lte_field`, etc.) are skipped when either field is null. A missing value is not a validation error for comparisons — use `required` to enforce presence separately.
+
+The operand may also be `$today` — the evaluation date (ADR-010), so a rule can compare a field against the present:
+
+```yaml
+- name: future-start-for-todo
+  description: A to_do item must not have a start_date in the past.
+  severity: warning
+  match:
+    status: to_do
+  require:
+    start_date:
+      gte_field: $today
+```
+
+A rule using `$today` makes validation depend on the day it runs — the same files can pass on Monday and warn on Tuesday with no edits. That is the point (the calendar moved), but for reproducible runs every evaluating command takes `--as-of <YYYY-MM-DD>`, which pins `$today` for rules and computed fields alike.
 
 ### Count (collection-wide)
 

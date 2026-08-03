@@ -44,18 +44,29 @@ pub struct AppState {
     /// connection subscribes a receiver. `Sender` stays usable with zero
     /// receivers (no browser connected), so `send` failing is not an error.
     pub events: broadcast::Sender<()>,
+    /// Pinned evaluation date from `serve --as-of`, forwarded to every
+    /// per-request `load_project` call. `None` (the default) means each
+    /// request evaluates `$today` at its own current local date, so a
+    /// long-running unpinned server stays current across midnight.
+    pub evaluation_date_override: Option<chrono::NaiveDate>,
 }
 
 impl AppState {
     /// Build state with a fresh live-update channel. The watcher is wired
     /// separately, against the same channel, by [`crate::watcher::start`].
-    pub fn new(project_root: PathBuf, config: Config, config_path: PathBuf) -> Self {
+    pub fn new(
+        project_root: PathBuf,
+        config: Config,
+        config_path: PathBuf,
+        evaluation_date_override: Option<chrono::NaiveDate>,
+    ) -> Self {
         let (events, _initial_receiver) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         Self {
             project_root,
             config,
             config_path,
             events,
+            evaluation_date_override,
         }
     }
 }
@@ -93,6 +104,7 @@ impl AppState {
             PathBuf::from("/tmp/workdown-test-stub"),
             config,
             PathBuf::from(".workdown/config.yaml"),
+            None,
         )
     }
 }

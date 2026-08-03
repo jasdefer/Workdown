@@ -49,7 +49,12 @@ async fn get_item(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResponse<ItemDetail> {
-    let project = match load_project(&state.config, &state.project_root, &state.config_path) {
+    let project = match load_project(
+        &state.config,
+        &state.project_root,
+        &state.config_path,
+        state.evaluation_date_override,
+    ) {
         Err(error) => return ApiResponse::rejected(vec![error.to_diagnostic()]),
         Ok(project) => project,
     };

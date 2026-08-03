@@ -67,9 +67,23 @@ fields:
       function: sum
       error_on_missing: false
 
+  # Derived by condition (first match wins) — dogfoods
+  # conditional-field-value. Evaluated against $today, so the tint is a
+  # function of the calendar; pin with `--as-of` for reproducible
+  # renders. A hand-written color on an item always wins.
   color:
     type: color
     required: false
+    when:
+      - if: status == "done"
+        then: green
+      - if: status == "removed"
+        then: gray
+      - if: status == "in_progress"
+        then: blue
+      - if: end_date < $today
+        then: red      # not done, past its end date: overdue
+    default: gray
 
   # Per-issue work estimate, independent of the calendar span carried by
   # start_date/end_date/duration. Set on leaf issues; rolls up as a total
@@ -80,6 +94,14 @@ fields:
     aggregate:
       function: sum
       error_on_missing: false
+
+  # Calendar time until the end date, evaluated against the current date
+  # ($today — pin with `--as-of` for reproducible renders). Negative once
+  # the end date has passed. Dogfoods evaluation-time-now (ADR-010).
+  days_remaining:
+    type: duration
+    required: false
+    compute: end_date - $today
 
 # ── Rules ──────────────────────────────────────────────────
 # Cross-field, cross-item, and collection-wide validation.
@@ -123,6 +145,18 @@ rules:
     require:
       start_date:
         lte_field: end_date
+
+  # A to_do item whose start date has passed without being picked up is
+  # a planning problem worth surfacing. Compares against the evaluation
+  # date ($today — pin with `--as-of` for reproducible runs, ADR-010).
+  - name: future-start-for-todo
+    description: A to_do item must not have a start_date in the past.
+    severity: warning
+    match:
+      status: to_do
+    require:
+      start_date:
+        gte_field: $today
 
   # Milestones are scheduled by hand (start/end set on the milestone
   # itself), unlike epics, which derive their span by aggregating their

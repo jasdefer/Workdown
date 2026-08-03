@@ -75,6 +75,7 @@ fn temp_project() -> (TempDir, AppState) {
         root,
         config,
         std::path::PathBuf::from(".workdown/config.yaml"),
+        None,
     );
     (directory, state)
 }

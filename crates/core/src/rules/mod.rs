@@ -17,11 +17,24 @@ use self::condition::eval_condition;
 
 // ── Public API ──────────────────────────────────────────────────────
 
+/// Evaluate all schema rules against the store, resolving `$today` to
+/// the current local date. Callers with an `--as-of` override use
+/// [`evaluate_as_of`] instead.
+pub fn evaluate(store: &Store, schema: &Schema) -> Vec<Diagnostic> {
+    evaluate_as_of(store, schema, crate::generators::current_local_date())
+}
+
 /// Evaluate all schema rules against the store. Returns diagnostics for
 /// violations (both per-item `RuleViolation` and collection-wide
-/// `CountViolation`).
-pub fn evaluate(store: &Store, schema: &Schema) -> Vec<Diagnostic> {
-    let ctx = EvalContext::new(store, schema);
+/// `CountViolation`). `evaluation_date` is what `$today` resolves to in
+/// `*_field` operators — an explicit input, never read from the clock
+/// here (see ADR-010).
+pub fn evaluate_as_of(
+    store: &Store,
+    schema: &Schema,
+    evaluation_date: chrono::NaiveDate,
+) -> Vec<Diagnostic> {
+    let ctx = EvalContext::new(store, schema, evaluation_date);
     let mut diagnostics = Vec::new();
 
     for rule in &schema.rules {
@@ -81,11 +94,18 @@ pub fn evaluate(store: &Store, schema: &Schema) -> Vec<Diagnostic> {
 pub(crate) struct EvalContext<'a> {
     pub store: &'a Store,
     pub schema: &'a Schema,
+    /// The evaluation date as a field value, so `$today` in a `*_field`
+    /// operator resolves like any date field the item could carry.
+    pub today: FieldValue,
 }
 
 impl<'a> EvalContext<'a> {
-    pub fn new(store: &'a Store, schema: &'a Schema) -> Self {
-        Self { store, schema }
+    pub fn new(store: &'a Store, schema: &'a Schema, evaluation_date: chrono::NaiveDate) -> Self {
+        Self {
+            store,
+            schema,
+            today: FieldValue::Date(evaluation_date),
+        }
     }
 }
 
@@ -245,6 +265,10 @@ mod tests {
         fields.insert(
             "priority".to_owned(),
             FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
+        );
+        fields.insert(
+            "start_date".to_owned(),
+            FieldDefinition::new(FieldTypeConfig::Date),
         );
         fields.insert(
             "parent".to_owned(),
@@ -722,5 +746,132 @@ mod tests {
             .collect();
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].severity, Severity::Warning);
+    }
+
+    // ── $today in *_field operators (ADR-010) ───────────────────
+
+    /// The motivating rule: an open item must not have a start date in
+    /// the past.
+    fn future_start_rule() -> Rule {
+        Rule {
+            name: "future-start-for-open".into(),
+            description: None,
+            severity: Severity::Warning,
+            match_conditions: {
+                let mut conditions = IndexMap::new();
+                conditions.insert(
+                    "status".into(),
+                    Condition::Equals(ConditionValue::String("open".into())),
+                );
+                conditions
+            },
+            require: {
+                let mut assertions = IndexMap::new();
+                assertions.insert(
+                    "start_date".into(),
+                    Assertion::Operator(crate::model::schema::AssertionOperator {
+                        required: None,
+                        forbidden: None,
+                        values: None,
+                        not: None,
+                        eq_field: None,
+                        lt_field: None,
+                        lte_field: None,
+                        gt_field: None,
+                        gte_field: Some("$today".into()),
+                        min_count: None,
+                        max_count: None,
+                    }),
+                );
+                assertions
+            },
+            count: None,
+        }
+    }
+
+    fn pinned_date() -> chrono::NaiveDate {
+        chrono::NaiveDate::from_ymd_opt(2026, 7, 29).unwrap()
+    }
+
+    #[test]
+    fn today_reference_flags_a_past_start_date() {
+        let schema = test_schema_with_rules(vec![future_start_rule()]);
+        let (_dir, path) = setup_items(vec![(
+            "task-a.md",
+            "---\nstatus: open\nstart_date: 2026-07-01\n---\n",
+        )]);
+        let store = Store::load(&path, &schema).unwrap();
+        let diagnostics = evaluate_as_of(&store, &schema, pinned_date());
+
+        let violations: Vec<_> = diagnostics
+            .iter()
+            .filter(|diagnostic| is_rule_violation(diagnostic))
+            .collect();
+        assert_eq!(violations.len(), 1, "got: {violations:?}");
+        assert_eq!(violations[0].severity, Severity::Warning);
+    }
+
+    #[test]
+    fn today_reference_passes_a_future_or_same_day_start_date() {
+        let schema = test_schema_with_rules(vec![future_start_rule()]);
+        let (_dir, path) = setup_items(vec![
+            (
+                "task-future.md",
+                "---\nstatus: open\nstart_date: 2026-08-15\n---\n",
+            ),
+            // gte: starting exactly today is not "in the past".
+            (
+                "task-today.md",
+                "---\nstatus: open\nstart_date: 2026-07-29\n---\n",
+            ),
+        ]);
+        let store = Store::load(&path, &schema).unwrap();
+        let diagnostics = evaluate_as_of(&store, &schema, pinned_date());
+
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| !is_rule_violation(diagnostic)),
+            "got: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn today_reference_skips_when_the_field_is_absent() {
+        // Field-to-field comparisons skip on absent operands; comparing
+        // against $today keeps that rule.
+        let schema = test_schema_with_rules(vec![future_start_rule()]);
+        let (_dir, path) = setup_items(vec![("task-a.md", "---\nstatus: open\n---\n")]);
+        let store = Store::load(&path, &schema).unwrap();
+        let diagnostics = evaluate_as_of(&store, &schema, pinned_date());
+
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| !is_rule_violation(diagnostic)),
+            "got: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn the_pinned_date_decides_the_verdict() {
+        // The same repository passes on one date and fails on another —
+        // exactly the behavior --as-of exists to control.
+        let schema = test_schema_with_rules(vec![future_start_rule()]);
+        let (_dir, path) = setup_items(vec![(
+            "task-a.md",
+            "---\nstatus: open\nstart_date: 2026-07-15\n---\n",
+        )]);
+        let store = Store::load(&path, &schema).unwrap();
+
+        let before = chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap();
+        let after = chrono::NaiveDate::from_ymd_opt(2026, 8, 1).unwrap();
+
+        assert!(evaluate_as_of(&store, &schema, before)
+            .iter()
+            .all(|diagnostic| !is_rule_violation(diagnostic)));
+        assert!(evaluate_as_of(&store, &schema, after)
+            .iter()
+            .any(is_rule_violation));
     }
 }

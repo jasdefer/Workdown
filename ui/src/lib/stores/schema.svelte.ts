@@ -13,6 +13,7 @@ import type { FieldSchema } from '$lib/api/generated/FieldSchema';
 import type { FieldType } from '$lib/api/generated/FieldType';
 import type { Operator } from '$lib/api/generated/Operator';
 import type { PaletteColor } from '$lib/api/generated/PaletteColor';
+import type { ResourceOption } from '$lib/api/generated/ResourceOption';
 import type { SchemaData } from '$lib/api/generated/SchemaData';
 
 let data = $state<SchemaData | null>(null);
@@ -56,6 +57,17 @@ export const schemaStore = {
 	/** Look up a single field's editing metadata by name. */
 	field(name: string): FieldSchema | undefined {
 		return data?.fields.find((field) => field.name === name);
+	},
+	/**
+	 * The entries a `resource:`-backed field may be set to, joined from the
+	 * field's resource name to the served lists. Empty for a field with no
+	 * resource, and for one naming a list that is missing or has no entries
+	 * — the same situations where core stops validating the value, so the
+	 * editor falls back to free text rather than offering an empty picker.
+	 */
+	resourceOptions(field: FieldSchema | undefined): ResourceOption[] {
+		if (field?.resource == null) return [];
+		return data?.resources.find((list) => list.name === field.resource)?.options ?? [];
 	},
 	/**
 	 * Operators the filter builder may offer for a field type — the set the

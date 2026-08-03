@@ -4,13 +4,15 @@ Cards grouped into columns by `status`.
 
 ## to_do
 - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md)
-- [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md)
+- [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
+- [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
 - [Default generator that reads dates from git history](../workdown-items/git-derived-default-generator.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
-- [Validate resource references and render resource pickers](../workdown-items/resource-option-lists.md)
-- [Rules can't reference the current date](../workdown-items/rules-current-date-reference.md)
-- [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md)
-- [Reject the virtual `id` in structural slots that read item fields](../workdown-items/virtual-id-in-structural-slots.md)
+- [A view over tags](../workdown-items/tags-view.md)
+- [Move value coercion out of the store to break the parser↔store cycle](../workdown-items/value-coercion-layering.md)
+- [Collapse the metric-row duplicates of the generic view checks](../workdown-items/views-check-metric-row-dedup.md)
+- [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md)
+- [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
 _(no cards)_
@@ -28,18 +30,26 @@ _(no cards)_
 - [workdown unset — clear a field](../workdown-items/cli-unset-command.md)
 - [`color:` display role — choose which color field tints a view](../workdown-items/color-display-slot.md)
 - [Add `color` field type with background tinting](../workdown-items/color-field-type.md)
+- [Computed fields — same-item cross-field expressions](../workdown-items/computed-fields.md)
+- [`when:` — derive a field value by first matching condition](../workdown-items/conditional-field-value.md)
 - [Relocate cross-cutting helpers out of feature modules](../workdown-items/cross-cutting-helpers.md)
 - [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md)
 - [Collapse parallel View* slot variants and unify their validation helpers](../workdown-items/diagnostic-variant-cleanup.md)
 - [Validate `defaults.display` in config.yaml against the schema](../workdown-items/display-defaults-validation.md)
 - [Add `duration` field type](../workdown-items/duration-field-type.md)
+- [Resolve the current date at evaluation time, reproducibly](../workdown-items/evaluation-time-now.md)
+- [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md)
+- [Comparisons, equality and booleans in the expression grammar](../workdown-items/expression-predicates.md)
 - [Store FieldValue::Date as chrono::NaiveDate](../workdown-items/field-value-native-date.md)
 - [First view end-to-end (board, read-only)](../workdown-items/first-view-end-to-end.md)
 - [Consolidate duplication and tighten types before more foundation work](../workdown-items/foundation-cleanup.md)
 - [Gantt duration input mode](../workdown-items/gantt-duration-mode.md)
 - [Gantt predecessor input mode](../workdown-items/gantt-predecessor-mode.md)
+- [Optional --install-hooks for pre-commit render](../workdown-items/init-install-hooks.md)
 - [File watcher and SSE for live updates](../workdown-items/live-updates.md)
 - [Mutations end-to-end](../workdown-items/mutations-slice.md)
+- [Project-level constants in resources.yaml](../workdown-items/project-constants.md)
+- [README: document the visualization workflow](../workdown-items/readme-visualization-update.md)
 - [Remaining read-only views](../workdown-items/remaining-read-views.md)
 - [Bar chart renderer](../workdown-items/render-bar-chart.md)
 - [Board renderer](../workdown-items/render-board.md)
@@ -56,7 +66,10 @@ _(no cards)_
 - [Tree renderer](../workdown-items/render-tree.md)
 - [Treemap renderer](../workdown-items/render-treemap.md)
 - [Workload renderer](../workdown-items/render-workload.md)
+- [Validate resource references and render resource pickers](../workdown-items/resource-option-lists.md)
+- [Rules can't reference the current date](../workdown-items/rules-current-date-reference.md)
 - [Expose schema metadata so the UI can offer valid choices](../workdown-items/schema-metadata-api.md)
+- [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md)
 - [UI foundation — conventions and scaffolding before the first view](../workdown-items/ui-foundation.md)
 - [Create a new view from the UI](../workdown-items/view-creation.md)
 - [Design ViewData and extractors](../workdown-items/view-data-intermediate.md)
@@ -69,12 +82,17 @@ _(no cards)_
 - [Add per-view `title:` slot to views.yaml](../workdown-items/views-title-slot.md)
 - [Wire views validation into workdown validate](../workdown-items/views-validate-integration.md)
 - [Design views.yaml shape](../workdown-items/views-yaml-design.md)
+- [Resolve the virtual `id` in query evaluation and sorting](../workdown-items/virtual-id-in-query-eval.md)
+- [Reject the virtual `id` in structural slots that read item fields](../workdown-items/virtual-id-in-structural-slots.md)
 - [Unify the upward chain walks and link-target reads](../workdown-items/walker-primitives.md)
 - [workdown serve skeleton with embedded UI](../workdown-items/walking-skeleton.md)
+- [Validate where-clause operands against the field's value set](../workdown-items/where-clause-value-validation.md)
 - [Split into core / cli / server workspace](../workdown-items/workspace-refactor.md)
 
 ## removed
-_(no cards)_
+- [Mapped fields — derive a value by lookup table](../workdown-items/field-value-map.md)
+- [Reusable GitHub Action to keep rendered views in sync](../workdown-items/github-render-action.md)
+- [Show a resource entry's label where views display its id](../workdown-items/resource-label-display.md)
 
 ## No status
 _(no cards)_

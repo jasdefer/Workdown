@@ -12,8 +12,10 @@ use crate::model::schema::{
     is_defined_inverse, is_relation_anchor, AggregateFunction, Assertion, ComputeConfig, Condition,
     ConditionValue, CountConstraint, DefaultValue, FieldDefinition, FieldType, FieldTypeConfig,
     Generator, NegationValue, RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema,
+    WhenBranch, WhenConfig,
 };
 use crate::model::views::COLOR_NONE_SENTINEL;
+use crate::store::coerce::coerce_value;
 
 // ── Public API ────────────────────────────────────────────────────────
 
@@ -29,12 +31,22 @@ pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
     // Validate raw field definitions (type-specific properties, defaults, aggregates, inverses).
     validate_fields(&raw.fields, &mut errors);
 
+    // `when:` stays raw until after conversion — coercing each `then:`
+    // literal needs the typed field config.
+    let raw_when_configs: Vec<(String, serde_yaml::Value)> = raw
+        .fields
+        .iter()
+        .filter_map(|(name, field)| field.when.clone().map(|value| (name.clone(), value)))
+        .collect();
+
     // Convert raw fields → typed FieldDefinition with FieldTypeConfig.
-    let fields: IndexMap<String, FieldDefinition> = raw
+    let mut fields: IndexMap<String, FieldDefinition> = raw
         .fields
         .into_iter()
         .map(|(name, raw_field)| (name, convert_field(raw_field)))
         .collect();
+
+    attach_when_configs(&mut fields, raw_when_configs, &mut errors);
 
     // Validate rules against the converted fields.
     validate_raw_rules(&raw.rules, &fields, &mut errors);
@@ -197,7 +209,194 @@ fn validate_fields(
         validate_aggregate_over(name, field, fields, errors);
         validate_default_compatibility(name, field, errors);
         validate_compute_config(name, field, errors);
+        validate_when_compatibility(name, field, errors);
         validate_inverse_property(name, field, fields, &mut seen_inverses, errors);
+    }
+}
+
+/// `when` and `compute` are two answers to "what is this field's value"
+/// — never both. And `when` cannot derive a relation: reverse links and
+/// broken-link detection are built from hand-written values before the
+/// derive passes run, so a derived link would exist for cycle detection
+/// but be invisible to tree views, rollups, and reference checks.
+fn validate_when_compatibility(
+    name: &str,
+    field: &RawFieldDefinition,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    if field.when.is_some() && field.compute.is_some() {
+        errors.push(field_error(
+            name,
+            "'when' and 'compute' cannot be combined — both derive the field's value",
+        ));
+    }
+
+    if field.when.is_some() && matches!(field.field_type, FieldType::Link | FieldType::Links) {
+        errors.push(field_error(
+            name,
+            format!(
+                "'when' is not supported on {} fields — a derived relation would be invisible to reverse links and reference checks",
+                field.field_type
+            ),
+        ));
+    }
+}
+
+// ── When config attachment ────────────────────────────────────────────
+
+/// Interpret each raw `when:` value against its converted field and
+/// attach the resulting [`WhenConfig`]. Runs after conversion because
+/// coercing the `then:` literals needs the typed field config. On any
+/// problem the errors are collected and the config stays unattached —
+/// with errors present the schema fails to load anyway.
+///
+/// Also relocates `default:`: next to `when` it is the *evaluated*
+/// fallback (a stamped add-time default would permanently shadow every
+/// branch, since hand-written values win), so it moves out of
+/// [`FieldDefinition::default`] and into the config.
+fn attach_when_configs(
+    fields: &mut IndexMap<String, FieldDefinition>,
+    raw_configs: Vec<(String, serde_yaml::Value)>,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    for (field_name, raw_value) in raw_configs {
+        let Some(field_definition) = fields.get_mut(&field_name) else {
+            continue;
+        };
+        let error_count_before = errors.len();
+
+        let serde_yaml::Value::Sequence(raw_branches) = &raw_value else {
+            errors.push(field_error(
+                &field_name,
+                "'when' must be a list of branches, each a mapping with 'if' and 'then'",
+            ));
+            continue;
+        };
+        if raw_branches.is_empty() {
+            errors.push(field_error(
+                &field_name,
+                "'when' must have at least one branch",
+            ));
+            continue;
+        }
+
+        let mut branches = Vec::with_capacity(raw_branches.len());
+        for (index, raw_branch) in raw_branches.iter().enumerate() {
+            match interpret_when_branch(&field_name, index, raw_branch, field_definition) {
+                Ok(branch) => branches.push(branch),
+                Err(error) => errors.push(error),
+            }
+        }
+
+        let default = match field_definition.default.take() {
+            None => None,
+            Some(DefaultValue::Generator(generator)) => {
+                errors.push(field_error(
+                    &field_name,
+                    format!(
+                        "'default' next to 'when' is the evaluated fallback and must be a plain value, not the '{}' generator",
+                        generator.token(),
+                    ),
+                ));
+                None
+            }
+            Some(literal) => {
+                let raw_literal = default_literal_as_yaml(&literal);
+                match coerce_value(&raw_literal, field_definition) {
+                    Ok(value) => Some(value),
+                    Err(error) => {
+                        errors.push(field_error(
+                            &field_name,
+                            format!(
+                                "'default' next to 'when' does not fit the field type: {error}"
+                            ),
+                        ));
+                        None
+                    }
+                }
+            }
+        };
+
+        if errors.len() == error_count_before {
+            field_definition.when = Some(WhenConfig { branches, default });
+        }
+    }
+}
+
+/// Interpret one raw `when:` branch: a mapping with exactly `if` (an
+/// expression string) and `then` (a literal coercing to the field's
+/// declared type). `index` is zero-based; messages number from 1.
+fn interpret_when_branch(
+    field_name: &str,
+    index: usize,
+    raw_branch: &serde_yaml::Value,
+    field_definition: &FieldDefinition,
+) -> Result<WhenBranch, SchemaValidationError> {
+    let branch_number = index + 1;
+    let branch_error = |message: String| {
+        field_error(
+            field_name,
+            format!("'when' branch {branch_number}: {message}"),
+        )
+    };
+
+    let serde_yaml::Value::Mapping(mapping) = raw_branch else {
+        return Err(branch_error(
+            "must be a mapping with 'if' and 'then'".to_owned(),
+        ));
+    };
+
+    let mut condition_source: Option<String> = None;
+    let mut then_value: Option<serde_yaml::Value> = None;
+    for (key, value) in mapping {
+        match key.as_str() {
+            Some("if") => {
+                condition_source = Some(
+                    value
+                        .as_str()
+                        .ok_or_else(|| {
+                            branch_error("'if' must be an expression string".to_owned())
+                        })?
+                        .to_owned(),
+                );
+            }
+            Some("then") => then_value = Some(value.clone()),
+            _ => {
+                return Err(branch_error(format!(
+                    "unknown key {key:?} (a branch has exactly 'if' and 'then')"
+                )));
+            }
+        }
+    }
+
+    let condition_source =
+        condition_source.ok_or_else(|| branch_error("missing 'if'".to_owned()))?;
+    let then_value = then_value.ok_or_else(|| branch_error("missing 'then'".to_owned()))?;
+
+    let condition = parse_expression(&condition_source).map_err(|error| {
+        branch_error(format!("invalid condition '{condition_source}': {error}"))
+    })?;
+    let value = coerce_value(&then_value, field_definition)
+        .map_err(|error| branch_error(format!("'then' does not fit the field type: {error}")))?;
+
+    Ok(WhenBranch {
+        condition,
+        condition_source,
+        value,
+    })
+}
+
+/// A literal [`DefaultValue`] as the raw YAML value the coercion layer
+/// accepts. Callers exclude the generator variant beforehand.
+fn default_literal_as_yaml(literal: &DefaultValue) -> serde_yaml::Value {
+    match literal {
+        DefaultValue::String(text) => serde_yaml::Value::String(text.clone()),
+        DefaultValue::Integer(number) => serde_yaml::Value::Number((*number).into()),
+        DefaultValue::Float(number) => {
+            serde_yaml::to_value(number).unwrap_or(serde_yaml::Value::Null)
+        }
+        DefaultValue::Bool(flag) => serde_yaml::Value::Bool(*flag),
+        DefaultValue::Generator(_) => serde_yaml::Value::Null,
     }
 }
 
@@ -304,13 +503,17 @@ fn validate_compute_config(
 
     let type_supports_compute = matches!(
         field.field_type,
-        FieldType::Integer | FieldType::Float | FieldType::Date | FieldType::Duration
+        FieldType::Integer
+            | FieldType::Float
+            | FieldType::Date
+            | FieldType::Duration
+            | FieldType::Boolean
     );
     if !type_supports_compute {
         errors.push(field_error(
             name,
             format!(
-                "'compute' is only valid for integer, float, date, and duration fields (this field is {})",
+                "'compute' is only valid for integer, float, date, duration, and boolean fields (this field is {})",
                 field.field_type
             ),
         ));
@@ -742,6 +945,9 @@ fn convert_field(raw: RawFieldDefinition) -> FieldDefinition {
         resource: raw.resource,
         aggregate: raw.aggregate,
         compute,
+        // Attached after conversion by `attach_when_configs` — coercing
+        // the `then:` literals needs this typed definition first.
+        when: None,
     }
 }
 
@@ -873,17 +1079,11 @@ fn validate_default_compatibility(
                 }
             };
             if !compatible {
-                let gen_name = match gen {
-                    Generator::Filename => "$filename",
-                    Generator::FilenamePretty => "$filename_pretty",
-                    Generator::Uuid => "$uuid",
-                    Generator::Today => "$today",
-                    Generator::MaxPlusOne => "$max_plus_one",
-                };
+                let generator_name = gen.token();
                 errors.push(field_error(
                     name,
                     format!(
-                        "generator '{gen_name}' is not compatible with type '{}'",
+                        "generator '{generator_name}' is not compatible with type '{}'",
                         field.field_type
                     ),
                 ));
@@ -1958,8 +2158,171 @@ fields:
 ";
         assert_validation_error_contains(
             yaml,
-            "'compute' is only valid for integer, float, date, and duration fields (this field is choice)",
+            "'compute' is only valid for integer, float, date, duration, and boolean fields (this field is choice)",
         );
+    }
+
+    // ── when: config ───────────────────────────────────────────────────
+
+    /// The acceptance example: a color chosen by condition, with the
+    /// evaluated fallback sharing the `default:` keyword.
+    const WHEN_COLOR_YAML: &str = "\
+fields:
+  status:
+    type: choice
+    values: [open, done]
+  end_date:
+    type: date
+  urgency_color:
+    type: color
+    when:
+      - if: status == \"done\"
+        then: green
+      - if: end_date > $today
+        then: blue
+    default: gray
+";
+
+    #[test]
+    fn when_config_parses_with_coerced_literals() {
+        let schema = parse_schema(WHEN_COLOR_YAML).unwrap();
+        let field_definition = &schema.fields["urgency_color"];
+        let when_config = field_definition.when.as_ref().unwrap();
+
+        assert_eq!(when_config.branches.len(), 2);
+        assert_eq!(
+            when_config.branches[0].condition_source,
+            "status == \"done\""
+        );
+        assert_eq!(
+            when_config.branches[0].value,
+            crate::model::FieldValue::Color("green".to_owned())
+        );
+        assert_eq!(
+            when_config.default,
+            Some(crate::model::FieldValue::Color("gray".to_owned()))
+        );
+        // `default:` moved into the config — it is the evaluated
+        // fallback, never the add-time stamped default.
+        assert!(field_definition.default.is_none());
+    }
+
+    #[test]
+    fn when_and_compute_cannot_be_combined() {
+        let yaml = "\
+fields:
+  end_date:
+    type: date
+  score:
+    type: integer
+    compute: 1 + 1
+    when:
+      - if: end_date > $today
+        then: 5
+";
+        assert_validation_error_contains(yaml, "'when' and 'compute' cannot be combined");
+    }
+
+    #[test]
+    fn when_is_rejected_on_relation_fields() {
+        // Reverse links and broken-link detection are built before the
+        // derive passes, so a when-derived link would be a phantom edge:
+        // seen by cycle detection, invisible everywhere else.
+        let yaml = "\
+fields:
+  status:
+    type: choice
+    values: [open, done]
+  parent:
+    type: link
+    when:
+      - if: status == \"done\"
+        then: archive-epic
+";
+        assert_validation_error_contains(yaml, "'when' is not supported on link fields");
+    }
+
+    #[test]
+    fn when_default_rejects_generator_tokens() {
+        let yaml = "\
+fields:
+  status:
+    type: choice
+    values: [open, done]
+  review_date:
+    type: date
+    when:
+      - if: status == \"done\"
+        then: 2026-01-01
+    default: $today
+";
+        assert_validation_error_contains(
+            yaml,
+            "'default' next to 'when' is the evaluated fallback and must be a plain value",
+        );
+    }
+
+    #[test]
+    fn when_branch_shape_errors_name_the_branch() {
+        let missing_then = "\
+fields:
+  status:
+    type: choice
+    values: [open, done]
+  tint:
+    type: color
+    when:
+      - if: status == \"done\"
+";
+        assert_validation_error_contains(missing_then, "'when' branch 1: missing 'then'");
+
+        let unknown_key = "\
+fields:
+  tint:
+    type: color
+    when:
+      - if: \"1 == 1\"
+        then: green
+        els: red
+";
+        assert_validation_error_contains(unknown_key, "'when' branch 1: unknown key");
+
+        let not_a_list = "\
+fields:
+  tint:
+    type: color
+    when: always
+";
+        assert_validation_error_contains(not_a_list, "'when' must be a list of branches");
+    }
+
+    #[test]
+    fn when_invalid_condition_syntax_rejected_at_parse() {
+        let yaml = "\
+fields:
+  tint:
+    type: color
+    when:
+      - if: status = \"done\"
+        then: green
+";
+        assert_validation_error_contains(yaml, "invalid condition");
+    }
+
+    #[test]
+    fn when_then_literal_must_fit_the_field_type() {
+        let yaml = "\
+fields:
+  status:
+    type: choice
+    values: [open, done]
+  tint:
+    type: color
+    when:
+      - if: status == \"done\"
+        then: not-a-color
+";
+        assert_validation_error_contains(yaml, "'when' branch 1: 'then' does not fit");
     }
 
     #[test]

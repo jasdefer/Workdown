@@ -129,8 +129,8 @@ pub struct FieldSchema {
     pub duration_max: Option<i64>,
     /// Regex the value must match, for `string` fields; `None` otherwise.
     pub pattern: Option<String>,
-    /// Resource section that backs this field, if any. A hint only —
-    /// see the module note; the UI edits resource fields as free text.
+    /// Resource section that backs this field, if any. The UI joins it
+    /// to the matching [`ResourceList`] to render a value picker.
     pub resource: Option<String>,
     /// `true` for computed fields (an `aggregate` config). The UI marks
     /// these so the user knows the value rolls up the link chain.
@@ -274,6 +274,7 @@ mod tests {
         Resources {
             sections,
             constants: IndexMap::new(),
+            document_loaded: true,
         }
     }
 

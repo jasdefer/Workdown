@@ -240,13 +240,17 @@ mod tests {
         }
     }
 
+    /// Build a work item with the given fields, including the `id`
+    /// projection that `coerce_fields` adds to every loaded item.
     fn make_item(id: &str, fields: Vec<(&str, FieldValue)>) -> WorkItem {
+        let mut map: std::collections::HashMap<String, FieldValue> = fields
+            .into_iter()
+            .map(|(key, value)| (key.to_owned(), value))
+            .collect();
+        map.insert("id".to_owned(), FieldValue::String(id.to_owned()));
         WorkItem {
             id: WorkItemId::from(id.to_owned()),
-            fields: fields
-                .into_iter()
-                .map(|(key, value)| (key.to_owned(), value))
-                .collect(),
+            fields: map,
             body: String::new(),
             source_path: PathBuf::from(format!("{id}.md")),
         }
@@ -457,6 +461,83 @@ mod tests {
 
         let ids: Vec<&str> = items.iter().map(|item| item.id.as_str()).collect();
         assert_eq!(ids, vec!["b", "a"]); // false < true
+    }
+
+    // ── Sorting by the id ───────────────────────────────────────
+
+    /// Ascending `id` used to pass for the wrong reason: every item compared
+    /// equal on a field that was never in the map, and the tie-breaker below
+    /// ordered them. Assert it now sorts on the projected value.
+    #[test]
+    fn sort_by_id_ascending() {
+        let schema = test_schema();
+        let item_b = make_item("b", vec![]);
+        let item_a = make_item("a", vec![]);
+        let item_c = make_item("c", vec![]);
+
+        let mut items: Vec<&WorkItem> = vec![&item_b, &item_c, &item_a];
+        sort_items(
+            &mut items,
+            &[SortSpec {
+                field: "id".to_owned(),
+                direction: SortDirection::Ascending,
+            }],
+            &schema,
+        );
+
+        let ids: Vec<&str> = items.iter().map(|item| item.id.as_str()).collect();
+        assert_eq!(ids, vec!["a", "b", "c"]);
+    }
+
+    /// The case that exposed the bug: descending never reversed, because the
+    /// missing-value branch skips reversal and every id was missing.
+    #[test]
+    fn sort_by_id_descending_reverses() {
+        let schema = test_schema();
+        let item_b = make_item("b", vec![]);
+        let item_a = make_item("a", vec![]);
+        let item_c = make_item("c", vec![]);
+
+        let mut items: Vec<&WorkItem> = vec![&item_b, &item_c, &item_a];
+        sort_items(
+            &mut items,
+            &[SortSpec {
+                field: "id".to_owned(),
+                direction: SortDirection::Descending,
+            }],
+            &schema,
+        );
+
+        let ids: Vec<&str> = items.iter().map(|item| item.id.as_str()).collect();
+        assert_eq!(ids, vec!["c", "b", "a"]);
+    }
+
+    /// `id` as a secondary key breaks ties on the primary one.
+    #[test]
+    fn sort_by_id_as_secondary_key() {
+        let schema = test_schema();
+        let item_a = make_item("a", vec![("points", FieldValue::Integer(5))]);
+        let item_b = make_item("b", vec![("points", FieldValue::Integer(5))]);
+        let item_c = make_item("c", vec![("points", FieldValue::Integer(2))]);
+
+        let mut items: Vec<&WorkItem> = vec![&item_a, &item_b, &item_c];
+        sort_items(
+            &mut items,
+            &[
+                SortSpec {
+                    field: "points".to_owned(),
+                    direction: SortDirection::Ascending,
+                },
+                SortSpec {
+                    field: "id".to_owned(),
+                    direction: SortDirection::Descending,
+                },
+            ],
+            &schema,
+        );
+
+        let ids: Vec<&str> = items.iter().map(|item| item.id.as_str()).collect();
+        assert_eq!(ids, vec!["c", "b", "a"]);
     }
 
     // ── Deterministic tie-breaker ───────────────────────────────

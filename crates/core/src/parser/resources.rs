@@ -60,6 +60,9 @@ pub fn parse_resources(yaml: &str) -> Result<Resources, ResourcesLoadError> {
     Ok(Resources {
         sections,
         constants,
+        // Reaching here means a document parsed, however empty it turned
+        // out to be — the distinction `document_loaded` records.
+        document_loaded: true,
     })
 }
 

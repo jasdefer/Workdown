@@ -85,6 +85,42 @@ Description, notes, acceptance criteria — anything you want.
 
 Filename (minus `.md`) is the work item's ID. References to other items use that same ID, e.g. `parent: auth-epic`.
 
+## Views and rendering
+
+Views turn work items into boards, trees, tables, gantt charts and more. They are declared once in `.workdown/views.yaml` and consumed two ways: `workdown serve` shows them live in the web UI, and `workdown render` writes each one as a Markdown file (charts as embedded SVG) into `views/`, meant to be committed alongside the items.
+
+```yaml
+# .workdown/views.yaml
+views:
+  - id: status-board
+    type: board
+    field: status
+```
+
+`workdown render` turns that into `views/status-board.md`:
+
+```markdown
+# Board: status
+
+Cards grouped into columns by `status`.
+
+## open
+- [Implement user login](../workdown-items/implement-user-login.md)
+- [Add password reset](../workdown-items/add-password-reset.md)
+
+## in_progress
+_(no cards)_
+
+## done
+- [Set up CI](../workdown-items/set-up-ci.md)
+```
+
+Because rendered views are plain files in the repository, they change in the same commit as the work items: a PR that finishes a task also moves its card to the done column, reviewable in the diff and readable on GitHub without any tooling. Boards are one kind of many — tree, graph, table, gantt (and variants), treemap, workload, bar and line charts, heatmap and metric views are all cataloged with their options in [docs/views.md](docs/views.md).
+
+Rendered views go stale the moment an item changes. `workdown install-hooks` (or `workdown init --install-hooks`) installs a git pre-commit hook that re-renders and stages them whenever a commit touches work items or workdown configuration — pass `--check` to have it fail the commit instead of staging. It never overwrites a pre-commit hook it didn't write.
+
+This repository manages its own development with workdown: [`workdown-items/`](workdown-items/) holds the real work items, [`views/`](views/) their rendered views.
+
 ## Configuration
 
 Everything under `.workdown/` is plain YAML and user-editable:
@@ -101,6 +137,8 @@ Fields are typed (string, choice, integer, date, link, links, …). Any `choice`
 
 ## Documentation
 
+- [Schema guide](docs/schema.md) — field types, validation rules, defaults, computed and aggregated fields.
+- [Views guide](docs/views.md) — every view kind and its options.
 - [Architecture Decision Records](docs/adr/) — the *why* behind the core design choices.
 
 ## Working on workdown itself
@@ -144,7 +182,7 @@ Plain `cargo check`, `cargo test`, and `cargo clippy` stay pure-Rust and do not 
 
 ## Status
 
-Early development. The first installable release is `v0.1.0-alpha.1`. Expect breaking changes before `v1.0.0`.
+Early development. Prerelease versions are published on the [releases page](https://github.com/jasdefer/Workdown/releases). Expect breaking changes before `v1.0.0`.
 
 ## License
 

@@ -110,6 +110,23 @@ pub enum ItemDiagnosticKind {
         target_id: WorkItemId,
     },
 
+    /// A `resource:`-backed field holds a value that is not an `id` in
+    /// the referenced section of `resources.yaml`. One diagnostic per
+    /// unknown value, so a `list` field naming three strangers reports
+    /// all three — the same granularity as [`Self::BrokenLink`], the
+    /// structurally identical check.
+    ///
+    /// Warning, not error: unlike a broken link, which leaves tree and
+    /// graph traversal with nowhere to go, an unrecognized resource
+    /// value still renders, groups and filters. `resources.yaml` is
+    /// people data that lags reality, and a new hire assigned before
+    /// anyone edits the file must not fail `workdown validate` in CI.
+    UnknownResourceRef {
+        field: String,
+        section: String,
+        value: String,
+    },
+
     /// A schema rule was violated by this item.
     RuleViolation { rule: String, detail: String },
 
@@ -136,6 +153,24 @@ pub enum ItemDiagnosticKind {
     /// A computed field's evaluation failed on this item's actual
     /// values (division by zero, overflow, non-finite result).
     ComputeFailed { field: String, detail: String },
+
+    /// A required conditional field stayed unset: no `when:` branch
+    /// matched and no default is declared. `missing_inputs` lists the
+    /// condition inputs absent on this item — the reason branches could
+    /// not be answered — when that is (part of) the cause.
+    WhenUnmatched {
+        field: String,
+        missing_inputs: Vec<String>,
+    },
+
+    /// A `when:` branch condition failed on this item's actual values
+    /// (arithmetic inside the comparison overflowed, …). The branch is
+    /// skipped; evaluation falls through to the next one.
+    WhenConditionFailed {
+        field: String,
+        branch_number: usize,
+        detail: String,
+    },
 }
 
 // ── Files scope ──────────────────────────────────────────────────────
@@ -192,11 +227,16 @@ pub struct ConfigDiagnostic {
 /// Cross-file failures against a config file — `views.yaml` for the
 /// `View*` variants, `config.yaml` for the `ConfigDisplay*` variants.
 ///
-/// The `View*` variants carry a `view_id` and pin the failure to one
-/// view (that view is unrenderable, the rest keep working); the
-/// `ConfigDisplay*` variants are project-wide and carry none — a bad
-/// default degrades every view to its fallback instead of blanking
-/// anything (see `view_id_of` below).
+/// The `View*` variants carry a `view_id` and pin the finding to one
+/// view, leaving the rest working; the `ConfigDisplay*` variants are
+/// project-wide and carry none — a bad default degrades every view to
+/// its fallback instead of blanking anything (see `view_id_of` below).
+///
+/// A pinned `View*` variant does not by itself mean the view is
+/// unrenderable — severity decides that. Errors describe a view that
+/// cannot produce output and callers skip it; warnings (today, the
+/// `*WhereUnknownValue` pair) describe a view that renders fine but
+/// probably isn't what its author meant, and must not suppress it.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConfigDiagnosticKind {
@@ -225,6 +265,23 @@ pub enum ConfigDiagnosticKind {
         field_name: String,
     },
 
+    /// A structural view slot references the virtual `id`. The id is
+    /// unique per item, so structural extraction (board columns, chart
+    /// grouping, axes, date windows) degenerates — every item stands
+    /// alone and the view carries no information. Rejected as a
+    /// misconfiguration, not an impossibility: the id *is* projected
+    /// into the field map at load. Text display roles resolve `id`
+    /// specially and keep accepting it.
+    ViewVirtualIdNotAllowed { view_id: String, slot: &'static str },
+
+    /// A metric row's `value` slot references the virtual `id` — the
+    /// same degenerate configuration as
+    /// [`Self::ViewVirtualIdNotAllowed`], pinned to the row.
+    ViewMetricRowVirtualIdNotAllowed {
+        view_id: String,
+        metric_index: usize,
+    },
+
     /// A view references a field whose schema type is incompatible with the slot.
     ViewFieldTypeMismatch {
         view_id: String,
@@ -239,6 +296,20 @@ pub enum ConfigDiagnosticKind {
     ViewWhereParseError {
         view_id: String,
         raw: String,
+        detail: String,
+    },
+
+    /// A `where:` clause parses and names a real field, but compares it
+    /// against an operand that could never match — a value outside the
+    /// field's option set, or one that cannot be read as its type. The
+    /// view still renders, so this is the one `View*` variant carrying
+    /// [`Severity::Warning`]; see [`crate::where_check`].
+    ViewWhereUnknownValue {
+        view_id: String,
+        raw: String,
+        field_name: String,
+        /// The rendered explanation from
+        /// [`crate::where_check::ValueViolation::detail`].
         detail: String,
     },
 
@@ -320,6 +391,18 @@ pub enum ConfigDiagnosticKind {
         detail: String,
     },
 
+    /// A metric row's per-row `where:` compares a field against an
+    /// operand that could never match. The metric-row twin of
+    /// [`ConfigDiagnosticKind::ViewWhereUnknownValue`], and a warning for
+    /// the same reason.
+    ViewMetricRowWhereUnknownValue {
+        view_id: String,
+        metric_index: usize,
+        raw: String,
+        field_name: String,
+        detail: String,
+    },
+
     /// A `defaults.display` role in `config.yaml` names a field that
     /// isn't defined in `schema.yaml` (and isn't the virtual `id`).
     /// Unlike the `View*` variants this carries no `view_id` — the
@@ -362,9 +445,53 @@ pub enum ConfigDiagnosticKind {
         declared_type: String,
     },
 
-    /// `compute:` expressions reference each other in a loop. `chain`
-    /// lists the fields in order, first one repeated at the end.
+    /// Derived fields (`compute:` expressions and `when:` conditions)
+    /// reference each other in a loop. `chain` lists the fields in
+    /// order, first one repeated at the end.
     ComputeCycle { chain: Vec<String> },
+
+    /// A field's `resource:` names a section that `resources.yaml` does
+    /// not declare. A typo, so error severity — and the per-item check
+    /// for that field switches off, since every value would otherwise
+    /// report the same missing section against the wrong file.
+    ResourceSectionUnknown { field: String, section: String },
+
+    /// A field's `resource:` names a section that exists but has no
+    /// entries (or `resources.yaml` is absent entirely). Warning, not
+    /// error: the list simply isn't filled in yet. The per-item check
+    /// for that field stays off until it is — one finding here beats
+    /// the same finding repeated on every item.
+    ResourceSectionEmpty { field: String, section: String },
+
+    /// A resource-backed field's literal `default:` is not an entry in
+    /// its section, so every item `workdown add` creates would carry an
+    /// unknown value. The `choice` counterpart is a parse-time schema
+    /// error; this one needs `resources.yaml` loaded, so it lands here.
+    ResourceDefaultUnknown {
+        field: String,
+        section: String,
+        value: String,
+    },
+
+    /// A resource-backed field's `default:` is a generator. `$uuid`,
+    /// `$filename` and `$filename_pretty` are type-compatible with
+    /// `string` and so pass the parser, but none of them can ever
+    /// produce an entry of a resource section.
+    ResourceDefaultGenerator {
+        field: String,
+        section: String,
+        generator: String,
+    },
+
+    /// A `when:` branch condition in `schema.yaml` failed type checking
+    /// — an unknown reference, an undefined comparison, or a result
+    /// that isn't boolean. `detail` carries the specific finding.
+    WhenInvalidCondition {
+        field: String,
+        branch_number: usize,
+        condition: String,
+        detail: String,
+    },
 }
 
 // ── Field value errors ───────────────────────────────────────────────
@@ -522,6 +649,8 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
         | ConfigDiagnosticKind::ViewUnknownField { view_id, .. }
         | ConfigDiagnosticKind::ViewFieldTypeMismatch { view_id, .. }
         | ConfigDiagnosticKind::ViewWhereParseError { view_id, .. }
+        | ConfigDiagnosticKind::ViewWhereUnknownValue { view_id, .. }
+        | ConfigDiagnosticKind::ViewMetricRowWhereUnknownValue { view_id, .. }
         | ConfigDiagnosticKind::ViewBucketWithoutDateAxis { view_id }
         | ConfigDiagnosticKind::ViewCountAggregateWithValue { view_id }
         | ConfigDiagnosticKind::ViewAggregateTypeMismatch { view_id, .. }
@@ -534,7 +663,9 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
         | ConfigDiagnosticKind::ViewMetricRowUnknownField { view_id, .. }
         | ConfigDiagnosticKind::ViewMetricRowAggregateTypeMismatch { view_id, .. }
         | ConfigDiagnosticKind::ViewMetricRowCountWithValue { view_id, .. }
-        | ConfigDiagnosticKind::ViewMetricRowWhereParseError { view_id, .. } => Some(view_id),
+        | ConfigDiagnosticKind::ViewMetricRowWhereParseError { view_id, .. }
+        | ConfigDiagnosticKind::ViewVirtualIdNotAllowed { view_id, .. }
+        | ConfigDiagnosticKind::ViewMetricRowVirtualIdNotAllowed { view_id, .. } => Some(view_id),
 
         // Config-defaults and schema-compute diagnostics are
         // project-wide, not pinned to a view. Returning `None` keeps
@@ -544,7 +675,12 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
         | ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch { .. }
         | ConfigDiagnosticKind::ComputeInvalidExpression { .. }
         | ConfigDiagnosticKind::ComputeResultTypeMismatch { .. }
-        | ConfigDiagnosticKind::ComputeCycle { .. } => None,
+        | ConfigDiagnosticKind::ComputeCycle { .. }
+        | ConfigDiagnosticKind::ResourceSectionUnknown { .. }
+        | ConfigDiagnosticKind::ResourceSectionEmpty { .. }
+        | ConfigDiagnosticKind::ResourceDefaultUnknown { .. }
+        | ConfigDiagnosticKind::ResourceDefaultGenerator { .. }
+        | ConfigDiagnosticKind::WhenInvalidCondition { .. } => None,
     }
 }
 
@@ -620,6 +756,16 @@ impl std::fmt::Display for ItemDiagnosticKind {
             ItemDiagnosticKind::BrokenLink { field, target_id } => {
                 write!(f, "field '{field}': broken link to '{target_id}'")
             }
+            ItemDiagnosticKind::UnknownResourceRef {
+                field,
+                section,
+                value,
+            } => {
+                write!(
+                    f,
+                    "field '{field}': '{value}' is not an entry in resource '{section}'"
+                )
+            }
             ItemDiagnosticKind::RuleViolation { rule, detail } => {
                 write!(f, "rule '{rule}': {detail}")
             }
@@ -654,6 +800,37 @@ impl std::fmt::Display for ItemDiagnosticKind {
             }
             ItemDiagnosticKind::ComputeFailed { field, detail } => {
                 write!(f, "computed field '{field}' failed to evaluate: {detail}")
+            }
+            ItemDiagnosticKind::WhenUnmatched {
+                field,
+                missing_inputs,
+            } => {
+                write!(
+                    f,
+                    "required conditional field '{field}': no 'when:' branch matched and no default is declared"
+                )?;
+                if !missing_inputs.is_empty() {
+                    write!(
+                        f,
+                        " (absent condition inputs: {})",
+                        missing_inputs
+                            .iter()
+                            .map(|input| format!("'{input}'"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )?;
+                }
+                Ok(())
+            }
+            ItemDiagnosticKind::WhenConditionFailed {
+                field,
+                branch_number,
+                detail,
+            } => {
+                write!(
+                    f,
+                    "conditional field '{field}': branch {branch_number} condition failed and was skipped: {detail}"
+                )
             }
         }
     }
@@ -729,6 +906,17 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                     "view '{view_id}', slot '{slot}': unknown field '{field_name}'"
                 )
             }
+            ConfigDiagnosticKind::ViewVirtualIdNotAllowed { view_id, slot } => write!(
+                f,
+                "view '{view_id}', slot '{slot}': the virtual 'id' cannot drive this slot (grouping or plotting by a unique key is meaningless) — use a schema field"
+            ),
+            ConfigDiagnosticKind::ViewMetricRowVirtualIdNotAllowed {
+                view_id,
+                metric_index,
+            } => write!(
+                f,
+                "view '{view_id}', metrics[{metric_index}].value: the virtual 'id' cannot drive this slot (grouping or plotting by a unique key is meaningless) — use a schema field"
+            ),
             ConfigDiagnosticKind::ViewFieldTypeMismatch {
                 view_id,
                 slot,
@@ -746,6 +934,15 @@ impl std::fmt::Display for ConfigDiagnosticKind {
             } => {
                 write!(f, "view '{view_id}', where clause '{raw}': {detail}")
             }
+            ConfigDiagnosticKind::ViewWhereUnknownValue {
+                view_id,
+                raw,
+                field_name,
+                detail,
+            } => write!(
+                f,
+                "view '{view_id}', where clause '{raw}': field '{field_name}' — {detail}"
+            ),
             ConfigDiagnosticKind::ViewBucketWithoutDateAxis { view_id } => {
                 write!(
                     f,
@@ -837,6 +1034,16 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                 f,
                 "view '{view_id}', metrics[{metric_index}].where clause '{raw}': {detail}"
             ),
+            ConfigDiagnosticKind::ViewMetricRowWhereUnknownValue {
+                view_id,
+                metric_index,
+                raw,
+                field_name,
+                detail,
+            } => write!(
+                f,
+                "view '{view_id}', metrics[{metric_index}].where clause '{raw}': field '{field_name}' — {detail}"
+            ),
             ConfigDiagnosticKind::ConfigDisplayUnknownField { slot, field_name } => {
                 write!(f, "config default '{slot}': unknown field '{field_name}'")
             }
@@ -869,10 +1076,43 @@ impl std::fmt::Display for ConfigDiagnosticKind {
             ConfigDiagnosticKind::ComputeCycle { chain } => {
                 write!(
                     f,
-                    "compute expressions form a reference cycle: {}",
+                    "derived fields form a reference cycle: {}",
                     chain.join(" -> ")
                 )
             }
+            ConfigDiagnosticKind::ResourceSectionUnknown { field, section } => write!(
+                f,
+                "field '{field}' references resource '{section}', which is not declared in resources.yaml"
+            ),
+            ConfigDiagnosticKind::ResourceSectionEmpty { field, section } => write!(
+                f,
+                "field '{field}' references resource '{section}', which has no entries — its values are not validated"
+            ),
+            ConfigDiagnosticKind::ResourceDefaultUnknown {
+                field,
+                section,
+                value,
+            } => write!(
+                f,
+                "field '{field}': default '{value}' is not an entry in resource '{section}'"
+            ),
+            ConfigDiagnosticKind::ResourceDefaultGenerator {
+                field,
+                section,
+                generator,
+            } => write!(
+                f,
+                "field '{field}': generator default '{generator}' can never produce an entry in resource '{section}'"
+            ),
+            ConfigDiagnosticKind::WhenInvalidCondition {
+                field,
+                branch_number,
+                condition,
+                detail,
+            } => write!(
+                f,
+                "field '{field}', 'when' branch {branch_number}, condition '{condition}': {detail}"
+            ),
         }
     }
 }

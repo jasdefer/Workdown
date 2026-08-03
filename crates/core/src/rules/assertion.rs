@@ -225,7 +225,10 @@ fn check_field_comparison(
 
     match compare_field_values(this_value, other_value) {
         Some(Ordering::Equal) => None,
-        Some(_) => Some(format!("'{field_ref}' must {operator_str} '{other_ref}'")),
+        Some(_) => Some(format!(
+            "'{field_ref}' must {operator_str} '{}'",
+            display_operand(other_ref, other_value),
+        )),
         None => None, // incompatible types — skip
     }
 }
@@ -246,19 +249,39 @@ fn check_field_ordering(
     match compare_field_values(this_value, other_value) {
         Some(ordering) if predicate(ordering) => None,
         Some(_) => Some(format!(
-            "'{field_ref}' must be {operator_str} '{other_ref}'"
+            "'{field_ref}' must be {operator_str} '{}'",
+            display_operand(other_ref, other_value),
         )),
         None => None, // incompatible types — skip
     }
 }
 
+/// How a comparison operand appears in a violation message. A field
+/// name speaks for itself; `$today` changes daily, so the message
+/// carries the date this run resolved it to.
+fn display_operand(other_ref: &str, other_value: &FieldValue) -> String {
+    if other_ref == "$today" {
+        format!("$today ({})", format_field_value_bracketed(other_value))
+    } else {
+        other_ref.to_owned()
+    }
+}
+
 /// Resolve a field reference to a single value. Returns `None` if the
 /// field is absent (skipping the comparison per null-handling rules).
+///
+/// `$today` resolves to the evaluation date carried by the context —
+/// pinned via `--as-of`, the current local date otherwise (ADR-010) —
+/// so `gte_field: $today` compares against the present without the
+/// item carrying any such field.
 fn resolve_single_value<'a>(
     item: &'a WorkItem,
     field_ref: &str,
     ctx: &'a EvalContext<'a>,
 ) -> Option<&'a FieldValue> {
+    if field_ref == "$today" {
+        return Some(&ctx.today);
+    }
     match resolve_field_ref(item, field_ref, ctx.schema, ctx.store) {
         ResolvedValues::Single(value) => value,
         ResolvedValues::Many(values) => values.into_iter().next().flatten(),

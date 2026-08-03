@@ -33,12 +33,22 @@ pub enum Command {
         /// Project name (defaults to current directory name)
         #[arg(long)]
         name: Option<String>,
+
+        /// Also install the git pre-commit hook that keeps rendered
+        /// views in sync (see `workdown install-hooks`)
+        #[arg(long)]
+        install_hooks: bool,
     },
     /// Validate all work items against the schema
     Validate {
         /// Output format: human-readable or JSON
         #[arg(long, value_enum, default_value_t = ValidateFormat::Human)]
         format: ValidateFormat,
+
+        /// Evaluate `$today` as this date (YYYY-MM-DD) instead of the
+        /// current date, so a given commit validates identically on any day
+        #[arg(long = "as-of", value_name = "DATE")]
+        as_of: Option<chrono::NaiveDate>,
     },
     /// Create a new work item
     ///
@@ -79,11 +89,21 @@ pub enum Command {
         /// Omit the header row in tsv/csv output. Ignored for table/json.
         #[arg(long = "no-header")]
         no_header: bool,
+
+        /// Evaluate `$today` as this date (YYYY-MM-DD) instead of the
+        /// current date
+        #[arg(long = "as-of", value_name = "DATE")]
+        as_of: Option<chrono::NaiveDate>,
     },
     /// Render views to Markdown files under `views/`
     Render {
         /// Render only this view id (default: render all views)
         view_id: Option<String>,
+
+        /// Evaluate `$today` as this date (YYYY-MM-DD) instead of the
+        /// current date, so a given commit renders identically on any day
+        #[arg(long = "as-of", value_name = "DATE")]
+        as_of: Option<chrono::NaiveDate>,
     },
     /// List or show work item templates
     Templates {
@@ -184,6 +204,33 @@ pub enum Command {
         /// Open the URL in the default browser after the server is ready.
         #[arg(long)]
         open: bool,
+        /// Evaluate `$today` as this date (YYYY-MM-DD) for every request,
+        /// for the lifetime of the server — a time machine for previewing
+        /// how views will look on a future date. Without it, each request
+        /// evaluates at its own current date.
+        #[arg(long = "as-of", value_name = "DATE")]
+        as_of: Option<chrono::NaiveDate>,
+    },
+    /// Install a git pre-commit hook that keeps rendered views in sync
+    ///
+    /// The default hook re-renders and stages the views, so they land
+    /// in the same commit as the work items that changed them. With
+    /// `--check` the hook instead fails the commit when views were
+    /// stale, leaving review and staging to you. Either way the hook
+    /// does nothing when the staged changes touch neither the work
+    /// items nor the workdown configuration.
+    ///
+    /// Refuses to overwrite a pre-commit hook it did not install;
+    /// re-running is safe and switches modes in place.
+    ///
+    /// Known limitation: the hook renders from the working tree, not
+    /// the index, so a partially staged work item (`git add -p`)
+    /// yields views that also reflect its unstaged hunks.
+    InstallHooks {
+        /// Fail the commit on stale views instead of staging the
+        /// re-rendered files automatically
+        #[arg(long)]
+        check: bool,
     },
     /// Change a work item's id — moves the file and rewrites every
     /// incoming link/links reference.

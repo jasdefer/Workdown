@@ -27,6 +27,7 @@ use std::path::{Path, PathBuf};
 
 use crate::model::config::Config;
 use crate::model::diagnostic::Diagnostic;
+use crate::model::resources::Resources;
 use crate::model::schema::Schema;
 use crate::model::views::Views;
 use crate::operations::frontmatter_io::write_file_atomically;
@@ -34,6 +35,7 @@ use crate::parser;
 use crate::parser::schema::SchemaLoadError;
 use crate::parser::views::{serialize_views, view_from_value};
 use crate::query::clause::{clauses_to_strings, Clause};
+use crate::store::Store;
 
 // ── Public types ─────────────────────────────────────────────────────
 
@@ -65,11 +67,29 @@ pub enum ViewWriteError {
     #[error("failed to load schema: {0}")]
     SchemaLoad(#[from] SchemaLoadError),
 
+    /// The work items could not be read, so a filter's operands cannot be
+    /// checked against the ids they may name. A hard fail for the same
+    /// reason `add` and `set` treat it as one: a mutation decided against
+    /// an unknown project state is worse than a mutation refused.
+    #[error("failed to load work items from '{path}': {source}")]
+    ItemsLoad {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
     #[error("existing views file at '{path}' is invalid; fix it in a text editor before writing from the UI: {detail}")]
     ExistingInvalid { path: PathBuf, detail: String },
 
     #[error("invalid view definition: {detail}")]
     InvalidDefinition { detail: String },
+
+    /// A structured clause whose operand does not match its operator's arity.
+    /// The guided builder cannot produce one — it picks the operand widget from
+    /// the operator — so this is a malformed request rather than a
+    /// user-authored file problem, and it fails the write instead of riding
+    /// through as a warning.
+    #[error("invalid filter condition: {0}")]
+    InvalidCondition(#[from] crate::query::clause::ConditionError),
 
     #[error("invalid view name '{name}': {reason}")]
     InvalidName { name: String, reason: String },
@@ -109,11 +129,11 @@ pub fn add_view(
     project_root: &Path,
     definition: serde_yaml::Value,
 ) -> Result<ViewWriteOutcome, ViewWriteError> {
-    let schema = load_schema(config, project_root)?;
+    let inputs = load_check_inputs(config, project_root)?;
     let path = views_path(config, project_root);
     let mut views = load_current_views(&path)?;
 
-    let pre_diagnostics = crate::views_check::evaluate(&views, &schema, &path);
+    let pre_diagnostics = check(&views, &inputs, &path);
 
     let new_view =
         view_from_value(definition).map_err(|error| ViewWriteError::InvalidDefinition {
@@ -127,7 +147,7 @@ pub fn add_view(
     let view_id = new_view.id.clone();
     views.views.push(new_view);
 
-    finalize(views, &path, &schema, pre_diagnostics, view_id)
+    finalize(views, &path, &inputs, pre_diagnostics, view_id)
 }
 
 /// Create a view from a human *name* plus a flat definition (kind + slots +
@@ -169,7 +189,7 @@ fn prepare_definition(
         serde_yaml::Value::String("id".to_owned()),
         serde_yaml::Value::String(id.to_owned()),
     );
-    let where_clauses = clauses_to_strings(filter);
+    let where_clauses = clauses_to_strings(filter)?;
     if !where_clauses.is_empty() {
         mapping.insert(
             serde_yaml::Value::String("where".to_owned()),
@@ -198,11 +218,11 @@ pub fn set_view_filter(
     view_id: &str,
     clauses: &[Clause],
 ) -> Result<ViewWriteOutcome, ViewWriteError> {
-    let schema = load_schema(config, project_root)?;
+    let inputs = load_check_inputs(config, project_root)?;
     let path = views_path(config, project_root);
     let mut views = load_current_views(&path)?;
 
-    let pre_diagnostics = crate::views_check::evaluate(&views, &schema, &path);
+    let pre_diagnostics = check(&views, &inputs, &path);
 
     let view = views
         .views
@@ -211,9 +231,9 @@ pub fn set_view_filter(
         .ok_or_else(|| ViewWriteError::ViewNotFound {
             id: view_id.to_owned(),
         })?;
-    view.where_clauses = clauses_to_strings(clauses);
+    view.where_clauses = clauses_to_strings(clauses)?;
 
-    finalize(views, &path, &schema, pre_diagnostics, view_id.to_owned())
+    finalize(views, &path, &inputs, pre_diagnostics, view_id.to_owned())
 }
 
 // ── Internals ────────────────────────────────────────────────────────
@@ -222,9 +242,43 @@ fn views_path(config: &Config, project_root: &Path) -> PathBuf {
     project_root.join(&config.paths.views)
 }
 
-fn load_schema(config: &Config, project_root: &Path) -> Result<Schema, ViewWriteError> {
+/// Everything the cross-file checks need, loaded once per write.
+///
+/// A view write used to read only `schema.yaml`, which was enough while
+/// `views_check` looked at field *names*. Checking a filter's operands
+/// needs the two option sets that live outside the schema — a
+/// `resource:`-backed field's entries and the work item ids — so this
+/// path now loads what the read paths already load. Mirrors `add`/`set`
+/// rather than calling `load_project`: rule evaluation and the derive
+/// passes have no bearing on whether a `where:` clause is sound.
+struct CheckInputs {
+    schema: Schema,
+    resources: Resources,
+    store: Store,
+}
+
+fn load_check_inputs(config: &Config, project_root: &Path) -> Result<CheckInputs, ViewWriteError> {
     let schema_path = project_root.join(&config.schema);
-    Ok(parser::schema::load_schema(&schema_path)?)
+    let schema = parser::schema::load_schema(&schema_path)?;
+
+    // A missing or malformed resources.yaml degrades to empty resources;
+    // `workdown validate` owns reporting it, as in `add`.
+    let (resources, _) =
+        crate::resources_check::load_and_check(&project_root.join(&config.paths.resources));
+
+    let items_path = project_root.join(&config.paths.work_items);
+    let store = Store::load_with_resources(&items_path, &schema, &resources).map_err(|source| {
+        ViewWriteError::ItemsLoad {
+            path: items_path,
+            source,
+        }
+    })?;
+
+    Ok(CheckInputs {
+        schema,
+        resources,
+        store,
+    })
 }
 
 /// Load the current views, or an empty set when the file does not exist
@@ -246,10 +300,21 @@ fn load_current_views(path: &Path) -> Result<Views, ViewWriteError> {
 /// Serialize the mutated model, validate the candidate before touching
 /// disk, write atomically, and diff diagnostics to flag whether this write
 /// introduced a new problem.
+/// Run the cross-file checks over a set of views with this write's inputs.
+fn check(views: &Views, inputs: &CheckInputs, path: &Path) -> Vec<Diagnostic> {
+    crate::views_check::evaluate(
+        views,
+        &inputs.schema,
+        &inputs.resources,
+        &inputs.store,
+        path,
+    )
+}
+
 fn finalize(
     views: Views,
     path: &Path,
-    schema: &Schema,
+    inputs: &CheckInputs,
     pre_diagnostics: Vec<Diagnostic>,
     view_id: String,
 ) -> Result<ViewWriteOutcome, ViewWriteError> {
@@ -264,7 +329,7 @@ fn finalize(
             detail: error.to_string(),
         }
     })?;
-    let warnings = crate::views_check::evaluate(&reparsed, schema, path);
+    let warnings = check(&reparsed, inputs, path);
 
     write_file_atomically(path, &candidate).map_err(|source| ViewWriteError::WriteFile {
         path: path.to_path_buf(),
@@ -290,6 +355,7 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
+    use crate::model::schema::Severity;
     use crate::parser::config::load_config;
     use crate::parser::views::load_views;
     use crate::query::clause::Condition;
@@ -308,6 +374,16 @@ mod tests {
             field: field.to_owned(),
             operator,
             value: value.map(str::to_owned),
+            values: Vec::new(),
+        })
+    }
+
+    fn membership(field: &str, operator: Operator, values: &[&str]) -> Clause {
+        Clause::Comparison(Condition {
+            field: field.to_owned(),
+            operator,
+            value: None,
+            values: values.iter().map(|value| (*value).to_owned()).collect(),
         })
     }
 
@@ -347,10 +423,19 @@ fields:
         let directory = TempDir::new().unwrap();
         let root = directory.path().to_path_buf();
         fs::create_dir_all(root.join(".workdown")).unwrap();
+        // A view write reads the work items to check filter operands
+        // against the ids they may name, so the fixture scaffolds the
+        // directory `workdown init` would have created. Items are added
+        // per-test by `write_item` where a clause needs one.
+        fs::create_dir_all(root.join("workdown-items")).unwrap();
         fs::write(root.join(".workdown/config.yaml"), CONFIG).unwrap();
         fs::write(root.join(".workdown/schema.yaml"), SCHEMA).unwrap();
         let config = load_config(&root.join(".workdown/config.yaml")).unwrap();
         (directory, root, config)
+    }
+
+    fn write_item(root: &Path, id: &str) {
+        fs::write(root.join(format!("workdown-items/{id}.md")), "---\n---\n").unwrap();
     }
 
     fn write_views(root: &Path, content: &str) {
@@ -546,6 +631,59 @@ fields:
         );
     }
 
+    /// A membership condition reaches `views.yaml` as `in` / `not in`, with the
+    /// comma-join happening in the serializer and nowhere else.
+    #[test]
+    fn set_view_filter_writes_membership_clauses() {
+        let (_dir, root, config) = setup();
+        write_views(
+            &root,
+            "views:\n  - id: board\n    type: board\n    field: status\n",
+        );
+
+        let outcome = set_view_filter(
+            &config,
+            &root,
+            "board",
+            &[
+                membership("status", Operator::In, &["open", "in_progress"]),
+                membership("status", Operator::NotIn, &["done"]),
+            ],
+        )
+        .unwrap();
+
+        assert!(!outcome.mutation_caused_warning);
+        let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
+        assert_eq!(
+            reloaded.views[0].where_clauses,
+            vec!["status in open,in_progress", "status not in done"]
+        );
+    }
+
+    /// An operand that doesn't match its operator's arity fails the write
+    /// outright — the guided builder cannot produce one, so it is a malformed
+    /// request rather than a filter to save with a warning.
+    #[test]
+    fn set_view_filter_rejects_operand_arity_mismatch_without_writing() {
+        let (_dir, root, config) = setup();
+        let source = "views:\n  - id: board\n    type: board\n    field: status\n";
+        write_views(&root, source);
+
+        let error = set_view_filter(
+            &config,
+            &root,
+            "board",
+            &[condition("status", Operator::In, Some("open"))],
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, ViewWriteError::InvalidCondition(_)));
+        assert_eq!(
+            std::fs::read_to_string(root.join(".workdown/views.yaml")).unwrap(),
+            source
+        );
+    }
+
     #[test]
     fn set_view_filter_replaces_previous_where() {
         let (_dir, root, config) = setup();
@@ -606,6 +744,52 @@ fields:
         assert!(!outcome.warnings.is_empty());
         let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
         assert_eq!(reloaded.views[0].where_clauses, vec!["nonexistent=x"]);
+    }
+
+    /// The write path checks operands, not just field names: the value
+    /// is written and the problem comes back as a warning, so a filter
+    /// that can never match is caught as it is authored rather than at
+    /// the next `validate`.
+    #[test]
+    fn set_view_filter_with_unknown_value_writes_with_warning() {
+        let (_dir, root, config) = setup();
+        write_views(
+            &root,
+            "views:\n  - id: board\n    type: board\n    field: status\n",
+        );
+
+        let outcome = set_view_filter(&config, &root, "board", &[raw("status=nonsense")]).unwrap();
+
+        assert!(outcome.mutation_caused_warning);
+        assert_eq!(outcome.warnings.len(), 1, "{:?}", outcome.warnings);
+        assert_eq!(outcome.warnings[0].severity, Severity::Warning);
+        assert!(
+            outcome.warnings[0].message.contains("nonsense"),
+            "{}",
+            outcome.warnings[0].message
+        );
+        let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
+        assert_eq!(reloaded.views[0].where_clauses, vec!["status=nonsense"]);
+    }
+
+    /// Item ids are the option set that only the store can supply, which
+    /// is why this path loads it. The same clause is clean or not
+    /// depending on whether the item exists.
+    #[test]
+    fn set_view_filter_checks_item_ids_against_the_store() {
+        let (_dir, root, config) = setup();
+        write_views(
+            &root,
+            "views:\n  - id: board\n    type: board\n    field: status\n",
+        );
+
+        let outcome = set_view_filter(&config, &root, "board", &[raw("parent=epic-1")]).unwrap();
+        assert!(outcome.mutation_caused_warning, "no such item yet");
+
+        write_item(&root, "epic-1");
+        let outcome = set_view_filter(&config, &root, "board", &[raw("parent=epic-1")]).unwrap();
+        assert!(!outcome.mutation_caused_warning);
+        assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
     }
 
     #[test]

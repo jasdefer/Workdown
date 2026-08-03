@@ -13,6 +13,13 @@ use crate::store::Store;
 
 // ── Public API ───────────────────────────────────────────────────────
 
+/// The current date in the local time zone — the single clock behind
+/// both the add-time `$today` generator and the evaluation-time default
+/// when no `--as-of` override is given (see ADR-010).
+pub fn current_local_date() -> chrono::NaiveDate {
+    chrono::Local::now().date_naive()
+}
+
 /// Resolve a schema [`DefaultValue`] into a concrete YAML value.
 pub(crate) fn resolve_default(
     default: &DefaultValue,
@@ -45,7 +52,7 @@ pub(crate) fn resolve_generator(
         Generator::FilenamePretty => serde_yaml::Value::String(prettify_slug(slug)),
         Generator::Uuid => serde_yaml::Value::String(uuid::Uuid::new_v4().to_string()),
         Generator::Today => {
-            let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+            let today = current_local_date().format("%Y-%m-%d").to_string();
             serde_yaml::Value::String(today)
         }
         Generator::MaxPlusOne => {

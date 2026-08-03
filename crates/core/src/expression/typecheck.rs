@@ -1,9 +1,10 @@
 //! Type checking: infer an expression's result type or reject it.
 //!
-//! The algebra is closed and total — [`binary_result_type`] is the single
-//! source of truth for what each operator does to each operand-type
-//! pairing, and everything it doesn't list is an error. The interesting
-//! entries are the temporal ones:
+//! The algebra is closed and total — [`binary_result_type`] and
+//! [`comparison_is_defined`] are the single source of truth for what
+//! each operator does to each operand-type pairing, and everything they
+//! don't list is an error. The interesting arithmetic entries are the
+//! temporal ones:
 //!
 //! ```text
 //! date ± duration        → date
@@ -15,21 +16,32 @@
 //! integer / integer      → float         (division never truncates)
 //! ```
 //!
+//! Comparisons produce a boolean and reuse the same strictness: ordering
+//! is defined exactly where the arithmetic types order (numbers, dates,
+//! durations); equality additionally covers text, boolean, and color.
+//! Cross-type pairings are errors — `duration < 5` has no unit and is
+//! rejected, not guessed.
+//!
 //! References are resolved through a caller-supplied [`TypeContext`], so
 //! this module needs no knowledge of schemas or resources — the caller
 //! maps its field and constant types into [`ExpressionType`]s (or reports
 //! them unknown/unsupported).
 
-use super::ast::{BinaryOperator, Expression};
+use super::ast::{BinaryOperator, ComparisonOperator, Expression};
 
 /// The types a (sub)expression can have. A deliberate subset of the field
-/// type system: only types with meaningful arithmetic participate.
+/// type system: the types with meaningful arithmetic, plus the ones that
+/// participate in comparisons — text (string and choice values), boolean,
+/// and color (compared on resolved hex).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExpressionType {
     Integer,
     Float,
     Date,
     Duration,
+    Boolean,
+    Text,
+    Color,
 }
 
 impl ExpressionType {
@@ -52,6 +64,9 @@ impl std::fmt::Display for ExpressionType {
             ExpressionType::Float => "float",
             ExpressionType::Date => "date",
             ExpressionType::Duration => "duration",
+            ExpressionType::Boolean => "boolean",
+            ExpressionType::Text => "text",
+            ExpressionType::Color => "color",
         };
         write!(formatter, "{name}")
     }
@@ -86,7 +101,7 @@ pub enum ExpressionTypeError {
     #[error("unknown constant '{name}' at column {column}")]
     UnknownConstant { name: String, column: usize },
 
-    #[error("'{name}' at column {column} has type {type_name}, which cannot be used in an expression (usable: integer, float, date, duration)")]
+    #[error("'{name}' at column {column} has type {type_name}, which cannot be used in an expression (usable: integer, float, date, duration, boolean, string, choice, color)")]
     UnsupportedReferenceType {
         name: String,
         type_name: String,
@@ -96,6 +111,14 @@ pub enum ExpressionTypeError {
     #[error("cannot apply '{operator}' to {left} and {right} at column {column}")]
     InvalidOperation {
         operator: BinaryOperator,
+        left: ExpressionType,
+        right: ExpressionType,
+        column: usize,
+    },
+
+    #[error("cannot compare {left} {operator} {right} at column {column}")]
+    InvalidComparison {
+        operator: ComparisonOperator,
         left: ExpressionType,
         right: ExpressionType,
         column: usize,
@@ -117,6 +140,11 @@ pub fn check_types(
     match expression {
         Expression::IntegerLiteral { .. } => Ok(ExpressionType::Integer),
         Expression::FloatLiteral { .. } => Ok(ExpressionType::Float),
+        Expression::StringLiteral { .. } => Ok(ExpressionType::Text),
+        Expression::BooleanLiteral { .. } => Ok(ExpressionType::Boolean),
+        // `$today` is always resolvable and always a date; there is no
+        // reference to look up, so no context involvement.
+        Expression::TodayReference { .. } => Ok(ExpressionType::Date),
 
         Expression::FieldReference { name, span } => match context.field(name) {
             ReferenceResolution::Typed(expression_type) => Ok(expression_type),
@@ -151,11 +179,13 @@ pub fn check_types(
         Expression::Negate { operand, span } => {
             let operand_type = check_types(operand, context)?;
             match operand_type {
-                ExpressionType::Date => Err(ExpressionTypeError::InvalidNegation {
-                    operand: operand_type,
+                ExpressionType::Integer | ExpressionType::Float | ExpressionType::Duration => {
+                    Ok(operand_type)
+                }
+                other => Err(ExpressionTypeError::InvalidNegation {
+                    operand: other,
                     column: span.column(),
                 }),
-                other => Ok(other),
             }
         }
 
@@ -176,7 +206,56 @@ pub fn check_types(
                 },
             )
         }
+
+        Expression::Comparison {
+            operator,
+            left,
+            right,
+            span,
+        } => {
+            let left_type = check_types(left, context)?;
+            let right_type = check_types(right, context)?;
+            if comparison_is_defined(*operator, left_type, right_type) {
+                Ok(ExpressionType::Boolean)
+            } else {
+                Err(ExpressionTypeError::InvalidComparison {
+                    operator: *operator,
+                    left: left_type,
+                    right: right_type,
+                    column: span.column(),
+                })
+            }
+        }
     }
+}
+
+/// Whether `left operator right` is a defined comparison. Reuses the
+/// arithmetic algebra's strictness: ordering exists exactly where the
+/// types order among themselves (numbers cross-promote; dates and
+/// durations compare within their own type — `duration < 5` has no unit
+/// and is rejected). Equality additionally covers text, boolean, and
+/// color; a color compares against a color or a text literal naming
+/// one (resolved to hex at evaluation). Ordering text or categories is
+/// as meaningless here as in the query builder, and stays an error.
+fn comparison_is_defined(
+    operator: ComparisonOperator,
+    left: ExpressionType,
+    right: ExpressionType,
+) -> bool {
+    use ExpressionType::{Boolean, Color, Date, Duration, Text};
+
+    let orderable = (left.is_number() && right.is_number())
+        || (left == Date && right == Date)
+        || (left == Duration && right == Duration);
+    if orderable {
+        return true;
+    }
+
+    operator.is_equality()
+        && matches!(
+            (left, right),
+            (Text, Text) | (Boolean, Boolean) | (Color, Color) | (Color, Text) | (Text, Color)
+        )
 }
 
 /// The algebra: result type of `left operator right`, or `None` when the
@@ -253,7 +332,7 @@ mod tests {
     /// A context with one field of each usable type, one unsupported
     /// field, and matching constants.
     fn context() -> MapContext {
-        use ExpressionType::{Date, Duration, Float, Integer};
+        use ExpressionType::{Boolean, Color, Date, Duration, Float, Integer, Text};
         let typed = |expression_type| ReferenceResolution::Typed(expression_type);
         MapContext {
             fields: HashMap::from([
@@ -263,10 +342,13 @@ mod tests {
                 ("end_date", typed(Date)),
                 ("duration", typed(Duration)),
                 ("effort", typed(Duration)),
+                ("status", typed(Text)),
+                ("flag", typed(Boolean)),
+                ("tint", typed(Color)),
                 (
-                    "status",
+                    "tags",
                     ReferenceResolution::Unsupported {
-                        type_name: "choice".to_owned(),
+                        type_name: "list".to_owned(),
                     },
                 ),
             ]),
@@ -287,13 +369,23 @@ mod tests {
     // the loop then asserts every *other* pairing is rejected, so the
     // tables are exhaustive by construction.
 
+    /// Every expression type, for exhaustive pairing loops.
+    const ALL_TYPES: [ExpressionType; 7] = [
+        ExpressionType::Integer,
+        ExpressionType::Float,
+        ExpressionType::Date,
+        ExpressionType::Duration,
+        ExpressionType::Boolean,
+        ExpressionType::Text,
+        ExpressionType::Color,
+    ];
+
     fn assert_algebra(
         operator: BinaryOperator,
         defined: &[(ExpressionType, ExpressionType, ExpressionType)],
     ) {
-        use ExpressionType::{Date, Duration, Float, Integer};
-        for left in [Integer, Float, Date, Duration] {
-            for right in [Integer, Float, Date, Duration] {
+        for left in ALL_TYPES {
+            for right in ALL_TYPES {
                 let expected = defined
                     .iter()
                     .find(|(defined_left, defined_right, _)| {
@@ -398,6 +490,18 @@ mod tests {
     }
 
     #[test]
+    fn today_is_a_date() {
+        assert_eq!(inferred("$today"), Ok(ExpressionType::Date));
+        assert_eq!(inferred("end_date - $today"), Ok(ExpressionType::Duration));
+        assert_eq!(inferred("$today + duration"), Ok(ExpressionType::Date));
+        // Dates don't add — `$today` behaves exactly like any date.
+        assert!(matches!(
+            inferred("$today + end_date"),
+            Err(ExpressionTypeError::InvalidOperation { .. })
+        ));
+    }
+
+    #[test]
     fn infers_through_parentheses_and_negation() {
         assert_eq!(
             inferred("(end_date - start_date) * 2"),
@@ -456,12 +560,95 @@ mod tests {
     #[test]
     fn unsupported_reference_type_reports_the_type() {
         assert_eq!(
-            inferred("status + 1"),
+            inferred("tags + 1"),
             Err(ExpressionTypeError::UnsupportedReferenceType {
-                name: "status".to_owned(),
-                type_name: "choice".to_owned(),
+                name: "tags".to_owned(),
+                type_name: "list".to_owned(),
                 column: 1,
             })
+        );
+    }
+
+    // ── Comparisons ────────────────────────────────────────────────────
+
+    #[test]
+    fn comparisons_infer_boolean() {
+        assert_eq!(inferred("status == \"done\""), Ok(ExpressionType::Boolean));
+        assert_eq!(
+            inferred("end_date > start_date"),
+            Ok(ExpressionType::Boolean)
+        );
+        assert_eq!(inferred("effort <= duration"), Ok(ExpressionType::Boolean));
+        assert_eq!(inferred("end_date > $today"), Ok(ExpressionType::Boolean));
+        assert_eq!(inferred("count < weight"), Ok(ExpressionType::Boolean));
+        assert_eq!(inferred("flag == true"), Ok(ExpressionType::Boolean));
+        assert_eq!(inferred("tint != \"red\""), Ok(ExpressionType::Boolean));
+        // Arithmetic nests inside a comparison without parentheses.
+        assert_eq!(
+            inferred("end_date - start_date >= duration"),
+            Ok(ExpressionType::Boolean)
+        );
+    }
+
+    #[test]
+    fn cross_type_comparisons_are_rejected() {
+        // A bare number has no unit — comparing it to a duration is an
+        // error, exactly like duration + integer in the arithmetic.
+        assert!(matches!(
+            inferred("duration < 5"),
+            Err(ExpressionTypeError::InvalidComparison {
+                operator: ComparisonOperator::LessThan,
+                left: ExpressionType::Duration,
+                right: ExpressionType::Integer,
+                ..
+            })
+        ));
+        assert!(matches!(
+            inferred("start_date == \"2026-01-01\""),
+            Err(ExpressionTypeError::InvalidComparison { .. })
+        ));
+        assert!(matches!(
+            inferred("status == flag"),
+            Err(ExpressionTypeError::InvalidComparison { .. })
+        ));
+    }
+
+    #[test]
+    fn ordering_on_equality_only_types_is_rejected() {
+        for source in ["status < \"done\"", "flag > false", "tint <= \"red\""] {
+            assert!(
+                matches!(
+                    inferred(source),
+                    Err(ExpressionTypeError::InvalidComparison { .. })
+                ),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn boolean_results_have_no_arithmetic() {
+        assert!(matches!(
+            inferred("(count < weight) + 1"),
+            Err(ExpressionTypeError::InvalidOperation {
+                left: ExpressionType::Boolean,
+                ..
+            })
+        ));
+        assert!(matches!(
+            inferred("-flag"),
+            Err(ExpressionTypeError::InvalidNegation {
+                operand: ExpressionType::Boolean,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn boolean_equality_of_two_comparisons_checks() {
+        assert_eq!(
+            inferred("(count < weight) == (effort <= duration)"),
+            Ok(ExpressionType::Boolean)
         );
     }
 

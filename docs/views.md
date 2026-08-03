@@ -65,18 +65,67 @@ A list of strings. Each string is a single expression using the `workdown query 
 
 ```yaml
 where:
-  - "type=issue"
+  - "type in milestone,epic"
   - "status!=removed"
   - "parent.status=in_progress"
 ```
 
-The same grammar covers equality, inequality, numeric comparison, substring match, regex, presence, and single-hop relation traversal (`parent.status`). See the documentation of `parse_where` for the full expression reference.
+The same grammar covers equality, inequality, list membership, numeric comparison, substring match, regex, presence, and single-hop relation traversal (`parent.status`). See the documentation of `parse_where` for the full expression reference.
 
 Field references inside `where:` expressions are validated against `schema.yaml`: local field names must be defined in the schema (or be `id`), and relation names must resolve to a `link`/`links` field or a known inverse name (e.g. `children` resolving to the inverse of `parent`).
 
+The **operands** are checked too — see [Operand checking](#operand-checking) below. A value that could never match any item is reported as a warning; the view still renders.
+
 When the view renders, items are filtered by the combined predicate before any aggregation or extraction runs.
 
-OR nesting is not supported in v1 (the CLI's inline `status=open,in_progress` form covers the common case). A structured `or:` branch can be added later without breaking existing configs.
+### Membership — `in` / `not in`
+
+`status in open,in_progress` matches any of the listed values; `status not in done,removed` matches none of them. Members are separated by bare commas, and there is no escaping — a literal comma inside one member is not representable. To match a value that contains a comma, use `=`, which is always literal.
+
+`=` and `!=` are always literal, commas included: `title=bug, crash` means the title *is* `bug, crash`. Membership has its own operator precisely so that a comma never silently changes what a comparison means.
+
+The word operators are found only after every punctuation operator has missed, so `title=a in b` is an equality against `a in b`. Both tokens are whitespace-delimited.
+
+### Operand checking
+
+A clause that names a real field can still compare it against a value that no item could ever hold. `status=nonsense` on a `choice` field parses, validates, matches nothing, and renders an empty view with nothing to explain it. `workdown validate`, `workdown render`, the filter editor, and `workdown query --where` all report such an operand as a **warning** — the view still renders and a write still saves, per the save-with-warning convention in [ADR-001](adr/001-snapshot-validation.md).
+
+Two things make an operand unmatchable:
+
+| Field | Operand must be |
+|---|---|
+| `choice`, `multichoice` | one of the declared `values:` |
+| a `resource:`-backed `string`/`list` | an entry of that section, or a value some item actually holds |
+| `link`, `links` | an existing work item id, or a value some item actually holds |
+| the virtual `id` | an existing work item id |
+| `date` | a date in `YYYY-MM-DD` form |
+| `integer`, `float`, `duration` | readable as that type |
+| `boolean` | `true` or `false` |
+| `color` | a hex color or palette name |
+| `string`, plain `list` | *(anything — nothing to check)* |
+
+Only the comparisons that test a whole value are checked: `=`, `!=`, and the `in` / `not in` forms that reduce to them, plus the ordering comparisons wherever the operand is *parsed* (numbers, durations, dates). Three deliberate exclusions:
+
+- **`~` (contains) is never checked.** It reads as a substring test on every type, including per element of a collection, so a partial value is the point: `labels~end` legitimately matches `backend`.
+- **Regex operands are never checked** — a pattern is not a value.
+- **A field whose `resource:` section is missing or empty is skipped**, because `resources.yaml` validation already reports that cause once against `schema.yaml`; repeating it per clause would point at the wrong file.
+- **Values items actually hold are never reported**, even when they fall outside the declared set. An unknown resource reference is a warning by design (the new hire assigned before `resources.yaml` caught up), and a broken link stays on its item — filtering for either finds those items, so such a clause is not dead.
+
+A stale filter from before the `in` operator existed gets a targeted nudge: `type=milestone,epic` (once an implicit membership test, now a literal string comparison) reports *"did you mean `type in milestone,epic`?"*.
+
+### Items with no value for the field
+
+A field the item never set satisfies the negative comparisons (`!=`, `not in`) and fails every positive one (`=`, `in`, `~`, regex, the ordering comparisons). So `status != removed` includes an item carrying no `status`, on the reading that an item without a status is certainly not removed — and `status != done` and `status not in done` therefore always agree.
+
+To exclude items with no value, AND the presence check as a second clause:
+
+```yaml
+where:
+  - "status!=removed"
+  - "status?"        # …and only items that actually have a status
+```
+
+OR nesting is not supported in v1 (`in` covers the common case). A structured `or:` branch can be added later without breaking existing configs.
 
 ## Display roles — `display:`
 
@@ -121,7 +170,7 @@ Every view writes a single Markdown file. Filenames are `<id>.md`, written into 
 <directory>/<id>.md
 ```
 
-Filenames are not customizable — they always derive from `id`. The directory is. `workdown render` creates the directory if it does not exist. Re-running without item changes produces identical files (CI-diff clean).
+Filenames are not customizable — they always derive from `id`. The directory is. `workdown render` creates the directory if it does not exist. Re-running without item changes produces identical files (CI-diff clean) — unless the schema derives values from `$today`, in which case the output is a function of the calendar too; pin with `--as-of <YYYY-MM-DD>` for byte-identical renders.
 
 The live server does not consume these files — it re-runs the renderers against the current working tree. Static files are for committed, shareable snapshots (READMEs, GitHub previews, CI artifacts).
 
@@ -200,9 +249,11 @@ views:
 
 ## Cross-file validation
 
-`workdown validate` runs a set of checks that compare `views.yaml` against `schema.yaml`. All findings are errors in v1 (no warnings):
+`workdown validate` runs a set of checks that compare `views.yaml` against `schema.yaml`, `resources.yaml`, and the work items.
 
-- **Reference resolution** — every field name referenced by a view slot must exist in `schema.fields` (the virtual `id` field is always accepted).
+Severity carries meaning. An **error** describes a view that cannot produce output, and `workdown render` and the server's per-view endpoint both skip such a view. A **warning** describes a view that renders fine but probably isn't what its author meant; it never suppresses the view and never fails `workdown validate`. Operand checking is the only warning today — every other finding below is an error.
+
+- **Reference resolution** — every field name referenced by a view slot must exist in `schema.fields`. The virtual `id` field is accepted only where it can actually be resolved: the text display roles (`display.title`, `display.subtitle`, `display.fields[*]`) and `where:` clauses. Structural slots — the ones that shape the view, like `board.field`, `bar_chart.group_by`, heatmap axes, gantt date slots, and aggregate `value` slots — reject `id`: it is not stored in an item's fields, so such a view would always render empty.
 - **Type compatibility** — the slot dictates the allowed field type(s). For example: `board.field` must be `choice`, `multichoice`, or `string`; `tree.field` must be `link`; `graph.field` must be `links`; `gantt.start`/`gantt.end` must be `date`, `gantt.duration` must be `duration`; numeric slots accept `integer` or `float`, plus `duration` where the renderer can format it (`treemap.size`, `line_chart.x`/`y`, `workload.effort`, and aggregation slots `bar_chart.value`, `heatmap.value`, `metric.value`). The text display roles (`display.title`, `display.subtitle`, `display.fields[*]`) are existence-only — any field type is accepted; `display.color` must name a `color`-typed field (or be the sentinel `none`).
 - **Gantt input modes** — every gantt-family view (`gantt`, `gantt_by_initiative`, `gantt_by_depth`) must declare `start` plus exactly one of: `end`, `duration`, or `after`+`duration`. `end` and `duration` together is rejected; `after` requires `duration` and forbids `end`.
 - **Predecessor / partition link slots** — `gantt.after`, `gantt_by_initiative.root_link`, and `gantt_by_depth.depth_link` must point at a `link`/`links` field (single-target only for `root_link`/`depth_link`) with `allow_cycles: false`, and not at an inverse relation name (e.g. `children` when `parent.inverse: children`).
@@ -210,6 +261,7 @@ views:
 - **Metric row count + value** — within a metric row, `aggregate: count` combined with `value:` is an error (count takes no value field). Diagnostics carry the row index so messages pinpoint which row failed.
 - **Where-clause parsing** — each string in a view's `where:` list must parse as a valid `--where` expression.
 - **Where-clause field references** — local field names must exist in `schema.fields` (or be `id`); relation names (left side of a dot) must resolve to a `link`/`links` field or a known inverse name.
+- **Where-clause operands** *(warning)* — the value a clause compares against must be one the field could actually hold. Applies to a view's `where:` and to a metric row's per-row `where:`. See [Operand checking](#operand-checking) for the rules and the exclusions.
 
 Load-time failures surface through the same diagnostic stream: read/YAML errors reuse the generic `FileError` (pointing at `views.yaml`), while duplicate ids, missing required slots, and the legacy pre-display-role `title:`/`columns:` slots get dedicated variants (`ViewDuplicateId`, `ViewMissingSlot`, `ViewLegacyDisplaySlot`) so callers like the live server can highlight specific problems in the UI.
 
@@ -233,5 +285,5 @@ Existing configurations are unaffected — the change is purely additive.
 - **`output:` customization** — fixed paths per view id keep v1 simple. Revisit if users need custom locations.
 - **`dashboard`** — composition of multiple metrics / charts on a single page. Useful once `metric` has a few users.
 - **`calendar`** — one event per item placed on a date. Not widely needed for engineering-project workflows; add when asked for.
-- **OR nesting in `where`** — structured `or:`/`not:` branches. Today's AND-of-strings plus the inline `=a,b,c` form covers the common case.
+- **OR nesting in `where`** — structured `or:`/`not:` branches. Today's AND-of-strings plus the `in` operator covers the common case.
 - **Multi-hop relation traversal** — `grandparent.status` etc. Parser-level change, orthogonal to views.yaml shape.

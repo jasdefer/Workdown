@@ -37,7 +37,7 @@
 	function addCondition(): void {
 		rows = [
 			...rows,
-			{ localId: nextId(), kind: 'comparison', field: '', operator: '', value: null }
+			{ localId: nextId(), kind: 'comparison', field: '', operator: '', value: null, values: [] }
 		];
 		// An empty row contributes no clause yet — nothing to emit until filled.
 	}
@@ -73,7 +73,7 @@
 				<input
 					class="raw-input"
 					type="text"
-					placeholder="raw clause, e.g. status=open,done"
+					placeholder="raw clause, e.g. status in open,done"
 					value={row.raw}
 					onchange={(event) => {
 						updateRow({ ...row, raw: event.currentTarget.value });

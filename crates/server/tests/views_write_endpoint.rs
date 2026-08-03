@@ -71,6 +71,7 @@ fn temp_project_with_config(config_yaml: &str) -> (TempDir, AppState) {
         root,
         config,
         std::path::PathBuf::from(".workdown/config.yaml"),
+        None,
     );
     (directory, state)
 }
@@ -380,6 +381,46 @@ async fn preview_with_unknown_field_is_unrenderable() {
     assert!(!envelope["diagnostics"].as_array().unwrap().is_empty());
 }
 
+/// The severity split at the endpoint: an operand that can never match
+/// is a *warning*, so unlike an unknown field it must not push the view
+/// into the unrenderable tier. The rows still come back, with the
+/// warning riding along in `diagnostics`.
+#[tokio::test]
+async fn preview_with_unmatchable_value_still_renders_with_a_warning() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(
+        &root,
+        "views:\n  - id: t\n    type: table\n    display:\n      fields: [id, status]\n",
+    );
+    write_item(&root, "task-open", "---\nstatus: open\n---\n");
+
+    let uri = format!(
+        "/api/views/t{}",
+        filter_param(json!([
+            { "kind": "comparison", "field": "status", "operator": "equal", "value": "nonsense" }
+        ]))
+    );
+    let response = get(state, &uri).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    // Tier 3, not tier 2: data is present.
+    let rows = envelope["data"]["rows"].as_array().expect("rows array");
+    assert!(rows.is_empty(), "the filter genuinely matches nothing");
+
+    let diagnostics = envelope["diagnostics"].as_array().unwrap();
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0]["severity"], "warning");
+    assert!(
+        diagnostics[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("nonsense"),
+        "{diagnostics:?}"
+    );
+}
+
 /// Column names of a table response, for the display-role tests below.
 async fn column_names(response: axum::http::Response<Body>) -> Vec<String> {
     let envelope = body_json(response).await;
@@ -544,6 +585,58 @@ async fn preview_with_malformed_filter_returns_422() {
     assert!(envelope["error"].is_string());
 }
 
+#[tokio::test]
+async fn preview_with_arity_mismatched_condition_returns_422() {
+    // `in` carries its members in `values`; a scalar `value` is a
+    // malformed request the guided builder cannot produce, so it is
+    // rejected outright rather than previewed or saved-with-warning.
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(
+        &root,
+        "views:\n  - id: t\n    type: table\n    display:\n      fields: [id, status]\n",
+    );
+
+    let uri = format!(
+        "/api/views/t{}",
+        filter_param(json!([
+            { "kind": "comparison", "field": "status", "operator": "in", "value": "open" }
+        ]))
+    );
+    let response = get(state, &uri).await;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+    let envelope = body_json(response).await;
+    assert!(envelope["error"].is_string());
+}
+
+#[tokio::test]
+async fn patch_filter_with_comma_member_returns_422_and_writes_nothing() {
+    // A comma inside an `in` member cannot be represented in the clause
+    // text (members are comma-separated, with no escaping): the
+    // serializer refuses it, the endpoint maps that to a hard 422, and
+    // the file stays exactly as it was.
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    let original = "views:\n  - id: board\n    type: board\n    field: status\n";
+    write_views(&root, original);
+
+    let response = patch(
+        state,
+        "/api/views/board",
+        json!({ "clauses": [
+            { "kind": "comparison", "field": "status", "operator": "in",
+              "values": ["needs review, blocked", "done"] }
+        ] }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+    let envelope = body_json(response).await;
+    assert!(envelope["error"].is_string());
+    assert_eq!(read_views(&root), original, "file must be untouched");
+}
+
 // ── Seed (GET /api/views/:id/filter) ─────────────────────────────────
 
 #[tokio::test]
@@ -552,7 +645,7 @@ async fn get_view_filter_decomposes_persisted_clauses() {
     let root = directory.path().to_path_buf();
     write_views(
         &root,
-        "views:\n  - id: board\n    type: board\n    field: status\n    where:\n      - \"status=open\"\n      - \"status=open,in_progress\"\n      - \"parent.status=done\"\n",
+        "views:\n  - id: board\n    type: board\n    field: status\n    where:\n      - \"status=open\"\n      - \"status in open,in_progress\"\n      - \"status not in done\"\n      - \"parent.status=done\"\n",
     );
 
     let response = get(state, "/api/views/board/filter").await;
@@ -560,20 +653,26 @@ async fn get_view_filter_decomposes_persisted_clauses() {
 
     let envelope = body_json(response).await;
     let clauses = envelope["data"].as_array().expect("clauses array");
-    assert_eq!(clauses.len(), 3);
+    assert_eq!(clauses.len(), 4);
     // A single comparison decomposes to a guided condition.
     assert_eq!(clauses[0]["kind"], "comparison");
     assert_eq!(clauses[0]["field"], "status");
     assert_eq!(clauses[0]["operator"], "equal");
     assert_eq!(clauses[0]["value"], "open");
-    // IN (multi-value) folds into one multi-value comparison.
+    // A membership test folds back into one condition carrying its members as
+    // a list, with the scalar slot null.
     assert_eq!(clauses[1]["kind"], "comparison");
     assert_eq!(clauses[1]["field"], "status");
-    assert_eq!(clauses[1]["operator"], "equal");
-    assert_eq!(clauses[1]["value"], "open,in_progress");
+    assert_eq!(clauses[1]["operator"], "in");
+    assert!(clauses[1]["value"].is_null());
+    assert_eq!(clauses[1]["values"][0], "open");
+    assert_eq!(clauses[1]["values"][1], "in_progress");
+    // A one-member `not in` keeps its operator rather than collapsing to `!=`.
+    assert_eq!(clauses[2]["operator"], "not_in");
+    assert_eq!(clauses[2]["values"][0], "done");
     // A cross-relation reference stays raw (guided rows are local-only).
-    assert_eq!(clauses[2]["kind"], "raw");
-    assert_eq!(clauses[2]["raw"], "parent.status=done");
+    assert_eq!(clauses[3]["kind"], "raw");
+    assert_eq!(clauses[3]["raw"], "parent.status=done");
 }
 
 #[tokio::test]

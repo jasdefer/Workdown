@@ -144,9 +144,17 @@ fn eval_single(
         _ => {}
     }
 
+    // A field with no value satisfies the negative comparisons and fails
+    // every positive one. `status != done` and `status not in done,removed`
+    // therefore both admit an item carrying no status, which is what makes
+    // the two ways of writing a negation agree — see `Operator::is_negative`.
+    //
+    // The stricter reading (an absent field matches nothing either way) stays
+    // available by adding the presence check as a second clause:
+    // `status != removed` + `status?`.
     let field_value = match field_value {
         Some(value) => value,
-        None => return Ok(false),
+        None => return Ok(comparison.operator.is_negative()),
     };
 
     match field_type {
@@ -179,6 +187,9 @@ fn eval_string(field_value: &FieldValue, comparison: &Comparison) -> Result<bool
         Operator::Contains => Ok(actual.contains(expected.as_str())),
         Operator::Matches => eval_regex(&actual, expected),
         Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
+        Operator::In | Operator::NotIn => {
+            unreachable!("desugared into Or/And by query::parse")
+        }
     }
 }
 
@@ -202,6 +213,9 @@ fn eval_integer(field_value: &FieldValue, comparison: &Comparison) -> Result<boo
         Operator::LessOrEqual => actual <= expected,
         Operator::Contains | Operator::Matches => false,
         Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
+        Operator::In | Operator::NotIn => {
+            unreachable!("desugared into Or/And by query::parse")
+        }
     })
 }
 
@@ -225,6 +239,9 @@ fn eval_float(field_value: &FieldValue, comparison: &Comparison) -> Result<bool,
         Operator::LessOrEqual => actual <= expected,
         Operator::Contains | Operator::Matches => false,
         Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
+        Operator::In | Operator::NotIn => {
+            unreachable!("desugared into Or/And by query::parse")
+        }
     })
 }
 
@@ -253,6 +270,9 @@ fn eval_duration(
         Operator::LessOrEqual => actual <= expected,
         Operator::Contains | Operator::Matches => false,
         Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
+        Operator::In | Operator::NotIn => {
+            unreachable!("desugared into Or/And by query::parse")
+        }
     })
 }
 
@@ -420,6 +440,7 @@ mod tests {
     use super::*;
     use crate::model::schema::{FieldDefinition, FieldTypeConfig};
     use crate::model::WorkItemId;
+    use crate::query::parse::parse_where;
     use crate::query::types::FieldReference;
     use indexmap::IndexMap;
     use std::path::PathBuf;
@@ -519,14 +540,17 @@ mod tests {
         }
     }
 
-    /// Build a work item with the given fields.
+    /// Build a work item with the given fields, including the `id`
+    /// projection that `coerce_fields` adds to every loaded item.
     fn make_item(id: &str, fields: Vec<(&str, FieldValue)>) -> WorkItem {
+        let mut map: std::collections::HashMap<String, FieldValue> = fields
+            .into_iter()
+            .map(|(key, value)| (key.to_owned(), value))
+            .collect();
+        map.insert("id".to_owned(), FieldValue::String(id.to_owned()));
         WorkItem {
             id: WorkItemId::from(id.to_owned()),
-            fields: fields
-                .into_iter()
-                .map(|(key, value)| (key.to_owned(), value))
-                .collect(),
+            fields: map,
             body: String::new(),
             source_path: PathBuf::from(format!("{id}.md")),
         }
@@ -771,6 +795,130 @@ mod tests {
         assert!(!check(&item, &predicate, &schema).unwrap());
     }
 
+    /// An absent field fails every positive comparison.
+    #[test]
+    fn missing_field_fails_positive_operators() {
+        let schema = test_schema();
+        let item = make_item("t1", vec![]);
+        for (field, operator, value) in [
+            ("status", Operator::Equal, "done"),
+            ("points", Operator::GreaterThan, "3"),
+            ("points", Operator::LessOrEqual, "3"),
+            ("title", Operator::Contains, "fix"),
+            ("title", Operator::Matches, "/^fix/"),
+            ("labels", Operator::Equal, "backend"),
+        ] {
+            let predicate = comparison(field, operator, value);
+            assert!(
+                !check(&item, &predicate, &schema).unwrap(),
+                "{field} {operator:?} {value} should not match an absent field"
+            );
+        }
+    }
+
+    /// …and satisfies the negative ones, so an item that never set a status
+    /// still counts as "not done".
+    #[test]
+    fn missing_field_satisfies_negative_operators() {
+        let schema = test_schema();
+        let item = make_item("t1", vec![]);
+        for (field, value) in [("status", "done"), ("points", "3"), ("labels", "backend")] {
+            let predicate = comparison(field, Operator::NotEqual, value);
+            assert!(
+                check(&item, &predicate, &schema).unwrap(),
+                "{field} != {value} should match an absent field"
+            );
+        }
+    }
+
+    /// The contract `not in` relies on: it agrees with `!=` for every item,
+    /// including one carrying no value for the field.
+    #[test]
+    fn not_in_agrees_with_not_equal_on_absent_field() {
+        let schema = test_schema();
+        let absent = make_item("t1", vec![]);
+        let present = make_item("t2", vec![("status", FieldValue::String("done".into()))]);
+
+        for item in [&absent, &present] {
+            let single = parse_where("status!=done").unwrap();
+            let membership = parse_where("status not in done").unwrap();
+            assert_eq!(
+                check(item, &single, &schema).unwrap(),
+                check(item, &membership, &schema).unwrap(),
+                "'status!=done' and 'status not in done' disagree on {}",
+                item.id
+            );
+        }
+    }
+
+    /// The stricter reading — exclude items with no value — stays reachable by
+    /// AND-ing the presence check, which is how a `where:` list combines.
+    #[test]
+    fn presence_check_restores_strict_exclusion() {
+        let schema = test_schema();
+        let absent = make_item("t1", vec![]);
+        let predicate = Predicate::And(vec![
+            parse_where("status!=done").unwrap(),
+            parse_where("status?").unwrap(),
+        ]);
+        assert!(!check(&absent, &predicate, &schema).unwrap());
+    }
+
+    #[test]
+    fn membership_matches_listed_values_only() {
+        let schema = test_schema();
+        let predicate = parse_where("status in open,in_progress").unwrap();
+        for (value, expected) in [("open", true), ("in_progress", true), ("done", false)] {
+            let item = make_item("t1", vec![("status", FieldValue::String(value.into()))]);
+            assert_eq!(
+                check(&item, &predicate, &schema).unwrap(),
+                expected,
+                "{value}"
+            );
+        }
+    }
+
+    #[test]
+    fn negated_membership_excludes_listed_values_only() {
+        let schema = test_schema();
+        let predicate = parse_where("status not in done,open").unwrap();
+        for (value, expected) in [("open", false), ("done", false), ("in_progress", true)] {
+            let item = make_item("t1", vec![("status", FieldValue::String(value.into()))]);
+            assert_eq!(
+                check(&item, &predicate, &schema).unwrap(),
+                expected,
+                "{value}"
+            );
+        }
+    }
+
+    /// On a collection field, `equal` means membership, so `in` asks whether
+    /// the collection holds any of the listed members.
+    #[test]
+    fn membership_on_a_collection_field() {
+        let schema = test_schema();
+        let item = make_item(
+            "t1",
+            vec![(
+                "labels",
+                FieldValue::Multichoice(vec!["backend".into(), "devops".into()]),
+            )],
+        );
+        assert!(check(
+            &item,
+            &parse_where("labels in backend,frontend").unwrap(),
+            &schema
+        )
+        .unwrap());
+        assert!(!check(&item, &parse_where("labels in frontend").unwrap(), &schema).unwrap());
+        assert!(!check(
+            &item,
+            &parse_where("labels not in devops,frontend").unwrap(),
+            &schema
+        )
+        .unwrap());
+    }
+
     // ── And / Or / Not composition ──────────────────────────────
 
     #[test]
@@ -921,6 +1069,48 @@ mod tests {
         );
         let predicate = comparison("depends_on", Operator::Equal, "task-a");
         assert!(check(&item, &predicate, &schema).unwrap());
+    }
+
+    // ── Filtering on the id ─────────────────────────────────────
+
+    /// The reported bug: `id=alpha` matched nothing at all.
+    #[test]
+    fn id_equality_matches() {
+        let schema = test_schema();
+        let item = make_item("alpha", vec![]);
+        assert!(check(&item, &comparison("id", Operator::Equal, "alpha"), &schema).unwrap());
+        assert!(!check(&item, &comparison("id", Operator::Equal, "beta"), &schema).unwrap());
+    }
+
+    /// The id is a string by construction, so the full string operator set
+    /// applies — and it is never absent, so `id?` always holds.
+    #[test]
+    fn id_supports_string_operators() {
+        let schema = test_schema();
+        let item = make_item("auth-login", vec![]);
+        for (operator, value, expected) in [
+            (Operator::NotEqual, "other", true),
+            (Operator::Contains, "login", true),
+            (Operator::Contains, "logout", false),
+            (Operator::Matches, "/^auth-/", true),
+            (Operator::Matches, "/^billing-/", false),
+            (Operator::IsSet, "", true),
+            (Operator::IsNotSet, "", false),
+        ] {
+            assert_eq!(
+                check(&item, &comparison("id", operator, value), &schema).unwrap(),
+                expected,
+                "id {operator:?} {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn id_membership() {
+        let schema = test_schema();
+        let item = make_item("alpha", vec![]);
+        assert!(check(&item, &parse_where("id in alpha,beta").unwrap(), &schema).unwrap());
+        assert!(!check(&item, &parse_where("id in beta,gamma").unwrap(), &schema).unwrap());
     }
 
     // ── Cross-item (related-field) predicates ───────────────────
@@ -1142,6 +1332,93 @@ mod tests {
         let predicate = related_comparison("title", "whatever", Operator::Equal, "x");
         let result = matches_predicate(item, &predicate, &schema, &store);
         assert!(matches!(result, Err(QueryEvalError::NotARelation { .. })));
+    }
+
+    /// `parent.id` resolves through the projection on the *target* item, so
+    /// it works without the traversal knowing anything about ids. These run
+    /// against a loaded store, exercising the real coercion path.
+    #[test]
+    fn related_forward_link_on_id() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![
+                ("epic.md", "---\nstatus: open\n---\n"),
+                ("task-a.md", "---\nstatus: done\nparent: epic\n---\n"),
+            ],
+        );
+        let item = store.get("task-a").unwrap();
+        assert!(matches_predicate(
+            item,
+            &related_comparison("parent", "id", Operator::Equal, "epic"),
+            &schema,
+            &store
+        )
+        .unwrap());
+        assert!(!matches_predicate(
+            item,
+            &related_comparison("parent", "id", Operator::Equal, "other"),
+            &schema,
+            &store
+        )
+        .unwrap());
+    }
+
+    /// The inverse direction, which had no way to be expressed before:
+    /// "items that have a child called `child-b`".
+    #[test]
+    fn related_inverse_on_id() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![
+                ("epic.md", "---\nstatus: open\n---\n"),
+                ("child-a.md", "---\nstatus: done\nparent: epic\n---\n"),
+                ("child-b.md", "---\nstatus: open\nparent: epic\n---\n"),
+            ],
+        );
+        let item = store.get("epic").unwrap();
+        assert!(matches_predicate(
+            item,
+            &related_comparison("children", "id", Operator::Equal, "child-b"),
+            &schema,
+            &store
+        )
+        .unwrap());
+        assert!(!matches_predicate(
+            item,
+            &related_comparison("children", "id", Operator::Equal, "child-z"),
+            &schema,
+            &store
+        )
+        .unwrap());
+    }
+
+    /// An item whose id comes from an explicit frontmatter key, rather than
+    /// its filename, is filterable on exactly that id — the parser resolves
+    /// both sources into the same place before the projection is built.
+    #[test]
+    fn id_from_frontmatter_key_is_filterable() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![("some-file.md", "---\nid: real-id\nstatus: open\n---\n")],
+        );
+        let item = store.get("real-id").unwrap();
+        assert!(matches_predicate(
+            item,
+            &comparison("id", Operator::Equal, "real-id"),
+            &schema,
+            &store
+        )
+        .unwrap());
+        assert!(!matches_predicate(
+            item,
+            &comparison("id", Operator::Equal, "some-file"),
+            &schema,
+            &store
+        )
+        .unwrap());
     }
 
     #[test]

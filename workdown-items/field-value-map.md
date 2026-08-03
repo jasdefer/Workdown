@@ -1,9 +1,27 @@
 ---
 id: field-value-map
 type: issue
-status: to_do
+status: removed
 title: Mapped fields — derive a value by lookup table
 ---
+
+> **Superseded by [[conditional-field-value]].** Kept as a record of the
+> reasoning, not as work to do.
+>
+> This item argued for a lookup table *instead of* conditionals, because
+> expressing a lookup as if/else "would force booleans, comparisons, and string
+> equality into the deliberately tiny expression grammar". That was sound while
+> value-to-value mapping was the only requirement. It stopped being sound once
+> a second requirement arrived — colouring by whether a date has passed — which
+> forces those same three additions regardless. With the grammar extended,
+> `status == done` is just another predicate and this table would be a second
+> way to say the same thing.
+>
+> What the table had and the replacement does not: exhaustiveness checking
+> against a `choice` field's declared values. That loss is accepted for now;
+> if authoring multi-branch conditions proves tedious, `map:` may return
+> later as sugar over the same evaluator — a far better position than
+> maintaining two evaluators.
 
 A declarative `map:` config on a field: derive this field's value by
 looking up another field's value in a table. The motivating case is
@@ -41,3 +59,9 @@ load time, and trivially evaluatable.
 - Interaction with `compute`/`aggregate` on the same field (probably
   mutually exclusive in v1).
 - Matching on non-choice source fields (string equality only?).
+
+## Scheduling
+
+Resolved: the work this was waiting for is scheduled under [[polish]], and
+this item is superseded by [[conditional-field-value]] rather than scheduled
+alongside it.

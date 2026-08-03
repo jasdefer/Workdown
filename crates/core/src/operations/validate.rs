@@ -36,12 +36,15 @@ pub type ValidateError = LoadError;
 ///
 /// `config_path` is where `config.yaml` was read from — forwarded to
 /// [`load_project`] so config-scope diagnostics can point at it.
+/// `evaluation_date_override` pins `$today` (the `--as-of` flag);
+/// `None` means the current local date.
 pub fn validate(
     config: &Config,
     project_root: &Path,
     config_path: &Path,
+    evaluation_date_override: Option<chrono::NaiveDate>,
 ) -> Result<ValidationResult, ValidateError> {
-    let project = load_project(config, project_root, config_path)?;
+    let project = load_project(config, project_root, config_path, evaluation_date_override)?;
     let has_errors = project
         .diagnostics
         .iter()

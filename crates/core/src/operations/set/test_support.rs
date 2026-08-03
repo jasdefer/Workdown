@@ -97,6 +97,25 @@ fields:
       error_on_missing: true
 ";
 
+pub(super) const RESOURCE_SCHEMA: &str = "\
+fields:
+  status:
+    type: choice
+    values: [open, in_progress, done]
+    required: true
+    default: open
+  assignee:
+    type: string
+    required: false
+    resource: people
+";
+
+pub(super) const RESOURCE_RESOURCES: &str = "\
+people:
+  - id: alice
+    name: Alice Smith
+";
+
 pub(super) fn setup_project() -> (TempDir, PathBuf) {
     let directory = TempDir::new().unwrap();
     let root = directory.path().to_path_buf();
@@ -114,6 +133,19 @@ pub(super) fn setup_aggregate_project() -> (TempDir, PathBuf) {
     fs::create_dir_all(root.join("workdown-items")).unwrap();
     fs::write(root.join(".workdown/config.yaml"), TEST_CONFIG).unwrap();
     fs::write(root.join(".workdown/schema.yaml"), AGGREGATE_SCHEMA).unwrap();
+    (directory, root)
+}
+
+/// A project whose `assignee` field is backed by a populated `people`
+/// section — the fixture for resource-reference warnings on mutation.
+pub(super) fn setup_resource_project() -> (TempDir, PathBuf) {
+    let directory = TempDir::new().unwrap();
+    let root = directory.path().to_path_buf();
+    fs::create_dir_all(root.join(".workdown/templates")).unwrap();
+    fs::create_dir_all(root.join("workdown-items")).unwrap();
+    fs::write(root.join(".workdown/config.yaml"), TEST_CONFIG).unwrap();
+    fs::write(root.join(".workdown/schema.yaml"), RESOURCE_SCHEMA).unwrap();
+    fs::write(root.join(".workdown/resources.yaml"), RESOURCE_RESOURCES).unwrap();
     (directory, root)
 }
 

@@ -21,6 +21,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use chrono::NaiveDate;
 use indexmap::IndexMap;
 
 use crate::model::diagnostic::{Diagnostic, ItemDiagnosticKind};
@@ -28,11 +29,13 @@ use crate::model::schema::{Schema, Severity};
 use crate::model::{FieldValue, WorkItem, WorkItemId};
 
 use super::compute;
+use super::conditional;
 use super::rollup;
 
 /// Run every derive pass. Mutates `items` in place; returns all
 /// diagnostics the passes produced. `constants` are the project
 /// constants from `resources.yaml`, resolved by compute expressions;
+/// `evaluation_date` is what `$today` resolves to; and
 /// `disabled_compute_fields` names the compute configs that failed
 /// `compute_check` and must not evaluate.
 pub(crate) fn run(
@@ -40,6 +43,7 @@ pub(crate) fn run(
     reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
     schema: &Schema,
     constants: &IndexMap<String, FieldValue>,
+    evaluation_date: NaiveDate,
     disabled_compute_fields: &HashSet<String>,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
@@ -47,20 +51,51 @@ pub(crate) fn run(
     for field_name in field_order(schema) {
         let field_definition = &schema.fields[&field_name];
 
+        // The aggregate's `over` link when the field also aggregates —
+        // both same-item passes then restrict to leaves of it.
+        let leaves_only_over = |field_definition: &crate::model::schema::FieldDefinition| {
+            field_definition.aggregate.as_ref().map(|aggregate| {
+                aggregate
+                    .over
+                    .clone()
+                    .unwrap_or_else(|| rollup::DEFAULT_OVER_FIELD.to_owned())
+            })
+        };
+
         if let Some(config) = &field_definition.compute {
             if !disabled_compute_fields.contains(field_name.as_str()) {
                 let spec = compute::ComputeFieldSpec {
                     name: &field_name,
                     declared_type: field_definition.field_type(),
                     config,
-                    leaves_only_over: field_definition.aggregate.as_ref().map(|aggregate| {
-                        aggregate
-                            .over
-                            .clone()
-                            .unwrap_or_else(|| rollup::DEFAULT_OVER_FIELD.to_owned())
-                    }),
+                    leaves_only_over: leaves_only_over(field_definition),
                 };
-                compute::run_for_field(items, reverse_links, constants, &spec, &mut diagnostics);
+                compute::run_for_field(
+                    items,
+                    reverse_links,
+                    constants,
+                    evaluation_date,
+                    &spec,
+                    &mut diagnostics,
+                );
+            }
+        }
+
+        if let Some(when_config) = &field_definition.when {
+            if !disabled_compute_fields.contains(field_name.as_str()) {
+                let spec = conditional::WhenFieldSpec {
+                    name: &field_name,
+                    config: when_config,
+                    leaves_only_over: leaves_only_over(field_definition),
+                };
+                conditional::run_for_field(
+                    items,
+                    reverse_links,
+                    constants,
+                    evaluation_date,
+                    &spec,
+                    &mut diagnostics,
+                );
             }
         }
 
@@ -78,7 +113,13 @@ pub(crate) fn run(
         }
     }
 
-    required_check(items, schema, disabled_compute_fields, &mut diagnostics);
+    required_check(
+        items,
+        reverse_links,
+        schema,
+        disabled_compute_fields,
+        &mut diagnostics,
+    );
     diagnostics
 }
 
@@ -86,16 +127,18 @@ pub(crate) fn run(
 /// the derive passes may have filled them in).
 fn required_check(
     items: &HashMap<WorkItemId, WorkItem>,
+    reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
     schema: &Schema,
     disabled_compute_fields: &HashSet<String>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     for (field_name, field_definition) in &schema.fields {
         if !field_definition.required
-            || (field_definition.aggregate.is_none() && field_definition.compute.is_none())
+            || (field_definition.aggregate.is_none() && !field_definition.is_derived())
         {
             continue;
         }
+        let disabled = disabled_compute_fields.contains(field_name.as_str());
         let mut missing: Vec<(&WorkItemId, &WorkItem)> = items
             .iter()
             .filter(|(_, item)| !item.fields.contains_key(field_name))
@@ -103,30 +146,51 @@ fn required_check(
         missing.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
 
         for (item_id, item) in missing {
-            // For a computed field, name the absent inputs — the actual
-            // cause — instead of just the blank output. Falls back to
-            // the classic message when the inputs were all present (a
-            // non-leaf of a compute+aggregate field with no children).
-            let kind = match &field_definition.compute {
-                Some(config) if !disabled_compute_fields.contains(field_name.as_str()) => {
-                    let missing_inputs = compute::missing_inputs(item, config);
-                    if missing_inputs.is_empty() {
-                        ItemDiagnosticKind::MissingRequired {
-                            field: field_name.clone(),
-                        }
-                    } else {
-                        ItemDiagnosticKind::ComputeMissingInputs {
-                            field: field_name.clone(),
-                            missing_inputs,
-                        }
+            // Name the actual cause instead of just the blank output: a
+            // computed field's absent inputs, or a conditional field's
+            // unmatched branches. Falls back to the classic message when
+            // there is no per-input or per-branch cause to name — the
+            // same-item pass never ran here (a non-leaf of a
+            // derive+aggregate field, where the rollup found nothing to
+            // aggregate), a computed field's inputs are all present, or
+            // the schema-level check disabled the config and its
+            // diagnostic carries the cause.
+            let pass_skipped_this_item = field_definition.is_derived()
+                && field_definition
+                    .aggregate
+                    .as_ref()
+                    .is_some_and(|aggregate| {
+                        let over = aggregate
+                            .over
+                            .as_deref()
+                            .unwrap_or(rollup::DEFAULT_OVER_FIELD);
+                        !compute::is_leaf(reverse_links, item_id, over)
+                    });
+            let kind = if disabled || pass_skipped_this_item {
+                ItemDiagnosticKind::MissingRequired {
+                    field: field_name.clone(),
+                }
+            } else if let Some(config) = &field_definition.compute {
+                let missing_inputs = compute::missing_inputs(item, config);
+                if missing_inputs.is_empty() {
+                    ItemDiagnosticKind::MissingRequired {
+                        field: field_name.clone(),
+                    }
+                } else {
+                    ItemDiagnosticKind::ComputeMissingInputs {
+                        field: field_name.clone(),
+                        missing_inputs,
                     }
                 }
-                // No compute, or a compute the schema-level check
-                // disabled — the blank value is reported plainly; the
-                // check's diagnostic carries the cause.
-                _ => ItemDiagnosticKind::MissingRequired {
+            } else if let Some(when_config) = &field_definition.when {
+                ItemDiagnosticKind::WhenUnmatched {
                     field: field_name.clone(),
-                },
+                    missing_inputs: conditional::missing_inputs(item, when_config),
+                }
+            } else {
+                ItemDiagnosticKind::MissingRequired {
+                    field: field_name.clone(),
+                }
             };
             diagnostics.push(Diagnostic::item(
                 Severity::Error,
@@ -138,10 +202,10 @@ fn required_check(
     }
 }
 
-/// Schema fields in evaluation order: an expression's inputs before the
-/// field that consumes them; declaration order otherwise. Cycles are
-/// not descended into (compute_check reports them), so the walk always
-/// terminates.
+/// Schema fields in evaluation order: a derivation's inputs (compute
+/// expression or `when:` condition references) before the field that
+/// consumes them; declaration order otherwise. Cycles are not descended
+/// into (compute_check reports them), so the walk always terminates.
 fn field_order(schema: &Schema) -> Vec<String> {
     let mut order = Vec::with_capacity(schema.fields.len());
     let mut visited: HashSet<&str> = HashSet::new();
@@ -161,12 +225,8 @@ fn visit<'a>(
     if !visited.insert(field_name) {
         return; // already placed, or currently on the path (cycle)
     }
-    if let Some(config) = schema
-        .fields
-        .get(field_name)
-        .and_then(|field_definition| field_definition.compute.as_ref())
-    {
-        for referenced in config.expression.field_references() {
+    if let Some(field_definition) = schema.fields.get(field_name) {
+        for referenced in field_definition.derived_references() {
             if let Some((key, _)) = schema.fields.get_key_value(referenced) {
                 visit(schema, key, visited, order);
             }
@@ -229,6 +289,11 @@ mod tests {
         reverse_links
     }
 
+    /// The fixed evaluation date every derive test runs under.
+    fn test_evaluation_date() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 1, 8).unwrap()
+    }
+
     fn run_derive(
         items: &mut HashMap<WorkItemId, WorkItem>,
         schema_yaml: &str,
@@ -245,6 +310,7 @@ mod tests {
             &reverse_links,
             &schema,
             &resources.constants,
+            test_evaluation_date(),
             &disabled_compute_fields,
         )
     }
