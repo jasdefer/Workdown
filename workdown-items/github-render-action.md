@@ -4,7 +4,6 @@ type: issue
 status: removed
 title: Reusable GitHub Action to keep rendered views in sync
 parent: polish
-depends_on: [next-release]
 effort: "3h"
 ---
 

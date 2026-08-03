@@ -315,8 +315,11 @@ milestone
 - [Validate `defaults.display` in config.yaml against the schema](../workdown-items/display-defaults-validation.md) — missing `start_date`
 - [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md) — missing `start_date`
 - [Add `duration` field type](../workdown-items/duration-field-type.md) — missing `start_date`
+- [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md) — missing `start_date`
 - [Resolve the current date at evaluation time, reproducibly](../workdown-items/evaluation-time-now.md) — missing `start_date`
 - [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md) — missing `start_date`
+- [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md) — missing `start_date`
+- [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md) — missing `start_date`
 - [Comparisons, equality and booleans in the expression grammar](../workdown-items/expression-predicates.md) — missing `start_date`
 - [Store FieldValue::Date as chrono::NaiveDate](../workdown-items/field-value-native-date.md) — missing `start_date`
 - [First view end-to-end (board, read-only)](../workdown-items/first-view-end-to-end.md) — missing `start_date`
@@ -324,11 +327,14 @@ milestone
 - [Gantt duration input mode](../workdown-items/gantt-duration-mode.md) — missing `start_date`
 - [Gantt predecessor input mode](../workdown-items/gantt-predecessor-mode.md) — missing `start_date`
 - [Default generator that reads dates from git history](../workdown-items/git-derived-default-generator.md) — missing `start_date`
+- [Optional --install-hooks for pre-commit render](../workdown-items/init-install-hooks.md) — missing `start_date`
 - [File watcher and SSE for live updates](../workdown-items/live-updates.md) — missing `start_date`
+- [Miscellaneous improvements](../workdown-items/misc-work.md) — missing `start_date`
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — missing `start_date`
 - [Multi-project support](../workdown-items/multi-project-support.md) — missing `start_date`
 - [Mutations end-to-end](../workdown-items/mutations-slice.md) — missing `start_date`
 - [Project-level constants in resources.yaml](../workdown-items/project-constants.md) — missing `start_date`
+- [README: document the visualization workflow](../workdown-items/readme-visualization-update.md) — missing `start_date`
 - [Remaining read-only views](../workdown-items/remaining-read-views.md) — missing `start_date`
 - [Bar chart renderer](../workdown-items/render-bar-chart.md) — missing `start_date`
 - [Board renderer](../workdown-items/render-board.md) — missing `start_date`
@@ -349,21 +355,27 @@ milestone
 - [Rules can't reference the current date](../workdown-items/rules-current-date-reference.md) — missing `start_date`
 - [Expose schema metadata so the UI can offer valid choices](../workdown-items/schema-metadata-api.md) — missing `start_date`
 - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md) — missing `start_date`
+- [A view over tags](../workdown-items/tags-view.md) — missing `start_date`
 - [Time tracking](../workdown-items/time-tracking.md) — missing `start_date`
 - [UI foundation — conventions and scaffolding before the first view](../workdown-items/ui-foundation.md) — missing `start_date`
+- [Move value coercion out of the store to break the parser↔store cycle](../workdown-items/value-coercion-layering.md) — missing `start_date`
 - [Create a new view from the UI](../workdown-items/view-creation.md) — missing `start_date`
 - [Design ViewData and extractors](../workdown-items/view-data-intermediate.md) — missing `start_date`
 - [Per-view-kind display configuration (which fields show where)](../workdown-items/view-display-config.md) — missing `start_date`
 - [Build and edit a view's where filter from the UI](../workdown-items/view-filter-editor.md) — missing `start_date`
 - [Persist view definitions to views.yaml](../workdown-items/view-write-backend.md) — missing `start_date`
+- [Collapse the metric-row duplicates of the generic view checks](../workdown-items/views-check-metric-row-dedup.md) — missing `start_date`
 - [Add views path to config; ship default views.yaml](../workdown-items/views-config-path.md) — missing `start_date`
 - [Cross-file validation for views.yaml](../workdown-items/views-cross-file-validation.md) — missing `start_date`
 - [Editor-only JSON Schema for views.yaml](../workdown-items/views-json-schema.md) — missing `start_date`
 - [Add per-view `title:` slot to views.yaml](../workdown-items/views-title-slot.md) — missing `start_date`
 - [Wire views validation into workdown validate](../workdown-items/views-validate-integration.md) — missing `start_date`
 - [Design views.yaml shape](../workdown-items/views-yaml-design.md) — missing `start_date`
+- [Resolve the virtual `id` in query evaluation and sorting](../workdown-items/virtual-id-in-query-eval.md) — missing `start_date`
 - [Reject the virtual `id` in structural slots that read item fields](../workdown-items/virtual-id-in-structural-slots.md) — missing `start_date`
 - [Unify the upward chain walks and link-target reads](../workdown-items/walker-primitives.md) — missing `start_date`
 - [workdown serve skeleton with embedded UI](../workdown-items/walking-skeleton.md) — missing `start_date`
+- [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md) — missing `start_date`
+- [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md) — missing `start_date`
 - [Validate where-clause operands against the field's value set](../workdown-items/where-clause-value-validation.md) — missing `start_date`
 - [Split into core / cli / server workspace](../workdown-items/workspace-refactor.md) — missing `start_date`

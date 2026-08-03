@@ -25,5 +25,5 @@ gantt
     Polish & dogfood :polish, 2026-07-27, 2026-07-31
 ```
 
-> _2 items dropped:_
-> _- missing 'start_date': "Multi-project support", "Time tracking"_
+> _3 items dropped:_
+> _- missing 'start_date': "Miscellaneous improvements", "Multi-project support", "Time tracking"_

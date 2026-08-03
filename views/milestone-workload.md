@@ -580,11 +580,11 @@ effort (days)
 <rect x="1402" y="204" width="19" height="64" opacity="1" fill="#E69F00" stroke="none"/>
 <rect x="1421" y="204" width="20" height="64" opacity="1" fill="#E69F00" stroke="none"/>
 <rect x="1441" y="204" width="20" height="64" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1461" y="109" width="19" height="159" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1480" y="174" width="20" height="94" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1500" y="174" width="19" height="94" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1519" y="174" width="20" height="94" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="1539" y="174" width="20" height="94" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1461" y="88" width="19" height="180" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1480" y="152" width="20" height="116" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1500" y="152" width="19" height="116" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1519" y="152" width="20" height="116" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="1539" y="152" width="20" height="116" opacity="1" fill="#E69F00" stroke="none"/>
 </svg>
 
 ## Values
@@ -648,11 +648,12 @@ effort (days)
 | 2026-07-22 | 6h 32min 44s |
 | 2026-07-23 | 6h 32min 44s |
 | 2026-07-24 | 6h 32min 44s |
-| 2026-07-27 | 16h 8min 44s |
-| 2026-07-28 | 9h 36min |
-| 2026-07-29 | 9h 36min |
-| 2026-07-30 | 9h 36min |
-| 2026-07-31 | 9h 36min |
+| 2026-07-27 | 18h 20min 44s |
+| 2026-07-28 | 11h 48min |
+| 2026-07-29 | 11h 48min |
+| 2026-07-30 | 11h 48min |
+| 2026-07-31 | 11h 48min |
 
 ## Unplaced
+- [Miscellaneous improvements](../workdown-items/misc-work.md) — missing `start_date`
 - [Time tracking](../workdown-items/time-tracking.md) — missing `start_date`
