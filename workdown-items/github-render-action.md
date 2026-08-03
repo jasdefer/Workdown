@@ -1,12 +1,25 @@
 ---
 id: github-render-action
 type: issue
-status: to_do
+status: removed
 title: Reusable GitHub Action to keep rendered views in sync
 parent: polish
 depends_on: [next-release]
 effort: "3h"
 ---
+
+> **Removed 2026-08-03, no consumers.** Kept as a record of the idea,
+> not as work to do.
+>
+> A reusable action exists for other teams; there are none yet. Building
+> it now would ship infrastructure with zero users, no real-world test
+> case, and a maintenance surface — the same merits reasoning that
+> dropped the release notes. The one real staleness problem (this
+> repo's own `views/`) is solved at the source by installing the
+> [[init-install-hooks]] hook locally; a stale-views check in this
+> repo's own `ci.yml` is the cheap next step if stale views still slip
+> through. Extract the reusable action when a real team adopts workdown
+> and there is an actual consumer to test against.
 
 Teams that skip the local hook ([[init-install-hooks]]) need the CI
 variant: a reusable GitHub Action consumer repos reference from their
