@@ -1,7 +1,7 @@
 ---
 id: readme-visualization-update
 type: issue
-status: to_do
+status: done
 title: "README: document the visualization workflow"
 parent: polish
 effort: "2h"
