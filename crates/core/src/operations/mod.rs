@@ -3,6 +3,7 @@ pub mod body;
 pub mod diagnostics;
 pub mod frontmatter_io;
 pub mod init;
+pub mod install_hooks;
 pub mod rename;
 pub mod set;
 pub mod templates;

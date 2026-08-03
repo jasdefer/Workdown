@@ -33,6 +33,11 @@ pub enum Command {
         /// Project name (defaults to current directory name)
         #[arg(long)]
         name: Option<String>,
+
+        /// Also install the git pre-commit hook that keeps rendered
+        /// views in sync (see `workdown install-hooks`)
+        #[arg(long)]
+        install_hooks: bool,
     },
     /// Validate all work items against the schema
     Validate {
@@ -205,6 +210,23 @@ pub enum Command {
         /// evaluates at its own current date.
         #[arg(long = "as-of", value_name = "DATE")]
         as_of: Option<chrono::NaiveDate>,
+    },
+    /// Install a git pre-commit hook that keeps rendered views in sync
+    ///
+    /// The default hook re-renders and stages the views, so they land
+    /// in the same commit as the work items that changed them. With
+    /// `--check` the hook instead fails the commit when views were
+    /// stale, leaving review and staging to you. Either way the hook
+    /// does nothing when the staged changes touch neither the work
+    /// items nor the workdown configuration.
+    ///
+    /// Refuses to overwrite a pre-commit hook it did not install;
+    /// re-running is safe and switches modes in place.
+    InstallHooks {
+        /// Fail the commit on stale views instead of staging the
+        /// re-rendered files automatically
+        #[arg(long)]
+        check: bool,
     },
     /// Change a work item's id — moves the file and rewrites every
     /// incoming link/links reference.

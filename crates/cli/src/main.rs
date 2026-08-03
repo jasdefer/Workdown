@@ -25,7 +25,10 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
     tracing::debug!(config = %cli.config.display(), "using config");
 
     match &cli.command {
-        cli::Command::Init { name } => {
+        cli::Command::Init {
+            name,
+            install_hooks,
+        } => {
             tracing::info!("initializing workdown project");
             let root = std::env::current_dir()
                 .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
@@ -37,7 +40,14 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     cli::output::warning("Already initialized (.workdown/ exists, skipping)");
                 }
             }
-            Ok(ExitCode::SUCCESS)
+            if !*install_hooks {
+                return Ok(ExitCode::SUCCESS);
+            }
+            // The scaffold (or the pre-existing project) provides the
+            // config the hook installer templates its paths from.
+            let config = workdown_core::parser::config::load_config(&cli.config)
+                .map_err(|e| anyhow::anyhow!("failed to load config: {e}"))?;
+            commands::install_hooks::run_install_hooks_command(&config, &root, &cli.config, false)
         }
 
         // All other commands need the project config.
@@ -191,6 +201,17 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                     let project_root = std::env::current_dir()
                         .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
                     commands::body::run_body_command(&config, &project_root, id, body)
+                }
+                cli::Command::InstallHooks { check } => {
+                    tracing::info!("installing pre-commit hook");
+                    let project_root = std::env::current_dir()
+                        .map_err(|e| anyhow::anyhow!("cannot determine current directory: {e}"))?;
+                    commands::install_hooks::run_install_hooks_command(
+                        &config,
+                        &project_root,
+                        &cli.config,
+                        *check,
+                    )
                 }
                 cli::Command::Serve { port, open, as_of } => {
                     tracing::info!("starting workdown serve");

@@ -117,6 +117,8 @@ _(no cards)_
 
 Because rendered views are plain files in the repository, they change in the same commit as the work items: a PR that finishes a task also moves its card to the done column, reviewable in the diff and readable on GitHub without any tooling. Boards are one kind of many — tree, graph, table, gantt (and variants), treemap, workload, bar and line charts, heatmap and metric views are all cataloged with their options in [docs/views.md](docs/views.md).
 
+Rendered views go stale the moment an item changes. `workdown install-hooks` (or `workdown init --install-hooks`) installs a git pre-commit hook that re-renders and stages them whenever a commit touches work items or workdown configuration — pass `--check` to have it fail the commit instead of staging. It never overwrites a pre-commit hook it didn't write.
+
 This repository manages its own development with workdown: [`workdown-items/`](workdown-items/) holds the real work items, [`views/`](views/) their rendered views.
 
 ## Configuration
