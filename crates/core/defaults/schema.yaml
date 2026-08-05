@@ -99,8 +99,8 @@ fields:
     inverse: duplicated_by
 
   # Aggregated fields — set manually on leaf items, computed automatically
-  # up the link chain named in `over` (defaults to `parent`). Uncomment
-  # and adjust as needed:
+  # up the link chain named in `over` (defaults to `parent`; the link
+  # field needs allow_cycles: false). Uncomment and adjust as needed:
   #
   # start_date:
   #   type: date

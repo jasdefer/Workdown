@@ -46,10 +46,21 @@ structurally could not evaluate.
   compute + aggregate: pull fills leaves of the rollup hierarchy, the
   rollup fills everything above — a `depends_on` on a non-leaf does not
   feed its own pulled field (dependency inheritance stays a non-goal).
-- Cycles: nodes on a dependency cycle stay unevaluated. A cycle within
-  one link field is the link cycle detector's finding; a loop only the
-  combination of link fields produces (jointly-cyclic link graphs) gets
-  its own item diagnostic naming the `item.field` chain.
+- Graph edges exist only where evaluation will actually read the
+  input: an item whose file already carries the field is settled and
+  waits for nothing — so a hand-written anchor breaks any dependency
+  loop — and non-leaves of a derive+aggregate field never wait for the
+  same-item or pull inputs the rollup makes irrelevant. The plan and
+  the evaluator share one eligibility rule and cannot drift.
+- Cycles: nodes on a genuine, unanchored dependency cycle stay
+  unevaluated. A cycle within one link field is the link cycle
+  detector's finding — guaranteed by construction, since both `pull`'s
+  and `aggregate`'s `over` link must declare `allow_cycles: false`
+  (the latter is a new schema requirement introduced here; the old
+  walk-based rollup tolerated cyclic hierarchies, the graph starves on
+  them). A loop only the combination of link fields produces
+  (jointly-cyclic link graphs) gets its own item diagnostic naming the
+  `item.field` chain.
 
 ## Consequences
 

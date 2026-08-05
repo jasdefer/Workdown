@@ -78,7 +78,7 @@ fields:
 | Option | Description |
 |--------|-------------|
 | `function` | The aggregation function. See table below. |
-| `over` | The `link` field whose hierarchy the rollup climbs. Default: `parent`. |
+| `over` | The `link` field whose hierarchy the rollup climbs. Default: `parent`. Must declare `allow_cycles: false` — aggregated values need an acyclic hierarchy to evaluate in. |
 | `error_on_missing` | Whether to report an error if a leaf item is missing this field. Default: `false`. |
 
 Available aggregate functions by type:

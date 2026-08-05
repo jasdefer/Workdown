@@ -187,8 +187,9 @@ pub enum ItemDiagnosticKind {
     /// no single link field explains — e.g. two pull fields over two
     /// different link graphs that are only jointly cyclic. `chain`
     /// lists the units as `item.field`, first one repeated at the end.
-    /// (A loop within one link field is the cycle detector's finding,
-    /// not this one.)
+    /// Only unanchored loops are reported: a hand-written value on any
+    /// unit settles it and breaks the loop. (A loop within one link
+    /// field is the cycle detector's finding, not this one.)
     DeriveCycle { chain: Vec<String> },
 }
 

@@ -1037,11 +1037,16 @@ fn validate_aggregate_compatibility(
     }
 }
 
-/// Check that the aggregate's `over` link field exists and is of type `link`.
+/// Check that the aggregate's `over` link field exists, is of type
+/// `link`, and declares `allow_cycles: false`.
 ///
-/// `over` defaults to `"parent"` when unset; the same existence/type rules
-/// apply to the default. A missing or wrong-typed `over` field is a hard
-/// schema-load error so the rollup pass can trust its configuration.
+/// `over` defaults to `"parent"` when unset; the same rules apply to
+/// the default. The acyclicity requirement mirrors the pull config's:
+/// aggregated values need an acyclic hierarchy to evaluate in, and it
+/// guarantees that any data-level cycle in the hierarchy is the link
+/// cycle detector's finding (which only checks fields declared
+/// `allow_cycles: false`). A failing check is a hard schema-load error
+/// so the rollup can trust its configuration.
 fn validate_aggregate_over(
     name: &str,
     field: &RawFieldDefinition,
@@ -1075,6 +1080,17 @@ fn validate_aggregate_over(
             format!(
                 "aggregate.over references field '{target_name}' of type '{}' (must be 'link')",
                 target.field_type
+            ),
+        ));
+        return;
+    }
+
+    if target.allow_cycles != Some(false) {
+        errors.push(field_error(
+            name,
+            format!(
+                "aggregate.over field '{target_name}' must declare allow_cycles: false — \
+                 aggregated values need an acyclic hierarchy to evaluate in"
             ),
         ));
     }
@@ -1977,6 +1993,7 @@ fields:
 fields:
   parent:
     type: link
+    allow_cycles: false
   done:
     type: boolean
     aggregate:
@@ -1998,6 +2015,7 @@ fields:
 fields:
   parent:
     type: link
+    allow_cycles: false
   start_date:
     type: date
     aggregate:
@@ -2012,6 +2030,7 @@ fields:
 fields:
   parent:
     type: link
+    allow_cycles: false
   done:
     type: boolean
     aggregate:
@@ -2092,6 +2111,7 @@ fields:
 fields:
   epic:
     type: link
+    allow_cycles: false
   effort:
     type: integer
     aggregate:
@@ -2099,6 +2119,33 @@ fields:
       over: epic
 ";
         parse_schema(yaml).expect("explicit over: <link field> should parse");
+    }
+
+    #[test]
+    fn aggregate_over_without_allow_cycles_false_rejected() {
+        // Without `allow_cycles: false` the link cycle detector skips
+        // the field, so a data-level cycle in the hierarchy would starve
+        // the rollup without any diagnostic naming the cause.
+        let yaml = "\
+fields:
+  parent:
+    type: link
+  effort:
+    type: integer
+    aggregate:
+      function: sum
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(
+            errors.iter().any(|e| e
+                .message
+                .contains("aggregate.over field 'parent' must declare allow_cycles: false")),
+            "expected allow_cycles requirement error, got: {errors:?}"
+        );
     }
 
     // ── Compute config ────────────────────────────────────────────────

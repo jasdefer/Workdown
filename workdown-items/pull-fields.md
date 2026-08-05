@@ -118,6 +118,13 @@ links, transitive; **pull** = other field, forward links, one hop;
    rule system.
 7. **Aggregate composition:** pull on leaves only, rollup above —
    mirroring the compute + aggregate contract.
+8. **Graph edges only where evaluation reads inputs** (review
+   finding): settled items (hand-written value) wait for nothing, so
+   a manual anchor breaks any dependency loop; non-leaves of a
+   derive+aggregate field never wait for same-item/pull inputs. And
+   `aggregate.over` now requires `allow_cycles: false` like `pull.over`
+   — the graph starves on cyclic hierarchies the old walk tolerated,
+   so the cycle detector must be guaranteed to cover them.
 
 ## Acceptance
 
