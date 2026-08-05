@@ -9,10 +9,10 @@ use indexmap::IndexMap;
 
 use crate::expression::parse_expression;
 use crate::model::schema::{
-    is_defined_inverse, is_relation_anchor, AggregateFunction, Assertion, ComputeConfig, Condition,
-    ConditionValue, CountConstraint, DefaultValue, FieldDefinition, FieldType, FieldTypeConfig,
-    Generator, NegationValue, RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema,
-    WhenBranch, WhenConfig,
+    allowed_aggregate_functions, is_defined_inverse, is_relation_anchor, Assertion, ComputeConfig,
+    Condition, ConditionValue, CountConstraint, DefaultValue, FieldDefinition, FieldType,
+    FieldTypeConfig, Generator, NegationValue, RawFieldDefinition, RawRule, RawSchema, RoundMode,
+    Rule, Schema, WhenBranch, WhenConfig,
 };
 use crate::model::views::COLOR_NONE_SENTINEL;
 use crate::store::coerce::coerce_value;
@@ -209,6 +209,7 @@ fn validate_fields(
         validate_aggregate_over(name, field, fields, errors);
         validate_default_compatibility(name, field, errors);
         validate_compute_config(name, field, errors);
+        validate_pull_compatibility(name, field, errors);
         validate_when_compatibility(name, field, errors);
         validate_inverse_property(name, field, fields, &mut seen_inverses, errors);
     }
@@ -538,6 +539,58 @@ fn validate_compute_config(
                 ));
             }
         }
+    }
+}
+
+/// Validate a field's `pull:` config structurally: combinations with
+/// other options and the declared type. Reference resolution (`over`,
+/// `field`, function/type fit) needs the whole field map settled and
+/// lives in `compute_check`, where a finding disables the one field
+/// instead of failing the load.
+fn validate_pull_compatibility(
+    name: &str,
+    field: &RawFieldDefinition,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    if field.pull.is_none() {
+        return;
+    }
+
+    if field.compute.is_some() {
+        errors.push(field_error(
+            name,
+            "'pull' and 'compute' cannot be combined — both derive the field's value",
+        ));
+    }
+    if field.when.is_some() {
+        errors.push(field_error(
+            name,
+            "'pull' and 'when' cannot be combined — both derive the field's value",
+        ));
+    }
+    if field.default.is_some() {
+        errors.push(field_error(
+            name,
+            "'pull' and 'default' cannot be combined — both fill in absent values",
+        ));
+    }
+
+    let type_supports_pull = matches!(
+        field.field_type,
+        FieldType::Integer
+            | FieldType::Float
+            | FieldType::Date
+            | FieldType::Duration
+            | FieldType::Boolean
+    );
+    if !type_supports_pull {
+        errors.push(field_error(
+            name,
+            format!(
+                "'pull' is only valid for integer, float, date, duration, and boolean fields (this field is {})",
+                field.field_type
+            ),
+        ));
     }
 }
 
@@ -945,6 +998,7 @@ fn convert_field(raw: RawFieldDefinition) -> FieldDefinition {
         resource: raw.resource,
         aggregate: raw.aggregate,
         compute,
+        pull: raw.pull,
         // Attached after conversion by `attach_when_configs` — coercing
         // the `then:` literals needs this typed definition first.
         when: None,
@@ -962,40 +1016,11 @@ fn validate_aggregate_compatibility(
         None => return,
     };
 
-    let allowed: &[AggregateFunction] = match field.field_type {
-        FieldType::Integer | FieldType::Float => &[
-            AggregateFunction::Sum,
-            AggregateFunction::Min,
-            AggregateFunction::Max,
-            AggregateFunction::Average,
-            AggregateFunction::Median,
-            AggregateFunction::Count,
-        ],
-        FieldType::Date => &[
-            AggregateFunction::Min,
-            AggregateFunction::Max,
-            AggregateFunction::Average,
-        ],
-        FieldType::Duration => &[
-            AggregateFunction::Sum,
-            AggregateFunction::Min,
-            AggregateFunction::Max,
-            AggregateFunction::Average,
-            AggregateFunction::Median,
-            AggregateFunction::Count,
-        ],
-        FieldType::Boolean => &[
-            AggregateFunction::All,
-            AggregateFunction::Any,
-            AggregateFunction::None,
-            AggregateFunction::Count,
-        ],
-        // Other types can't have aggregate (caught by reject_prop), but
-        // guard against it here too.
-        _ => {
-            // Already reported by type-specific validation; skip to avoid duplicate.
-            return;
-        }
+    let Some(allowed) = allowed_aggregate_functions(field.field_type) else {
+        // Other types can't have aggregate (caught by reject_prop) —
+        // already reported by type-specific validation; skip to avoid
+        // a duplicate.
+        return;
     };
 
     if !allowed.contains(&agg.function) {
@@ -1445,7 +1470,7 @@ fn is_one_to_many_reference(reference: &str, fields: &IndexMap<String, FieldDefi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::schema::Severity;
+    use crate::model::schema::{AggregateFunction, Severity};
 
     // ── Happy path ────────────────────────────────────────────────
 
@@ -2160,6 +2185,143 @@ fields:
             yaml,
             "'compute' is only valid for integer, float, date, duration, and boolean fields (this field is choice)",
         );
+    }
+
+    // ── Pull config ────────────────────────────────────────────────────
+
+    #[test]
+    fn pull_config_parses() {
+        let yaml = "\
+fields:
+  depends_on:
+    type: links
+    allow_cycles: false
+  end:
+    type: date
+  start:
+    type: date
+    pull:
+      over: depends_on
+      field: end
+      function: max
+";
+        let schema = parse_schema(yaml).unwrap();
+        let pull = schema.fields["start"].pull.as_ref().unwrap();
+        assert_eq!(pull.over, "depends_on");
+        assert_eq!(pull.field, "end");
+        assert_eq!(pull.function, AggregateFunction::Max);
+        assert!(!pull.error_on_missing);
+    }
+
+    #[test]
+    fn pull_with_compute_rejected() {
+        let yaml = "\
+fields:
+  depends_on:
+    type: links
+    allow_cycles: false
+  end:
+    type: date
+  start:
+    type: date
+    compute: end - end
+    pull:
+      over: depends_on
+      field: end
+      function: max
+";
+        assert_validation_error_contains(yaml, "'pull' and 'compute' cannot be combined");
+    }
+
+    #[test]
+    fn pull_with_when_rejected() {
+        let yaml = "\
+fields:
+  depends_on:
+    type: links
+    allow_cycles: false
+  flagged:
+    type: boolean
+  blocked:
+    type: boolean
+    when:
+      - if: flagged == true
+        then: true
+    pull:
+      over: depends_on
+      field: flagged
+      function: any
+";
+        assert_validation_error_contains(yaml, "'pull' and 'when' cannot be combined");
+    }
+
+    #[test]
+    fn pull_with_default_rejected() {
+        let yaml = "\
+fields:
+  depends_on:
+    type: links
+    allow_cycles: false
+  end:
+    type: date
+  start:
+    type: date
+    default: $today
+    pull:
+      over: depends_on
+      field: end
+      function: max
+";
+        assert_validation_error_contains(yaml, "'pull' and 'default' cannot be combined");
+    }
+
+    #[test]
+    fn pull_on_unsupported_type_rejected() {
+        let yaml = "\
+fields:
+  depends_on:
+    type: links
+    allow_cycles: false
+  status:
+    type: choice
+    values: [open, done]
+    pull:
+      over: depends_on
+      field: status
+      function: count
+";
+        assert_validation_error_contains(
+            yaml,
+            "'pull' is only valid for integer, float, date, duration, and boolean fields (this field is choice)",
+        );
+    }
+
+    #[test]
+    fn pull_combined_with_aggregate_parses() {
+        // Pull fills leaves of the aggregate's hierarchy, the rollup
+        // fills everything above — a legal composition.
+        let yaml = "\
+fields:
+  parent:
+    type: link
+    allow_cycles: false
+  depends_on:
+    type: links
+    allow_cycles: false
+  end:
+    type: date
+  start:
+    type: date
+    aggregate:
+      function: min
+    pull:
+      over: depends_on
+      field: end
+      function: max
+";
+        let schema = parse_schema(yaml).unwrap();
+        assert!(schema.fields["start"].pull.is_some());
+        assert!(schema.fields["start"].aggregate.is_some());
     }
 
     // ── when: config ───────────────────────────────────────────────────

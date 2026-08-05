@@ -1,24 +1,24 @@
-//! Compute pass: evaluate one field's `compute:` expression per item.
+//! Compute evaluation: one field's `compute:` expression on one item.
 //!
-//! The same-item counterpart to [`super::rollup`]. For each item that
-//! doesn't already carry the field (a hand-written frontmatter value
-//! always wins), the expression evaluates over the item's current field
-//! values and the project constants, and the result is written into
-//! `WorkItem.fields` — indistinguishable from a manually-set value for
-//! everything downstream.
+//! The same-item mechanism next to [`super::rollup`]: the expression
+//! evaluates over the item's current field values and the project
+//! constants, and the result — converted to the field's declared type —
+//! becomes the item's value, indistinguishable from a manually-set one
+//! for everything downstream.
 //!
-//! When the field *also* declares `aggregate:`, the pass is restricted
-//! to leaves of the aggregate's `over` hierarchy: compute fills leaves,
-//! the rollup fills everything above. That keeps a milestone's
-//! `end_date` the `max` of its children instead of the gap-blind
-//! `start + duration` of its rolled-up inputs.
+//! Scheduling — which items evaluate, that a hand-written frontmatter
+//! value always wins, and the leaves-only restriction when the field
+//! also aggregates — is the derive orchestrator's job
+//! ([`super::derive`]); this module only answers "what does the
+//! expression yield for this item".
 //!
-//! Failure handling per item: missing inputs skip silently (or emit an
-//! error when the config sets `error_on_missing`); runtime failures on
-//! actual values (division by zero, overflow, non-finite results) emit
-//! a warning. Configs that failed the schema-level check never reach
-//! this pass — the derive orchestrator skips them — so the remaining
-//! type-level error paths below are defensive mappings to silent skips.
+//! Failure handling per item: missing inputs skip silently (or report
+//! an error when the config sets `error_on_missing`); runtime failures
+//! on actual values (division by zero, overflow, non-finite results)
+//! report a warning. Configs that failed the schema-level check never
+//! reach this pass — the derive orchestrator skips them — so the
+//! remaining type-level error paths below are defensive mappings to
+//! silent skips.
 
 use std::collections::HashMap;
 
@@ -32,108 +32,70 @@ use crate::model::{FieldValue, WorkItem, WorkItemId};
 
 const SECONDS_PER_DAY: i64 = 86_400;
 
-/// One compute-configured field, resolved by the derive orchestrator —
-/// the compute counterpart to [`super::rollup::AggregateFieldSpec`].
-pub(super) struct ComputeFieldSpec<'a> {
-    pub(super) name: &'a str,
-    pub(super) declared_type: FieldType,
-    pub(super) config: &'a ComputeConfig,
-    /// The aggregate's resolved `over` link when the field also
-    /// aggregates — restricting the pass to leaves of that hierarchy.
-    pub(super) leaves_only_over: Option<String>,
-}
-
-/// Evaluate `spec`'s expression for every eligible item, writing
-/// results into `items`. `evaluation_date` is what `$today` resolves
-/// to — passed in, never read from the clock here (see ADR-010).
-pub(super) fn run_for_field(
-    items: &mut HashMap<WorkItemId, WorkItem>,
-    reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
-    constants: &IndexMap<String, FieldValue>,
-    evaluation_date: NaiveDate,
-    spec: &ComputeFieldSpec<'_>,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    let today = timestamp_of(evaluation_date);
-    // Sorted for deterministic diagnostic order, like the rollup.
-    let mut item_ids: Vec<WorkItemId> = items.keys().cloned().collect();
-    item_ids.sort_by(|a, b| a.as_str().cmp(b.as_str()));
-
-    for item_id in item_ids {
-        let Some(item) = items.get(&item_id) else {
-            continue;
-        };
-        if item.fields.contains_key(spec.name) {
-            continue; // manual value wins; compute fills only absence
-        }
-        if let Some(over) = &spec.leaves_only_over {
-            if !is_leaf(reverse_links, &item_id, over) {
-                continue; // non-leaf of a compute+aggregate field: rollup's job
-            }
-        }
-
-        let missing = missing_inputs(item, spec.config);
-        if !missing.is_empty() {
-            if spec.config.error_on_missing {
-                diagnostics.push(Diagnostic::item(
-                    Severity::Error,
-                    item.source_path.clone(),
-                    item_id.clone(),
-                    ItemDiagnosticKind::ComputeMissingInputs {
-                        field: spec.name.to_owned(),
-                        missing_inputs: missing,
-                    },
-                ));
-            }
-            continue;
-        }
-
-        let context = ItemValueContext {
-            fields: &item.fields,
-            constants,
-            today: today.clone(),
-        };
-        let outcome = match evaluate(&spec.config.expression, &context) {
-            Ok(value) => match field_value_from(value, spec.declared_type, spec.config.round) {
-                Some(field_value) => Outcome::Value(field_value),
-                // A result that doesn't fit the declared type is
-                // schema-level and already reported by compute_check;
-                // a date outside chrono's calendar range also lands
-                // here and is accepted as a silent skip.
-                None => Outcome::Skip,
-            },
-            // Schema-level impossibilities — compute_check reported them.
-            Err(EvaluateError::MissingInput { .. }) | Err(EvaluateError::InvalidOperation) => {
-                Outcome::Skip
-            }
-            // Real runtime failures on this item's actual values.
-            Err(runtime_failure) => Outcome::Failed(runtime_failure.to_string()),
-        };
-
-        match outcome {
-            Outcome::Skip => {}
-            Outcome::Failed(detail) => diagnostics.push(Diagnostic::item(
-                Severity::Warning,
-                item.source_path.clone(),
-                item_id.clone(),
-                ItemDiagnosticKind::ComputeFailed {
-                    field: spec.name.to_owned(),
-                    detail,
-                },
-            )),
-            Outcome::Value(field_value) => {
-                if let Some(item) = items.get_mut(&item_id) {
-                    item.fields.insert(spec.name.to_owned(), field_value);
-                }
-            }
-        }
-    }
-}
-
-enum Outcome {
+/// What one item's compute evaluation produced: a value to write, a
+/// diagnostic to report (the value stays absent), or a silent skip.
+pub(super) enum SameItemOutcome {
     Value(FieldValue),
-    Failed(String),
+    Report(Diagnostic),
     Skip,
+}
+
+/// Evaluate `config`'s expression on one item. `today` is what
+/// `$today` resolves to — passed in, never read from the clock here
+/// (see ADR-010).
+pub(super) fn evaluate_for_item(
+    item: &WorkItem,
+    field_name: &str,
+    declared_type: FieldType,
+    config: &ComputeConfig,
+    constants: &IndexMap<String, FieldValue>,
+    today: &Value,
+) -> SameItemOutcome {
+    let missing = missing_inputs(item, config);
+    if !missing.is_empty() {
+        if config.error_on_missing {
+            return SameItemOutcome::Report(Diagnostic::item(
+                Severity::Error,
+                item.source_path.clone(),
+                item.id.clone(),
+                ItemDiagnosticKind::ComputeMissingInputs {
+                    field: field_name.to_owned(),
+                    missing_inputs: missing,
+                },
+            ));
+        }
+        return SameItemOutcome::Skip;
+    }
+
+    let context = ItemValueContext {
+        fields: &item.fields,
+        constants,
+        today: today.clone(),
+    };
+    match evaluate(&config.expression, &context) {
+        Ok(value) => match field_value_from(value, declared_type, config.round) {
+            Some(field_value) => SameItemOutcome::Value(field_value),
+            // A result that doesn't fit the declared type is
+            // schema-level and already reported by compute_check; a
+            // date outside chrono's calendar range also lands here and
+            // is accepted as a silent skip.
+            None => SameItemOutcome::Skip,
+        },
+        // Schema-level impossibilities — compute_check reported them.
+        Err(EvaluateError::MissingInput { .. }) | Err(EvaluateError::InvalidOperation) => {
+            SameItemOutcome::Skip
+        }
+        // Real runtime failures on this item's actual values.
+        Err(runtime_failure) => SameItemOutcome::Report(Diagnostic::item(
+            Severity::Warning,
+            item.source_path.clone(),
+            item.id.clone(),
+            ItemDiagnosticKind::ComputeFailed {
+                field: field_name.to_owned(),
+                detail: runtime_failure.to_string(),
+            },
+        )),
+    }
 }
 
 /// The expression's field references that have no value on `item`,

@@ -105,6 +105,10 @@
           "$ref": "#/$defs/compute",
           "description": "Compute config for computed fields: the value derives from an expression over the item's other fields."
         },
+        "pull": {
+          "$ref": "#/$defs/pull",
+          "description": "Pull config for pull fields: the value derives from a different field read through a forward link and reduced, e.g. start = max of the dependencies' end."
+        },
         "when": {
           "$ref": "#/$defs/when",
           "description": "Conditional config: derive the value by first matching condition. Next to 'when', 'default' is the evaluated fallback when no branch matches — never written to files."
@@ -114,6 +118,14 @@
         "compute": {
           "not": { "required": ["default"] },
           "description": "'compute' and 'default' cannot be combined — both fill in absent values."
+        },
+        "pull": {
+          "allOf": [
+            { "not": { "required": ["compute"] } },
+            { "not": { "required": ["when"] } },
+            { "not": { "required": ["default"] } }
+          ],
+          "description": "'pull' cannot be combined with 'compute' or 'when' (each derives the field's value) or with 'default' (both fill in absent values)."
         },
         "when": {
           "allOf": [
@@ -287,11 +299,12 @@
         },
         {
           "if": {
-            "properties": { "type": { "enum": ["string", "choice", "multichoice", "color", "boolean", "list", "link", "links"] } }
+            "properties": { "type": { "enum": ["string", "choice", "multichoice", "color", "list", "link", "links"] } }
           },
           "then": {
             "properties": {
-              "compute": false
+              "compute": false,
+              "pull": false
             }
           }
         },
@@ -334,6 +347,35 @@
           "default": "parent",
           "description": "Name of the link field to walk upward for the rollup. Must reference a `link` (single-valued) field in the schema. Defaults to 'parent' when omitted.",
           "pattern": "^[a-z_][a-z0-9_]*$"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "pull": {
+      "type": "object",
+      "description": "Pull config. The value is read from a different field on the items the `over` link points at — forward direction, one hop — and reduced with `function`. A hand-written value always wins; the pull fills only absence, so items without outgoing links carry manual anchors.",
+      "required": ["over", "field", "function"],
+      "properties": {
+        "over": {
+          "type": "string",
+          "description": "Name of the link or links field followed forward. Must declare allow_cycles: false — pulled values need an acyclic dependency graph to evaluate in.",
+          "pattern": "^[a-z_][a-z0-9_]*$"
+        },
+        "field": {
+          "type": "string",
+          "description": "The field read on each linked item.",
+          "pattern": "^[a-z_][a-z0-9_]*$"
+        },
+        "function": {
+          "type": "string",
+          "enum": ["sum", "min", "max", "average", "median", "count", "all", "any", "none"],
+          "description": "The reduction applied to the collected values. Available functions depend on the source field type: integer/float/duration support sum, min, max, average, median, count; date supports min, max, average; boolean supports all, any, none, count."
+        },
+        "error_on_missing": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether a linked item without the source value gets a diagnostic instead of the pull silently yielding nothing. All-or-nothing either way: one incomplete linked item means no value."
         }
       },
       "additionalProperties": false

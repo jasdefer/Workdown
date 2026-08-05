@@ -193,6 +193,45 @@ Conditional fields compose like computed ones: `when` and `compute` are mutually
 
 `when` is not supported on `link` and `links` fields: relations (reverse links, tree structure, broken-reference checks) are built from hand-written values, so a derived link would be a phantom edge. Declaring one is a schema error.
 
+### Pull fields
+
+Fields with a `pull` config read a *different* field from the items a forward link points at and reduce the collected values. Where aggregation flows *against* links (children roll up to parents) and `compute` stays on one item, a pull follows a link *forward* — one hop — and reduces what it finds there:
+
+```yaml
+fields:
+  depends_on:
+    type: links
+    allow_cycles: false
+
+  start:
+    type: date
+    pull:
+      over: depends_on   # follow this link field forward
+      field: end         # read this field on each linked item
+      function: max      # reduce: start when the last dependency ends
+
+  end:
+    type: date
+    compute: start + duration
+```
+
+| Option | Description |
+|--------|-------------|
+| `over` | The `link` or `links` field followed forward. Must declare `allow_cycles: false` — pulled values need an acyclic dependency graph to evaluate in. |
+| `field` | The field read on each linked item. |
+| `function` | The reduction — the same functions as `aggregate`, keyed on the *source* field's type (see the table under [aggregated fields](#aggregated-fields)). The result must fit the declared type: `count` produces `integer`, `average`/`median` of numbers produce `float`. |
+| `error_on_missing` | Report an error naming the linked item and field when a linked item lacks the source value, instead of silently leaving the field absent. Default: `false`. |
+
+The example above is forward scheduling from minimal input: set only `depends_on` and `duration` on every item, plus a hand-written `start` on items with no dependencies. `end` computes from `start + duration`, dependents pull their `start` from their dependencies' `end`, and the chain cascades — transitivity emerges from recursion, one hop at a time. `end` is exclusive (a one-day task starting Jan 5 ends Jan 6), so a successor starting at `max(end)` doesn't double-book the last day. For a handover lag, compose through an intermediate field: pull into `earliest_start`, then `start: compute: earliest_start + $constants.handover_lag`.
+
+Pull values behave like every other derived value: never written to files, visible everywhere, and a hand-written frontmatter value always wins — that is what anchors the roots.
+
+Missing inputs are **all-or-nothing**: if any linked item lacks the source field, the pull yields nothing. A partial reduction would be a silent guess — for `max` over dependency ends, a start date that looks plausible and is wrong. An item whose `over` field is empty or absent also yields nothing (it is a root; write its value by hand). Marking the field `required` turns both cases into load-time diagnostics: an unanchored root reports the plain missing field, an item behind an incomplete dependency reports which `item.field` is missing.
+
+Composition mirrors the other mechanisms: `pull` is mutually exclusive with `compute` and `when` on one field, and cannot be combined with `default`. `pull` + `aggregate` means the pull fills *leaf* items of the rollup hierarchy and the aggregate fills everything above — a milestone's `start` is the `min` of its children, and a `depends_on` on the milestone itself does not feed its own start (its children's dependencies already carry the constraints). Dependencies may point at items whose source value is itself aggregated or computed; all derived values share one dependency graph and evaluate in the right order.
+
+Cycles: a dependency loop within the `over` link field is reported by the cycle detector (that is why `allow_cycles: false` is required); items on the loop simply receive no pulled value. A loop that only the *combination* of link fields produces — two pull fields over two different link graphs that are only jointly cyclic — gets its own diagnostic naming the `item.field` chain.
+
 ---
 
 ## Resources

@@ -171,6 +171,25 @@ pub enum ItemDiagnosticKind {
         branch_number: usize,
         detail: String,
     },
+
+    /// A pull field could not be evaluated on this item because linked
+    /// items lack the source field — all-or-nothing, so one incomplete
+    /// linked item means no value. `missing_inputs` names them as
+    /// `target_id.field`. Emitted when the pull config sets
+    /// `error_on_missing: true`, and when the field is `required` and
+    /// the item ended up without a value.
+    PullMissingInputs {
+        field: String,
+        missing_inputs: Vec<String>,
+    },
+
+    /// Derived (item, field) units depend on each other in a loop that
+    /// no single link field explains — e.g. two pull fields over two
+    /// different link graphs that are only jointly cyclic. `chain`
+    /// lists the units as `item.field`, first one repeated at the end.
+    /// (A loop within one link field is the cycle detector's finding,
+    /// not this one.)
+    DeriveCycle { chain: Vec<String> },
 }
 
 // ── Files scope ──────────────────────────────────────────────────────
@@ -450,6 +469,13 @@ pub enum ConfigDiagnosticKind {
     /// order, first one repeated at the end.
     ComputeCycle { chain: Vec<String> },
 
+    /// A `pull:` config in `schema.yaml` doesn't resolve: `over` isn't
+    /// an acyclic link field, `field` is unknown, or the function
+    /// doesn't fit the source and declared types. `detail` carries the
+    /// specific finding. Disables the field, like a failing compute
+    /// expression.
+    PullInvalidConfig { field: String, detail: String },
+
     /// A field's `resource:` names a section that `resources.yaml` does
     /// not declare. A typo, so error severity — and the per-item check
     /// for that field switches off, since every value would otherwise
@@ -676,6 +702,7 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
         | ConfigDiagnosticKind::ComputeInvalidExpression { .. }
         | ConfigDiagnosticKind::ComputeResultTypeMismatch { .. }
         | ConfigDiagnosticKind::ComputeCycle { .. }
+        | ConfigDiagnosticKind::PullInvalidConfig { .. }
         | ConfigDiagnosticKind::ResourceSectionUnknown { .. }
         | ConfigDiagnosticKind::ResourceSectionEmpty { .. }
         | ConfigDiagnosticKind::ResourceDefaultUnknown { .. }
@@ -830,6 +857,27 @@ impl std::fmt::Display for ItemDiagnosticKind {
                 write!(
                     f,
                     "conditional field '{field}': branch {branch_number} condition failed and was skipped: {detail}"
+                )
+            }
+            ItemDiagnosticKind::PullMissingInputs {
+                field,
+                missing_inputs,
+            } => {
+                write!(
+                    f,
+                    "pull field '{field}' could not be evaluated: missing {}",
+                    missing_inputs
+                        .iter()
+                        .map(|input| format!("'{input}'"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            ItemDiagnosticKind::DeriveCycle { chain } => {
+                write!(
+                    f,
+                    "derived values form a cross-item cycle: {}",
+                    chain.join(" -> ")
                 )
             }
         }
@@ -1079,6 +1127,9 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                     "derived fields form a reference cycle: {}",
                     chain.join(" -> ")
                 )
+            }
+            ConfigDiagnosticKind::PullInvalidConfig { field, detail } => {
+                write!(f, "field '{field}', pull config: {detail}")
             }
             ConfigDiagnosticKind::ResourceSectionUnknown { field, section } => write!(
                 f,

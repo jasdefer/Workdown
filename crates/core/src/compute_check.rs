@@ -27,7 +27,10 @@ use std::path::Path;
 use crate::expression::{check_types, ExpressionType, ReferenceResolution, TypeContext};
 use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic};
 use crate::model::resources::Resources;
-use crate::model::schema::{FieldType, Schema, Severity};
+use crate::model::schema::{
+    aggregate_result_type, allowed_aggregate_functions, FieldDefinition, FieldType,
+    FieldTypeConfig, PullConfig, Schema, Severity,
+};
 use crate::model::FieldValue;
 
 /// Check every `compute:` config against the schema and resources.
@@ -124,8 +127,98 @@ fn findings(schema: &Schema, resources: &Resources) -> Vec<Finding> {
         }
     }
 
+    // `pull:` configs: `over` must be an acyclic link field, the
+    // source field must exist, and the reduction must fit both ends.
+    // Same standard as compute expressions: one finding against
+    // `schema.yaml` disables the one field.
+    for (field_name, field_definition) in &schema.fields {
+        let Some(pull) = &field_definition.pull else {
+            continue;
+        };
+        if let Some(detail) = pull_config_problem(schema, field_definition, pull) {
+            findings.push(Finding {
+                disabled_fields: vec![field_name.clone()],
+                kind: ConfigDiagnosticKind::PullInvalidConfig {
+                    field: field_name.clone(),
+                    detail,
+                },
+            });
+        }
+    }
+
     findings.extend(cycle_findings(schema));
     findings
+}
+
+/// The first problem that makes a `pull:` config unevaluable, rendered
+/// as the diagnostic detail — `None` when the config is sound.
+fn pull_config_problem(
+    schema: &Schema,
+    field_definition: &FieldDefinition,
+    pull: &PullConfig,
+) -> Option<String> {
+    let over = match schema.fields.get(&pull.over) {
+        None => return Some(format!("'over' references unknown field '{}'", pull.over)),
+        Some(over) => over,
+    };
+    let allow_cycles = match &over.type_config {
+        FieldTypeConfig::Link { allow_cycles, .. }
+        | FieldTypeConfig::Links { allow_cycles, .. } => *allow_cycles,
+        _ => {
+            return Some(format!(
+                "'over' references field '{}' of type '{}' (must be 'link' or 'links')",
+                pull.over,
+                over.field_type()
+            ))
+        }
+    };
+    if allow_cycles != Some(false) {
+        return Some(format!(
+            "'over' field '{}' must declare allow_cycles: false — pulled values need an acyclic dependency graph to evaluate in",
+            pull.over
+        ));
+    }
+
+    let Some(source) = schema.fields.get(&pull.field) else {
+        return Some(format!("'field' references unknown field '{}'", pull.field));
+    };
+    let source_type = source.field_type();
+    let Some(allowed) = allowed_aggregate_functions(source_type) else {
+        return Some(format!(
+            "'field' references field '{}' of type '{source_type}', which no function can reduce",
+            pull.field
+        ));
+    };
+    if !allowed.contains(&pull.function) {
+        let allowed_names: Vec<String> = allowed
+            .iter()
+            .map(|function| function.to_string())
+            .collect();
+        return Some(format!(
+            "function '{}' is not valid for source field '{}' of type '{source_type}' (allowed: {})",
+            pull.function,
+            pull.field,
+            allowed_names.join(", ")
+        ));
+    }
+    let Some(result_type) = aggregate_result_type(pull.function, source_type) else {
+        // Unreachable: the allowed-functions check above passed.
+        return Some(format!(
+            "function '{}' has no defined result for source type '{source_type}'",
+            pull.function
+        ));
+    };
+
+    let declared_type = field_definition.field_type();
+    let fits = result_type == declared_type
+        || (result_type == FieldType::Integer && declared_type == FieldType::Float);
+    if !fits {
+        return Some(format!(
+            "{} of '{}' produces {result_type}, but the field is declared {declared_type}",
+            pull.function, pull.field
+        ));
+    }
+    None
 }
 
 // ── Reference resolution ──────────────────────────────────────────────
@@ -725,6 +818,208 @@ fields:
     compute: start_date + duration
 ";
         assert!(check(schema_yaml, "").is_empty());
+    }
+
+    // ── pull: configs ─────────────────────────────────────────────────
+
+    const PULL_FIELDS: &str = "\
+fields:
+  depends_on:
+    type: links
+    allow_cycles: false
+  end:
+    type: date
+";
+
+    #[test]
+    fn valid_pull_config_produces_no_diagnostics() {
+        let schema_yaml = format!(
+            "{PULL_FIELDS}  start:
+    type: date
+    pull:
+      over: depends_on
+      field: end
+      function: max
+"
+        );
+        assert!(check(&schema_yaml, "").is_empty());
+    }
+
+    #[test]
+    fn pull_over_unknown_field_is_reported() {
+        let schema_yaml = format!(
+            "{PULL_FIELDS}  start:
+    type: date
+    pull:
+      over: depends_no
+      field: end
+      function: max
+"
+        );
+        let diagnostics = check(&schema_yaml, "");
+        assert!(matches!(
+            kinds(&diagnostics)[0],
+            ConfigDiagnosticKind::PullInvalidConfig { field, detail }
+                if field == "start" && detail.contains("unknown field 'depends_no'")
+        ));
+    }
+
+    #[test]
+    fn pull_over_non_link_field_is_reported() {
+        let schema_yaml = format!(
+            "{PULL_FIELDS}  start:
+    type: date
+    pull:
+      over: end
+      field: end
+      function: max
+"
+        );
+        let diagnostics = check(&schema_yaml, "");
+        assert!(matches!(
+            kinds(&diagnostics)[0],
+            ConfigDiagnosticKind::PullInvalidConfig { detail, .. }
+                if detail.contains("of type 'date' (must be 'link' or 'links')")
+        ));
+    }
+
+    #[test]
+    fn pull_over_link_without_allow_cycles_false_is_reported() {
+        let schema_yaml = "\
+fields:
+  related_to:
+    type: links
+  end:
+    type: date
+  start:
+    type: date
+    pull:
+      over: related_to
+      field: end
+      function: max
+";
+        let diagnostics = check(schema_yaml, "");
+        assert!(matches!(
+            kinds(&diagnostics)[0],
+            ConfigDiagnosticKind::PullInvalidConfig { detail, .. }
+                if detail.contains("must declare allow_cycles: false")
+        ));
+    }
+
+    #[test]
+    fn pull_source_unknown_field_is_reported() {
+        let schema_yaml = format!(
+            "{PULL_FIELDS}  start:
+    type: date
+    pull:
+      over: depends_on
+      field: endd
+      function: max
+"
+        );
+        let diagnostics = check(&schema_yaml, "");
+        assert!(matches!(
+            kinds(&diagnostics)[0],
+            ConfigDiagnosticKind::PullInvalidConfig { detail, .. }
+                if detail.contains("unknown field 'endd'")
+        ));
+    }
+
+    #[test]
+    fn pull_function_not_valid_for_source_type_is_reported() {
+        // sum of dates is undefined — the aggregate table says so.
+        let schema_yaml = format!(
+            "{PULL_FIELDS}  start:
+    type: date
+    pull:
+      over: depends_on
+      field: end
+      function: sum
+"
+        );
+        let diagnostics = check(&schema_yaml, "");
+        assert!(matches!(
+            kinds(&diagnostics)[0],
+            ConfigDiagnosticKind::PullInvalidConfig { detail, .. }
+                if detail.contains("function 'sum' is not valid for source field 'end' of type 'date'")
+        ));
+    }
+
+    #[test]
+    fn pull_result_type_mismatch_is_reported() {
+        // count reduces to integer; declaring the field as date must fail.
+        let schema_yaml = "\
+fields:
+  depends_on:
+    type: links
+    allow_cycles: false
+  weight:
+    type: integer
+  start:
+    type: date
+    pull:
+      over: depends_on
+      field: weight
+      function: count
+";
+        let diagnostics = check(schema_yaml, "");
+        assert!(matches!(
+            kinds(&diagnostics)[0],
+            ConfigDiagnosticKind::PullInvalidConfig { detail, .. }
+                if detail.contains("count of 'weight' produces integer, but the field is declared date")
+        ));
+    }
+
+    #[test]
+    fn pull_integer_result_fits_float_field() {
+        let schema_yaml = "\
+fields:
+  depends_on:
+    type: links
+    allow_cycles: false
+  weight:
+    type: integer
+  dependency_count:
+    type: float
+    pull:
+      over: depends_on
+      field: weight
+      function: count
+";
+        assert!(check(schema_yaml, "").is_empty());
+    }
+
+    #[test]
+    fn pull_over_single_link_field_is_accepted() {
+        let schema_yaml = "\
+fields:
+  parent:
+    type: link
+    allow_cycles: false
+  end:
+    type: date
+  start:
+    type: date
+    pull:
+      over: parent
+      field: end
+      function: max
+";
+        assert!(check(schema_yaml, "").is_empty());
+    }
+
+    #[test]
+    fn failed_fields_includes_broken_pull_fields() {
+        let schema_yaml = format!(
+            "{PULL_FIELDS}  start:
+    type: date
+    pull:
+      over: depends_on
+      field: endd
+      function: max
+"
+        );
+        assert_eq!(failed(&schema_yaml, ""), vec!["start"]);
     }
 
     // ── failed_fields ─────────────────────────────────────────────────

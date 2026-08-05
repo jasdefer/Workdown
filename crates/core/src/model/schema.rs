@@ -96,6 +96,11 @@ pub struct FieldDefinition {
     /// Compute config for computed fields (same item, cross-field).
     pub compute: Option<ComputeConfig>,
 
+    /// Pull config for pull fields (cross-item, cross-field: a
+    /// different field read through a forward link, reduced). Mutually
+    /// exclusive with `compute` and `when`.
+    pub pull: Option<PullConfig>,
+
     /// Conditional config: derive the value by first matching condition.
     /// Mutually exclusive with `compute`.
     pub when: Option<WhenConfig>,
@@ -113,6 +118,7 @@ impl FieldDefinition {
             resource: None,
             aggregate: None,
             compute: None,
+            pull: None,
             when: None,
         }
     }
@@ -276,6 +282,12 @@ pub(crate) struct RawFieldDefinition {
     /// Aggregation config for aggregated fields.
     #[serde(default)]
     pub aggregate: Option<AggregateConfig>,
+
+    /// Pull config for pull fields. Structured like `aggregate`, so it
+    /// deserializes directly; reference resolution happens in
+    /// `compute_check`.
+    #[serde(default)]
+    pub pull: Option<PullConfig>,
 
     /// Compute config for computed fields. Either an expression string
     /// (`compute: start_date + duration`) or a mapping with options —
@@ -460,6 +472,98 @@ impl std::fmt::Display for AggregateFunction {
         };
         f.write_str(s)
     }
+}
+
+/// The aggregate functions defined for values of `field_type`, or
+/// `None` when the type cannot be reduced at all. Shared by the
+/// aggregate and pull config checks.
+pub(crate) fn allowed_aggregate_functions(
+    field_type: FieldType,
+) -> Option<&'static [AggregateFunction]> {
+    match field_type {
+        FieldType::Integer | FieldType::Float | FieldType::Duration => Some(&[
+            AggregateFunction::Sum,
+            AggregateFunction::Min,
+            AggregateFunction::Max,
+            AggregateFunction::Average,
+            AggregateFunction::Median,
+            AggregateFunction::Count,
+        ]),
+        FieldType::Date => Some(&[
+            AggregateFunction::Min,
+            AggregateFunction::Max,
+            AggregateFunction::Average,
+        ]),
+        FieldType::Boolean => Some(&[
+            AggregateFunction::All,
+            AggregateFunction::Any,
+            AggregateFunction::None,
+            AggregateFunction::Count,
+        ]),
+        _ => None,
+    }
+}
+
+/// The type `function` produces when reducing values of `input_type`,
+/// or `None` when that combination is not defined. Mirrors the actual
+/// reductions in `store::rollup::apply_aggregate`: `count` always
+/// counts to integer, `average`/`median` of numbers are fractional.
+pub(crate) fn aggregate_result_type(
+    function: AggregateFunction,
+    input_type: FieldType,
+) -> Option<FieldType> {
+    if !allowed_aggregate_functions(input_type)?.contains(&function) {
+        return None;
+    }
+    match function {
+        AggregateFunction::Count => Some(FieldType::Integer),
+        AggregateFunction::Sum | AggregateFunction::Min | AggregateFunction::Max => {
+            Some(input_type)
+        }
+        AggregateFunction::Average | AggregateFunction::Median => match input_type {
+            FieldType::Integer | FieldType::Float => Some(FieldType::Float),
+            other => Some(other),
+        },
+        AggregateFunction::All | AggregateFunction::Any | AggregateFunction::None => {
+            Some(FieldType::Boolean)
+        }
+    }
+}
+
+// ── Pull config ───────────────────────────────────────────────────────
+
+/// Configuration of a pull field (`pull:` in `schema.yaml`): read
+/// `field` from the items this item's `over` link points at — forward
+/// direction, one hop — and reduce the collected values with
+/// `function`. Cross-item and cross-field, the forward counterpart to
+/// [`AggregateConfig`]'s reverse-link rollup. Transitivity emerges
+/// from recursion (b pulls from a, c pulls from b), never from
+/// walking.
+///
+/// Reference resolution (does `over` name an acyclic link field, does
+/// `field` exist, do the types line up) happens in `compute_check`,
+/// to the same one-diagnostic-disables-the-field standard as compute
+/// expressions.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PullConfig {
+    /// The link/links field followed forward. Must declare
+    /// `allow_cycles: false` — the pull needs an acyclic dependency
+    /// graph to evaluate in.
+    pub over: String,
+
+    /// The field read on each linked item.
+    pub field: String,
+
+    /// The reduction applied to the collected values.
+    pub function: AggregateFunction,
+
+    /// Whether a linked item without the source value gets a
+    /// diagnostic instead of the pull silently yielding nothing.
+    /// All-or-nothing either way: one incomplete linked item means no
+    /// value — a partial reduction would be a silent guess.
+    #[serde(default)]
+    pub error_on_missing: bool,
 }
 
 // ── Compute config ────────────────────────────────────────────────────
