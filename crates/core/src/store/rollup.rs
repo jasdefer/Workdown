@@ -1,21 +1,23 @@
-//! Aggregate rollup: walk the configured `over` link upward from each
-//! manual-bearing item, collect contributions on its non-manual ancestors,
-//! and reduce them via the field's aggregate function.
+//! Aggregate value semantics and checks: reduce bearer contributions
+//! into an item's value, and validate the bearer topology.
 //!
-//! A single up-walk pass simultaneously emits chain-conflict diagnostics
-//! (encountering a second manual setter aborts that walk) and accumulates
-//! values for the apply pass. An optional coverage pass surfaces
-//! `error_on_missing` diagnostics for tree-leaves with no covering value.
+//! Scheduling — which item aggregates when, and how bearer
+//! contributions travel up the `over` link — lives in the derive
+//! orchestrator's dependency graph ([`super::derive`]). This module
+//! owns what the orchestrator delegates: [`apply_aggregate`] reduces
+//! one contribution list, [`conflict_diagnostics`] reports a bearer
+//! nested under another bearer (two original values on one chain are
+//! contradictory), and [`coverage_diagnostics`] reports tree-leaves no
+//! bearer covers when the config sets `error_on_missing`.
 //!
-//! Aggregated values are written back into `WorkItem.fields` and become
-//! indistinguishable from manually-set values for downstream consumers.
-//! The derive orchestrator (`store::derive`) runs [`run_for_field`] once
-//! per aggregate-configured field, in field-dependency order, on a
-//! freshly-coerced state — so we never have to track per-field
-//! provenance.
+//! A *bearer* is an item with an original value for the field — hand-
+//! written frontmatter, or produced by the same-item compute/when
+//! pass. Aggregated values are written into `WorkItem.fields` and
+//! become indistinguishable from manually-set values for downstream
+//! consumers.
 //!
-//! Cycles are guarded by a per-walk visited set; the cycle detector emits
-//! its own diagnostic separately.
+//! Cycles along the `over` link are guarded by the walker's visited
+//! set; the cycle detector emits its own diagnostic separately.
 
 use std::collections::{HashMap, HashSet};
 
@@ -29,98 +31,72 @@ use crate::walker::walk_up_in;
 /// Link field walked when an aggregate config doesn't set `over`.
 pub(super) const DEFAULT_OVER_FIELD: &str = "parent";
 
-/// One aggregate-configured field, with `over` already resolved to a
-/// concrete link field. Built by the derive orchestrator.
-pub(super) struct AggregateFieldSpec {
-    pub(super) name: String,
-    pub(super) function: AggregateFunction,
-    pub(super) over: String,
-    pub(super) error_on_missing: bool,
-}
+// ── Aggregate checks ────────────────────────────────────────────────
 
-// ── Per-field pass ──────────────────────────────────────────────────
-
-pub(super) fn run_for_field(
-    items: &mut HashMap<WorkItemId, WorkItem>,
-    reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
-    spec: &AggregateFieldSpec,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    // Snapshot of items that manually set this field, sorted by id for
-    // deterministic diagnostic order.
-    let mut manual_items: Vec<(WorkItemId, FieldValue)> = items
-        .iter()
-        .filter_map(|(id, item)| {
-            item.fields
-                .get(&spec.name)
-                .cloned()
-                .map(|value| (id.clone(), value))
-        })
-        .collect();
-    manual_items.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
-    let manual_set: HashSet<WorkItemId> = manual_items.iter().map(|(id, _)| id.clone()).collect();
-
-    let mut accumulators: HashMap<WorkItemId, Vec<FieldValue>> = HashMap::new();
-
-    // Up-walk pass: contribute each manual-bearing item's value to its
-    // non-manual ancestors, stopping (with a chain-conflict diagnostic)
-    // at the first manual-bearing ancestor. Cycle: walk_up_in stops
-    // silently; cycle detector emits its own diagnostic separately.
-    for (manual_id, manual_value) in &manual_items {
-        let Some(start_item) = items.get(manual_id) else {
+/// Report every bearer whose `over` chain reaches another bearer: the
+/// lower one names its nearest bearer ancestor. `bearer_ids` must be
+/// ascending for deterministic diagnostic order. Cycle: walk_up_in
+/// stops silently; the cycle detector emits its own diagnostic.
+pub(super) fn conflict_diagnostics(
+    items: &HashMap<WorkItemId, WorkItem>,
+    over: &str,
+    field_name: &str,
+    bearer_ids: &[WorkItemId],
+    bearer_set: &HashSet<WorkItemId>,
+) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    for bearer_id in bearer_ids {
+        let Some(start_item) = items.get(bearer_id) else {
             continue;
         };
-        for ancestor in walk_up_in(start_item, &spec.over, items) {
-            if manual_set.contains(&ancestor.id) {
+        for ancestor in walk_up_in(start_item, over, items) {
+            if bearer_set.contains(&ancestor.id) {
                 diagnostics.push(Diagnostic::item(
                     Severity::Error,
                     start_item.source_path.clone(),
-                    manual_id.clone(),
+                    bearer_id.clone(),
                     ItemDiagnosticKind::AggregateChainConflict {
-                        field: spec.name.clone(),
+                        field: field_name.to_owned(),
                         conflicting_ancestor_id: ancestor.id.clone(),
                     },
                 ));
                 break;
             }
-            accumulators
-                .entry(ancestor.id.clone())
-                .or_default()
-                .push(manual_value.clone());
         }
     }
+    diagnostics
+}
 
-    // Apply pass: reduce each accumulator and write into the item.
-    let mut sorted: Vec<(WorkItemId, Vec<FieldValue>)> = accumulators.into_iter().collect();
-    sorted.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
-    for (item_id, values) in sorted {
-        if let Some(reduced) = apply_aggregate(spec.function, &values) {
-            if let Some(item) = items.get_mut(&item_id) {
-                item.fields.insert(spec.name.clone(), reduced);
-            }
-        }
-    }
+/// Report every tree-leaf of the `over` hierarchy that no bearer
+/// covers — neither the leaf itself nor any of its ancestors carries
+/// an original value. Only run when the config sets `error_on_missing`.
+pub(super) fn coverage_diagnostics(
+    items: &HashMap<WorkItemId, WorkItem>,
+    reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
+    over: &str,
+    field_name: &str,
+    bearer_set: &HashSet<WorkItemId>,
+) -> Vec<Diagnostic> {
+    let mut leaves: Vec<(&WorkItemId, &WorkItem)> = items
+        .iter()
+        .filter(|(id, _)| is_tree_leaf(reverse_links, id, over))
+        .collect();
+    leaves.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
 
-    // Coverage pass: only when error_on_missing is set.
-    if spec.error_on_missing {
-        let mut leaves: Vec<(&WorkItemId, &WorkItem)> = items
-            .iter()
-            .filter(|(id, _)| is_tree_leaf(reverse_links, id, &spec.over))
-            .collect();
-        leaves.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
-        for (leaf_id, item) in leaves {
-            if !covered(items, leaf_id, &spec.over, &manual_set) {
-                diagnostics.push(Diagnostic::item(
-                    Severity::Error,
-                    item.source_path.clone(),
-                    leaf_id.clone(),
-                    ItemDiagnosticKind::AggregateMissingValue {
-                        field: spec.name.clone(),
-                    },
-                ));
-            }
+    let mut diagnostics = Vec::new();
+    for (leaf_id, item) in leaves {
+        if !covered(items, leaf_id, over, bearer_set) {
+            diagnostics.push(Diagnostic::item(
+                Severity::Error,
+                item.source_path.clone(),
+                leaf_id.clone(),
+                ItemDiagnosticKind::AggregateMissingValue {
+                    field: field_name.to_owned(),
+                },
+            ));
         }
     }
+    diagnostics
 }
 
 // ── Helpers: tree navigation ────────────────────────────────────────
@@ -163,7 +139,10 @@ fn covered(
 // matches the field's declared type. Functions inspect the first value
 // to choose the integer/float branch.
 
-fn apply_aggregate(function: AggregateFunction, values: &[FieldValue]) -> Option<FieldValue> {
+pub(super) fn apply_aggregate(
+    function: AggregateFunction,
+    values: &[FieldValue],
+) -> Option<FieldValue> {
     if values.is_empty() {
         return None;
     }

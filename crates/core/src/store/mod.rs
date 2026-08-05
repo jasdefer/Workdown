@@ -690,6 +690,51 @@ mod tests {
         assert!(!store.has_diagnostics(), "{:#?}", store.diagnostics());
     }
 
+    // ── Pull field integration ───────────────────────────────────────
+
+    #[test]
+    fn pull_fields_schedule_forward_from_files() {
+        // The motivating scenario end to end: manual input is only
+        // depends_on + duration, plus the root's anchor start. Starts
+        // and ends cascade; nothing is written back to any file.
+        let schema = crate::parser::schema::parse_schema(
+            "\
+fields:
+  depends_on:
+    type: links
+    allow_cycles: false
+  duration:
+    type: duration
+  start:
+    type: date
+    pull:
+      over: depends_on
+      field: end
+      function: max
+  end:
+    type: date
+    compute: start + duration
+",
+        )
+        .unwrap();
+        let (_dir, path) = setup_items_dir(vec![
+            ("a.md", "---\nstart: 2026-01-05\nduration: 7d\n---\n"),
+            ("b.md", "---\ndepends_on: [a]\nduration: 7d\n---\n"),
+            ("c.md", "---\ndepends_on: [b]\nduration: 7d\n---\n"),
+        ]);
+        let store = Store::load(&path, &schema).unwrap();
+
+        assert!(!store.has_diagnostics(), "{:#?}", store.diagnostics());
+        let date_of = |id: &str, field: &str| match store.get(id).unwrap().fields.get(field) {
+            Some(FieldValue::Date(date)) => date.to_string(),
+            other => panic!("expected a date for {id}.{field}, got {other:?}"),
+        };
+        assert_eq!(date_of("b", "start"), "2026-01-12");
+        assert_eq!(date_of("b", "end"), "2026-01-19");
+        assert_eq!(date_of("c", "start"), "2026-01-19");
+        assert_eq!(date_of("c", "end"), "2026-01-26");
+    }
+
     // ── all_items ────────────────────────────────────────────────────
 
     #[test]

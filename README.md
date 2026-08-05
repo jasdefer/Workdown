@@ -137,7 +137,7 @@ Fields are typed (string, choice, integer, date, link, links, …). Any `choice`
 
 ## Documentation
 
-- [Schema guide](docs/schema.md) — field types, validation rules, defaults, computed and aggregated fields.
+- [Schema guide](docs/schema.md) — field types, validation rules, defaults, computed, aggregated, and pull fields.
 - [Views guide](docs/views.md) — every view kind and its options.
 - [Architecture Decision Records](docs/adr/) — the *why* behind the core design choices.
 

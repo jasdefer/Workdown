@@ -99,8 +99,8 @@ fields:
     inverse: duplicated_by
 
   # Aggregated fields — set manually on leaf items, computed automatically
-  # up the link chain named in `over` (defaults to `parent`). Uncomment
-  # and adjust as needed:
+  # up the link chain named in `over` (defaults to `parent`; the link
+  # field needs allow_cycles: false). Uncomment and adjust as needed:
   #
   # start_date:
   #   type: date
@@ -134,6 +134,21 @@ fields:
   #   type: date
   #   required: false
   #   compute: start_date + duration
+
+  # Pull fields — cross-item, cross-field: read a field from the items
+  # a forward link points at and reduce the values. Together with a
+  # compute this gives forward scheduling from minimal input — set only
+  # depends_on + duration everywhere, plus a hand-written start_date on
+  # items with no dependencies (manual always wins; the pull fills only
+  # absence). Uncomment together with the duration/end_date block above:
+  #
+  # start_date:
+  #   type: date
+  #   required: false
+  #   pull:
+  #     over: depends_on     # link/links field followed forward; needs allow_cycles: false
+  #     field: end_date      # the field read on each dependency
+  #     function: max        # start when the last dependency ends
 
 # ── Rules ──────────────────────────────────────────────────
 # Cross-field, cross-item, and collection-wide validation.
