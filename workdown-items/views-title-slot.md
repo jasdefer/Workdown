@@ -1,11 +1,9 @@
 ---
 id: views-title-slot
-type: issue
 status: done
 title: Add per-view `title:` slot to views.yaml
 parent: renderers
 depends_on: []
-effort: "4h"
 ---
 
 Add an optional `title:` slot to every view entry in views.yaml. Its value

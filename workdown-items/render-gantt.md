@@ -1,11 +1,9 @@
 ---
 id: render-gantt
-type: issue
 status: done
 title: Gantt renderer
 parent: renderers
 depends_on: [view-data-intermediate]
-effort: "12h"
 ---
 
 Render the basic `GanttData` (start + end mode only) as a Markdown file

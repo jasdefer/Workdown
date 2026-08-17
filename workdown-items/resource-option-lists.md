@@ -1,11 +1,9 @@
 ---
 id: resource-option-lists
-type: issue
 status: done
 title: Validate resource references and render resource pickers
 parent: polish
 depends_on: [mutations-slice, schema-metadata-api]
-effort: "4h"
 ---
 
 [[schema-metadata-api]] loads `resources.yaml` and exposes each

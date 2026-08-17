@@ -1,6 +1,5 @@
 ---
 id: virtual-id-in-structural-slots
-type: issue
 status: done
 title: Reject the virtual `id` in structural slots that read item fields
 parent: polish

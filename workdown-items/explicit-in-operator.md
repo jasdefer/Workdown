@@ -1,11 +1,9 @@
 ---
 id: explicit-in-operator
-type: issue
 status: done
 title: Explicit `in` operator; `=` becomes always-literal
 parent: polish
 depends_on: [view-filter-editor]
-effort: "8h"
 ---
 
 The filter grammar overloads `=`: `status=open` is an equality test, but

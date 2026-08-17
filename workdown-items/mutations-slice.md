@@ -1,7 +1,6 @@
 ---
 id: mutations-slice
 title: Mutations end-to-end
-type: issue
 status: done
 parent: server
 depends_on:

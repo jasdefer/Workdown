@@ -1,6 +1,5 @@
 ---
 id: virtual-id-in-query-eval
-type: issue
 status: done
 title: Resolve the virtual `id` in query evaluation and sorting
 parent: polish

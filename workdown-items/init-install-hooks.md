@@ -1,10 +1,8 @@
 ---
 id: init-install-hooks
-type: issue
 status: done
 title: Optional --install-hooks for pre-commit render
 parent: polish
-effort: "3h"
 ---
 
 Rendered views (`workdown render` output committed to the repo) go

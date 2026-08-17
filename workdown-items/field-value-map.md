@@ -1,8 +1,8 @@
 ---
 id: field-value-map
-type: issue
 status: removed
 title: Mapped fields — derive a value by lookup table
+parent: schema-expressions
 ---
 
 > **Superseded by [[conditional-field-value]].** Kept as a record of the

@@ -1,11 +1,8 @@
 ---
-type: issue
 status: to_do
 parent: misc-work
 title: One clock read per invocation, writes included
-effort: "3h"
 depends_on: [evaluation-time-now]
-color: pink
 ---
 
 ## In plain words

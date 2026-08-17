@@ -1,10 +1,8 @@
 ---
 id: github-render-action
-type: issue
 status: removed
 title: Reusable GitHub Action to keep rendered views in sync
 parent: polish
-effort: "3h"
 ---
 
 > **Removed 2026-08-03, no consumers.** Kept as a record of the idea,

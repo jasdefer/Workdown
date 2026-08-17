@@ -1,10 +1,8 @@
 ---
 id: readme-visualization-update
-type: issue
 status: done
 title: "README: document the visualization workflow"
 parent: polish
-effort: "2h"
 ---
 
 The README predates the visualization phase. `workdown render` appears

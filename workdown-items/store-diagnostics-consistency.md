@@ -1,6 +1,5 @@
 ---
 id: store-diagnostics-consistency
-type: issue
 status: done
 title: Make store-diagnostic surfacing consistent across commands
 parent: polish

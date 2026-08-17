@@ -1,7 +1,6 @@
 ---
 id: live-updates
 title: File watcher and SSE for live updates
-type: issue
 status: done
 parent: server
 depends_on:

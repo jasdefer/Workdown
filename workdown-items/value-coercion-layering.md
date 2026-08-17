@@ -1,11 +1,8 @@
 ---
-type: issue
 status: to_do
 parent: misc-work
 title: Move value coercion out of the store to break the parser↔store cycle
-effort: "3h"
 tags: [tech-debt]
-color: pink
 ---
 
 ## In plain words

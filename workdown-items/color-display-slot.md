@@ -1,12 +1,10 @@
 ---
 title: '`color:` display role — choose which color field tints a view'
-type: issue
 status: done
 parent: view-presentation
 depends_on:
 - color-field-type
 - view-display-config
-effort: 1d
 ---
 
 Promote the `color:` display role — reserved in [[view-display-config]]
