@@ -1,11 +1,9 @@
 ---
 id: view-filter-editor
-type: issue
 status: done
 title: Build and edit a view's where filter from the UI
 parent: view-authoring
 depends_on: [remaining-read-views, schema-metadata-api, view-write-backend]
-effort: "16h"
 ---
 
 A view's `where:` clauses are static in `views.yaml` — adjusting what a view shows means editing YAML and reloading. Once users routinely want "items I'm working on this week", "items for team X", and so on, they need to narrow a view from the app.

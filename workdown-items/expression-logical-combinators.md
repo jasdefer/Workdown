@@ -1,8 +1,8 @@
 ---
 id: expression-logical-combinators
-type: issue
 status: to_do
 title: "`and` / `or` / `not` in the expression grammar"
+parent: schema-expressions
 depends_on: [expression-predicates]
 ---
 

@@ -1,11 +1,9 @@
 ---
 id: where-clause-value-validation
-type: issue
 status: done
 title: Validate where-clause operands against the field's value set
 parent: polish
 depends_on: [explicit-in-operator]
-effort: "4h"
 ---
 
 A view's `where:` clauses are validated for *field names* only. `views_check`

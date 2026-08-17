@@ -1,10 +1,8 @@
 ---
 id: cli-set-command
-type: issue
 status: done
 title: workdown set — replace a field value
 parent: item-mutations
-effort: "12h"
 ---
 
 The foundation command for item mutations. Replaces a single field on a single work item.

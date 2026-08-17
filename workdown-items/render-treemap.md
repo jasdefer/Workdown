@@ -1,11 +1,9 @@
 ---
 id: render-treemap
-type: issue
 status: done
 title: Treemap renderer
 parent: renderers
 depends_on: [view-data-intermediate]
-effort: "8h"
 ---
 
 Render `TreemapView` as a Markdown file written to `views/<id>.md` — a hierarchical summary sized by a numeric field, grouped by a link field.

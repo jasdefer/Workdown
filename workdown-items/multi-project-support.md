@@ -1,6 +1,5 @@
 ---
 id: multi-project-support
-type: epic
 status: to_do
 title: Multi-project support
 ---

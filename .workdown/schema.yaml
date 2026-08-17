@@ -1,6 +1,11 @@
-# Default Workdown Schema — copied into your project by `workdown init`.
-# Customize to fit your project. Each field picks a type from the type system
-# and configures it with concrete values (allowed choices, defaults, etc.).
+# Workdown's own schema — this repo dogfoods the tool on itself.
+# Deliberately minimal: an item is a title, a status, and its place in the
+# graph. Scheduling (dates, durations, effort estimates) was removed — the
+# calendar was maintained by hand and read by no one, and the date and
+# duration machinery is covered by the crate's own tests instead.
+#
+# Not the shipped default; that lives in crates/core/defaults/schema.yaml
+# and still demonstrates the full type system.
 
 fields:
   id:
@@ -15,18 +20,14 @@ fields:
     default: $filename_pretty
     description: Display name. Falls back to prettified filename if not set.
 
-  type:
-    type: choice
-    values: [issue, bug, milestone, epic]
-    required: true
-    default: issue
-
   status:
     type: choice
     values: [to_do, in_progress, done, removed]
     required: true
     default: to_do
 
+  # Free-form labels. Carries the occasional distinction that used to be a
+  # `type` choice (a bug, say) without putting a field on every item.
   tags:
     type: list
     required: false
@@ -44,33 +45,8 @@ fields:
     allow_cycles: false
     inverse: dependents
 
-  # Aggregated fields — uncomment and adjust as needed:
-  
-  start_date:
-    type: date
-    required: false
-    aggregate:
-      function: min
-      error_on_missing: false
-  
-  end_date:
-    type: date
-    required: false
-    aggregate:
-      function: max
-      error_on_missing: false
-
-  duration:
-    type: duration
-    required: false
-    aggregate:
-      function: sum
-      error_on_missing: false
-
   # Derived by condition (first match wins) — dogfoods
-  # conditional-field-value. Evaluated against $today, so the tint is a
-  # function of the calendar; pin with `--as-of` for reproducible
-  # renders. A hand-written color on an item always wins.
+  # conditional-field-value. A hand-written color on an item always wins.
   color:
     type: color
     required: false
@@ -81,96 +57,40 @@ fields:
         then: gray
       - if: status == "in_progress"
         then: blue
-      - if: end_date < $today
-        then: red      # not done, past its end date: overdue
     default: gray
-
-  # Per-issue work estimate, independent of the calendar span carried by
-  # start_date/end_date/duration. Set on leaf issues; rolls up as a total
-  # to milestones and the epic.
-  effort:
-    type: duration
-    required: false
-    aggregate:
-      function: sum
-      error_on_missing: false
-
-  # Calendar time until the end date, evaluated against the current date
-  # ($today — pin with `--as-of` for reproducible renders). Negative once
-  # the end date has passed. Dogfoods evaluation-time-now (ADR-010).
-  days_remaining:
-    type: duration
-    required: false
-    compute: end_date - $today
 
 # ── Rules ──────────────────────────────────────────────────
 # Cross-field, cross-item, and collection-wide validation.
 # See schema.schema.json for the formal rule syntax definition.
+#
+# A parent's status must agree with its children's. These match on
+# `children.status` alone, so they apply to any item that has children —
+# no field has to declare an item a "milestone" for them to hold.
+#
+# Each match needs an `any` guard as well as its `all`: `all` over an empty
+# set is vacuously true, so without it a childless leaf would match and be
+# required to take the parent status.
 rules:
-  - name: milestone-in-progress-when-child-in-progress
+  - name: parent-in-progress-when-child-in-progress
     match:
-      type: [milestone, epic]
       children.status:
         any: in_progress
     require:
       status:
         values: [in_progress]
-  - name: milestone-to-do-when-all-children-to-do
+  - name: parent-to-do-when-all-children-to-do
     match:
-      type: [milestone, epic]
       children.status:
         all: to_do
+        any: to_do
     require:
       status:
         values: [to_do]
-  - name: milestone-done-when-all-children-done-or-removed
+  - name: parent-done-when-all-children-done-or-removed
     match:
-      type: [milestone, epic]
       children.status:
         all: [done, removed]
-        any: [done, removed]   # forces ≥1 child — prevents vacuous-truth on empty milestones
+        any: [done, removed]
     require:
       status:
         values: [done]
-
-  # ── Date sanity ────────────────────────────────────────────
-  # An inverted span (end before start) is always a data-entry error.
-  # The comparison is skipped when either date is absent, so items
-  # without dates — and items with only one date set — never trip it.
-  - name: start-before-end
-    description: An item's start_date must not be after its end_date.
-    match:
-      end_date:
-        is_set: true
-    require:
-      start_date:
-        lte_field: end_date
-
-  # A to_do item whose start date has passed without being picked up is
-  # a planning problem worth surfacing. Compares against the evaluation
-  # date ($today — pin with `--as-of` for reproducible runs, ADR-010).
-  - name: future-start-for-todo
-    description: A to_do item must not have a start_date in the past.
-    severity: warning
-    match:
-      status: to_do
-    require:
-      start_date:
-        gte_field: $today
-
-  # Milestones are scheduled by hand (start/end set on the milestone
-  # itself), unlike epics, which derive their span by aggregating their
-  # children — so this is scoped to milestones. The `parent` guard means
-  # the rule activates only once a milestone is placed on the roadmap
-  # (under an epic): a parked, not-yet-slotted milestone is exempt until
-  # it's given a parent, at which point it must also be scheduled.
-  - name: milestone-needs-dates
-    description: Milestones should be scheduled with a start_date and end_date.
-    severity: warning
-    match:
-      type: milestone
-      parent:
-        is_set: true
-    require:
-      start_date: required
-      end_date: required

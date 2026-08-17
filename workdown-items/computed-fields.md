@@ -1,11 +1,9 @@
 ---
 id: computed-fields
-type: issue
 status: done
 title: Computed fields — same-item cross-field expressions
 parent: time-tracking
 depends_on: [project-constants]
-effort: "8h"
 ---
 
 A field can declare a `compute:` expression over other fields of the

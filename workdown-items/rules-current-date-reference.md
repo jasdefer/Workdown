@@ -1,6 +1,5 @@
 ---
 id: rules-current-date-reference
-type: issue
 status: done
 title: Rules can't reference the current date
 parent: polish

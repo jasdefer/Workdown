@@ -1,9 +1,7 @@
 ---
-type: issue
 status: to_do
 parent: misc-work
 title: A view over tags
-color: pink
 ---
 
 ## In plain words

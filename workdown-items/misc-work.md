@@ -1,8 +1,6 @@
 ---
-type: milestone
 status: to_do
 title: Miscellaneous improvements
-color: pink
 ---
 
 Umbrella for the follow-up work that came out of the polish PR review

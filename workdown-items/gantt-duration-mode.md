@@ -1,11 +1,9 @@
 ---
 id: gantt-duration-mode
-type: issue
 status: done
 title: Gantt duration input mode
 parent: renderers
 depends_on: [render-gantt, duration-field-type]
-effort: "4h"
 ---
 
 Extend the Gantt converter with a `start + duration` input mode. The

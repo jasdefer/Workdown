@@ -1,11 +1,9 @@
 ---
 id: view-write-backend
-type: issue
 status: done
 title: Persist view definitions to views.yaml
 parent: view-authoring
 depends_on: []
-effort: "16h"
 ---
 
 The serve API can read views but cannot write them. The mutation work that landed for work items writes individual item files — it does not touch `views.yaml`. So there is currently no path for the UI (or any non-editor caller) to add a view or change a view's filter and have it persist.

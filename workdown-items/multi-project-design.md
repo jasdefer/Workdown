@@ -1,6 +1,5 @@
 ---
 id: multi-project-design
-type: issue
 status: to_do
 parent: multi-project-support
 title: Design multi-project support — set decisions and break out follow-up work

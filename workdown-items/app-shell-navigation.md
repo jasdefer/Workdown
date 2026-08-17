@@ -1,6 +1,5 @@
 ---
 id: app-shell-navigation
-type: issue
 status: done
 title: App shell navigation (views menu + future link slots)
 parent: server

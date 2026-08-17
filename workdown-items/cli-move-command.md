@@ -1,11 +1,9 @@
 ---
 id: cli-move-command
-type: issue
 status: done
 title: workdown move — shortcut for the board field
 parent: item-mutations
 depends_on: [cli-set-command]
-effort: "4h"
 ---
 
 Add a convenience command:

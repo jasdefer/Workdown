@@ -1,13 +1,9 @@
 ---
 id: polish
-type: milestone
 status: done
 title: Polish & dogfood
 parent: phase-04-visualization
 depends_on: [view-authoring]
-start_date: 2026-07-27
-end_date: 2026-07-31
-duration: "1w"
 ---
 
 Docs, automation, and release readiness. Decomposition deferred — scope depends on what actually shipped.

@@ -1,10 +1,8 @@
 ---
 id: expression-predicates
-type: issue
 status: done
 title: Comparisons, equality and booleans in the expression grammar
 parent: polish
-effort: "12h"
 ---
 
 The compute expression grammar is arithmetic and nothing else. Verified

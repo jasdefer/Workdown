@@ -1,11 +1,9 @@
 ---
 id: conditional-field-value
-type: issue
 status: done
 title: "`when:` — derive a field value by first matching condition"
 parent: polish
 depends_on: [expression-predicates, evaluation-time-now]
-effort: "12h"
 ---
 
 With predicates in the grammar ([[expression-predicates]]) and a readable
