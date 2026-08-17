@@ -699,7 +699,10 @@ async fn put_replaces_definition_and_returns_200() {
     assert!(file.contains("status=open"), "{file}");
     let first_position = file.find("id: first").unwrap();
     let second_position = file.find("id: second").unwrap();
-    assert!(first_position < second_position, "position preserved: {file}");
+    assert!(
+        first_position < second_position,
+        "position preserved: {file}"
+    );
 }
 
 #[tokio::test]
@@ -924,7 +927,11 @@ async fn definition_round_trips_through_put() {
     )
     .await;
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(read_views(&root), before, "an untouched round-trip is a no-op");
+    assert_eq!(
+        read_views(&root),
+        before,
+        "an untouched round-trip is a no-op"
+    );
 }
 
 // ── Seed (GET /api/views/:id/filter) ─────────────────────────────────

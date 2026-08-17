@@ -1035,9 +1035,15 @@ views:
         write_views(&root, TWO_VIEWS);
 
         // A board without its required `field` slot cannot be constructed.
-        let error =
-            update_view(&config, &root, "first", None, definition("type: board\n"), &[])
-                .unwrap_err();
+        let error = update_view(
+            &config,
+            &root,
+            "first",
+            None,
+            definition("type: board\n"),
+            &[],
+        )
+        .unwrap_err();
 
         assert!(matches!(error, ViewWriteError::InvalidDefinition { .. }));
         assert_eq!(read_views(&root), TWO_VIEWS, "file must be untouched");
@@ -1106,7 +1112,12 @@ views:
             !root.join("views/first.md").exists(),
             "the old id's rendered file must be removed"
         );
-        assert_eq!(outcome.info_messages.len(), 1, "{:?}", outcome.info_messages);
+        assert_eq!(
+            outcome.info_messages.len(),
+            1,
+            "{:?}",
+            outcome.info_messages
+        );
         assert!(outcome.info_messages[0].contains("first.md"));
     }
 
@@ -1221,7 +1232,12 @@ views:
         let outcome = delete_view(&config, &root, "first").unwrap();
 
         assert!(!root.join("views/first.md").exists());
-        assert_eq!(outcome.info_messages.len(), 1, "{:?}", outcome.info_messages);
+        assert_eq!(
+            outcome.info_messages.len(),
+            1,
+            "{:?}",
+            outcome.info_messages
+        );
         assert!(outcome.info_messages[0].contains("removed"));
     }
 
@@ -1232,7 +1248,11 @@ views:
 
         let outcome = delete_view(&config, &root, "first").unwrap();
 
-        assert!(outcome.info_messages.is_empty(), "{:?}", outcome.info_messages);
+        assert!(
+            outcome.info_messages.is_empty(),
+            "{:?}",
+            outcome.info_messages
+        );
     }
 
     /// The removal honours a non-default `directory:` — the file lives
