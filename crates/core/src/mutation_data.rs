@@ -19,11 +19,13 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::model::views::View;
 use crate::model::WorkItemId;
 use crate::operations::add::AddOutcome;
 use crate::operations::set::{BooleanMode, CollectionMode, SetOperation, SetOutcome};
 use crate::operations::view_write::ViewWriteOutcome;
-use crate::query::clause::Clause;
+use crate::parser::views::view_to_value;
+use crate::query::clause::{decompose_clauses, Clause};
 
 /// A single field mutation as sent by the client, tagged by `op`.
 ///
@@ -167,6 +169,51 @@ pub struct CreateView {
     pub filter: Vec<Clause>,
 }
 
+/// A request to replace an existing view's whole definition — the write
+/// half of the edit form. `definition` and `filter` take the same shapes
+/// [`CreateView`] does. `name`, when present, renames the view: it is
+/// slugged to a new id server-side exactly like creation. Name → id is
+/// lossy (only the id is persisted), so the form seeds its name field by
+/// prettifying the id and omits `name` here unless the user actually
+/// edited it — an untouched label can never cause an accidental rename.
+#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
+pub struct UpdateView {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[ts(type = "Record<string, unknown>")]
+    pub definition: serde_yaml::Value,
+    #[serde(default)]
+    pub filter: Vec<Clause>,
+}
+
+/// A persisted view decomposed for the edit form: the flat definition
+/// (without `id` and `where`) plus the filter as structured clauses —
+/// exactly the shape [`UpdateView`] takes back, so what the form GETs is
+/// what it PUTs. Returned by `GET /api/views/{id}/definition`.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct ViewDefinition {
+    #[ts(type = "Record<string, unknown>")]
+    pub definition: serde_yaml::Value,
+    pub filter: Vec<Clause>,
+}
+
+impl ViewDefinition {
+    /// Decompose a persisted view. `id` leaves the mapping because the
+    /// write path derives it (from the path, or a rename's `name`);
+    /// `where` leaves because the filter travels as structured clauses.
+    pub fn from_view(view: &View) -> Result<Self, serde_yaml::Error> {
+        let mut value = view_to_value(view)?;
+        if let serde_yaml::Value::Mapping(ref mut mapping) = value {
+            mapping.shift_remove("id");
+            mapping.shift_remove("where");
+        }
+        Ok(Self {
+            definition: value,
+            filter: decompose_clauses(&view.where_clauses),
+        })
+    }
+}
+
 /// A request to replace a view's `where:` filter. Each [`Clause`] is either
 /// a guided condition or a raw passthrough string; `core` serializes them
 /// to clause strings (so the UI never builds filter syntax) and stores them
@@ -177,14 +224,17 @@ pub struct SetViewFilter {
     pub clauses: Vec<Clause>,
 }
 
-/// The result of a successful view create or filter change — the view's
-/// id (so the UI can navigate to / re-fetch it) and whether the write
+/// The result of a successful view mutation (create, update, filter
+/// change, delete) — the view's id (so the UI can navigate to / re-fetch
+/// it; after a rename this is the *new* id) and whether the write
 /// introduced a diagnostic. Warnings themselves ride in the envelope's
-/// `diagnostics`.
+/// `diagnostics`; `info_messages` carries non-problem housekeeping notes
+/// (e.g. a stale rendered file that was removed).
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct ViewMutationResult {
     pub view_id: String,
     pub mutation_caused_warning: bool,
+    pub info_messages: Vec<String>,
 }
 
 impl ViewMutationResult {
@@ -192,6 +242,7 @@ impl ViewMutationResult {
         Self {
             view_id: outcome.view_id.clone(),
             mutation_caused_warning: outcome.mutation_caused_warning,
+            info_messages: outcome.info_messages.clone(),
         }
     }
 }

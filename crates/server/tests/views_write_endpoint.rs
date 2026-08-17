@@ -1,4 +1,6 @@
-//! Integration tests for `POST /api/views` and `PATCH /api/views/:id`.
+//! Integration tests for the view-authoring write endpoints — `POST
+//! /api/views`, `PATCH/PUT/DELETE /api/views/:id` — and their read-back
+//! companions (`/filter`, `/definition`).
 //!
 //! These mutate `views.yaml`, so each test runs against a throwaway
 //! project built in a `TempDir` — never the committed read-only fixture
@@ -100,6 +102,25 @@ async fn patch(state: AppState, uri: &str, body: Value) -> axum::http::Response<
         .uri(uri)
         .header("content-type", "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap();
+    router(state).oneshot(request).await.unwrap()
+}
+
+async fn put(state: AppState, uri: &str, body: Value) -> axum::http::Response<Body> {
+    let request = Request::builder()
+        .method("PUT")
+        .uri(uri)
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap();
+    router(state).oneshot(request).await.unwrap()
+}
+
+async fn delete(state: AppState, uri: &str) -> axum::http::Response<Body> {
+    let request = Request::builder()
+        .method("DELETE")
+        .uri(uri)
+        .body(Body::empty())
         .unwrap();
     router(state).oneshot(request).await.unwrap()
 }
@@ -635,6 +656,275 @@ async fn patch_filter_with_comma_member_returns_422_and_writes_nothing() {
     let envelope = body_json(response).await;
     assert!(envelope["error"].is_string());
     assert_eq!(read_views(&root), original, "file must be untouched");
+}
+
+// ── Update (PUT /api/views/:id) ──────────────────────────────────────
+
+const TWO_VIEWS: &str = "\
+views:
+  - id: first
+    type: board
+    field: status
+  - id: second
+    type: tree
+    field: parent
+";
+
+#[tokio::test]
+async fn put_replaces_definition_and_returns_200() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(&root, TWO_VIEWS);
+
+    // A kind switch (board → tree) with a filter, name untouched.
+    let response = put(
+        state,
+        "/api/views/first",
+        json!({
+            "definition": { "type": "tree", "field": "parent" },
+            "filter": [
+                { "kind": "comparison", "field": "status", "operator": "equal", "value": "open" }
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    assert_eq!(envelope["data"]["view_id"], "first");
+    assert_eq!(envelope["data"]["mutation_caused_warning"], false);
+
+    let file = read_views(&root);
+    assert!(file.contains("type: tree"), "{file}");
+    assert!(file.contains("status=open"), "{file}");
+    let first_position = file.find("id: first").unwrap();
+    let second_position = file.find("id: second").unwrap();
+    assert!(first_position < second_position, "position preserved: {file}");
+}
+
+#[tokio::test]
+async fn put_with_name_renames_the_view() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(&root, TWO_VIEWS);
+    // A stale rendered file for the old id — must be removed by the rename.
+    fs::create_dir_all(root.join("views")).unwrap();
+    fs::write(root.join("views/first.md"), "# rendered\n").unwrap();
+
+    let response = put(
+        state,
+        "/api/views/first",
+        json!({
+            "name": "Sprint Board",
+            "definition": { "type": "board", "field": "status" }
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    assert_eq!(envelope["data"]["view_id"], "sprint-board");
+    let info_messages = envelope["data"]["info_messages"].as_array().unwrap();
+    assert_eq!(info_messages.len(), 1, "{info_messages:?}");
+
+    let file = read_views(&root);
+    assert!(file.contains("id: sprint-board"), "{file}");
+    assert!(!file.contains("id: first"), "{file}");
+    assert!(!root.join("views/first.md").exists());
+}
+
+#[tokio::test]
+async fn put_rename_to_existing_id_returns_409() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(&root, TWO_VIEWS);
+
+    let response = put(
+        state,
+        "/api/views/first",
+        json!({
+            "name": "Second",
+            "definition": { "type": "board", "field": "status" }
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+
+    let envelope = body_json(response).await;
+    assert!(envelope["error"].is_string());
+    assert_eq!(read_views(&root), TWO_VIEWS, "file must be untouched");
+}
+
+#[tokio::test]
+async fn put_unknown_view_returns_404() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(&root, TWO_VIEWS);
+
+    let response = put(
+        state,
+        "/api/views/no-such-view",
+        json!({ "definition": { "type": "board", "field": "status" } }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(read_views(&root), TWO_VIEWS, "file must be untouched");
+}
+
+#[tokio::test]
+async fn put_missing_required_slot_returns_422() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(&root, TWO_VIEWS);
+
+    let response = put(
+        state,
+        "/api/views/first",
+        json!({ "definition": { "type": "board" } }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(read_views(&root), TWO_VIEWS, "file must be untouched");
+}
+
+#[tokio::test]
+async fn put_with_bad_field_reference_saves_with_warning() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(&root, TWO_VIEWS);
+
+    let response = put(
+        state,
+        "/api/views/first",
+        json!({ "definition": { "type": "board", "field": "nope" } }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    assert_eq!(envelope["data"]["mutation_caused_warning"], true);
+    assert!(!envelope["diagnostics"].as_array().unwrap().is_empty());
+    assert!(read_views(&root).contains("field: nope"));
+}
+
+// ── Delete (DELETE /api/views/:id) ───────────────────────────────────
+
+#[tokio::test]
+async fn delete_removes_view_and_rendered_file() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(&root, TWO_VIEWS);
+    fs::create_dir_all(root.join("views")).unwrap();
+    fs::write(root.join("views/first.md"), "# rendered\n").unwrap();
+
+    let response = delete(state, "/api/views/first").await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    assert_eq!(envelope["data"]["view_id"], "first");
+    let info_messages = envelope["data"]["info_messages"].as_array().unwrap();
+    assert_eq!(info_messages.len(), 1, "{info_messages:?}");
+
+    let file = read_views(&root);
+    assert!(!file.contains("id: first"), "{file}");
+    assert!(file.contains("id: second"), "{file}");
+    assert!(!root.join("views/first.md").exists());
+}
+
+#[tokio::test]
+async fn delete_unknown_view_returns_404() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(&root, TWO_VIEWS);
+
+    let response = delete(state, "/api/views/no-such-view").await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(read_views(&root), TWO_VIEWS, "file must be untouched");
+}
+
+// ── Seed (GET /api/views/:id/definition) ─────────────────────────────
+
+#[tokio::test]
+async fn get_view_definition_returns_the_put_payload_shape() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(
+        &root,
+        "views:\n  - id: board\n    type: board\n    field: status\n    display:\n      title: title\n    where:\n      - \"status=open\"\n",
+    );
+
+    let response = get(state, "/api/views/board/definition").await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    let definition = &envelope["data"]["definition"];
+    assert_eq!(definition["type"], "board");
+    assert_eq!(definition["field"], "status");
+    assert_eq!(definition["display"]["title"], "title");
+    // `id` and `where` travel outside the definition: the id in the path,
+    // the filter as structured clauses.
+    assert!(definition.get("id").is_none(), "{definition}");
+    assert!(definition.get("where").is_none(), "{definition}");
+
+    let filter = envelope["data"]["filter"].as_array().unwrap();
+    assert_eq!(filter.len(), 1);
+    assert_eq!(filter[0]["kind"], "comparison");
+    assert_eq!(filter[0]["field"], "status");
+    assert_eq!(filter[0]["operator"], "equal");
+    assert_eq!(filter[0]["value"], "open");
+}
+
+#[tokio::test]
+async fn get_view_definition_unknown_view_returns_404() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(
+        &root,
+        "views:\n  - id: board\n    type: board\n    field: status\n",
+    );
+
+    let response = get(state, "/api/views/no-such-view/definition").await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+/// The definition round-trips: what `/definition` returns, `PUT` accepts
+/// unchanged — the contract the edit form is built on. The view is
+/// created through the API first, so the byte comparison is between two
+/// serializer-written files, not a hand-written one and a rewrite.
+#[tokio::test]
+async fn definition_round_trips_through_put() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    let response = post(
+        state.clone(),
+        "/api/views",
+        json!({
+            "name": "Board",
+            "definition": { "type": "board", "field": "status" },
+            "filter": [
+                { "kind": "comparison", "field": "status", "operator": "equal", "value": "open" }
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let before = read_views(&root);
+
+    let response = get(state.clone(), "/api/views/board/definition").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope = body_json(response).await;
+
+    let response = put(
+        state,
+        "/api/views/board",
+        json!({
+            "definition": envelope["data"]["definition"],
+            "filter": envelope["data"]["filter"]
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(read_views(&root), before, "an untouched round-trip is a no-op");
 }
 
 // ── Seed (GET /api/views/:id/filter) ─────────────────────────────────

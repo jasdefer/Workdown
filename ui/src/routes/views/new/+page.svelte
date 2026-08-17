@@ -1,6 +1,6 @@
-<!-- Create-view page: a thin host for the CreateViewForm. -->
+<!-- Create-view page: a thin host for the ViewForm in create mode. -->
 <script lang="ts">
-	import CreateViewForm from '$lib/views/CreateViewForm.svelte';
+	import ViewForm from '$lib/views/ViewForm.svelte';
 </script>
 
-<CreateViewForm />
+<ViewForm />

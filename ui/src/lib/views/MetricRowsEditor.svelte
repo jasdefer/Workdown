@@ -11,11 +11,13 @@
 	import { AGGREGATES, fieldFits } from './viewKinds';
 
 	interface Props {
+		/** Persisted `metrics:` entries to seed from (edit mode). */
+		initial?: Record<string, unknown>[];
 		/** Fires with the `metrics:` slot value whenever the rows change. */
 		onchange: (metrics: Record<string, unknown>[]) => void;
 	}
 
-	let { onchange }: Props = $props();
+	let { initial, onchange }: Props = $props();
 
 	interface RowDraft {
 		/** Stable key for `{#each}`; never leaves the component. */
@@ -29,7 +31,17 @@
 	const nextId = (): number => (idCounter += 1);
 	const newRow = (): RowDraft => ({ localId: nextId(), label: '', aggregate: 'count', value: '' });
 
-	let rows = $state<RowDraft[]>([newRow()]);
+	/** A persisted entry back into draft shape — inverse of `toEntry`. */
+	const fromEntry = (entry: Record<string, unknown>): RowDraft => ({
+		localId: nextId(),
+		label: typeof entry.label === 'string' ? entry.label : '',
+		aggregate: typeof entry.aggregate === 'string' ? entry.aggregate : 'count',
+		value: typeof entry.value === 'string' ? entry.value : ''
+	});
+
+	let rows = $state<RowDraft[]>(
+		initial !== undefined && initial.length > 0 ? initial.map(fromEntry) : [newRow()]
+	);
 
 	/** A row in the shape one entry of the `metrics:` slot takes. */
 	function toEntry(row: RowDraft): Record<string, unknown> {

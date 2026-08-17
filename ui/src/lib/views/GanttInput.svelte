@@ -7,6 +7,7 @@
   The server checks the finer input-mode rules on save.
 -->
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import type { FieldType } from '$lib/api/generated/FieldType';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import { fieldFits } from './viewKinds';
@@ -22,7 +23,16 @@
 
 	let { definition, onslot }: Props = $props();
 
-	let mode = $state<GanttMode>('end');
+	// In edit mode the definition arrives pre-filled; the mode is implied
+	// by which end-derivation slot it carries. Evaluated once — after
+	// that, the radio buttons own the mode.
+	function impliedMode(seed: Record<string, unknown>): GanttMode {
+		if (typeof seed.after === 'string' && seed.after !== '') return 'after';
+		if (typeof seed.duration === 'string' && seed.duration !== '') return 'duration';
+		return 'end';
+	}
+
+	let mode = $state<GanttMode>(untrack(() => impliedMode(definition)));
 
 	function scalar(key: string): string {
 		const value = definition[key];

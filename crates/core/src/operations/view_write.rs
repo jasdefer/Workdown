@@ -2,9 +2,10 @@
 //!
 //! The read side of views is handled by [`crate::parser::views`] and
 //! [`crate::views_check`]; this module is the write side. It supports the
-//! two mutations the view-authoring UI needs: adding a new view, and
-//! replacing an existing view's `where:` filter. Everything else about a
-//! view (kind, slots, ordering, deletion) stays a text-editor job.
+//! mutations the view-authoring UI needs: adding a new view, replacing an
+//! existing view's `where:` filter, replacing a view's whole definition
+//! (optionally under a new id), and deleting a view. Reordering views
+//! stays a text-editor job.
 //!
 //! Like every other mutation in the tool, the repo stays the source of
 //! truth: writes update the working tree only, nothing is staged or
@@ -55,6 +56,10 @@ pub struct ViewWriteOutcome {
     /// present before. Drives the caller's exit code / response, distinct
     /// from pre-existing problems elsewhere in the file.
     pub mutation_caused_warning: bool,
+    /// Notes about housekeeping that isn't a problem — currently the fate
+    /// of a stale rendered output file after a delete or rename. Mirrors
+    /// the item mutations' `info_messages` convention.
+    pub info_messages: Vec<String>,
 }
 
 /// Errors returned by the view-write operations.
@@ -236,7 +241,132 @@ pub fn set_view_filter(
     finalize(views, &path, &inputs, pre_diagnostics, view_id.to_owned())
 }
 
+/// Replace an existing view's whole definition — and, when `new_name` is
+/// given, its id — keeping its position in the `views:` list.
+///
+/// `definition` is the same flat shape [`create_view`] takes (kind + slots,
+/// no `id`); the filter arrives structured and replaces the view's `where:`.
+/// `new_name` is slugged with the shared rule; `None` keeps the current id,
+/// so callers that let the user edit a *name* (id is lossy in that
+/// direction) can make "left untouched" mean "no rename". A rename removes
+/// the old id's stale rendered output file, exactly as [`delete_view`]
+/// does for the whole view.
+pub fn update_view(
+    config: &Config,
+    project_root: &Path,
+    view_id: &str,
+    new_name: Option<&str>,
+    definition: serde_yaml::Value,
+    filter: &[Clause],
+) -> Result<ViewWriteOutcome, ViewWriteError> {
+    let inputs = load_check_inputs(config, project_root)?;
+    let path = views_path(config, project_root);
+    let mut views = load_current_views(&path)?;
+
+    let pre_diagnostics = check(&views, &inputs, &path);
+
+    let position = views
+        .views
+        .iter()
+        .position(|view| view.id == view_id)
+        .ok_or_else(|| ViewWriteError::ViewNotFound {
+            id: view_id.to_owned(),
+        })?;
+
+    let target_id = match new_name {
+        None => view_id.to_owned(),
+        Some(name) => crate::slug::slugify(name).map_err(|error| ViewWriteError::InvalidName {
+            name: error.input,
+            reason: error.reason,
+        })?,
+    };
+    if target_id != view_id && views.views.iter().any(|view| view.id == target_id) {
+        return Err(ViewWriteError::DuplicateId { id: target_id });
+    }
+
+    let definition = prepare_definition(definition, &target_id, filter)?;
+    let new_view =
+        view_from_value(definition).map_err(|error| ViewWriteError::InvalidDefinition {
+            detail: error.to_string(),
+        })?;
+
+    let renamed_from = (target_id != view_id).then(|| view_id.to_owned());
+    views.views[position] = new_view;
+
+    let output_dir = views.output_dir.clone();
+    let mut outcome = finalize(views, &path, &inputs, pre_diagnostics, target_id)?;
+    if let Some(old_id) = renamed_from {
+        remove_rendered_file(
+            project_root,
+            &output_dir,
+            &old_id,
+            &mut outcome.info_messages,
+        );
+    }
+    Ok(outcome)
+}
+
+/// Remove a view from `views.yaml`, plus its stale rendered output file
+/// (`<output_dir>/<id>.md`) when one exists — `workdown render` never
+/// cleans up on its own, so without this the file would linger until the
+/// user spots it in `git status`.
+pub fn delete_view(
+    config: &Config,
+    project_root: &Path,
+    view_id: &str,
+) -> Result<ViewWriteOutcome, ViewWriteError> {
+    let inputs = load_check_inputs(config, project_root)?;
+    let path = views_path(config, project_root);
+    let mut views = load_current_views(&path)?;
+
+    let pre_diagnostics = check(&views, &inputs, &path);
+
+    let position = views
+        .views
+        .iter()
+        .position(|view| view.id == view_id)
+        .ok_or_else(|| ViewWriteError::ViewNotFound {
+            id: view_id.to_owned(),
+        })?;
+    views.views.remove(position);
+
+    let output_dir = views.output_dir.clone();
+    let mut outcome = finalize(views, &path, &inputs, pre_diagnostics, view_id.to_owned())?;
+    remove_rendered_file(
+        project_root,
+        &output_dir,
+        view_id,
+        &mut outcome.info_messages,
+    );
+    Ok(outcome)
+}
+
 // ── Internals ────────────────────────────────────────────────────────
+
+/// Best-effort removal of a view's rendered output file after a delete or
+/// rename made it stale. A missing file is silence — nothing was rendered.
+/// Any other failure becomes an info message rather than an error: the
+/// `views.yaml` write, the actual mutation, has already succeeded, and the
+/// leftover file is visible in `git status` either way.
+fn remove_rendered_file(
+    project_root: &Path,
+    output_dir: &Path,
+    view_id: &str,
+    info_messages: &mut Vec<String>,
+) {
+    let rendered_path = project_root.join(output_dir).join(format!("{view_id}.md"));
+    match std::fs::remove_file(&rendered_path) {
+        Ok(()) => info_messages.push(format!(
+            "removed stale rendered file '{}'",
+            rendered_path.display()
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => info_messages.push(format!(
+            "could not remove stale rendered file '{}': {error}",
+            rendered_path.display()
+        )),
+    }
+}
 
 fn views_path(config: &Config, project_root: &Path) -> PathBuf {
     project_root.join(&config.paths.views)
@@ -344,6 +474,7 @@ fn finalize(
         view_id,
         warnings,
         mutation_caused_warning,
+        info_messages: Vec::new(),
     })
 }
 
@@ -790,6 +921,335 @@ fields:
         let outcome = set_view_filter(&config, &root, "board", &[raw("parent=epic-1")]).unwrap();
         assert!(!outcome.mutation_caused_warning);
         assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
+    }
+
+    // ── update_view ──────────────────────────────────────────────────
+
+    /// Two views, so replacement can be checked to stay in place.
+    const TWO_VIEWS: &str = "\
+views:
+  - id: first
+    type: board
+    field: status
+  - id: second
+    type: tree
+    field: parent
+";
+
+    fn definition(yaml: &str) -> serde_yaml::Value {
+        serde_yaml::from_str(yaml).unwrap()
+    }
+
+    #[test]
+    fn update_view_replaces_definition_in_place() {
+        let (_dir, root, config) = setup();
+        write_views(&root, TWO_VIEWS);
+
+        // Switch `first` from a board to a tree — a full kind change.
+        let outcome = update_view(
+            &config,
+            &root,
+            "first",
+            None,
+            definition("type: tree\nfield: parent\n"),
+            &[],
+        )
+        .unwrap();
+
+        assert_eq!(outcome.view_id, "first");
+        let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
+        let ids: Vec<&str> = reloaded.views.iter().map(|view| view.id.as_str()).collect();
+        assert_eq!(ids, vec!["first", "second"], "position must be preserved");
+        assert!(matches!(
+            &reloaded.views[0].kind,
+            crate::model::views::ViewKind::Tree { field } if field == "parent"
+        ));
+    }
+
+    #[test]
+    fn update_view_replaces_the_filter() {
+        let (_dir, root, config) = setup();
+        write_views(
+            &root,
+            "views:\n  - id: board\n    type: board\n    field: status\n    where:\n      - \"status=done\"\n",
+        );
+
+        update_view(
+            &config,
+            &root,
+            "board",
+            None,
+            definition("type: board\nfield: status\n"),
+            &[condition("status", Operator::Equal, Some("open"))],
+        )
+        .unwrap();
+
+        let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
+        assert_eq!(reloaded.views[0].where_clauses, vec!["status=open"]);
+    }
+
+    #[test]
+    fn update_view_empty_filter_clears_where() {
+        let (_dir, root, config) = setup();
+        write_views(
+            &root,
+            "views:\n  - id: board\n    type: board\n    field: status\n    where:\n      - \"status=done\"\n",
+        );
+
+        update_view(
+            &config,
+            &root,
+            "board",
+            None,
+            definition("type: board\nfield: status\n"),
+            &[],
+        )
+        .unwrap();
+
+        let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
+        assert!(reloaded.views[0].where_clauses.is_empty());
+    }
+
+    #[test]
+    fn update_view_unknown_id_errors_without_writing() {
+        let (_dir, root, config) = setup();
+        write_views(&root, TWO_VIEWS);
+
+        let error = update_view(
+            &config,
+            &root,
+            "nope",
+            None,
+            definition("type: board\nfield: status\n"),
+            &[],
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, ViewWriteError::ViewNotFound { id } if id == "nope"));
+        assert_eq!(read_views(&root), TWO_VIEWS, "file must be untouched");
+    }
+
+    #[test]
+    fn update_view_invalid_definition_errors_without_writing() {
+        let (_dir, root, config) = setup();
+        write_views(&root, TWO_VIEWS);
+
+        // A board without its required `field` slot cannot be constructed.
+        let error =
+            update_view(&config, &root, "first", None, definition("type: board\n"), &[])
+                .unwrap_err();
+
+        assert!(matches!(error, ViewWriteError::InvalidDefinition { .. }));
+        assert_eq!(read_views(&root), TWO_VIEWS, "file must be untouched");
+    }
+
+    #[test]
+    fn update_view_with_bad_field_reference_writes_with_warning() {
+        let (_dir, root, config) = setup();
+        write_views(&root, TWO_VIEWS);
+
+        // `field: nope` loads but fails cross-file validation —
+        // save-with-warning, same as create.
+        let outcome = update_view(
+            &config,
+            &root,
+            "first",
+            None,
+            definition("type: board\nfield: nope\n"),
+            &[],
+        )
+        .unwrap();
+
+        assert!(outcome.mutation_caused_warning);
+        assert!(!outcome.warnings.is_empty());
+    }
+
+    #[test]
+    fn update_view_with_new_name_renames_the_id() {
+        let (_dir, root, config) = setup();
+        write_views(&root, TWO_VIEWS);
+
+        let outcome = update_view(
+            &config,
+            &root,
+            "first",
+            Some("Sprint Board"),
+            definition("type: board\nfield: status\n"),
+            &[],
+        )
+        .unwrap();
+
+        assert_eq!(outcome.view_id, "sprint-board");
+        let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
+        let ids: Vec<&str> = reloaded.views.iter().map(|view| view.id.as_str()).collect();
+        assert_eq!(ids, vec!["sprint-board", "second"]);
+    }
+
+    #[test]
+    fn update_view_rename_removes_the_old_rendered_file() {
+        let (_dir, root, config) = setup();
+        write_views(&root, TWO_VIEWS);
+        fs::create_dir_all(root.join("views")).unwrap();
+        fs::write(root.join("views/first.md"), "# rendered\n").unwrap();
+
+        let outcome = update_view(
+            &config,
+            &root,
+            "first",
+            Some("Sprint Board"),
+            definition("type: board\nfield: status\n"),
+            &[],
+        )
+        .unwrap();
+
+        assert!(
+            !root.join("views/first.md").exists(),
+            "the old id's rendered file must be removed"
+        );
+        assert_eq!(outcome.info_messages.len(), 1, "{:?}", outcome.info_messages);
+        assert!(outcome.info_messages[0].contains("first.md"));
+    }
+
+    #[test]
+    fn update_view_rename_to_same_slug_is_not_a_rename() {
+        let (_dir, root, config) = setup();
+        write_views(&root, TWO_VIEWS);
+        fs::create_dir_all(root.join("views")).unwrap();
+        fs::write(root.join("views/first.md"), "# rendered\n").unwrap();
+
+        // "First" slugs back to "first" — not a rename, nothing removed.
+        let outcome = update_view(
+            &config,
+            &root,
+            "first",
+            Some("First"),
+            definition("type: board\nfield: status\n"),
+            &[],
+        )
+        .unwrap();
+
+        assert_eq!(outcome.view_id, "first");
+        assert!(root.join("views/first.md").exists());
+        assert!(outcome.info_messages.is_empty());
+    }
+
+    #[test]
+    fn update_view_rename_to_existing_id_errors_without_writing() {
+        let (_dir, root, config) = setup();
+        write_views(&root, TWO_VIEWS);
+
+        let error = update_view(
+            &config,
+            &root,
+            "first",
+            Some("Second"),
+            definition("type: board\nfield: status\n"),
+            &[],
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, ViewWriteError::DuplicateId { id } if id == "second"));
+        assert_eq!(read_views(&root), TWO_VIEWS, "file must be untouched");
+    }
+
+    #[test]
+    fn update_view_blank_name_errors_without_writing() {
+        let (_dir, root, config) = setup();
+        write_views(&root, TWO_VIEWS);
+
+        let error = update_view(
+            &config,
+            &root,
+            "first",
+            Some("   "),
+            definition("type: board\nfield: status\n"),
+            &[],
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, ViewWriteError::InvalidName { .. }));
+        assert_eq!(read_views(&root), TWO_VIEWS, "file must be untouched");
+    }
+
+    // ── delete_view ──────────────────────────────────────────────────
+
+    #[test]
+    fn delete_view_removes_the_entry_and_keeps_the_rest() {
+        let (_dir, root, config) = setup();
+        write_views(&root, TWO_VIEWS);
+
+        let outcome = delete_view(&config, &root, "first").unwrap();
+
+        assert_eq!(outcome.view_id, "first");
+        let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
+        let ids: Vec<&str> = reloaded.views.iter().map(|view| view.id.as_str()).collect();
+        assert_eq!(ids, vec!["second"]);
+    }
+
+    #[test]
+    fn delete_view_last_entry_leaves_a_loadable_empty_file() {
+        let (_dir, root, config) = setup();
+        write_views(
+            &root,
+            "views:\n  - id: only\n    type: board\n    field: status\n",
+        );
+
+        delete_view(&config, &root, "only").unwrap();
+
+        let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
+        assert!(reloaded.views.is_empty());
+    }
+
+    #[test]
+    fn delete_view_unknown_id_errors_without_writing() {
+        let (_dir, root, config) = setup();
+        write_views(&root, TWO_VIEWS);
+
+        let error = delete_view(&config, &root, "nope").unwrap_err();
+
+        assert!(matches!(error, ViewWriteError::ViewNotFound { id } if id == "nope"));
+        assert_eq!(read_views(&root), TWO_VIEWS, "file must be untouched");
+    }
+
+    #[test]
+    fn delete_view_removes_the_rendered_file() {
+        let (_dir, root, config) = setup();
+        write_views(&root, TWO_VIEWS);
+        fs::create_dir_all(root.join("views")).unwrap();
+        fs::write(root.join("views/first.md"), "# rendered\n").unwrap();
+
+        let outcome = delete_view(&config, &root, "first").unwrap();
+
+        assert!(!root.join("views/first.md").exists());
+        assert_eq!(outcome.info_messages.len(), 1, "{:?}", outcome.info_messages);
+        assert!(outcome.info_messages[0].contains("removed"));
+    }
+
+    #[test]
+    fn delete_view_without_rendered_file_is_silent() {
+        let (_dir, root, config) = setup();
+        write_views(&root, TWO_VIEWS);
+
+        let outcome = delete_view(&config, &root, "first").unwrap();
+
+        assert!(outcome.info_messages.is_empty(), "{:?}", outcome.info_messages);
+    }
+
+    /// The removal honours a non-default `directory:` — the file lives
+    /// wherever `workdown render` would have written it.
+    #[test]
+    fn delete_view_removes_the_rendered_file_from_a_custom_directory() {
+        let (_dir, root, config) = setup();
+        write_views(
+            &root,
+            "directory: rendered/views\nviews:\n  - id: only\n    type: board\n    field: status\n",
+        );
+        fs::create_dir_all(root.join("rendered/views")).unwrap();
+        fs::write(root.join("rendered/views/only.md"), "# rendered\n").unwrap();
+
+        delete_view(&config, &root, "only").unwrap();
+
+        assert!(!root.join("rendered/views/only.md").exists());
     }
 
     #[test]

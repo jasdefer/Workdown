@@ -20,7 +20,9 @@ import type { FieldMutationResult } from './generated/FieldMutationResult';
 import type { ItemDetail } from './generated/ItemDetail';
 import type { SchemaData } from './generated/SchemaData';
 import type { SetViewFilter } from './generated/SetViewFilter';
+import type { UpdateView } from './generated/UpdateView';
 import type { ViewData } from './generated/ViewData';
+import type { ViewDefinition } from './generated/ViewDefinition';
 import type { ViewMutationResult } from './generated/ViewMutationResult';
 import type { ViewSummary } from './generated/ViewSummary';
 
@@ -103,6 +105,23 @@ export const api = {
 	 * is the kind + slots (no id); `filter` is the optional structured filter.
 	 */
 	createView: (body: CreateView) => request<ViewMutationResult>('POST', '/api/views', body),
+	/**
+	 * The persisted view decomposed for the edit form: the flat definition
+	 * (no id, no where) plus the filter as structured clauses — exactly the
+	 * shape `updateView` takes back.
+	 */
+	getViewDefinition: (id: string) =>
+		request<ViewDefinition>('GET', `/api/views/${encodeURIComponent(id)}/definition`),
+	/**
+	 * Replace a view's whole definition. A non-null `name` renames the view
+	 * (re-slugged server-side); the result's `view_id` is the id after the
+	 * write, so navigate by it.
+	 */
+	updateView: (id: string, body: UpdateView) =>
+		request<ViewMutationResult>('PUT', `/api/views/${encodeURIComponent(id)}`, body),
+	/** Delete a view from `views.yaml` (and its stale rendered file). */
+	deleteView: (id: string) =>
+		request<ViewMutationResult>('DELETE', `/api/views/${encodeURIComponent(id)}`),
 	getSchema: () => request<SchemaData>('GET', '/api/schema'),
 	getItem: (id: string) => request<ItemDetail>('GET', `/api/items/${encodeURIComponent(id)}`),
 	setField: (id: string, field: string, mutation: FieldMutation) =>
