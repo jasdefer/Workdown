@@ -15,7 +15,7 @@ Hierarchical outline following `parent` upward to roots.
   - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md) — status: to_do
   - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md) — status: to_do
 - [Time tracking](../workdown-items/time-tracking.md) — status: in_progress
-  - [Duration delta starts from zero on an absent field](../workdown-items/duration-delta-absent-value.md) — status: to_do
+  - [Duration delta starts from zero on an absent field](../workdown-items/duration-delta-absent-value.md) — status: in_progress
   - [Project-level effort field in config.yaml](../workdown-items/effort-field-config.md) — status: to_do
   - [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md) — status: to_do
   - [Pomodoro mode for the effort timer](../workdown-items/pomodoro-timer.md) — status: to_do

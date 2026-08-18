@@ -1,6 +1,6 @@
 ---
 id: duration-delta-absent-value
-status: to_do
+status: in_progress
 title: Duration delta starts from zero on an absent field
 parent: time-tracking
 ---
@@ -34,8 +34,36 @@ refusal makes the common case the awkward one.
    argument could be made for them, but nothing needs it yet, and
    "absent" for a count can be a deliberate statement.
 4. The resulting asymmetry between duration and date deltas is
-   deliberate and gets written down where the error taxonomy is
-   described, so it does not read as an oversight.
+   deliberate and gets written down under `--delta` in `workdown set
+   --help`, so it does not read as an oversight. The error message for
+   the date case stays as it is — `--delta` does work on dates, it just
+   needs a value to move.
+5. **A field written with no value counts as absent** and is created at
+   zero the same way. A field holding something that isn't a duration
+   stays an error: replacing a typo with a measured number destroys the
+   evidence that something was wrong.
+6. **Zero is the only starting point.** An item whose effort rolls up
+   from its children, or is computed, or is pulled from a linked item,
+   still starts the delta at zero and writes the result as a
+   hand-written value. Starting from the derived number would silently
+   freeze it into the file, where it would go stale the next time a
+   child changed. The write raises the usual warning about a manual
+   value competing with a roll-up, so nothing happens quietly.
+7. **A field's schema default is not the starting point either.**
+   Defaults are stamped in when an item is created; an item that
+   predates a default, or had its value cleared, does not reacquire it
+   through arithmetic.
+8. **A negative delta on an absent field writes a negative duration.**
+   Zero minus thirty minutes is minus thirty minutes, exactly as it
+   would be if the field held `0s`. Negative durations are already
+   valid values, and a project that considers them nonsense constrains
+   the field with a minimum in its schema.
+9. **A delta of zero creates the field at `0s`.** A delta always
+   writes. The timer's rule that a very short session records nothing
+   is the timer's, applied before it ever asks for a delta.
+10. **The confirmation line shows what was on disk:**
+    `effort: (unset) + 30min = 30min`. Rendering it as `0s` would claim
+    the file said something it did not.
 
 ## Not in scope
 

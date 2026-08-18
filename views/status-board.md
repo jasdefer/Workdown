@@ -3,7 +3,6 @@
 Cards grouped into columns by `status`.
 
 ## to_do
-- [Duration delta starts from zero on an absent field](../workdown-items/duration-delta-absent-value.md)
 - [Project-level effort field in config.yaml](../workdown-items/effort-field-config.md)
 - [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
@@ -22,6 +21,7 @@ Cards grouped into columns by `status`.
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
+- [Duration delta starts from zero on an absent field](../workdown-items/duration-delta-absent-value.md)
 - [Time tracking](../workdown-items/time-tracking.md)
 
 ## done
