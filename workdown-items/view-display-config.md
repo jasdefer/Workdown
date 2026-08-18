@@ -1,6 +1,5 @@
 ---
 id: view-display-config
-type: issue
 status: done
 title: Per-view-kind display configuration (which fields show where)
 parent: view-presentation

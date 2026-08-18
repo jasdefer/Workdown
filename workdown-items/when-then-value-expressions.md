@@ -1,8 +1,8 @@
 ---
 id: when-then-value-expressions
-type: issue
 status: to_do
 title: "`then:` values beyond literals — `$today`, fields, expressions"
+parent: schema-expressions
 depends_on: [conditional-field-value]
 ---
 

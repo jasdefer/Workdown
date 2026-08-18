@@ -1,11 +1,9 @@
 ---
 id: resource-label-display
-type: issue
 status: removed
 title: Show a resource entry's label where views display its id
 parent: polish
 depends_on: [resource-option-lists]
-effort: "3h"
 ---
 
 > **Removed 2026-08-03, not worth the cost.** Kept as a record of the

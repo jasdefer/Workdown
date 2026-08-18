@@ -1,10 +1,8 @@
 ---
 id: project-constants
-type: issue
 status: done
 title: Project-level constants in resources.yaml
 parent: time-tracking
-effort: "4h"
 ---
 
 Named scalar values defined once per project and referenced from the

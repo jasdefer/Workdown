@@ -7,6 +7,7 @@
   The server checks the finer input-mode rules on save.
 -->
 <script lang="ts">
+	import { onMount, untrack } from 'svelte';
 	import type { FieldType } from '$lib/api/generated/FieldType';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import { fieldFits } from './viewKinds';
@@ -22,12 +23,34 @@
 
 	let { definition, onslot }: Props = $props();
 
-	let mode = $state<GanttMode>('end');
+	// In edit mode the definition arrives pre-filled; the mode is implied
+	// by which end-derivation slot it carries. Evaluated once — after
+	// that, the radio buttons own the mode.
+	function impliedMode(seed: Record<string, unknown>): GanttMode {
+		if (typeof seed.after === 'string' && seed.after !== '') return 'after';
+		if (typeof seed.duration === 'string' && seed.duration !== '') return 'duration';
+		return 'end';
+	}
+
+	let mode = $state<GanttMode>(untrack(() => impliedMode(definition)));
 
 	function scalar(key: string): string {
 		const value = definition[key];
 		return typeof value === 'string' ? value : '';
 	}
+
+	// A hand-edited definition can carry both `end` and a duration-based
+	// derivation — it still loads, the conflict is only a validation
+	// warning. The form shows one mode, so it drops the slot that mode
+	// doesn't use: what you see is exactly what a save persists, and the
+	// warning resolves with the first edit instead of riding along
+	// invisibly. (`end` is the only possible leftover — `after` requires
+	// `duration`, and end-mode is only implied when both are absent.)
+	onMount(() => {
+		if (mode !== 'end' && scalar('end') !== '') {
+			onslot('end', undefined);
+		}
+	});
 
 	function fieldOptions(accepts: FieldType[]) {
 		return schemaStore.fields.filter((field) => fieldFits(field.field_type, accepts));

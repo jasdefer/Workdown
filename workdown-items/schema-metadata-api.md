@@ -1,11 +1,9 @@
 ---
 id: schema-metadata-api
-type: issue
 status: done
 title: Expose schema metadata so the UI can offer valid choices
 parent: view-authoring
 depends_on: []
-effort: "2d"
 ---
 
 Any UI that lets a user pick a field, an operator, or a value needs to know the shape of the project's schema: which fields exist, what type each is, which values a choice field allows, and which resources a field references. The serve API exposes view data but nothing about the schema itself, so today a builder UI would have no source of truth to populate its pickers — it could only let the user type raw strings and hope they're valid.

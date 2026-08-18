@@ -1,10 +1,9 @@
 ---
 id: pull-fields
-type: issue
-status: in_progress
+status: done
 title: Pull fields — cross-item derivation over forward links
+parent: schema-expressions
 depends_on: [computed-fields, aggregate-rollup]
-effort: "16h"
 ---
 
 A field can declare a `pull:` config that reads a *different* field

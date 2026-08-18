@@ -1,6 +1,5 @@
 ---
 id: display-defaults-validation
-type: issue
 status: done
 title: Validate `defaults.display` in config.yaml against the schema
 parent: view-presentation

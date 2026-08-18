@@ -84,6 +84,17 @@ pub fn view_from_value(value: serde_yaml::Value) -> Result<View, ViewsLoadError>
     convert_view(raw).map_err(|error| ViewsLoadError::Validation(vec![error]))
 }
 
+/// Serialize a single [`View`] to the flat YAML value shape one entry in
+/// the `views:` list takes — `id`, `type`, optional `where`, and the slots
+/// its kind uses.
+///
+/// The exact inverse of [`view_from_value`] (covered by the round-trip
+/// test). Used to hand a persisted view back to the editing UI in the same
+/// shape the write path accepts.
+pub fn view_to_value(view: &View) -> Result<serde_yaml::Value, serde_yaml::Error> {
+    serde_yaml::to_value(raw_view_from(view))
+}
+
 /// Serialize a [`Views`] model back to `views.yaml` text.
 ///
 /// The inverse of [`parse_views`]: emits a file that re-parses to an
@@ -1532,6 +1543,18 @@ views:
             !serialized.contains("where:"),
             "empty where should not be emitted, got:\n{serialized}"
         );
+    }
+
+    /// `view_to_value` must be the exact inverse of `view_from_value`:
+    /// every view in the broad fixture survives value → view → value.
+    #[test]
+    fn view_to_value_round_trips_through_view_from_value() {
+        let views = parse_views(ROUND_TRIP_FIXTURE).unwrap();
+        for view in &views.views {
+            let value = view_to_value(view).unwrap();
+            let rebuilt = view_from_value(value).unwrap();
+            assert_eq!(*view, rebuilt, "round-trip changed view '{}'", view.id);
+        }
     }
 
     #[test]

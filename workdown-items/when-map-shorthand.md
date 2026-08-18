@@ -1,8 +1,8 @@
 ---
 id: when-map-shorthand
-type: issue
 status: to_do
 title: "`map:` — lookup-table shorthand over the `when:` evaluator"
+parent: schema-expressions
 depends_on: [conditional-field-value]
 ---
 

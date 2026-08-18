@@ -157,7 +157,8 @@ export function fieldFits(fieldType: FieldType, accepts: FieldType[]): boolean {
 	return accepts.length === 0 || accepts.includes(fieldType);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+/** Narrow an unknown slot value to a plain object. */
+export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
 }
 

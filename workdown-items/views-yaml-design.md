@@ -1,10 +1,8 @@
 ---
 id: views-yaml-design
-type: issue
 status: done
 title: Design views.yaml shape
 parent: foundation
-effort: "12h"
 ---
 
 Produce an initial design for `.workdown/views.yaml`. Output is a documented example file, a Rust struct representation, and a short design note — not the formal JSON Schema (that's the next issue).

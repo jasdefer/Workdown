@@ -1,13 +1,10 @@
 ---
 id: color-field-type
 title: Add `color` field type with background tinting
-type: issue
 status: done
 parent: view-presentation
 depends_on:
 - mutations-slice
-color: orange
-effort: 2d
 ---
 
 Introduce `color` as a built-in field type holding a single color value,

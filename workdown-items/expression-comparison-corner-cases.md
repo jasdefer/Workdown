@@ -1,11 +1,9 @@
 ---
-type: bug
 status: to_do
-parent: misc-work
+tags: [bug]
+parent: schema-expressions
 title: Integer precision and NaN in comparison evaluation
-effort: "3h"
 depends_on: [conditional-field-value]
-color: pink
 ---
 
 ## In plain words

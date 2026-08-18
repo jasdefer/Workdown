@@ -45,11 +45,14 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # --workspace on build and test: `default-members` scopes bare cargo
+      # commands to the CLI crate (a `cargo run` convenience), which would
+      # silently skip every core and server test here.
       - name: Build
-        run: cargo build
+        run: cargo build --workspace
 
       - name: Test
-        run: cargo test
+        run: cargo test --workspace
 
       - name: Doc
         run: cargo doc --no-deps --workspace

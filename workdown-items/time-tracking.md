@@ -1,6 +1,5 @@
 ---
 id: time-tracking
-type: milestone
 status: in_progress
 title: Time tracking
 ---

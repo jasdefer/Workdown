@@ -1,10 +1,8 @@
 ---
 id: workspace-refactor
-type: issue
 status: done
 title: Split into core / cli / server workspace
 parent: foundation
-effort: "16h"
 ---
 
 Convert the project from a single crate to a Cargo workspace with three crates:

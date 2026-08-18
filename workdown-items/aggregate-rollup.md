@@ -1,10 +1,8 @@
 ---
 id: aggregate-rollup
-type: issue
 status: done
 title: Compute schema-declared aggregate fields up the parent chain
 parent: renderers
-effort: "8h"
 ---
 
 Wire up the schema's `aggregate:` config so fields with a declared

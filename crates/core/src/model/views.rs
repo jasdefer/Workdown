@@ -23,6 +23,17 @@ pub struct Views {
     pub views: Vec<View>,
 }
 
+/// The file `workdown render` produces for one view: `<output_dir>/<id>.md`.
+///
+/// The single home of the naming rule — the renderer writes through it and
+/// the view-write housekeeping (delete/rename removing a stale file) removes
+/// through it, so the two can never disagree about where a view renders to.
+/// `output_dir` is passed resolved (absolute or relative to the caller's
+/// working directory), exactly as each caller already holds it.
+pub fn rendered_view_path(output_dir: &std::path::Path, view_id: &str) -> PathBuf {
+    output_dir.join(format!("{view_id}.md"))
+}
+
 /// A single view entry: id, optional filters, and type-specific config.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct View {

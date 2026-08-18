@@ -30,7 +30,7 @@ use workdown_core::model::views::{Aggregate, Bucket, DisplayConfig, ViewSummary,
 use workdown_core::model::WorkItemId;
 use workdown_core::mutation_data::{
     CreateItem, CreateItemResult, CreateView, FieldMutation, FieldMutationResult, SetViewFilter,
-    ViewMutationResult,
+    UpdateView, ViewDefinition, ViewMutationResult,
 };
 use workdown_core::query::clause::{Clause, Condition};
 use workdown_core::query::types::Operator;
@@ -93,6 +93,8 @@ const ALL_TYPES: &[&str] = &[
     "CreateItemResult",
     "CreateView",
     "SetViewFilter",
+    "UpdateView",
+    "ViewDefinition",
     "ViewMutationResult",
     "ItemDetail",
     "ViewData",
@@ -187,6 +189,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // View-write contracts (POST /api/views, PATCH /api/views/:id).
     write_type::<CreateView>(&target_dir)?;
     write_type::<SetViewFilter>(&target_dir)?;
+    write_type::<UpdateView>(&target_dir)?;
+    write_type::<ViewDefinition>(&target_dir)?;
     write_type::<ViewMutationResult>(&target_dir)?;
 
     // Single-item read projection (GET /api/items/:id).

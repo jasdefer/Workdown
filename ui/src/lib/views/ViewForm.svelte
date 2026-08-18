@@ -1,12 +1,18 @@
 <!--
-  Compose and create a new view: name → kind → the slots that kind needs
-  (field pickers constrained by schema metadata) → an optional filter
-  (reusing FilterBuilder) → Save. Save is gated until the name and required
-  slots are filled; the server re-validates and any diagnostics surface.
-  On success we navigate to the new view.
+  Compose a view: name → kind → the slots that kind needs (field pickers
+  constrained by schema metadata) → an optional filter (reusing
+  FilterBuilder) → Save. Save is gated until the name and required slots
+  are filled; the server re-validates and any diagnostics surface.
+
+  Two modes, one form. Without `initial` it creates: on save the view is
+  POSTed and we navigate to it. With `initial` (the view's id plus the
+  seed from `GET /api/views/{id}/definition`) it edits: the form starts
+  from the persisted definition and PUTs the replacement. The name field
+  seeds from the prettified id — name → id is lossy — and is sent only
+  when actually changed, so an untouched name never causes a rename.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { Clause } from '$lib/api/generated/Clause';
 	import type { ViewType } from '$lib/api/generated/ViewType';
@@ -15,6 +21,7 @@
 	import FilterBuilder from '$lib/filters/FilterBuilder.svelte';
 	import GanttInput from './GanttInput.svelte';
 	import MetricRowsEditor from './MetricRowsEditor.svelte';
+	import { prettifyId } from './prettify';
 	import {
 		AGGREGATES,
 		BUCKETS,
@@ -23,13 +30,59 @@
 		WEEKDAYS,
 		fieldFits,
 		isDefinitionComplete,
+		isRecord,
 		kindLabel
 	} from './viewKinds';
 
-	let name = $state('');
-	let kind = $state<ViewType>('board');
-	let definition = $state<Record<string, unknown>>({});
-	let filterClauses = $state<Clause[]>([]);
+	interface Props {
+		/** Present in edit mode: the view being edited and its persisted state. */
+		initial?: { id: string; definition: Record<string, unknown>; filter: Clause[] };
+	}
+
+	let { initial }: Props = $props();
+
+	/**
+	 * Split a persisted flat definition into the form's working parts:
+	 * the kind, the editable slots (with `display.fields` folded into the
+	 * form-local `columns` slot), and the display roles the form does not
+	 * edit (title, subtitle, color) — carried through untouched so an
+	 * edit round-trip never drops what was set by hand in `views.yaml`.
+	 * An explicitly empty `fields: []` (the documented "show no fields"
+	 * override, distinct from unset) is not editable as columns either;
+	 * it stays in the carried-through part so it survives a save.
+	 */
+	function seedFromDefinition(source: Record<string, unknown> | undefined): {
+		kind: ViewType;
+		slots: Record<string, unknown>;
+		displayRest: Record<string, unknown>;
+	} {
+		if (source === undefined) return { kind: 'board', slots: {}, displayRest: {} };
+		const { type, display, ...slots } = source;
+		const displayRecord = isRecord(display) ? display : {};
+		const { fields, ...displayRest } = displayRecord;
+		if (Array.isArray(fields) && fields.length > 0) {
+			slots.columns = fields;
+		} else if (Array.isArray(fields)) {
+			(displayRest as Record<string, unknown>).fields = fields;
+		}
+		return { kind: type as ViewType, slots, displayRest };
+	}
+
+	// Seeded once from the resolved prop — the host re-keys this component
+	// when the edited view changes, so these deliberately don't track.
+	const seeded = untrack(() => seedFromDefinition(initial?.definition));
+	// The name a saved edit compares against: sending it unchanged would
+	// be a no-op rename at best and an accidental one at worst.
+	const initialName = untrack(() => (initial !== undefined ? prettifyId(initial.id) : ''));
+	// The filter seed, resolved once and used both as the working state's
+	// start value and as the builder's seed, so the two cannot diverge.
+	const initialFilter = untrack(() => initial?.filter ?? []);
+
+	let name = $state(initialName);
+	let kind = $state<ViewType>(seeded.kind);
+	let definition = $state<Record<string, unknown>>(seeded.slots);
+	const displayRest = seeded.displayRest;
+	let filterClauses = $state<Clause[]>(initialFilter);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 
@@ -68,10 +121,13 @@
 	}
 
 	// A kind switch resets the slots; a freshly mounted `MetricRowsEditor`
-	// or `GanttInput` re-seeds its own part of the definition.
+	// or `GanttInput` re-seeds its own part of the definition. Returning
+	// to the seeded kind restores the persisted slots, so browsing other
+	// kinds and coming back never loses them. The unedited display roles
+	// are kept either way — they are kind-independent.
 	function chooseKind(next: ViewType): void {
 		kind = next;
-		definition = {};
+		definition = next === seeded.kind ? { ...seeded.slots } : {};
 	}
 
 	// ── Working days ────────────────────────────────────────────────────
@@ -89,26 +145,40 @@
 		saving = true;
 		error = null;
 		// The form keeps `columns` as a flat slot for editing ergonomics;
-		// on the wire it is the `fields` display role inside `display:`.
+		// on the wire it is the `fields` display role inside `display:` —
+		// merged over the roles the form doesn't edit.
 		const { columns, ...slots } = definition;
 		const payload: Record<string, unknown> = { type: kind, ...slots };
+		const display: Record<string, unknown> = { ...displayRest };
 		if (Array.isArray(columns) && columns.length > 0) {
-			payload.display = { fields: columns };
+			display.fields = columns;
 		}
-		const result = await api.createView({ name, definition: payload, filter: filterClauses });
+		if (Object.keys(display).length > 0) {
+			payload.display = display;
+		}
+		const result =
+			initial !== undefined
+				? await api.updateView(initial.id, {
+						name: name !== initialName ? name : null,
+						definition: payload,
+						filter: filterClauses
+					})
+				: await api.createView({ name, definition: payload, filter: filterClauses });
 		saving = false;
 		if (result.error !== undefined) {
 			error = result.error;
 			return;
 		}
 		if (result.data) {
-			await goto(`/views/${encodeURIComponent(result.data.view_id)}`);
+			await goto(`/views/${encodeURIComponent(result.data.view_id)}`, {
+				invalidateAll: true
+			});
 		}
 	}
 </script>
 
-<div class="create-view">
-	<h1>New view</h1>
+<div class="view-form">
+	<h1>{initial !== undefined ? 'Edit view' : 'New view'}</h1>
 
 	<label class="row">
 		<span class="label">Name</span>
@@ -215,6 +285,9 @@
 			<div class="row">
 				<span class="label">Metrics *</span>
 				<MetricRowsEditor
+					initial={Array.isArray(definition.metrics)
+						? (definition.metrics as Record<string, unknown>[])
+						: undefined}
 					onchange={(metrics) => {
 						definition = { ...definition, metrics };
 					}}
@@ -226,7 +299,7 @@
 	<div class="filter-section">
 		<span class="label">Filter (optional)</span>
 		<FilterBuilder
-			initialClauses={[]}
+			initialClauses={initialFilter}
 			onchange={(clauses: Clause[]) => {
 				filterClauses = clauses;
 			}}
@@ -239,14 +312,21 @@
 
 	<div class="actions">
 		<button type="button" class="primary" disabled={!complete || saving} onclick={save}>
-			{saving ? 'Creating…' : 'Create view'}
+			{#if initial !== undefined}
+				{saving ? 'Saving…' : 'Save changes'}
+			{:else}
+				{saving ? 'Creating…' : 'Create view'}
+			{/if}
 		</button>
-		<a class="cancel" href="/">Cancel</a>
+		<a
+			class="cancel"
+			href={initial !== undefined ? `/views/${encodeURIComponent(initial.id)}` : '/'}>Cancel</a
+		>
 	</div>
 </div>
 
 <style>
-	.create-view {
+	.view-form {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-3);

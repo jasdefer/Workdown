@@ -1,13 +1,9 @@
 ---
 id: renderers
-type: milestone
 status: done
 title: Renderers
 parent: phase-04-visualization
 depends_on: [foundation]
-start_date: 2026-04-23
-end_date: 2026-05-04
-duration: "1w 5d"
 ---
 
 Produce rendered views from work items as lightweight Markdown files. One shared

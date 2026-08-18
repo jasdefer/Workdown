@@ -1,10 +1,8 @@
 ---
 id: evaluation-time-now
-type: issue
 status: done
 title: Resolve the current date at evaluation time, reproducibly
 parent: polish
-effort: "8h"
 ---
 
 `$today` exists, but only as a **default generator**: `generators.rs` resolves

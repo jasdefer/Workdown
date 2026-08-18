@@ -1,11 +1,9 @@
 ---
 id: render-board
-type: issue
 status: done
 title: Board renderer
 parent: renderers
 depends_on: [view-data-intermediate]
-effort: "4h"
 ---
 
 Render `BoardView` as a Markdown file written to `views/<id>.md`.

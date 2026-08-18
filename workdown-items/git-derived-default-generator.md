@@ -1,6 +1,5 @@
 ---
 id: git-derived-default-generator
-type: issue
 status: to_do
 title: Default generator that reads dates from git history
 parent: time-tracking

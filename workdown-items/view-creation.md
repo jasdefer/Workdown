@@ -1,11 +1,9 @@
 ---
 id: view-creation
-type: issue
 status: done
 title: Create a new view from the UI
 parent: view-authoring
 depends_on: [view-write-backend, schema-metadata-api, view-filter-editor, app-shell-navigation]
-effort: "16h"
 ---
 
 A user who wants a new view has to leave the app, learn the `views.yaml` shape for the kind they want, and hand-write it. This issue lets them assemble a view in the browser instead: choose a kind, fill in what that kind needs, optionally attach a filter, and save it.

@@ -1,10 +1,8 @@
 ---
 id: views-json-schema
-type: issue
 status: done
 title: Editor-only JSON Schema for views.yaml
 parent: foundation
-effort: "4h"
 ---
 
 Ship `crates/core/defaults/views.schema.json` — a formal JSON Schema for `views.yaml` that editors (VS Code, IntelliJ) use for autocomplete and inline validation. Not loaded by the CLI at runtime (ADR-005).

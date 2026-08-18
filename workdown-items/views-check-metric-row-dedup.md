@@ -1,11 +1,8 @@
 ---
-type: issue
 status: to_do
 parent: misc-work
 title: Collapse the metric-row duplicates of the generic view checks
-effort: "4h"
 tags: [tech-debt]
-color: pink
 ---
 
 ## In plain words

@@ -1,13 +1,10 @@
 ---
 id: cli-unset-command
 title: workdown unset — clear a field
-type: issue
 status: done
 parent: item-mutations
 depends_on:
 - cli-set-command
-color: '#fbc02d'
-effort: 4h
 ---
 
 Companion to `set` that removes a field from an item's frontmatter.

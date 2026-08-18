@@ -1,7 +1,8 @@
 <!--
-  Single-view page: renders the diagnostic banner above the view, then
-  the `<ViewRenderer>` which dispatches on `data.result.data.type`.
-  `?item=...` in the URL mounts the (stub) ItemPanel.
+  Single-view page: a toolbar with the view's authoring actions, the
+  diagnostic banner, then the `<ViewRenderer>` which dispatches on
+  `data.result.data.type`. `?item=...` in the URL mounts the (stub)
+  ItemPanel.
 -->
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
@@ -10,6 +11,7 @@
 	import FilterBar from '$lib/filters/FilterBar.svelte';
 	import DisplayBar from '$lib/views/DisplayBar.svelte';
 	import ViewRenderer from '$lib/views/ViewRenderer.svelte';
+	import ViewToolbar from '$lib/views/ViewToolbar.svelte';
 	import ItemPanel from './ItemPanel.svelte';
 
 	let { data }: { data: PageData } = $props();
@@ -23,6 +25,7 @@
 
 <div class="view-page">
 	{#key data.viewId}
+		<ViewToolbar viewId={data.viewId} />
 		<FilterBar viewId={data.viewId} initialFilter={data.filter} itemId={data.itemId} />
 		<DisplayBar viewId={data.viewId} initialOverride={data.displayOverride} />
 	{/key}

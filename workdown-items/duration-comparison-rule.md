@@ -1,6 +1,5 @@
 ---
 id: duration-comparison-rule
-type: issue
 status: to_do
 title: Cross-field comparison rule for duration values
 parent: time-tracking

@@ -1,6 +1,5 @@
 ---
 id: render-command
-type: issue
 status: done
 title: workdown render command
 parent: renderers
@@ -16,7 +15,6 @@ depends_on:
   - render-metric
   - render-treemap
   - render-heatmap
-effort: "4h"
 ---
 
 `workdown render` — reads `views.yaml`, produces static outputs per configured view.
