@@ -156,7 +156,9 @@ impl CreateItemResult {
 /// `views:` list. It crosses the wire as opaque JSON (`Record<string,
 /// unknown>` in TS) because the valid slots depend on the chosen `type`;
 /// `core` validates it against the schema (see
-/// [`crate::parser::views::view_from_value`]).
+/// [`crate::parser::views::view_from_value`]). A metric view's rows may
+/// each carry a structured `filter` clause list in place of `where`
+/// strings — serialized server-side exactly like the view-level filter.
 #[derive(Debug, Clone, Deserialize, ts_rs::TS)]
 pub struct CreateView {
     pub name: String,
@@ -189,7 +191,9 @@ pub struct UpdateView {
 /// A persisted view decomposed for the edit form: the flat definition
 /// (without `id` and `where`) plus the filter as structured clauses —
 /// exactly the shape [`UpdateView`] takes back, so what the form GETs is
-/// what it PUTs. Returned by `GET /api/views/{id}/definition`.
+/// what it PUTs. A metric view's rows get the same treatment: each entry's
+/// `where:` strings are replaced by a structured `filter` clause list.
+/// Returned by `GET /api/views/{id}/definition`.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct ViewDefinition {
     #[ts(type = "Record<string, unknown>")]
@@ -200,12 +204,14 @@ pub struct ViewDefinition {
 impl ViewDefinition {
     /// Decompose a persisted view. `id` leaves the mapping because the
     /// write path derives it (from the path, or a rename's `name`);
-    /// `where` leaves because the filter travels as structured clauses.
+    /// `where` leaves — at the view level and per metric row — because
+    /// filters travel as structured clauses.
     pub fn from_view(view: &View) -> Result<Self, serde_yaml::Error> {
         let mut value = view_to_value(view)?;
         if let serde_yaml::Value::Mapping(ref mut mapping) = value {
             mapping.shift_remove("id");
             mapping.shift_remove("where");
+            crate::operations::view_write::metric_where_to_filters(mapping)?;
         }
         Ok(Self {
             definition: value,

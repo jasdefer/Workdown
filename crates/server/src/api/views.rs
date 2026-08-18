@@ -1,8 +1,10 @@
 //! Handlers for the `/api/views` family: listing, rendering, and the
 //! full view-authoring lifecycle (create, edit, rename, delete, filter).
 //!
-//! Both load the project per request (cold-load, no cache) via
-//! `core::load_project`. Failure mapping follows the three tiers from
+//! The rendering handlers load the project per request (cold-load, no
+//! cache) via `core::load_project`; the authoring seed handlers
+//! (`/filter`, `/definition`) read `views.yaml` alone — see
+//! `load_one_view` below. Failure mapping follows the three tiers from
 //! the `first-view-end-to-end` decisions:
 //!
 //! - `Err(LoadError)` → 422 with the synthesized load diagnostic.
@@ -38,8 +40,9 @@ use workdown_core::mutation_data::{
     CreateView, SetViewFilter, UpdateView, ViewDefinition, ViewMutationResult,
 };
 use workdown_core::operations::view_write::{
-    create_view, delete_view, set_view_filter, update_view, ViewWriteError,
+    create_view, delete_view, set_view_filter, update_view, ViewWriteError, ViewWriteOutcome,
 };
+use workdown_core::parser::views::load_views;
 use workdown_core::project::load_project;
 use workdown_core::query::clause::{clauses_to_strings, decompose_clauses, Clause};
 use workdown_core::view_data::{self, ViewData};
@@ -244,6 +247,36 @@ async fn get_view(
     ApiResponse::ok_with(data, diagnostics)
 }
 
+/// Load `views.yaml` alone and find one view by id — the authoring seed
+/// endpoints' shared preamble. The rest of the project has no bearing on
+/// what the file says: schema, work items, and rule evaluation matter for
+/// rendering and for the write path's cross-file warnings, not for reading
+/// a definition back — so a broken schema never blocks the editor, and the
+/// seed stays cheap (no whole-store parse per form open).
+///
+/// A missing file means no views are configured (`404`, like an unknown
+/// id); an existing file that won't load is `422` with its parse
+/// diagnostics, mirroring the write path's `ExistingInvalid`.
+fn load_one_view<T: serde::Serialize>(state: &AppState, id: &str) -> Result<View, ApiResponse<T>> {
+    let views_path = state.project_root.join(&state.config.paths.views);
+    if !views_path.exists() {
+        return Err(ApiResponse::not_found());
+    }
+    let views = match load_views(&views_path) {
+        Ok(views) => views,
+        Err(error) => {
+            return Err(ApiResponse::rejected(
+                views_check::parse_errors_to_diagnostics(error, &views_path),
+            ))
+        }
+    };
+    views
+        .views
+        .into_iter()
+        .find(|view| view.id == id)
+        .ok_or_else(|| ApiResponse::not_found())
+}
+
 /// `GET /api/views/{id}/filter` — the view's persisted `where:` decomposed
 /// into the editor's clause shape, for seeding the filter builder.
 ///
@@ -254,23 +287,9 @@ async fn get_view_filter(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResponse<Vec<Clause>> {
-    let project = match load_project(
-        &state.config,
-        &state.project_root,
-        &state.config_path,
-        state.evaluation_date_override,
-    ) {
-        Err(error) => return ApiResponse::rejected(vec![error.to_diagnostic()]),
-        Ok(project) => project,
-    };
-
-    match project
-        .views
-        .as_ref()
-        .and_then(|views| views.views.iter().find(|view| view.id == id))
-    {
-        None => ApiResponse::not_found(),
-        Some(view) => ApiResponse::ok(decompose_clauses(&view.where_clauses)),
+    match load_one_view(&state, &id) {
+        Err(response) => response,
+        Ok(view) => ApiResponse::ok(decompose_clauses(&view.where_clauses)),
     }
 }
 
@@ -310,7 +329,21 @@ async fn update_view_filter(
     Path(id): Path<String>,
     Json(request): Json<SetViewFilter>,
 ) -> ApiResponse<ViewMutationResult> {
-    match set_view_filter(&state.config, &state.project_root, &id, &request.clauses) {
+    view_mutation_response(set_view_filter(
+        &state.config,
+        &state.project_root,
+        &id,
+        &request.clauses,
+    ))
+}
+
+/// The shared outcome-to-envelope mapping for the view mutation handlers:
+/// a success carries its save-with-warning diagnostics, a hard error maps
+/// to its HTTP status. Create stays inline — it differs in returning `201`.
+fn view_mutation_response(
+    result: Result<ViewWriteOutcome, ViewWriteError>,
+) -> ApiResponse<ViewMutationResult> {
+    match result {
         Ok(outcome) => {
             let result = ViewMutationResult::from_outcome(&outcome);
             ApiResponse::ok_with(result, outcome.warnings)
@@ -320,9 +353,10 @@ async fn update_view_filter(
 }
 
 /// `GET /api/views/{id}/definition` — the persisted view decomposed into
-/// the edit form's seed: the flat definition (no `id`, no `where`) plus
-/// the filter as structured clauses. Exactly the `PUT` payload shape, so
-/// what the form GETs is what it PUTs back.
+/// the edit form's seed: the flat definition (no `id`, no `where`, and a
+/// metric view's rows carrying structured `filter` clauses) plus the
+/// view-level filter as structured clauses. Exactly the `PUT` payload
+/// shape, so what the form GETs is what it PUTs back.
 ///
 /// Like `/filter`, independent of whether the view renders: a view with a
 /// broken slot reference still returns its definition, so the editor can
@@ -331,26 +365,12 @@ async fn get_view_definition(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResponse<ViewDefinition> {
-    let project = match load_project(
-        &state.config,
-        &state.project_root,
-        &state.config_path,
-        state.evaluation_date_override,
-    ) {
-        Err(error) => return ApiResponse::rejected(vec![error.to_diagnostic()]),
-        Ok(project) => project,
+    let view = match load_one_view(&state, &id) {
+        Err(response) => return response,
+        Ok(view) => view,
     };
 
-    let view = match project
-        .views
-        .as_ref()
-        .and_then(|views| views.views.iter().find(|view| view.id == id))
-    {
-        None => return ApiResponse::not_found(),
-        Some(view) => view,
-    };
-
-    match ViewDefinition::from_view(view) {
+    match ViewDefinition::from_view(&view) {
         Ok(definition) => ApiResponse::ok(definition),
         // A view that loaded but won't re-serialize is a serializer bug,
         // not caller input — same class as `ProducedInvalid` on the write
@@ -371,20 +391,14 @@ async fn update_view_handler(
     Path(id): Path<String>,
     Json(request): Json<UpdateView>,
 ) -> ApiResponse<ViewMutationResult> {
-    match update_view(
+    view_mutation_response(update_view(
         &state.config,
         &state.project_root,
         &id,
         request.name.as_deref(),
         request.definition,
         &request.filter,
-    ) {
-        Ok(outcome) => {
-            let result = ViewMutationResult::from_outcome(&outcome);
-            ApiResponse::ok_with(result, outcome.warnings)
-        }
-        Err(error) => ApiResponse::failed(view_write_error_status(&error), error.to_string()),
-    }
+    ))
 }
 
 /// `DELETE /api/views/{id}` — remove the view from `views.yaml`, plus its
@@ -393,13 +407,7 @@ async fn delete_view_handler(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResponse<ViewMutationResult> {
-    match delete_view(&state.config, &state.project_root, &id) {
-        Ok(outcome) => {
-            let result = ViewMutationResult::from_outcome(&outcome);
-            ApiResponse::ok_with(result, outcome.warnings)
-        }
-        Err(error) => ApiResponse::failed(view_write_error_status(&error), error.to_string()),
-    }
+    view_mutation_response(delete_view(&state.config, &state.project_root, &id))
 }
 
 /// Map a hard [`ViewWriteError`] to its HTTP status. Save-with-warning

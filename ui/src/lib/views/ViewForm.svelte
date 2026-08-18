@@ -30,6 +30,7 @@
 		WEEKDAYS,
 		fieldFits,
 		isDefinitionComplete,
+		isRecord,
 		kindLabel
 	} from './viewKinds';
 
@@ -40,16 +41,15 @@
 
 	let { initial }: Props = $props();
 
-	function isRecord(value: unknown): value is Record<string, unknown> {
-		return typeof value === 'object' && value !== null;
-	}
-
 	/**
 	 * Split a persisted flat definition into the form's working parts:
 	 * the kind, the editable slots (with `display.fields` folded into the
 	 * form-local `columns` slot), and the display roles the form does not
 	 * edit (title, subtitle, color) — carried through untouched so an
 	 * edit round-trip never drops what was set by hand in `views.yaml`.
+	 * An explicitly empty `fields: []` (the documented "show no fields"
+	 * override, distinct from unset) is not editable as columns either;
+	 * it stays in the carried-through part so it survives a save.
 	 */
 	function seedFromDefinition(source: Record<string, unknown> | undefined): {
 		kind: ViewType;
@@ -62,6 +62,8 @@
 		const { fields, ...displayRest } = displayRecord;
 		if (Array.isArray(fields) && fields.length > 0) {
 			slots.columns = fields;
+		} else if (Array.isArray(fields)) {
+			(displayRest as Record<string, unknown>).fields = fields;
 		}
 		return { kind: type as ViewType, slots, displayRest };
 	}
@@ -72,12 +74,15 @@
 	// The name a saved edit compares against: sending it unchanged would
 	// be a no-op rename at best and an accidental one at worst.
 	const initialName = untrack(() => (initial !== undefined ? prettifyId(initial.id) : ''));
+	// The filter seed, resolved once and used both as the working state's
+	// start value and as the builder's seed, so the two cannot diverge.
+	const initialFilter = untrack(() => initial?.filter ?? []);
 
 	let name = $state(initialName);
 	let kind = $state<ViewType>(seeded.kind);
 	let definition = $state<Record<string, unknown>>(seeded.slots);
 	const displayRest = seeded.displayRest;
-	let filterClauses = $state<Clause[]>(untrack(() => initial?.filter ?? []));
+	let filterClauses = $state<Clause[]>(initialFilter);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 
@@ -116,11 +121,13 @@
 	}
 
 	// A kind switch resets the slots; a freshly mounted `MetricRowsEditor`
-	// or `GanttInput` re-seeds its own part of the definition. The
-	// unedited display roles are kept — they are kind-independent.
+	// or `GanttInput` re-seeds its own part of the definition. Returning
+	// to the seeded kind restores the persisted slots, so browsing other
+	// kinds and coming back never loses them. The unedited display roles
+	// are kept either way — they are kind-independent.
 	function chooseKind(next: ViewType): void {
 		kind = next;
-		definition = {};
+		definition = next === seeded.kind ? { ...seeded.slots } : {};
 	}
 
 	// ── Working days ────────────────────────────────────────────────────
@@ -170,7 +177,7 @@
 	}
 </script>
 
-<div class="create-view">
+<div class="view-form">
 	<h1>{initial !== undefined ? 'Edit view' : 'New view'}</h1>
 
 	<label class="row">
@@ -292,7 +299,7 @@
 	<div class="filter-section">
 		<span class="label">Filter (optional)</span>
 		<FilterBuilder
-			initialClauses={initial?.filter ?? []}
+			initialClauses={initialFilter}
 			onchange={(clauses: Clause[]) => {
 				filterClauses = clauses;
 			}}
@@ -319,7 +326,7 @@
 </div>
 
 <style>
-	.create-view {
+	.view-form {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-3);

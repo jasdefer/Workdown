@@ -1,18 +1,23 @@
 <!--
-  A metric view's repeatable rows: label? + aggregate + value?. Owns the
-  draft rows (keyed by a local id, the same idiom as the filter builder)
-  and reports the definition-shaped `metrics:` array up on every edit —
-  including once on mount, so a freshly chosen metric kind starts with
-  one complete count row.
+  A metric view's repeatable rows: label? + aggregate + value? + an
+  optional per-row filter. The filter is the same structured-clause
+  builder the view-level filter uses (the server AND-combines the two
+  before aggregation) and travels structured on the wire — the clause
+  grammar stays server-side. Owns the draft rows (keyed by a local id,
+  the same idiom as the filter builder) and reports the definition-shaped
+  `metrics:` array up on every edit — including once on mount, so a
+  freshly chosen metric kind starts with one complete count row.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import type { Clause } from '$lib/api/generated/Clause';
 	import { schemaStore } from '$lib/stores/schema.svelte';
+	import FilterBuilder from '$lib/filters/FilterBuilder.svelte';
 	import { AGGREGATES, fieldFits } from './viewKinds';
 
 	interface Props {
 		/** Persisted `metrics:` entries to seed from (edit mode). */
-		initial?: Record<string, unknown>[];
+		initial?: Record<string, unknown>[] | undefined;
 		/** Fires with the `metrics:` slot value whenever the rows change. */
 		onchange: (metrics: Record<string, unknown>[]) => void;
 	}
@@ -25,22 +30,39 @@
 		label: string;
 		aggregate: string;
 		value: string;
+		/** Per-row filter clauses; empty = the row aggregates everything. */
+		filter: Clause[];
+		/** Whether the row's filter builder is expanded — UI-only state. */
+		filterOpen: boolean;
 	}
 
 	let idCounter = 0;
 	const nextId = (): number => (idCounter += 1);
-	const newRow = (): RowDraft => ({ localId: nextId(), label: '', aggregate: 'count', value: '' });
+	const newRow = (): RowDraft => ({
+		localId: nextId(),
+		label: '',
+		aggregate: 'count',
+		value: '',
+		filter: [],
+		filterOpen: false
+	});
 
 	/** A persisted entry back into draft shape — inverse of `toEntry`. */
 	const fromEntry = (entry: Record<string, unknown>): RowDraft => ({
 		localId: nextId(),
 		label: typeof entry.label === 'string' ? entry.label : '',
 		aggregate: typeof entry.aggregate === 'string' ? entry.aggregate : 'count',
-		value: typeof entry.value === 'string' ? entry.value : ''
+		value: typeof entry.value === 'string' ? entry.value : '',
+		filter: Array.isArray(entry.filter) ? (entry.filter as Clause[]) : [],
+		filterOpen: false
 	});
 
+	// Seeded once from the resolved prop — the host re-keys this component
+	// when the edited view changes, so this deliberately doesn't track.
 	let rows = $state<RowDraft[]>(
-		initial !== undefined && initial.length > 0 ? initial.map(fromEntry) : [newRow()]
+		untrack(() =>
+			initial !== undefined && initial.length > 0 ? initial.map(fromEntry) : [newRow()]
+		)
 	);
 
 	/** A row in the shape one entry of the `metrics:` slot takes. */
@@ -48,6 +70,7 @@
 		const entry: Record<string, unknown> = { aggregate: row.aggregate };
 		if (row.label.trim() !== '') entry.label = row.label.trim();
 		if (row.value !== '') entry.value = row.value;
+		if (row.filter.length > 0) entry.filter = row.filter;
 		return entry;
 	}
 
@@ -60,6 +83,13 @@
 	function update(localId: number, patch: Partial<RowDraft>): void {
 		rows = rows.map((row) => (row.localId === localId ? { ...row, ...patch } : row));
 		emit();
+	}
+
+	function toggleFilter(localId: number): void {
+		// Expansion is UI-only — the definition doesn't change, so no emit.
+		rows = rows.map((row) =>
+			row.localId === localId ? { ...row, filterOpen: !row.filterOpen } : row
+		);
 	}
 
 	function add(): void {
@@ -81,44 +111,66 @@
 
 <div class="metrics">
 	{#each rows as row (row.localId)}
-		<div class="metric-row">
-			<input
-				type="text"
-				placeholder="label (optional)"
-				value={row.label}
-				onchange={(event) => {
-					update(row.localId, { label: event.currentTarget.value });
-				}}
-			/>
-			<select
-				value={row.aggregate}
-				onchange={(event) => {
-					update(row.localId, { aggregate: event.currentTarget.value });
-				}}
-			>
-				{#each AGGREGATES as aggregate (aggregate)}
-					<option value={aggregate}>{aggregate}</option>
-				{/each}
-			</select>
-			<select
-				value={row.value}
-				onchange={(event) => {
-					update(row.localId, { value: event.currentTarget.value });
-				}}
-			>
-				<option value="">— no value —</option>
-				{#each valueFieldOptions() as field (field.name)}
-					<option value={field.name}>{field.name}</option>
-				{/each}
-			</select>
-			<button
-				type="button"
-				class="remove"
-				aria-label="Remove metric"
-				onclick={() => {
-					remove(row.localId);
-				}}>×</button
-			>
+		<div class="metric">
+			<div class="metric-row">
+				<input
+					type="text"
+					placeholder="label (optional)"
+					value={row.label}
+					onchange={(event) => {
+						update(row.localId, { label: event.currentTarget.value });
+					}}
+				/>
+				<select
+					value={row.aggregate}
+					onchange={(event) => {
+						update(row.localId, { aggregate: event.currentTarget.value });
+					}}
+				>
+					{#each AGGREGATES as aggregate (aggregate)}
+						<option value={aggregate}>{aggregate}</option>
+					{/each}
+				</select>
+				<select
+					value={row.value}
+					onchange={(event) => {
+						update(row.localId, { value: event.currentTarget.value });
+					}}
+				>
+					<option value="">— no value —</option>
+					{#each valueFieldOptions() as field (field.name)}
+						<option value={field.name}>{field.name}</option>
+					{/each}
+				</select>
+				<button
+					type="button"
+					class="filter-toggle"
+					class:active={row.filter.length > 0}
+					onclick={() => {
+						toggleFilter(row.localId);
+					}}
+				>
+					{row.filter.length > 0 ? `Filter (${String(row.filter.length)})` : 'Filter'}
+				</button>
+				<button
+					type="button"
+					class="remove"
+					aria-label="Remove metric"
+					onclick={() => {
+						remove(row.localId);
+					}}>×</button
+				>
+			</div>
+			{#if row.filterOpen}
+				<div class="row-filter">
+					<FilterBuilder
+						initialClauses={row.filter}
+						onchange={(clauses: Clause[]) => {
+							update(row.localId, { filter: clauses });
+						}}
+					/>
+				</div>
+			{/if}
 		</div>
 	{/each}
 	<button type="button" class="ghost" onclick={add}>+ Add metric</button>
@@ -126,6 +178,12 @@
 
 <style>
 	.metrics {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+	}
+
+	.metric {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-2);
@@ -151,6 +209,28 @@
 	.metric-row select {
 		flex: 1;
 		min-width: 0;
+	}
+
+	.filter-toggle {
+		background: none;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		color: var(--color-fg-muted);
+		padding: 0.25rem var(--space-2);
+		font-size: var(--text-sm);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+
+	.filter-toggle.active {
+		color: var(--color-fg);
+		border-color: var(--color-accent);
+	}
+
+	.row-filter {
+		padding: var(--space-2);
+		border: 1px dashed var(--color-border);
+		border-radius: var(--radius-sm);
 	}
 
 	.ghost {

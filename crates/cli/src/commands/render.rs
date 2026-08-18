@@ -19,7 +19,7 @@ use workdown_core::model::calendar::WorkingCalendar;
 use workdown_core::model::config::Config;
 use workdown_core::model::diagnostic::Diagnostic;
 use workdown_core::model::schema::{Schema, Severity};
-use workdown_core::model::views::{View, Views};
+use workdown_core::model::views::{rendered_view_path, View, Views};
 use workdown_core::project::load_project;
 use workdown_core::store::Store;
 use workdown_core::view_data::{self, ViewData};
@@ -266,7 +266,10 @@ fn ensure_output_dir(output_dir: &Path) -> anyhow::Result<()> {
 }
 
 fn write_view_file(output_dir: &Path, view_id: &str, markdown: &str) -> anyhow::Result<PathBuf> {
-    let path = output_dir.join(format!("{view_id}.md"));
+    // The naming rule lives in core (`rendered_view_path`) so the
+    // view-write housekeeping that removes stale files after a delete or
+    // rename can never disagree with where this writes.
+    let path = rendered_view_path(output_dir, view_id);
     std::fs::write(&path, markdown)
         .map_err(|e| anyhow::anyhow!("failed to write '{}': {e}", path.display()))?;
     Ok(path)

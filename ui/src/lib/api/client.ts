@@ -107,8 +107,9 @@ export const api = {
 	createView: (body: CreateView) => request<ViewMutationResult>('POST', '/api/views', body),
 	/**
 	 * The persisted view decomposed for the edit form: the flat definition
-	 * (no id, no where) plus the filter as structured clauses — exactly the
-	 * shape `updateView` takes back.
+	 * (no id, no where; a metric view's rows carry structured `filter`
+	 * clauses) plus the view-level filter as structured clauses — exactly
+	 * the shape `updateView` takes back.
 	 */
 	getViewDefinition: (id: string) =>
 		request<ViewDefinition>('GET', `/api/views/${encodeURIComponent(id)}/definition`),

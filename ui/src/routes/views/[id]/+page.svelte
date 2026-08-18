@@ -7,52 +7,25 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import type { PageData } from './$types';
-	import { api } from '$lib/api/client';
 	import DiagnosticBanner from '$lib/ui/DiagnosticBanner.svelte';
 	import FilterBar from '$lib/filters/FilterBar.svelte';
 	import DisplayBar from '$lib/views/DisplayBar.svelte';
 	import ViewRenderer from '$lib/views/ViewRenderer.svelte';
+	import ViewToolbar from '$lib/views/ViewToolbar.svelte';
 	import ItemPanel from './ItemPanel.svelte';
 
 	let { data }: { data: PageData } = $props();
-
-	let deleting = $state(false);
-	let deleteError = $state<string | null>(null);
 
 	// Closing the panel drops `?item=` — load() depends on the query
 	// param, so this re-runs and unmounts the panel.
 	function closePanel(): void {
 		void goto(`/views/${encodeURIComponent(data.viewId)}`, { keepFocus: true, noScroll: true });
 	}
-
-	async function deleteView(): Promise<void> {
-		if (!confirm(`Delete view '${data.viewId}' from views.yaml?`)) return;
-		deleting = true;
-		deleteError = null;
-		const result = await api.deleteView(data.viewId);
-		deleting = false;
-		if (result.error !== undefined) {
-			deleteError = result.error;
-			return;
-		}
-		// The view is gone: leave its page and refresh the navigation list.
-		await goto('/', { invalidateAll: true });
-	}
 </script>
 
 <div class="view-page">
-	<div class="view-toolbar">
-		<a class="toolbar-action" href={`/views/${encodeURIComponent(data.viewId)}/edit`}>Edit view</a>
-		<button type="button" class="toolbar-action danger" disabled={deleting} onclick={deleteView}>
-			{deleting ? 'Deleting…' : 'Delete view'}
-		</button>
-	</div>
-
-	{#if deleteError !== null}
-		<p class="delete-error" role="alert">{deleteError}</p>
-	{/if}
-
 	{#key data.viewId}
+		<ViewToolbar viewId={data.viewId} />
 		<FilterBar viewId={data.viewId} initialFilter={data.filter} itemId={data.itemId} />
 		<DisplayBar viewId={data.viewId} initialOverride={data.displayOverride} />
 	{/key}
@@ -85,45 +58,6 @@
 		gap: var(--space-3);
 		flex: 1;
 		min-height: 0;
-	}
-
-	.view-toolbar {
-		display: flex;
-		justify-content: flex-end;
-		gap: var(--space-3);
-	}
-
-	.toolbar-action {
-		background: none;
-		border: none;
-		padding: 0;
-		color: var(--color-fg-muted);
-		font-size: var(--text-sm);
-		text-decoration: none;
-		cursor: pointer;
-	}
-
-	.toolbar-action:hover {
-		color: var(--color-fg);
-		text-decoration: underline;
-	}
-
-	.toolbar-action.danger:hover {
-		color: var(--color-error-fg);
-	}
-
-	.toolbar-action:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-
-	.delete-error {
-		color: var(--color-error-fg);
-		background-color: var(--color-error-bg);
-		padding: var(--space-2);
-		border-radius: var(--radius-sm);
-		font-size: var(--text-sm);
-		margin: 0;
 	}
 
 	.view-body {

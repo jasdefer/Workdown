@@ -934,6 +934,118 @@ async fn definition_round_trips_through_put() {
     );
 }
 
+/// Per-row metric filters get the same round-trip contract: they leave as
+/// structured `filter` clauses, never as raw `where` strings, and PUTting
+/// the seed back unchanged is a no-op.
+#[tokio::test]
+async fn definition_round_trips_metric_row_filters_through_put() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    let response = post(
+        state.clone(),
+        "/api/views",
+        json!({
+            "name": "Stats",
+            "definition": {
+                "type": "metric",
+                "metrics": [
+                    {
+                        "label": "Open",
+                        "aggregate": "count",
+                        "filter": [
+                            { "kind": "comparison", "field": "status", "operator": "equal", "value": "open" }
+                        ]
+                    },
+                    { "aggregate": "count" }
+                ]
+            }
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let before = read_views(&root);
+    assert!(before.contains("status=open"), "{before}");
+
+    let response = get(state.clone(), "/api/views/stats/definition").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope = body_json(response).await;
+    let rows = envelope["data"]["definition"]["metrics"]
+        .as_array()
+        .unwrap();
+    assert_eq!(rows[0]["filter"][0]["field"], "status");
+    assert_eq!(rows[0]["filter"][0]["value"], "open");
+    assert!(rows[0].get("where").is_none(), "{rows:?}");
+    assert_eq!(rows[1]["filter"].as_array().unwrap().len(), 0);
+
+    let response = put(
+        state,
+        "/api/views/stats",
+        json!({
+            "definition": envelope["data"]["definition"],
+            "filter": envelope["data"]["filter"]
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        read_views(&root),
+        before,
+        "an untouched round-trip is a no-op"
+    );
+}
+
+/// Renaming a view with a long-standing warning must not report the
+/// warning as introduced by the rename — the diagnostic's identity moves
+/// to the new id, but nothing new went wrong.
+#[tokio::test]
+async fn put_rename_with_preexisting_warning_does_not_flag_mutation() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(
+        &root,
+        "views:\n  - id: board\n    type: board\n    field: nope\n",
+    );
+
+    let response = put(
+        state,
+        "/api/views/board",
+        json!({
+            "name": "Sprint Board",
+            "definition": { "type": "board", "field": "nope" }
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    assert_eq!(envelope["data"]["view_id"], "sprint-board");
+    assert_eq!(envelope["data"]["mutation_caused_warning"], false);
+    assert!(
+        !envelope["diagnostics"].as_array().unwrap().is_empty(),
+        "the pre-existing warning still rides in diagnostics"
+    );
+}
+
+/// The seed endpoints read `views.yaml` alone: a broken schema (which
+/// blocks rendering and writing) must not block reading a definition back
+/// — the editor can always show what's there.
+#[tokio::test]
+async fn get_view_definition_works_with_a_broken_schema() {
+    let (directory, state) = temp_project();
+    let root = directory.path().to_path_buf();
+    write_views(
+        &root,
+        "views:\n  - id: board\n    type: board\n    field: status\n",
+    );
+    fs::write(root.join(".workdown/schema.yaml"), "fields: [not a mapping").unwrap();
+
+    let response = get(state, "/api/views/board/definition").await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    assert_eq!(envelope["data"]["definition"]["type"], "board");
+}
+
 // ── Seed (GET /api/views/:id/filter) ─────────────────────────────────
 
 #[tokio::test]

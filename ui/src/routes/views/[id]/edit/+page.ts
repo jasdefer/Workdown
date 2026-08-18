@@ -12,13 +12,22 @@ export const load: PageLoad = async ({ params }) => {
 
 	if (result.status === 422) {
 		error(422, {
-			message: 'The workdown project could not be loaded.',
+			message: 'The views.yaml file could not be loaded.',
 			diagnostics: result.diagnostics
 		});
 	}
-	if (result.status === 404 || result.data === undefined) {
+	if (result.status === 404) {
 		error(404, {
 			message: `View '${params.id}' is not configured in views.yaml.`,
+			diagnostics: result.diagnostics
+		});
+	}
+	// Anything else without data (e.g. the 500 serialize-failure path)
+	// surfaces with its own status and the server's error text — never
+	// disguised as "not configured".
+	if (result.data === undefined) {
+		error(result.status, {
+			message: result.error ?? 'Failed to load the view definition.',
 			diagnostics: result.diagnostics
 		});
 	}

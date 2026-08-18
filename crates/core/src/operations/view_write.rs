@@ -30,12 +30,12 @@ use crate::model::config::Config;
 use crate::model::diagnostic::Diagnostic;
 use crate::model::resources::Resources;
 use crate::model::schema::Schema;
-use crate::model::views::Views;
+use crate::model::views::{rendered_view_path, View, Views};
 use crate::operations::frontmatter_io::write_file_atomically;
 use crate::parser;
 use crate::parser::schema::SchemaLoadError;
 use crate::parser::views::{serialize_views, view_from_value};
-use crate::query::clause::{clauses_to_strings, Clause};
+use crate::query::clause::{clauses_to_strings, decompose_clauses, Clause};
 use crate::store::Store;
 
 // ── Public types ─────────────────────────────────────────────────────
@@ -134,25 +134,23 @@ pub fn add_view(
     project_root: &Path,
     definition: serde_yaml::Value,
 ) -> Result<ViewWriteOutcome, ViewWriteError> {
-    let inputs = load_check_inputs(config, project_root)?;
-    let path = views_path(config, project_root);
-    let mut views = load_current_views(&path)?;
+    let mut context = load_for_write(config, project_root)?;
+    let pre_diagnostics = context.pre_check();
 
-    let pre_diagnostics = check(&views, &inputs, &path);
-
-    let new_view =
-        view_from_value(definition).map_err(|error| ViewWriteError::InvalidDefinition {
-            detail: error.to_string(),
-        })?;
-
-    if views.views.iter().any(|view| view.id == new_view.id) {
+    let new_view = build_view(definition)?;
+    if context
+        .views
+        .views
+        .iter()
+        .any(|view| view.id == new_view.id)
+    {
         return Err(ViewWriteError::DuplicateId { id: new_view.id });
     }
 
     let view_id = new_view.id.clone();
-    views.views.push(new_view);
+    context.views.views.push(new_view);
 
-    finalize(views, &path, &inputs, pre_diagnostics, view_id)
+    finalize(context, WarningCause::DiffAgainst(pre_diagnostics), view_id)
 }
 
 /// Create a view from a human *name* plus a flat definition (kind + slots +
@@ -160,7 +158,9 @@ pub fn add_view(
 /// id using the shared [`crate::slug`] rule — the same one work-item ids
 /// use — then persisted through [`add_view`]. Any `id` in the definition is
 /// overwritten by the slug (the name is authoritative). A name with no
-/// alphanumeric characters is rejected.
+/// alphanumeric characters is rejected. A metric view's rows may carry
+/// their per-row filter as structured `filter` clauses — serialized into
+/// each row's `where:` exactly like the view-level filter.
 pub fn create_view(
     config: &Config,
     project_root: &Path,
@@ -168,18 +168,16 @@ pub fn create_view(
     definition: serde_yaml::Value,
     filter: &[Clause],
 ) -> Result<ViewWriteOutcome, ViewWriteError> {
-    let id = crate::slug::slugify(name).map_err(|error| ViewWriteError::InvalidName {
-        name: error.input,
-        reason: error.reason,
-    })?;
+    let id = slug_view_id(name)?;
     let definition = prepare_definition(definition, &id, filter)?;
     add_view(config, project_root, definition)
 }
 
 /// Inject the slugged `id` and, when non-empty, the serialized `where`
-/// clauses into a definition mapping. The filter arrives structured and is
-/// serialized here (via [`clauses_to_strings`]) so the clause grammar stays
-/// in `core`, not the UI.
+/// clauses into a definition mapping, and fold each metric row's structured
+/// `filter` back into its `where:` strings. Filters arrive structured and
+/// are serialized here (via [`clauses_to_strings`]) so the clause grammar
+/// stays in `core`, not the UI.
 fn prepare_definition(
     definition: serde_yaml::Value,
     id: &str,
@@ -206,7 +204,76 @@ fn prepare_definition(
             ),
         );
     }
+    metric_filters_to_where(&mut mapping)?;
     Ok(serde_yaml::Value::Mapping(mapping))
+}
+
+/// Fold each metric row's structured `filter` into its persisted `where:`
+/// strings — the write half of the per-row treatment; the read half is
+/// [`metric_where_to_filters`]. A `filter` key replaces the row's `where:`
+/// entirely (an empty list clears it); a row without one passes through
+/// untouched, so a raw API caller may still embed `where` strings directly,
+/// mirroring the view level.
+fn metric_filters_to_where(mapping: &mut serde_yaml::Mapping) -> Result<(), ViewWriteError> {
+    let Some(serde_yaml::Value::Sequence(rows)) = mapping.get_mut("metrics") else {
+        return Ok(());
+    };
+    for row in rows {
+        // A non-mapping row is left for view construction to reject with
+        // its own shape error.
+        let serde_yaml::Value::Mapping(row) = row else {
+            continue;
+        };
+        let Some(filter_value) = row.remove("filter") else {
+            continue;
+        };
+        let clauses: Vec<Clause> = serde_yaml::from_value(filter_value).map_err(|error| {
+            ViewWriteError::InvalidDefinition {
+                detail: format!("invalid metric row filter: {error}"),
+            }
+        })?;
+        let where_clauses = clauses_to_strings(&clauses)?;
+        row.remove("where");
+        if !where_clauses.is_empty() {
+            row.insert(
+                serde_yaml::Value::String("where".to_owned()),
+                serde_yaml::Value::Sequence(
+                    where_clauses
+                        .into_iter()
+                        .map(serde_yaml::Value::String)
+                        .collect(),
+                ),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Pop each metric row's persisted `where:` strings and attach them as
+/// structured `filter` clauses — the read half of the per-row treatment,
+/// used by the edit-form seed (`ViewDefinition`); the write half is
+/// [`metric_filters_to_where`]. The `filter` key is set on every row, even
+/// when empty, so the rows the form receives all have a uniform shape.
+pub(crate) fn metric_where_to_filters(
+    mapping: &mut serde_yaml::Mapping,
+) -> Result<(), serde_yaml::Error> {
+    let Some(serde_yaml::Value::Sequence(rows)) = mapping.get_mut("metrics") else {
+        return Ok(());
+    };
+    for row in rows {
+        let serde_yaml::Value::Mapping(row) = row else {
+            continue;
+        };
+        let where_clauses: Vec<String> = match row.shift_remove("where") {
+            None => Vec::new(),
+            Some(value) => serde_yaml::from_value(value)?,
+        };
+        row.insert(
+            serde_yaml::Value::String("filter".to_owned()),
+            serde_yaml::to_value(decompose_clauses(&where_clauses))?,
+        );
+    }
+    Ok(())
 }
 
 /// Replace the `where:` filter of an existing view and persist it.
@@ -223,22 +290,17 @@ pub fn set_view_filter(
     view_id: &str,
     clauses: &[Clause],
 ) -> Result<ViewWriteOutcome, ViewWriteError> {
-    let inputs = load_check_inputs(config, project_root)?;
-    let path = views_path(config, project_root);
-    let mut views = load_current_views(&path)?;
+    let mut context = load_for_write(config, project_root)?;
+    let pre_diagnostics = context.pre_check();
 
-    let pre_diagnostics = check(&views, &inputs, &path);
+    let position = find_view_position(&context.views, view_id)?;
+    context.views.views[position].where_clauses = clauses_to_strings(clauses)?;
 
-    let view = views
-        .views
-        .iter_mut()
-        .find(|view| view.id == view_id)
-        .ok_or_else(|| ViewWriteError::ViewNotFound {
-            id: view_id.to_owned(),
-        })?;
-    view.where_clauses = clauses_to_strings(clauses)?;
-
-    finalize(views, &path, &inputs, pre_diagnostics, view_id.to_owned())
+    finalize(
+        context,
+        WarningCause::DiffAgainst(pre_diagnostics),
+        view_id.to_owned(),
+    )
 }
 
 /// Replace an existing view's whole definition — and, when `new_name` is
@@ -259,47 +321,52 @@ pub fn update_view(
     definition: serde_yaml::Value,
     filter: &[Clause],
 ) -> Result<ViewWriteOutcome, ViewWriteError> {
-    let inputs = load_check_inputs(config, project_root)?;
-    let path = views_path(config, project_root);
-    let mut views = load_current_views(&path)?;
+    let mut context = load_for_write(config, project_root)?;
+    let pre_diagnostics = context.pre_check();
 
-    let pre_diagnostics = check(&views, &inputs, &path);
-
-    let position = views
-        .views
-        .iter()
-        .position(|view| view.id == view_id)
-        .ok_or_else(|| ViewWriteError::ViewNotFound {
-            id: view_id.to_owned(),
-        })?;
+    let position = find_view_position(&context.views, view_id)?;
 
     let target_id = match new_name {
         None => view_id.to_owned(),
-        Some(name) => crate::slug::slugify(name).map_err(|error| ViewWriteError::InvalidName {
-            name: error.input,
-            reason: error.reason,
-        })?,
+        Some(name) => slug_view_id(name)?,
     };
-    if target_id != view_id && views.views.iter().any(|view| view.id == target_id) {
+    if target_id != view_id && context.views.views.iter().any(|view| view.id == target_id) {
         return Err(ViewWriteError::DuplicateId { id: target_id });
     }
 
     let definition = prepare_definition(definition, &target_id, filter)?;
-    let new_view =
-        view_from_value(definition).map_err(|error| ViewWriteError::InvalidDefinition {
-            detail: error.to_string(),
-        })?;
+    let new_view = build_view(definition)?;
 
-    let renamed_from = (target_id != view_id).then(|| view_id.to_owned());
-    views.views[position] = new_view;
+    // A diagnostic's identity includes the view id, so diffing across a
+    // rename would count every pre-existing warning on this view as newly
+    // introduced. Measure causation under the stable old id instead: check
+    // a probe where the new definition sits at the same position under the
+    // old id, and diff that against the pre-write diagnostics.
+    let renamed = target_id != view_id;
+    let warning_cause = if renamed {
+        let mut probe_views = context.views.clone();
+        probe_views.views[position] = View {
+            id: view_id.to_owned(),
+            ..new_view.clone()
+        };
+        let probe_diagnostics = check(&probe_views, &context.inputs, &context.path);
+        WarningCause::Known(crate::operations::diagnostics::introduced_by_mutation(
+            &pre_diagnostics,
+            &probe_diagnostics,
+        ))
+    } else {
+        WarningCause::DiffAgainst(pre_diagnostics)
+    };
 
-    let output_dir = views.output_dir.clone();
-    let mut outcome = finalize(views, &path, &inputs, pre_diagnostics, target_id)?;
-    if let Some(old_id) = renamed_from {
+    context.views.views[position] = new_view;
+
+    let output_dir = context.views.output_dir.clone();
+    let mut outcome = finalize(context, warning_cause, target_id)?;
+    if renamed {
         remove_rendered_file(
             project_root,
             &output_dir,
-            &old_id,
+            view_id,
             &mut outcome.info_messages,
         );
     }
@@ -315,23 +382,16 @@ pub fn delete_view(
     project_root: &Path,
     view_id: &str,
 ) -> Result<ViewWriteOutcome, ViewWriteError> {
-    let inputs = load_check_inputs(config, project_root)?;
-    let path = views_path(config, project_root);
-    let mut views = load_current_views(&path)?;
+    let mut context = load_for_write(config, project_root)?;
 
-    let pre_diagnostics = check(&views, &inputs, &path);
+    let position = find_view_position(&context.views, view_id)?;
+    context.views.views.remove(position);
 
-    let position = views
-        .views
-        .iter()
-        .position(|view| view.id == view_id)
-        .ok_or_else(|| ViewWriteError::ViewNotFound {
-            id: view_id.to_owned(),
-        })?;
-    views.views.remove(position);
-
-    let output_dir = views.output_dir.clone();
-    let mut outcome = finalize(views, &path, &inputs, pre_diagnostics, view_id.to_owned())?;
+    let output_dir = context.views.output_dir.clone();
+    // No pre-write check: `views_check` is a per-view pass with no
+    // cross-view findings, so removing a view can only remove diagnostics —
+    // a delete can never introduce one.
+    let mut outcome = finalize(context, WarningCause::Known(false), view_id.to_owned())?;
     remove_rendered_file(
         project_root,
         &output_dir,
@@ -354,7 +414,7 @@ fn remove_rendered_file(
     view_id: &str,
     info_messages: &mut Vec<String>,
 ) {
-    let rendered_path = project_root.join(output_dir).join(format!("{view_id}.md"));
+    let rendered_path = rendered_view_path(&project_root.join(output_dir), view_id);
     match std::fs::remove_file(&rendered_path) {
         Ok(()) => info_messages.push(format!(
             "removed stale rendered file '{}'",
@@ -370,6 +430,70 @@ fn remove_rendered_file(
 
 fn views_path(config: &Config, project_root: &Path) -> PathBuf {
     project_root.join(&config.paths.views)
+}
+
+/// Everything a write operation starts from, loaded once: the cross-file
+/// check inputs, the `views.yaml` path, and its current content. Owns the
+/// shared preamble so the operations differ only in their actual mutation.
+struct WriteContext {
+    inputs: CheckInputs,
+    path: PathBuf,
+    views: Views,
+}
+
+fn load_for_write(config: &Config, project_root: &Path) -> Result<WriteContext, ViewWriteError> {
+    let inputs = load_check_inputs(config, project_root)?;
+    let path = views_path(config, project_root);
+    let views = load_current_views(&path)?;
+    Ok(WriteContext {
+        inputs,
+        path,
+        views,
+    })
+}
+
+impl WriteContext {
+    /// The diagnostics as they stand before the mutation — the baseline
+    /// [`WarningCause::DiffAgainst`] compares the post-write check to.
+    fn pre_check(&self) -> Vec<Diagnostic> {
+        check(&self.views, &self.inputs, &self.path)
+    }
+}
+
+/// How [`finalize`] decides `mutation_caused_warning`.
+enum WarningCause {
+    /// Diff the post-write check against these pre-write diagnostics.
+    DiffAgainst(Vec<Diagnostic>),
+    /// The caller already knows: a delete can only remove diagnostics, and
+    /// a rename measures causation under a stable id (see [`update_view`]).
+    Known(bool),
+}
+
+/// Slug a human view name into an id with the shared [`crate::slug`] rule —
+/// the same one work-item ids use. Create and rename derive ids through
+/// this one path so they can never slug the same name differently.
+fn slug_view_id(name: &str) -> Result<String, ViewWriteError> {
+    crate::slug::slugify(name).map_err(|error| ViewWriteError::InvalidName {
+        name: error.input,
+        reason: error.reason,
+    })
+}
+
+fn find_view_position(views: &Views, view_id: &str) -> Result<usize, ViewWriteError> {
+    views
+        .views
+        .iter()
+        .position(|view| view.id == view_id)
+        .ok_or_else(|| ViewWriteError::ViewNotFound {
+            id: view_id.to_owned(),
+        })
+}
+
+/// Construct a validated [`View`] from a prepared definition value.
+fn build_view(definition: serde_yaml::Value) -> Result<View, ViewWriteError> {
+    view_from_value(definition).map_err(|error| ViewWriteError::InvalidDefinition {
+        detail: error.to_string(),
+    })
 }
 
 /// Everything the cross-file checks need, loaded once per write.
@@ -442,12 +566,15 @@ fn check(views: &Views, inputs: &CheckInputs, path: &Path) -> Vec<Diagnostic> {
 }
 
 fn finalize(
-    views: Views,
-    path: &Path,
-    inputs: &CheckInputs,
-    pre_diagnostics: Vec<Diagnostic>,
+    context: WriteContext,
+    warning_cause: WarningCause,
     view_id: String,
 ) -> Result<ViewWriteOutcome, ViewWriteError> {
+    let WriteContext {
+        inputs,
+        path,
+        views,
+    } = context;
     let candidate = serialize_views(&views).map_err(ViewWriteError::Serialize)?;
 
     // Validate the candidate in memory first: a candidate that won't parse
@@ -459,18 +586,22 @@ fn finalize(
             detail: error.to_string(),
         }
     })?;
-    let warnings = check(&reparsed, inputs, path);
+    let warnings = check(&reparsed, &inputs, &path);
 
-    write_file_atomically(path, &candidate).map_err(|source| ViewWriteError::WriteFile {
-        path: path.to_path_buf(),
+    write_file_atomically(&path, &candidate).map_err(|source| ViewWriteError::WriteFile {
+        path: path.clone(),
         source,
     })?;
 
-    let mutation_caused_warning =
-        crate::operations::diagnostics::introduced_by_mutation(&pre_diagnostics, &warnings);
+    let mutation_caused_warning = match warning_cause {
+        WarningCause::DiffAgainst(pre_diagnostics) => {
+            crate::operations::diagnostics::introduced_by_mutation(&pre_diagnostics, &warnings)
+        }
+        WarningCause::Known(flag) => flag,
+    };
 
     Ok(ViewWriteOutcome {
-        path: path.to_path_buf(),
+        path,
         view_id,
         warnings,
         mutation_caused_warning,
@@ -1182,6 +1313,177 @@ views:
         assert_eq!(read_views(&root), TWO_VIEWS, "file must be untouched");
     }
 
+    #[test]
+    fn update_view_rename_keeps_preexisting_warning_unflagged() {
+        let (_dir, root, config) = setup();
+        // `field: nope` is a long-standing cross-file warning on the view.
+        write_views(
+            &root,
+            "views:\n  - id: first\n    type: board\n    field: nope\n",
+        );
+
+        let outcome = update_view(
+            &config,
+            &root,
+            "first",
+            Some("Sprint Board"),
+            definition("type: board\nfield: nope\n"),
+            &[],
+        )
+        .unwrap();
+
+        // The warning's diagnostic identity changes with the id, but the
+        // rename didn't cause it — it must not flip the causation flag.
+        assert!(!outcome.mutation_caused_warning, "{:?}", outcome.warnings);
+        assert!(
+            !outcome.warnings.is_empty(),
+            "the pre-existing warning still rides in warnings"
+        );
+    }
+
+    #[test]
+    fn update_view_rename_flags_a_warning_it_introduces() {
+        let (_dir, root, config) = setup();
+        write_views(&root, TWO_VIEWS);
+
+        // Rename and break the definition in the same save.
+        let outcome = update_view(
+            &config,
+            &root,
+            "first",
+            Some("Sprint Board"),
+            definition("type: board\nfield: nope\n"),
+            &[],
+        )
+        .unwrap();
+
+        assert!(outcome.mutation_caused_warning);
+    }
+
+    // ── metric row filters ───────────────────────────────────────────
+
+    /// A metric view with a persisted per-row `where:` filter.
+    const METRIC_VIEW: &str = "\
+views:
+  - id: stats
+    type: metric
+    metrics:
+      - label: Open
+        aggregate: count
+        where:
+          - status=open
+      - aggregate: count
+";
+
+    fn metric_rows(views: &Views) -> &[crate::model::views::MetricRow] {
+        match &views.views[0].kind {
+            crate::model::views::ViewKind::Metric { metrics } => metrics,
+            other => panic!("expected a metric view, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn create_view_serializes_metric_row_filters() {
+        let (_dir, root, config) = setup();
+
+        // Rows carry their filter structured, exactly like the view level.
+        create_view(
+            &config,
+            &root,
+            "Stats",
+            definition(
+                "type: metric\nmetrics:\n  - aggregate: count\n    filter:\n      - kind: comparison\n        field: status\n        operator: equal\n        value: open\n",
+            ),
+            &[],
+        )
+        .unwrap();
+
+        let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
+        assert_eq!(metric_rows(&reloaded)[0].where_clauses, vec!["status=open"]);
+    }
+
+    #[test]
+    fn update_view_replaces_metric_row_filters() {
+        let (_dir, root, config) = setup();
+        write_views(&root, METRIC_VIEW);
+
+        update_view(
+            &config,
+            &root,
+            "stats",
+            None,
+            definition(
+                "type: metric\nmetrics:\n  - label: Open\n    aggregate: count\n    filter:\n      - kind: comparison\n        field: status\n        operator: equal\n        value: done\n  - aggregate: count\n    filter: []\n",
+            ),
+            &[],
+        )
+        .unwrap();
+
+        let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
+        let rows = metric_rows(&reloaded);
+        assert_eq!(rows[0].where_clauses, vec!["status=done"]);
+        assert!(rows[1].where_clauses.is_empty());
+    }
+
+    #[test]
+    fn update_view_metric_row_filter_with_bad_shape_errors_without_writing() {
+        let (_dir, root, config) = setup();
+        write_views(&root, METRIC_VIEW);
+        let original = read_views(&root);
+
+        let error = update_view(
+            &config,
+            &root,
+            "stats",
+            None,
+            definition("type: metric\nmetrics:\n  - aggregate: count\n    filter: 5\n"),
+            &[],
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, ViewWriteError::InvalidDefinition { .. }));
+        assert_eq!(read_views(&root), original, "file must be untouched");
+    }
+
+    /// The edit-form contract, per row: what `ViewDefinition` hands out
+    /// (rows carrying structured `filter`, no `where`) feeds back through
+    /// `update_view` into an identical view.
+    #[test]
+    fn metric_row_filters_round_trip_through_view_definition() {
+        let (_dir, root, config) = setup();
+        write_views(&root, METRIC_VIEW);
+        let views = load_views(&root.join(".workdown/views.yaml")).unwrap();
+
+        let seed = crate::mutation_data::ViewDefinition::from_view(&views.views[0]).unwrap();
+        let serde_yaml::Value::Mapping(mapping) = &seed.definition else {
+            panic!("definition must be a mapping");
+        };
+        let Some(serde_yaml::Value::Sequence(rows)) = mapping.get("metrics") else {
+            panic!("metrics must be a sequence");
+        };
+        for row in rows {
+            let serde_yaml::Value::Mapping(row) = row else {
+                panic!("row must be a mapping");
+            };
+            assert!(
+                row.contains_key("filter"),
+                "row carries a structured filter"
+            );
+            assert!(
+                !row.contains_key("where"),
+                "raw where strings never leave core"
+            );
+        }
+
+        update_view(&config, &root, "stats", None, seed.definition, &seed.filter).unwrap();
+
+        let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
+        assert_eq!(
+            reloaded.views, views.views,
+            "an untouched round-trip is a no-op"
+        );
+    }
+
     // ── delete_view ──────────────────────────────────────────────────
 
     #[test]
@@ -1252,6 +1554,25 @@ views:
             outcome.info_messages.is_empty(),
             "{:?}",
             outcome.info_messages
+        );
+    }
+
+    #[test]
+    fn delete_view_with_warning_elsewhere_reports_no_mutation_warning() {
+        let (_dir, root, config) = setup();
+        // `second` carries a pre-existing warning; deleting `first` can
+        // only remove diagnostics, never introduce one.
+        write_views(
+            &root,
+            "views:\n  - id: first\n    type: board\n    field: status\n  - id: second\n    type: board\n    field: nope\n",
+        );
+
+        let outcome = delete_view(&config, &root, "first").unwrap();
+
+        assert!(!outcome.mutation_caused_warning);
+        assert!(
+            !outcome.warnings.is_empty(),
+            "the surviving view's warning still rides in warnings"
         );
     }
 

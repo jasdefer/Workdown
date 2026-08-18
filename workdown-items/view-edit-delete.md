@@ -53,6 +53,29 @@ truth and nothing committed automatically.
 7. **UI surface:** view page gains Edit/Delete actions; edit lives at
    `/views/{id}/edit` reusing the generalized form component; delete
    confirms, then navigates home.
+8. **Per-row metric filters are editable and travel structured.** Each
+   `metrics:` entry crosses the wire with a `filter` clause list instead
+   of raw `where:` strings — the same treatment the view-level filter
+   gets, so the clause grammar stays in core, not the UI. The row editor
+   embeds the shared filter builder behind a per-row toggle that shows
+   the clause count. (Review finding: the first cut rebuilt rows from
+   only the fields it rendered and silently deleted `where:` on save.)
+9. **The edit form never drops what it doesn't edit.** An explicit
+   `display: {fields: []}` ("show no fields") survives a round-trip,
+   carried with the other unedited display roles; switching the kind
+   away and back restores the seeded slots; a gantt persisted with both
+   `end` and a duration derivation is normalized to the mode the form
+   shows, so the first save resolves the conflict instead of silently
+   re-persisting a slot the form never displayed.
+10. **Rename causation is measured under a stable id.** A diagnostic's
+    identity includes the view id, so diffing across a rename would flag
+    every pre-existing warning as new; `update_view` instead checks a
+    probe with the new definition under the old id. Delete skips the
+    pre-check entirely — removing a view can only remove diagnostics.
+11. **Seed endpoints read `views.yaml` alone.** `/filter` and
+    `/definition` don't cold-load the whole project (schema, items, rule
+    evaluation have no bearing on reading a definition back), so a broken
+    schema never blocks the editor and opening the form stays cheap.
 
 ## Acceptance
 
