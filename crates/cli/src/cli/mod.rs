@@ -124,6 +124,11 @@ pub enum Command {
     ///   `--delta <value>`    add a signed amount to the current value
     ///                        (e.g. `--delta 3`, `--delta -1`, `--delta 1w`)
     ///
+    /// A duration field with no value counts as `0s`, so a delta creates
+    /// it: `--delta 30min` on an item that has never had an effort value
+    /// writes `30min`. Numeric and date fields need an existing value —
+    /// a date has no zero to count from.
+    ///
     /// Boolean fields support:
     ///   `--toggle`           flip the current value
     #[command(group(
@@ -148,8 +153,11 @@ pub enum Command {
         /// Add a signed amount to a numeric / duration / date field
         ///
         /// Examples: `--delta 3`, `--delta -1`, `--delta 1w`, `--delta -3d`.
-        /// `allow_hyphen_values` lets clap accept the leading `-` as
-        /// part of the value rather than treating it as a flag.
+        /// A duration field with no value counts as `0s` and is created by
+        /// the delta; numeric and date fields need an existing value.
+        // `allow_hyphen_values` lets clap accept the leading `-` as part of
+        // the value rather than treating it as a flag. A plain comment, not
+        // a doc one — clap prints those, and this is for maintainers.
         #[arg(long, allow_hyphen_values = true)]
         delta: Option<String>,
         /// Flip the current value of a boolean field

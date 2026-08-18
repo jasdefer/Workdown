@@ -21,7 +21,6 @@ Cards grouped into columns by `status`.
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
-- [Duration delta starts from zero on an absent field](../workdown-items/duration-delta-absent-value.md)
 - [Time tracking](../workdown-items/time-tracking.md)
 
 ## done
@@ -45,6 +44,7 @@ Cards grouped into columns by `status`.
 - [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md)
 - [Collapse parallel View* slot variants and unify their validation helpers](../workdown-items/diagnostic-variant-cleanup.md)
 - [Validate `defaults.display` in config.yaml against the schema](../workdown-items/display-defaults-validation.md)
+- [Duration delta starts from zero on an absent field](../workdown-items/duration-delta-absent-value.md)
 - [Add `duration` field type](../workdown-items/duration-field-type.md)
 - [Resolve the current date at evaluation time, reproducibly](../workdown-items/evaluation-time-now.md)
 - [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md)

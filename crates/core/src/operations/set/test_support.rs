@@ -97,6 +97,55 @@ fields:
       error_on_missing: true
 ";
 
+/// Duration fields whose values come from somewhere other than the file
+/// itself: rolled up from children, computed from a sibling field, or
+/// pulled over a forward link. The fixture for "`--delta` starts from
+/// zero regardless".
+///
+/// No `default:` counterpart — a `duration` field cannot declare one
+/// (see `validate_default` in the schema parser), so there is no
+/// stamped-in duration for a delta to pick up by accident.
+pub(super) const DERIVED_DURATION_SCHEMA: &str = "\
+fields:
+  title:
+    type: string
+    required: false
+    default: $filename_pretty
+  status:
+    type: choice
+    values: [open, in_progress, done]
+    required: true
+    default: open
+  parent:
+    type: link
+    required: false
+    allow_cycles: false
+    inverse: children
+  depends_on:
+    type: links
+    required: false
+    allow_cycles: false
+  base_effort:
+    type: duration
+    required: false
+  rolled_up_effort:
+    type: duration
+    required: false
+    aggregate:
+      function: sum
+  computed_effort:
+    type: duration
+    required: false
+    compute: base_effort * 2
+  pulled_effort:
+    type: duration
+    required: false
+    pull:
+      over: depends_on
+      field: base_effort
+      function: sum
+";
+
 pub(super) const RESOURCE_SCHEMA: &str = "\
 fields:
   status:
@@ -133,6 +182,16 @@ pub(super) fn setup_aggregate_project() -> (TempDir, PathBuf) {
     fs::create_dir_all(root.join("workdown-items")).unwrap();
     fs::write(root.join(".workdown/config.yaml"), TEST_CONFIG).unwrap();
     fs::write(root.join(".workdown/schema.yaml"), AGGREGATE_SCHEMA).unwrap();
+    (directory, root)
+}
+
+pub(super) fn setup_derived_duration_project() -> (TempDir, PathBuf) {
+    let directory = TempDir::new().unwrap();
+    let root = directory.path().to_path_buf();
+    fs::create_dir_all(root.join(".workdown/templates")).unwrap();
+    fs::create_dir_all(root.join("workdown-items")).unwrap();
+    fs::write(root.join(".workdown/config.yaml"), TEST_CONFIG).unwrap();
+    fs::write(root.join(".workdown/schema.yaml"), DERIVED_DURATION_SCHEMA).unwrap();
     (directory, root)
 }
 

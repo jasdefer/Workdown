@@ -1,6 +1,6 @@
 ---
 id: duration-delta-absent-value
-status: in_progress
+status: done
 title: Duration delta starts from zero on an absent field
 parent: time-tracking
 ---
@@ -39,9 +39,17 @@ refusal makes the common case the awkward one.
    the date case stays as it is — `--delta` does work on dates, it just
    needs a value to move.
 5. **A field written with no value counts as absent** and is created at
-   zero the same way. A field holding something that isn't a duration
-   stays an error: replacing a typo with a measured number destroys the
-   evidence that something was wrong.
+   zero the same way. So does a field holding an empty string — the same
+   accident with a quote added, and an empty string holds no evidence to
+   destroy. A field holding anything else that isn't a duration stays an
+   error: replacing a typo with a measured number destroys the evidence
+   that something was wrong.
+   **"Absent" means one thing across every field type**, and only the
+   consequence differs. Null and empty string count as absent for
+   integer, float, date and boolean too — those still refuse, but now
+   with "absent field — set an initial value first" instead of the
+   misleading "current value is not a valid number". There is no value
+   there to be invalid.
 6. **Zero is the only starting point.** An item whose effort rolls up
    from its children, or is computed, or is pulled from a linked item,
    still starts the delta at zero and writes the result as a
@@ -52,7 +60,11 @@ refusal makes the common case the awkward one.
 7. **A field's schema default is not the starting point either.**
    Defaults are stamped in when an item is created; an item that
    predates a default, or had its value cleared, does not reacquire it
-   through arithmetic.
+   through arithmetic. This turned out to be vacuous for durations: a
+   `duration` field cannot declare a default at all today — no default
+   shape passes schema validation for the type — so there is nothing
+   stamped in for a delta to pick up. That gap is its own piece of work,
+   not fixed here.
 8. **A negative delta on an absent field writes a negative duration.**
    Zero minus thirty minutes is minus thirty minutes, exactly as it
    would be if the field held `0s`. Negative durations are already
@@ -63,7 +75,10 @@ refusal makes the common case the awkward one.
    is the timer's, applied before it ever asks for a delta.
 10. **The confirmation line shows what was on disk:**
     `effort: (unset) + 30min = 30min`. Rendering it as `0s` would claim
-    the file said something it did not.
+    the file said something it did not. A field written with no value
+    reads `(unset)` too, rather than getting a marker of its own: it
+    held nothing, and a second word for it would only make the user
+    learn the difference between two spellings of one accident.
 
 ## Not in scope
 

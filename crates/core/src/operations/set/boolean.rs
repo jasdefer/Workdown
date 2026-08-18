@@ -2,15 +2,15 @@
 
 use std::collections::HashMap;
 
-use super::{ComputedMutation, SetError};
+use super::{current_value, ComputedMutation, SetError};
 
 /// Reject `--toggle` when the field is absent or the current value
-/// isn't a real boolean.
+/// isn't a real boolean. There is no "flip nothing".
 pub(super) fn require_existing(
     frontmatter: &HashMap<String, serde_yaml::Value>,
     field: &str,
 ) -> Result<(), SetError> {
-    match frontmatter.get(field) {
+    match current_value(frontmatter, field) {
         None => Err(SetError::MutationRequiresExistingValue {
             mode: "toggle",
             field: field.to_owned(),
@@ -116,6 +116,33 @@ mod tests {
         assert!(matches!(
             result,
             Err(SetError::MutationRequiresExistingValue { mode, ref field })
+                if mode == "toggle" && field == "archived"
+        ));
+    }
+
+    #[test]
+    fn toggle_on_field_written_with_no_value_returns_requires_existing() {
+        // A null is absent, not malformed — there is no value to be
+        // invalid, and no "flip nothing" either.
+        let (_directory, root) = setup_project();
+        let config = load_test_config(&root);
+        write_item(
+            &root,
+            "task-1",
+            "---\ntitle: Task 1\nstatus: open\narchived:\n---\n",
+        );
+
+        let result = run_set(
+            &config,
+            &root,
+            &WorkItemId::from("task-1".to_owned()),
+            "archived",
+            SetOperation::Boolean(BooleanMode::Toggle),
+        );
+
+        assert!(matches!(
+            result.unwrap_err(),
+            SetError::MutationRequiresExistingValue { mode, ref field }
                 if mode == "toggle" && field == "archived"
         ));
     }
