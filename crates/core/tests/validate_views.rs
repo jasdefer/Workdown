@@ -67,13 +67,21 @@ fn is_view_diagnostic(diagnostic: &Diagnostic) -> bool {
     matches!(diagnostic.body, DiagnosticBody::Config(_))
 }
 
-/// Shared schema: `status` (choice) so a valid board view can reference it.
+/// Shared schema: `status` (choice) so a valid board view can reference
+/// it, plus the link fields the fixture config's `tree_field` and
+/// `graph_field` name — a field role pointing at a field the schema does
+/// not define is itself a `config_check` finding, and these tests are
+/// about `views.yaml`.
 fn schema_with_status() -> &'static str {
     "\
 fields:
   status:
     type: choice
     values: [open, done]
+  parent:
+    type: link
+  depends_on:
+    type: links
 "
 }
 
@@ -293,7 +301,7 @@ defaults:
             matches!(
                 &d.body,
                 DiagnosticBody::Config(c)
-                    if matches!(c.kind, ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch { .. })
+                    if matches!(c.kind, ConfigDiagnosticKind::ConfigFieldTypeMismatch { .. })
             )
         })
         .collect();

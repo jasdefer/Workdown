@@ -3,7 +3,6 @@
 Cards grouped into columns by `status`.
 
 ## to_do
-- [Validate the field-role keys in config.yaml against the schema](../workdown-items/config-field-role-validation.md)
 - [Project-level effort field in config.yaml](../workdown-items/effort-field-config.md)
 - [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
@@ -41,6 +40,7 @@ Cards grouped into columns by `status`.
 - [Add `color` field type with background tinting](../workdown-items/color-field-type.md)
 - [Computed fields — same-item cross-field expressions](../workdown-items/computed-fields.md)
 - [`when:` — derive a field value by first matching condition](../workdown-items/conditional-field-value.md)
+- [Validate the field-role keys in config.yaml against the schema](../workdown-items/config-field-role-validation.md)
 - [Relocate cross-cutting helpers out of feature modules](../workdown-items/cross-cutting-helpers.md)
 - [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md)
 - [Collapse parallel View* slot variants and unify their validation helpers](../workdown-items/diagnostic-variant-cleanup.md)

@@ -245,10 +245,10 @@ pub struct ConfigDiagnostic {
 }
 
 /// Cross-file failures against a config file — `views.yaml` for the
-/// `View*` variants, `config.yaml` for the `ConfigDisplay*` variants.
+/// `View*` variants, `config.yaml` for the `Config*` variants.
 ///
 /// The `View*` variants carry a `view_id` and pin the finding to one
-/// view, leaving the rest working; the `ConfigDisplay*` variants are
+/// view, leaving the rest working; the `Config*` variants are
 /// project-wide and carry none — a bad default degrades every view to
 /// its fallback instead of blanking anything (see `view_id_of` below).
 ///
@@ -423,28 +423,43 @@ pub enum ConfigDiagnosticKind {
         detail: String,
     },
 
-    /// A `defaults.display` role in `config.yaml` names a field that
-    /// isn't defined in `schema.yaml` (and isn't the virtual `id`).
+    /// A slot in `config.yaml` names a field that isn't defined in
+    /// `schema.yaml` — a `defaults.display` role (where the virtual
+    /// `id` also resolves) or one of the field-role keys.
+    ///
     /// Unlike the `View*` variants this carries no `view_id` — the
-    /// default is project-wide, not tied to one view — so it never
+    /// config is project-wide, not tied to one view — so it never
     /// marks a single view unrenderable; every view keeps rendering on
-    /// its fallback while this surfaces the dead default.
-    ConfigDisplayUnknownField {
+    /// its fallback while this surfaces the dead reference.
+    ConfigUnknownField {
         slot: &'static str,
         field_name: String,
     },
 
-    /// A `defaults.display` role in `config.yaml` names a field whose
-    /// schema type is incompatible with the role. Only `color` is
-    /// type-restricted today (must be a `color` field); the text roles
-    /// are existence-only.
-    ConfigDisplayFieldTypeMismatch {
+    /// A slot in `config.yaml` names a field whose schema type is
+    /// incompatible with the role: the `defaults.display.color` role
+    /// (the text roles are existence-only, since any value renders as
+    /// text), or a field-role key whose field cannot play that role.
+    ConfigFieldTypeMismatch {
         slot: &'static str,
         field_name: String,
         actual_type: FieldType,
         /// Human-readable expected type, e.g. `"color"`.
         expected: String,
     },
+
+    /// A field-role key in `config.yaml` names the virtual `id`. The
+    /// id is unique per item, so it can be no project's board column,
+    /// hierarchy link or effort measure — and it is rejected by name,
+    /// before the schema is consulted, exactly as the structural view
+    /// slots reject it ([`Self::ViewVirtualIdNotAllowed`]), so the
+    /// verdict does not depend on whether a project happens to declare
+    /// `id` in its schema.
+    ///
+    /// Not produced for the display roles: their text slots accept
+    /// `id` legitimately, and `display.color` reports it as a type
+    /// mismatch because a string can never feed a tint.
+    ConfigVirtualIdNotAllowed { slot: &'static str },
 
     /// A `compute:` expression in `schema.yaml` failed type checking:
     /// an unknown field or constant reference, a reference to a type
@@ -698,8 +713,9 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
         // project-wide, not pinned to a view. Returning `None` keeps
         // them out of the server's per-view "this view is unrenderable"
         // tier — every view still renders on its fallback.
-        ConfigDiagnosticKind::ConfigDisplayUnknownField { .. }
-        | ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch { .. }
+        ConfigDiagnosticKind::ConfigUnknownField { .. }
+        | ConfigDiagnosticKind::ConfigFieldTypeMismatch { .. }
+        | ConfigDiagnosticKind::ConfigVirtualIdNotAllowed { .. }
         | ConfigDiagnosticKind::ComputeInvalidExpression { .. }
         | ConfigDiagnosticKind::ComputeResultTypeMismatch { .. }
         | ConfigDiagnosticKind::ComputeCycle { .. }
@@ -1093,10 +1109,10 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                 f,
                 "view '{view_id}', metrics[{metric_index}].where clause '{raw}': field '{field_name}' — {detail}"
             ),
-            ConfigDiagnosticKind::ConfigDisplayUnknownField { slot, field_name } => {
+            ConfigDiagnosticKind::ConfigUnknownField { slot, field_name } => {
                 write!(f, "config default '{slot}': unknown field '{field_name}'")
             }
-            ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch {
+            ConfigDiagnosticKind::ConfigFieldTypeMismatch {
                 slot,
                 field_name,
                 actual_type,
@@ -1104,6 +1120,10 @@ impl std::fmt::Display for ConfigDiagnosticKind {
             } => write!(
                 f,
                 "config default '{slot}': field '{field_name}' has type {actual_type}, expected {expected}"
+            ),
+            ConfigDiagnosticKind::ConfigVirtualIdNotAllowed { slot } => write!(
+                f,
+                "config default '{slot}': the virtual 'id' cannot fill this role (it is unique per item) — name a schema field"
             ),
             ConfigDiagnosticKind::ComputeInvalidExpression {
                 field,

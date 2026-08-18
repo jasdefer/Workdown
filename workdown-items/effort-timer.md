@@ -40,7 +40,15 @@ doing it.
    records that a session happened, who ran it, or when. A record of
    individual sessions is a different and much larger feature.
 2. **It writes to the project's effort field** ([[effort-field-config]]).
-   Where no effort field is configured, there is no timer.
+   Where no effort field is configured, there is no timer — but the
+   place the timer would be says so, naming the config key instead of
+   showing nothing. That is the whole discoverability answer for a key
+   that appears in no shipped default and no editor autocomplete:
+   [[config-field-role-validation]] considered putting a hint in
+   `workdown validate` and rejected it, because a project that uses
+   durations for calendar planning and wants no timer would carry the
+   warning forever. Someone looking for a timer looks where the timer
+   would be.
 3. **Start, pause, stop.** Start and pause never write anything; stop
    writes the accumulated time and returns the timer to zero. A timer
    that is never stopped never changes a file — the Friday evening you

@@ -74,6 +74,7 @@ async fn get_schema_returns_fields_in_declaration_order() {
             "title",
             "status",
             "parent",
+            "depends_on",
             "effort",
             "start_date",
             "deadline",

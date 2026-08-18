@@ -78,16 +78,18 @@ recording work time at all.
    deliberately out of scope; and a list turns "start recording" into
    "start recording, as what?" on the common path. Accepting a list
    later is a backward-compatible widening; narrowing would not be.
-7. **Validated eagerly, and non-blocking.** A named field that does not
+7. **Validated eagerly, as a warning.** A named field that does not
    exist, or is not a duration, is reported by `workdown validate` and
-   the serve banner, pinned to `config.yaml`. Its three siblings are
-   validated only at use time, and for them that suffices: `workdown
-   move` is a command, so the error arrives the moment you run it. Here
-   it would not, because the only consumer is a timer in the web app
-   and "no effort field" is a legitimate state — a typo and a
-   deliberate blank would be indistinguishable, both showing no timer
-   and saying nothing. No field-role key is validated at load today, so
-   this waits on [[config-field-role-validation]].
+   the serve banner, pinned to `config.yaml`, without failing
+   validation. Eagerly because the only consumer is a timer in the web
+   app and "no effort field" is a legitimate state — a typo and a
+   deliberate blank would otherwise be indistinguishable, both showing
+   no timer and saying nothing. `workdown move`, by contrast, is a
+   command, so its own error arrives the moment you run it.
+   [[config-field-role-validation]] builds the check over the three
+   existing keys and lands first; this item adds the key together with
+   its row in that check's role table, so the key is never in a release
+   unvalidated.
 8. **Validation checks two things: the field exists, and it is a
    duration.** Whether that field rolls up from its children, is
    computed, or is pulled from a linked item is not this check's
@@ -110,9 +112,10 @@ recording work time at all.
 
 ## Open questions
 
-- A command-line surface for effort. `effort_field` would be the first
-  field role no command reads: `board_field` powers `workdown move`,
-  and the tree and graph keys drive rendered views. A one-shot delta —
+- A command-line surface for effort. `effort_field` would be the second
+  field role with a consumer at all — `board_field` powers `workdown
+  move`, and the tree and graph keys are read by nothing — and the
+  first whose consumer is not a command. A one-shot delta —
   `workdown log <id> 30min` against the configured field — is not the
   command-line stopwatch [[effort-timer]] rules out, and
   [[duration-delta-absent-value]] already built the behaviour it would

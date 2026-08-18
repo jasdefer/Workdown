@@ -14,52 +14,182 @@
 //! owns the role vocabulary's constraints in one place; this module
 //! only wraps each violation into a config-scoped diagnostic.
 //!
+//! The second half of this module checks the *field-role* keys —
+//! `board_field`, `tree_field`, `graph_field` — the project's answer to
+//! "which field plays this role". Nothing checked them before: only
+//! `board_field` has a consumer at all (`workdown move`, which reports
+//! its own miss when you run it), and a typo in the other two sat in
+//! the file unreported forever.
+//!
 //! Every diagnostic here is project-wide, not pinned to a view, so it
 //! never marks a single view unrenderable: a bad default degrades every
 //! view to its fallback rather than blanking it, and this is the signal
-//! that the fallback is in effect. Validating the structural defaults
-//! (`board_field`, `tree_field`, `graph_field`) is a separate concern —
-//! those fail loudly at use time (e.g. `workdown move`) — and would grow
-//! its own checks here if it lands.
+//! that the fallback is in effect.
+//!
+//! The two halves differ in severity, and deliberately. A bad
+//! `defaults.display` value silently makes every view render wrong, so
+//! it is an error. A bad field-role key makes nothing render wrong —
+//! `workdown move` prints its own message, the tree and graph keys are
+//! read by no code at all — so it is a warning, and `workdown validate`
+//! keeps exiting zero.
 
 use std::path::Path;
 
 use crate::display_check::{check_display_roles, RoleViolation};
-use crate::model::config::Config;
+use crate::model::config::{Config, ViewDefaults};
 use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic};
-use crate::model::schema::{Schema, Severity};
+use crate::model::schema::{FieldType, Schema, Severity};
 
 /// Run all cross-file checks on `config.yaml` against a schema.
 ///
 /// Returns one [`Diagnostic`] per problem found; does not stop at the
-/// first. All diagnostics produced here have [`Severity::Error`] and are
-/// pinned to `config_path`.
+/// first. All diagnostics are pinned to `config_path`: display-role
+/// defaults at [`Severity::Error`], field-role keys at
+/// [`Severity::Warning`] (see the module docs).
 pub fn evaluate(config: &Config, schema: &Schema, config_path: &Path) -> Vec<Diagnostic> {
-    check_display_roles(&config.defaults.display, schema)
-        .into_iter()
-        .map(|violation| {
-            let kind = match violation {
-                RoleViolation::UnknownField { role, field_name } => {
-                    ConfigDiagnosticKind::ConfigDisplayUnknownField {
-                        slot: role.config_slot(),
-                        field_name,
-                    }
-                }
-                RoleViolation::TypeMismatch {
-                    role,
-                    field_name,
-                    actual_type,
-                    expected,
-                } => ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch {
+    let mut diagnostics = Vec::new();
+
+    for violation in check_display_roles(&config.defaults.display, schema) {
+        let kind = match violation {
+            RoleViolation::UnknownField { role, field_name } => {
+                ConfigDiagnosticKind::ConfigUnknownField {
                     slot: role.config_slot(),
                     field_name,
-                    actual_type,
-                    expected: expected.to_owned(),
-                },
-            };
-            Diagnostic::config(Severity::Error, config_path.to_path_buf(), kind)
-        })
-        .collect()
+                }
+            }
+            RoleViolation::TypeMismatch {
+                role,
+                field_name,
+                actual_type,
+                expected,
+            } => ConfigDiagnosticKind::ConfigFieldTypeMismatch {
+                slot: role.config_slot(),
+                field_name,
+                actual_type,
+                expected: expected.to_owned(),
+            },
+        };
+        diagnostics.push(Diagnostic::config(
+            Severity::Error,
+            config_path.to_path_buf(),
+            kind,
+        ));
+    }
+
+    for role in field_roles(&config.defaults) {
+        check_field_role(&role, schema, config_path, &mut diagnostics);
+    }
+
+    diagnostics
+}
+
+// ── Field roles ──────────────────────────────────────────────────────
+
+/// One field-role key as configured, paired with the rule its field has
+/// to satisfy.
+struct FieldRoleReference<'a> {
+    /// The key's path, as the diagnostic reports it.
+    slot: &'static str,
+    /// The field name the project wrote there.
+    field_name: &'a str,
+    /// Types that can play this role.
+    allowed: &'static [FieldType],
+    /// Human-readable form of `allowed`, for the mismatch message.
+    expected_label: &'static str,
+    /// Whether an inverse relation name (declared via `inverse:` on a
+    /// link field) may stand in for a field of its own.
+    inverse_names_allowed: bool,
+}
+
+/// Pair every field-role key in `config.yaml` with its rule.
+///
+/// Each rule mirrors the matching slot in `views_check` exactly, so a
+/// field the tool already accepts for a board, a tree or a graph is
+/// never reported here — deliberately not stricter: `workdown move`
+/// type-checks nothing at all today, so a `string` board field works
+/// and must not be flagged as if it were broken.
+///
+/// The defaults are destructured so a field role added to
+/// [`ViewDefaults`] fails to compile here rather than silently going
+/// unvalidated.
+fn field_roles(defaults: &ViewDefaults) -> Vec<FieldRoleReference<'_>> {
+    let ViewDefaults {
+        board_field,
+        tree_field,
+        graph_field,
+        display: _, // checked by `check_display_roles`, not as a field role
+    } = defaults;
+
+    vec![
+        FieldRoleReference {
+            slot: "defaults.board_field",
+            field_name: board_field,
+            allowed: &[FieldType::Choice, FieldType::Multichoice, FieldType::String],
+            expected_label: "choice, multichoice, or string",
+            inverse_names_allowed: false,
+        },
+        FieldRoleReference {
+            slot: "defaults.tree_field",
+            field_name: tree_field,
+            allowed: &[FieldType::Link],
+            expected_label: "link",
+            inverse_names_allowed: false,
+        },
+        FieldRoleReference {
+            slot: "defaults.graph_field",
+            field_name: graph_field,
+            // Inverse names resolve to their original field at
+            // extraction time, exactly as the graph view's own slot
+            // accepts them.
+            allowed: &[FieldType::Link, FieldType::Links],
+            expected_label: "link or links",
+            inverse_names_allowed: true,
+        },
+    ]
+}
+
+/// Check that one field-role key names a field that exists and can play
+/// the role. Existence and type only — whether the field is computed,
+/// aggregated or pulled is not this check's business.
+fn check_field_role(
+    role: &FieldRoleReference<'_>,
+    schema: &Schema,
+    config_path: &Path,
+    out: &mut Vec<Diagnostic>,
+) {
+    let warn = |kind| Diagnostic::config(Severity::Warning, config_path.to_path_buf(), kind);
+
+    // Rejected by name, before the schema is consulted, so the verdict
+    // does not depend on whether the project declares `id` itself —
+    // this is how the structural view slots treat it too.
+    if role.field_name == "id" {
+        out.push(warn(ConfigDiagnosticKind::ConfigVirtualIdNotAllowed {
+            slot: role.slot,
+        }));
+        return;
+    }
+
+    if let Some(definition) = schema.fields.get(role.field_name) {
+        let actual_type = definition.field_type();
+        if !role.allowed.contains(&actual_type) {
+            out.push(warn(ConfigDiagnosticKind::ConfigFieldTypeMismatch {
+                slot: role.slot,
+                field_name: role.field_name.to_owned(),
+                actual_type,
+                expected: role.expected_label.to_owned(),
+            }));
+        }
+        return;
+    }
+
+    if role.inverse_names_allowed && schema.inverse_table.contains_key(role.field_name) {
+        return;
+    }
+
+    out.push(warn(ConfigDiagnosticKind::ConfigUnknownField {
+        slot: role.slot,
+        field_name: role.field_name.to_owned(),
+    }));
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -92,6 +222,15 @@ mod tests {
     }
 
     fn config_with_display(display: DisplayConfig) -> Config {
+        config_with_roles("status", "parent", "depends_on", display)
+    }
+
+    fn config_with_roles(
+        board_field: &str,
+        tree_field: &str,
+        graph_field: &str,
+        display: DisplayConfig,
+    ) -> Config {
         Config {
             project: ProjectMeta {
                 name: "test".into(),
@@ -105,9 +244,9 @@ mod tests {
             },
             schema: PathBuf::from(".workdown/schema.yaml"),
             defaults: ViewDefaults {
-                board_field: "status".into(),
-                tree_field: "parent".into(),
-                graph_field: "depends_on".into(),
+                board_field: board_field.into(),
+                tree_field: tree_field.into(),
+                graph_field: graph_field.into(),
                 display,
             },
             working_days: None,
@@ -122,6 +261,9 @@ mod tests {
         }
     }
 
+    /// A schema that satisfies every field-role key the test config
+    /// sets, so the display-role tests below see only their own
+    /// diagnostics.
     fn simple_schema() -> Schema {
         schema_with(vec![
             (
@@ -132,6 +274,20 @@ mod tests {
             ),
             ("title", FieldTypeConfig::String { pattern: None }),
             ("team_color", FieldTypeConfig::Color),
+            (
+                "parent",
+                FieldTypeConfig::Link {
+                    allow_cycles: None,
+                    inverse: Some("children".into()),
+                },
+            ),
+            (
+                "depends_on",
+                FieldTypeConfig::Links {
+                    allow_cycles: None,
+                    inverse: None,
+                },
+            ),
         ])
     }
 
@@ -167,7 +323,7 @@ mod tests {
         assert_eq!(diagnostics[0].view_id(), None);
         assert!(matches!(
             config_kind(&diagnostics[0]),
-            ConfigDiagnosticKind::ConfigDisplayUnknownField { slot, field_name }
+            ConfigDiagnosticKind::ConfigUnknownField { slot, field_name }
                 if *slot == "defaults.display.title" && field_name == "titel"
         ));
     }
@@ -192,7 +348,7 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
         assert!(matches!(
             config_kind(&diagnostics[0]),
-            ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch { slot, field_name, expected, .. }
+            ConfigDiagnosticKind::ConfigFieldTypeMismatch { slot, field_name, expected, .. }
                 if *slot == "defaults.display.color" && field_name == "status" && expected == "color"
         ));
     }
@@ -207,7 +363,7 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
         assert!(matches!(
             config_kind(&diagnostics[0]),
-            ConfigDiagnosticKind::ConfigDisplayUnknownField { slot, field_name }
+            ConfigDiagnosticKind::ConfigUnknownField { slot, field_name }
                 if *slot == "defaults.display.color" && field_name == "gone"
         ));
     }
@@ -235,7 +391,7 @@ mod tests {
         assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
         assert!(matches!(
             config_kind(&diagnostics[0]),
-            ConfigDiagnosticKind::ConfigDisplayFieldTypeMismatch { slot, field_name, expected, .. }
+            ConfigDiagnosticKind::ConfigFieldTypeMismatch { slot, field_name, expected, .. }
                 if *slot == "defaults.display.color" && field_name == "id" && expected == "color"
         ));
     }
@@ -250,5 +406,186 @@ mod tests {
         });
         let diagnostics = evaluate(&config, &simple_schema(), config_path());
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    // ── Field roles ──────────────────────────────────────────────────
+
+    fn roles(board_field: &str, tree_field: &str, graph_field: &str) -> Config {
+        config_with_roles(
+            board_field,
+            tree_field,
+            graph_field,
+            DisplayConfig::default(),
+        )
+    }
+
+    #[test]
+    fn resolvable_field_roles_produce_no_diagnostics() {
+        let config = roles("status", "parent", "depends_on");
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn unknown_field_role_is_reported_as_a_warning() {
+        // The typo nothing caught before: no code reads `tree_field`,
+        // so this check is its only enforcement — and it is a warning
+        // because nothing renders wrong because of it.
+        let config = roles("status", "parnet", "depends_on");
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert_eq!(diagnostics[0].view_id(), None);
+        assert!(matches!(
+            config_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ConfigUnknownField { slot, field_name }
+                if *slot == "defaults.tree_field" && field_name == "parnet"
+        ));
+    }
+
+    #[test]
+    fn every_bad_field_role_is_reported_not_just_the_first() {
+        let config = roles("gone", "also_gone", "still_gone");
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert_eq!(diagnostics.len(), 3, "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn tree_field_must_be_a_link() {
+        let config = roles("status", "depends_on", "depends_on");
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            config_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ConfigFieldTypeMismatch { slot, field_name, actual_type, expected }
+                if *slot == "defaults.tree_field"
+                    && field_name == "depends_on"
+                    && *actual_type == FieldType::Links
+                    && expected == "link"
+        ));
+    }
+
+    #[test]
+    fn board_field_accepts_every_type_a_board_view_accepts() {
+        // Deliberately not narrowed to `choice`: a board view takes all
+        // three, and `workdown move` type-checks nothing at all, so a
+        // string board field works today.
+        for board_field in ["status", "title"] {
+            let config = roles(board_field, "parent", "depends_on");
+            let diagnostics = evaluate(&config, &simple_schema(), config_path());
+            assert!(diagnostics.is_empty(), "{board_field}: {diagnostics:?}");
+        }
+    }
+
+    #[test]
+    fn board_field_rejects_a_type_no_board_can_show() {
+        let config = roles("team_color", "parent", "depends_on");
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            config_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ConfigFieldTypeMismatch { slot, actual_type, expected, .. }
+                if *slot == "defaults.board_field"
+                    && *actual_type == FieldType::Color
+                    && expected == "choice, multichoice, or string"
+        ));
+    }
+
+    #[test]
+    fn graph_field_accepts_a_single_link_and_an_inverse_name() {
+        // Both are what the graph view's own slot accepts: an inverse
+        // name resolves to its original field at extraction time.
+        for graph_field in ["parent", "children"] {
+            let config = roles("status", "parent", graph_field);
+            let diagnostics = evaluate(&config, &simple_schema(), config_path());
+            assert!(diagnostics.is_empty(), "{graph_field}: {diagnostics:?}");
+        }
+    }
+
+    #[test]
+    fn tree_field_rejects_an_inverse_name() {
+        // The tree view's slot resolves schema fields only, so accepting
+        // one here would promise something no surface delivers.
+        let config = roles("status", "children", "depends_on");
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            config_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ConfigUnknownField { slot, field_name }
+                if *slot == "defaults.tree_field" && field_name == "children"
+        ));
+    }
+
+    #[test]
+    fn virtual_id_is_rejected_by_name_in_a_field_role() {
+        // Reported as its own thing: "unknown field" would be a lie
+        // (the id resolves everywhere), and "wrong type" would be one
+        // too for the board role, which accepts strings.
+        let config = roles("id", "parent", "depends_on");
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            config_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ConfigVirtualIdNotAllowed { slot }
+                if *slot == "defaults.board_field"
+        ));
+    }
+
+    #[test]
+    fn virtual_id_is_rejected_even_when_the_schema_declares_it() {
+        // Projects may declare `id` as a string field; the verdict must
+        // not depend on that, exactly as the view slots reject it by
+        // name before consulting the schema.
+        let schema = schema_with(vec![
+            ("id", FieldTypeConfig::String { pattern: None }),
+            (
+                "parent",
+                FieldTypeConfig::Link {
+                    allow_cycles: None,
+                    inverse: None,
+                },
+            ),
+            (
+                "depends_on",
+                FieldTypeConfig::Links {
+                    allow_cycles: None,
+                    inverse: None,
+                },
+            ),
+        ]);
+        let config = roles("id", "parent", "depends_on");
+        let diagnostics = evaluate(&config, &schema, config_path());
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            config_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ConfigVirtualIdNotAllowed { .. }
+        ));
+    }
+
+    #[test]
+    fn display_defaults_stay_errors_alongside_field_role_warnings() {
+        // The two halves of this module carry different severities on
+        // purpose — a dead display default breaks rendering, a dead
+        // field-role key breaks nothing.
+        let config = config_with_roles(
+            "status",
+            "parnet",
+            "depends_on",
+            DisplayConfig {
+                title: Some("titel".into()),
+                ..DisplayConfig::default()
+            },
+        );
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert_eq!(diagnostics.len(), 2, "got: {diagnostics:?}");
+        let severities: Vec<Severity> = diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.severity)
+            .collect();
+        assert!(severities.contains(&Severity::Error), "got: {severities:?}");
+        assert!(
+            severities.contains(&Severity::Warning),
+            "got: {severities:?}"
+        );
     }
 }
