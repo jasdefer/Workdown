@@ -1,7 +1,7 @@
 ---
 id: phase-04-visualization
-status: in_progress
-title: "Phase 04: Visualization"
+title: 'Phase 04: Visualization'
+status: done
 ---
 
 Build interactive and static visualization for workdown items.

@@ -53,10 +53,9 @@ The four open decisions, resolved:
   natural dogfood.
 - **Strict type pairings, reused from the arithmetic.** Ordering exists
   where types order among themselves (numbers cross-promote, date vs
-  date, duration vs duration); `duration < 5` is an error, not a guess —
-  the unit question [[duration-comparison-rule]] worries about never
-  reaches expressions, because durations are canonical seconds by
-  evaluation time. Equality additionally covers text (string/choice),
+  date, duration vs duration); `duration < 5` is an error, not a guess.
+  Mixed units need no convention here: durations are canonical seconds
+  by evaluation time, so `3h < 1w` orders unambiguously. Equality additionally covers text (string/choice),
   boolean, and color (resolved hex, so `tint == "red"` matches the name
   or the hex).
 

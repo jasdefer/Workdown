@@ -4,6 +4,24 @@ status: to_do
 title: Multi-project support
 ---
 
+## In plain words
+
+Let one top-level project gather and report on work items that live in
+several separate repositories.
+
+Today a project only sees its own folder of items. Teams whose work is
+spread across several repositories have no single place to answer "what
+is on my plate everywhere today", and no way to track a large
+initiative whose pieces sit in five different projects. The plan is a
+top-level repository that points at the others, so boards, views and
+progress totals can span all of them — without the other repositories
+needing to know they are being watched. **Example:** an item called
+"Ship new auth" lives in the top-level project and lists the individual
+tasks that live in the backend and frontend repositories; its progress
+figure is worked out from them automatically. Reading across
+repositories would not require having them all downloaded locally;
+editing another repository's items would.
+
 Cross-repo aggregation and master-level planning for teams that work across several workdown repositories. A "master" repo with its own work items can reference items in any number of unaware sub-repos, supporting both personal cross-repo views ("my day") and umbrella initiatives spanning multiple projects.
 
 The contents below are the outcome of an initial brainstorm. Treat them as **initial thoughts, not set in stone** — [[multi-project-design]] is responsible for sharpening them into committed decisions and breaking out follow-up implementation work.

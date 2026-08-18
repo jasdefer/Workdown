@@ -6,9 +6,9 @@ parent: time-tracking
 ---
 
 Named scalar values defined once per project and referenced from the
-schema: a daily rate for cost computation, the work-hours-per-calendar-
-day convention that [[duration-comparison-rule]] needs to compare
-mixed-unit durations. They live in `resources.yaml` — it is the
+schema: a daily rate for cost computation, or a work-hours-per-calendar-
+day convention for expressing how much working time a stretch of
+calendar time affords. They live in `resources.yaml` — it is the
 user-editable *data* file, and a rate is data that changes (yearly,
 per client), unlike `schema.yaml` (structure) or `config.yaml` (CLI
 wiring).

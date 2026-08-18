@@ -3,30 +3,32 @@
 Cards grouped into columns by `status`.
 
 ## to_do
-- [Cross-field comparison rule for duration values](../workdown-items/duration-comparison-rule.md)
+- [Duration delta starts from zero on an absent field](../workdown-items/duration-delta-absent-value.md)
+- [Project-level effort field in config.yaml](../workdown-items/effort-field-config.md)
+- [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
 - [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md)
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
-- [Default generator that reads dates from git history](../workdown-items/git-derived-default-generator.md)
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
+- [Pomodoro mode for the effort timer](../workdown-items/pomodoro-timer.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
 - [A view over tags](../workdown-items/tags-view.md)
+- [Tell the user when a timed interval is over](../workdown-items/timer-notifications.md)
 - [Move value coercion out of the store to break the parser↔store cycle](../workdown-items/value-coercion-layering.md)
 - [Collapse the metric-row duplicates of the generic view checks](../workdown-items/views-check-metric-row-dedup.md)
 - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md)
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
-- [Phase 04: Visualization](../workdown-items/phase-04-visualization.md)
 - [Time tracking](../workdown-items/time-tracking.md)
-- [Edit and delete views from the UI](../workdown-items/view-edit-delete.md)
 
 ## done
 - [ADR — visualization architecture](../workdown-items/adr-phase-04-architecture.md)
 - [Compute schema-declared aggregate fields up the parent chain](../workdown-items/aggregate-rollup.md)
 - [App shell navigation (views menu + future link slots)](../workdown-items/app-shell-navigation.md)
+- [Run the whole workspace in CI](../workdown-items/ci-workspace-coverage.md)
 - [Audit workdown add for UI-driven creation](../workdown-items/cli-add-audit.md)
 - [workdown body — replace the Markdown body](../workdown-items/cli-body-command.md)
 - [workdown move — shortcut for the board field](../workdown-items/cli-move-command.md)
@@ -57,6 +59,7 @@ Cards grouped into columns by `status`.
 - [Item mutations](../workdown-items/item-mutations.md)
 - [File watcher and SSE for live updates](../workdown-items/live-updates.md)
 - [Mutations end-to-end](../workdown-items/mutations-slice.md)
+- [Phase 04: Visualization](../workdown-items/phase-04-visualization.md)
 - [Polish & dogfood](../workdown-items/polish.md)
 - [Project-level constants in resources.yaml](../workdown-items/project-constants.md)
 - [Pull fields — cross-item derivation over forward links](../workdown-items/pull-fields.md)
@@ -88,6 +91,7 @@ Cards grouped into columns by `status`.
 - [Create a new view from the UI](../workdown-items/view-creation.md)
 - [Design ViewData and extractors](../workdown-items/view-data-intermediate.md)
 - [Per-view-kind display configuration (which fields show where)](../workdown-items/view-display-config.md)
+- [Edit and delete views from the UI](../workdown-items/view-edit-delete.md)
 - [Build and edit a view's where filter from the UI](../workdown-items/view-filter-editor.md)
 - [View & item presentation](../workdown-items/view-presentation.md)
 - [Persist view definitions to views.yaml](../workdown-items/view-write-backend.md)

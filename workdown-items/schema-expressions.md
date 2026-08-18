@@ -4,6 +4,22 @@ status: to_do
 title: Derived field expressions
 ---
 
+## In plain words
+
+The home for the machinery that lets a field work out its own value
+instead of having it typed in by hand.
+
+A project can already say things like "this field is that field
+multiplied by two" or "if the status is done, colour it green". This
+item collects everything that calculation engine still needs, in one
+place, instead of leaving the leftovers scattered across unrelated
+milestones. **Example:** its children cover writing a condition that
+combines two tests in one line, a shorter way to write simple
+value-to-value lookup tables, and fixing two cases where comparing
+unusual numbers gives the wrong answer. Command-level plumbing around
+evaluation, and rules that exist for a specific scheduling convention,
+belong elsewhere.
+
 The engine that lets a field's value be derived rather than typed: the
 expression grammar itself, the `compute:` / `when:` / `pull:` /
 `aggregate:` mechanisms that evaluate against it, and the type checking
@@ -31,5 +47,3 @@ eventually ships in.
 
 - Command plumbing around evaluation that isn't the evaluator itself
   (clock reads per invocation live in `misc-work`).
-- Rules whose purpose is a specific scheduling convention rather than
-  the grammar (`duration-comparison-rule` stays with `time-tracking`).

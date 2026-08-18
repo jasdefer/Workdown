@@ -13,9 +13,6 @@ flowchart TD
     subgraph multi-project-support ["Multi-project support"]
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]
     end
-    subgraph phase-04-visualization ["Phase 04: Visualization"]
-        view-edit-delete["Edit and delete views from the UI"]
-    end
     subgraph schema-expressions ["Derived field expressions"]
         expression-comparison-corner-cases["Integer precision and NaN in comparison evaluation"]
         expression-logical-combinators["`and` / `or` / `not` in the expression grammar"]
@@ -23,7 +20,14 @@ flowchart TD
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end
     subgraph time-tracking ["Time tracking"]
-        duration-comparison-rule["Cross-field comparison rule for duration values"]
-        git-derived-default-generator["Default generator that reads dates from git history"]
+        duration-delta-absent-value["Duration delta starts from zero on an absent field"]
+        effort-field-config["Project-level effort field in config.yaml"]
+        effort-timer["Stopwatch in the web app that records effort"]
+        pomodoro-timer["Pomodoro mode for the effort timer"]
+        timer-notifications["Tell the user when a timed interval is over"]
     end
+    effort-timer --> duration-delta-absent-value
+    effort-timer --> effort-field-config
+    pomodoro-timer --> effort-timer
+    timer-notifications --> pomodoro-timer
 ```
