@@ -20,11 +20,13 @@ flowchart TD
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end
     subgraph time-tracking ["Time tracking"]
+        config-field-role-validation["Validate the field-role keys in config.yaml against the schema"]
         effort-field-config["Project-level effort field in config.yaml"]
         effort-timer["Stopwatch in the web app that records effort"]
         pomodoro-timer["Pomodoro mode for the effort timer"]
         timer-notifications["Tell the user when a timed interval is over"]
     end
+    effort-field-config --> config-field-role-validation
     effort-timer --> effort-field-config
     pomodoro-timer --> effort-timer
     timer-notifications --> pomodoro-timer

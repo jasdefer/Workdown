@@ -70,6 +70,24 @@ doing it.
     stopwatch you forget, and the terminal has nowhere to show one
     ticking. Recording time from a terminal stays what it already is: a
     delta on the effort field.
+12. **The app has to be told which field it is.** The server hands the
+    UI the schema, the items and the views and nothing else — today
+    `defaults.display` is resolved server-side and only its output
+    reaches the app, so no part of `config.yaml` is readable from the
+    front end. Exposing `defaults.effort_field` is part of this item,
+    not of [[effort-field-config]].
+
+## Open questions
+
+- A picker that deviates from the configured field. The config key names
+  the project's effort field; a control on the timer could let a session
+  write to a different duration field instead. Against it: that is how
+  someone would split effort by activity, which both this item and
+  [[effort-field-config]] exclude, and it puts calendar duration one
+  click away from receiving measured work — the same wrong write
+  [[effort-field-config]] decision 3 refuses to make by inference, only
+  user-triggered. For it: the default stays the default, and deviating
+  from a default is a normal thing to want. Undecided.
 
 ## Not in scope
 

@@ -3,6 +3,7 @@
 Cards grouped into columns by `status`.
 
 ## to_do
+- [Validate the field-role keys in config.yaml against the schema](../workdown-items/config-field-role-validation.md)
 - [Project-level effort field in config.yaml](../workdown-items/effort-field-config.md)
 - [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
