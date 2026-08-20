@@ -3,7 +3,6 @@
 Cards grouped into columns by `status`.
 
 ## to_do
-- [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
 - [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md)
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
@@ -20,6 +19,7 @@ Cards grouped into columns by `status`.
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
+- [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md)
 - [Time tracking](../workdown-items/time-tracking.md)
 
 ## done
