@@ -35,6 +35,12 @@
 	--color-error-fg: #991b1b;
 	--color-error-bg: #fee2e2;
 
+	/* Destructive action color — a solid pair like accent (filled
+	   buttons), not a muted fg/bg text pair like warning and error.
+	   First surface to need it is the confirm dialog. */
+	--color-danger: #dc2626;
+	--color-danger-fg: #ffffff;
+
 	/* Spacing — 4px scale */
 	--space-1: 0.25rem;
 	--space-2: 0.5rem;
@@ -81,4 +87,8 @@
 	--color-warning-bg: #451a03;
 	--color-error-fg: #fca5a5;
 	--color-error-bg: #450a0a;
+
+	/* Dark danger is light — same inversion as the accent pair. */
+	--color-danger: #f87171;
+	--color-danger-fg: #09090b;
 }
