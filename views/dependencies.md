@@ -20,12 +20,10 @@ flowchart TD
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end
     subgraph time-tracking ["Time tracking"]
-        confirm-dialog["Shared confirmation dialog component"]
         effort-timer["Stopwatch in the web app that records effort"]
         pomodoro-timer["Pomodoro mode for the effort timer"]
         timer-notifications["Tell the user when a timed interval is over"]
     end
-    effort-timer --> confirm-dialog
     pomodoro-timer --> effort-timer
     timer-notifications --> pomodoro-timer
 ```

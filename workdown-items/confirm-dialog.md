@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: done
 title: Shared confirmation dialog component
 parent: time-tracking
 ---

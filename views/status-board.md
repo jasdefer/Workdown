@@ -19,7 +19,6 @@ Cards grouped into columns by `status`.
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
-- [Shared confirmation dialog component](../workdown-items/confirm-dialog.md)
 - [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md)
 - [Time tracking](../workdown-items/time-tracking.md)
 
@@ -41,6 +40,7 @@ Cards grouped into columns by `status`.
 - [Computed fields — same-item cross-field expressions](../workdown-items/computed-fields.md)
 - [`when:` — derive a field value by first matching condition](../workdown-items/conditional-field-value.md)
 - [Validate the field-role keys in config.yaml against the schema](../workdown-items/config-field-role-validation.md)
+- [Shared confirmation dialog component](../workdown-items/confirm-dialog.md)
 - [Relocate cross-cutting helpers out of feature modules](../workdown-items/cross-cutting-helpers.md)
 - [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md)
 - [Collapse parallel View* slot variants and unify their validation helpers](../workdown-items/diagnostic-variant-cleanup.md)
