@@ -6,6 +6,7 @@ parent: time-tracking
 depends_on:
 - effort-field-config
 - duration-delta-absent-value
+- confirm-dialog
 ---
 
 ## In plain words
@@ -88,7 +89,10 @@ doing it.
 7. **A running timer lives in the running app, not in the repo.** It
    survives page reloads and is the same timer in every open tab; it is
    lost when the server is stopped. Nothing about a timer in flight is
-   ever written to a file.
+   ever written to a file. The timer is the server's, not a browser's:
+   every browser connected to the same `workdown serve` sees and
+   controls the same timer, and one can stop another's session —
+   accepted for a local, single-user tool.
 8. **Reachable from anywhere in the app** as a pill in the header that
    appears when a timer starts: the elapsed time, nothing else, plus
    an affordance to expand. Expanding opens the full controls: the
@@ -191,7 +195,13 @@ doing it.
    qualifies when the effort field aggregates and the item has at
    least one child over the aggregate's link field — children *with
    values* would make the dialog appear and vanish as children gain
-   their first value.
+   their first value. The refusal travels as a typed outcome, not an
+   error: start's successful reply is one of two shapes, *started*
+   (with the new timer state) or *needs confirmation*. The reply
+   envelope keeps its two kinds, success and failure — a third
+   envelope-level kind for one endpoint's dialog flow would burden
+   every endpoint's contract, and the browser must never parse error
+   text to detect a normal fork in the flow.
 7. **Other tabs learn of timer changes via a second, timer-named
    message** on the live-update stream each tab already holds. The
    message carries no data; the tab refetches the timer state — the
@@ -222,7 +232,37 @@ doing it.
     action area next to "+ New item", a single-slot toast in the app
     layout (decision 4 says one toast, replaced by the next action —
     a queue would be dead machinery), and the split start button with
-    the disabled pomodoro entry of decision 15.
+    the disabled pomodoro entry of decision 15. The confirmation
+    dialog of decision 9 comes from [[confirm-dialog]] — a shared
+    component, not a timer-private one.
+12. **Two time formats, by role.** The ticking elapsed time renders
+    clock-style (`1:23:45`) — a "1h 23min" label does not visibly
+    tick — and carries hours past twenty-four without wrapping (the
+    forgotten weekend reads `65:12:03`). Everything the write touches
+    — the projected write, the before and after values, the toast
+    amounts — uses the duration formatting the field already has
+    everywhere else in the app.
+
+## Implementation plan
+
+Four slices, each compiling and testing green on its own; nothing
+user-visible before the last, which is fine — the milestone ships as
+one pull request.
+
+1. **Core:** the wire shapes both sides agree on (timer state, the
+   two-shape start outcome, the stop result) and the rounding rule,
+   with boundary tests (29s → nothing, 30s → 1min, 90s → 2min).
+2. **Server:** the timer state machine, unit-tested against a fake
+   clock (transitions, refusals, elapsed math, the backwards-clock
+   clamp), and the three endpoints with integration tests like the
+   existing ones — start conflict, needs-confirmation round trip,
+   stop writes the delta, sub-half-minute stop writes nothing, stop
+   on a deleted item keeps the timer running.
+3. **Plumbing:** the timer-named event on the live-update stream.
+4. **UI:** timer store, item slot, header pill and panel, toast,
+   split start button; the dialog lands first via [[confirm-dialog]].
+   UI correctness rides the existing gates; before declaring anything
+   green, the full CI checklist runs in the dev container.
 
 ## Not in scope
 

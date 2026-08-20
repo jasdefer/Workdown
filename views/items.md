@@ -19,6 +19,7 @@
 | [computed-fields](../workdown-items/computed-fields.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [project-constants](../workdown-items/project-constants.md) |
 | [conditional-field-value](../workdown-items/conditional-field-value.md) | done | [polish](../workdown-items/polish.md) | [expression-predicates](../workdown-items/expression-predicates.md), [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
 | [config-field-role-validation](../workdown-items/config-field-role-validation.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
+| [confirm-dialog](../workdown-items/confirm-dialog.md) | in_progress | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [cross-cutting-helpers](../workdown-items/cross-cutting-helpers.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [diagnostic-variant-cleanup](../workdown-items/diagnostic-variant-cleanup.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
@@ -26,7 +27,7 @@
 | [duration-delta-absent-value](../workdown-items/duration-delta-absent-value.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [duration-field-type](../workdown-items/duration-field-type.md) | done | [renderers](../workdown-items/renderers.md) |  |
 | [effort-field-config](../workdown-items/effort-field-config.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [config-field-role-validation](../workdown-items/config-field-role-validation.md) |
-| [effort-timer](../workdown-items/effort-timer.md) | in_progress | [time-tracking](../workdown-items/time-tracking.md) | [effort-field-config](../workdown-items/effort-field-config.md), [duration-delta-absent-value](../workdown-items/duration-delta-absent-value.md) |
+| [effort-timer](../workdown-items/effort-timer.md) | in_progress | [time-tracking](../workdown-items/time-tracking.md) | [effort-field-config](../workdown-items/effort-field-config.md), [duration-delta-absent-value](../workdown-items/duration-delta-absent-value.md), [confirm-dialog](../workdown-items/confirm-dialog.md) |
 | [evaluation-date-single-read](../workdown-items/evaluation-date-single-read.md) | to_do | [misc-work](../workdown-items/misc-work.md) | [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
 | [evaluation-time-now](../workdown-items/evaluation-time-now.md) | done | [polish](../workdown-items/polish.md) |  |
 | [explicit-in-operator](../workdown-items/explicit-in-operator.md) | done | [polish](../workdown-items/polish.md) | [view-filter-editor](../workdown-items/view-filter-editor.md) |

@@ -19,6 +19,7 @@ Cards grouped into columns by `status`.
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
+- [Shared confirmation dialog component](../workdown-items/confirm-dialog.md)
 - [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md)
 - [Time tracking](../workdown-items/time-tracking.md)
 
