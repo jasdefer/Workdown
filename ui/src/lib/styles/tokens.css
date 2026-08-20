@@ -49,6 +49,7 @@
 	--tint-strength: 14%;
 
 	/* Radii */
+	--radius-sm: 0.25rem;
 	--radius-md: 0.375rem;
 	--radius-full: 9999px;
 
