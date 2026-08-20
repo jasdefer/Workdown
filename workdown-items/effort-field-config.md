@@ -1,6 +1,6 @@
 ---
 id: effort-field-config
-status: to_do
+status: done
 title: Project-level effort field in config.yaml
 parent: time-tracking
 depends_on:
@@ -109,19 +109,24 @@ recording work time at all.
 11. **No ADR.** This is a fourth instance of the pattern ADR-008 and
     the three existing keys already establish, not a new architectural
     decision.
-
-## Open questions
-
-- A command-line surface for effort. `effort_field` would be the second
-  field role with a consumer at all — `board_field` powers `workdown
-  move`, and the tree and graph keys are read by nothing — and the
-  first whose consumer is not a command. A one-shot delta —
-  `workdown log <id> 30min` against the configured field — is not the
-  command-line stopwatch [[effort-timer]] rules out, and
-  [[duration-delta-absent-value]] already built the behaviour it would
-  need. Undecided whether it is worth having; it would also give this
-  item something observable to verify against, which it otherwise
-  lacks until the timer exists.
+12. **No `workdown log` command.** A one-shot delta against the
+    configured field was considered — it is not the command-line
+    stopwatch [[effort-timer]] rules out, and
+    [[duration-delta-absent-value]] already built the behaviour it
+    would need. But `workdown set <id> <field> --delta 30min` already
+    does the job, and a second command would be a second spelling of
+    one action — the same reasoning that rejected `none` in decision 9.
+    All it would add is not having to type the field name; if that
+    proves annoying in daily use, the idea can come back, and deciding
+    no now makes that no harder. The cost — no CLI consumer for the
+    key until the timer ships — is the state `tree_field` and
+    `graph_field` live in permanently; the check's tests are the
+    verification.
+13. **An empty value is a typo.** Unset means "no effort field,
+    deliberately"; `effort_field: ""` is almost certainly a deleted
+    value with the key left behind, and warns like an unknown field.
+    Otherwise there would be two spellings of "no timer", which is
+    exactly what decision 9 refused for `none`.
 
 ## Not in scope
 

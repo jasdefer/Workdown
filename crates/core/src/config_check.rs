@@ -15,11 +15,15 @@
 //! only wraps each violation into a config-scoped diagnostic.
 //!
 //! The second half of this module checks the *field-role* keys —
-//! `board_field`, `tree_field`, `graph_field` — the project's answer to
-//! "which field plays this role". Nothing checked them before: only
-//! `board_field` has a consumer at all (`workdown move`, which reports
-//! its own miss when you run it), and a typo in the other two sat in
-//! the file unreported forever.
+//! `board_field`, `tree_field`, `graph_field`, `effort_field` — the
+//! project's answer to "which field plays this role". Nothing checked
+//! the first three before: only `board_field` has a consumer at all
+//! (`workdown move`, which reports its own miss when you run it), and
+//! a typo in the other two sat in the file unreported forever.
+//! `effort_field` needs the eager check most: its consumer is a timer
+//! in the web app with no command to run and no error to print, and
+//! unset legitimately means "no timer" — so without this check a typo
+//! and a deliberate blank would be indistinguishable.
 //!
 //! Every diagnostic here is project-wide, not pinned to a view, so it
 //! never marks a single view unrenderable: a bad default degrades every
@@ -117,10 +121,11 @@ fn field_roles(defaults: &ViewDefaults) -> Vec<FieldRoleReference<'_>> {
         board_field,
         tree_field,
         graph_field,
+        effort_field,
         display: _, // checked by `check_display_roles`, not as a field role
     } = defaults;
 
-    vec![
+    let mut roles = vec![
         FieldRoleReference {
             slot: "defaults.board_field",
             field_name: board_field,
@@ -145,7 +150,25 @@ fn field_roles(defaults: &ViewDefaults) -> Vec<FieldRoleReference<'_>> {
             expected_label: "link or links",
             inverse_names_allowed: true,
         },
-    ]
+    ];
+
+    // Unlike its three siblings the key is optional, and unset is a
+    // normal state — it means "no effort field", and the surfaces that
+    // would need one are simply absent. An empty string is not that
+    // state's second spelling: it falls through to the unknown-field
+    // warning below, because a deleted value with the key left behind
+    // is a typo, not a decision.
+    if let Some(effort_field) = effort_field {
+        roles.push(FieldRoleReference {
+            slot: "defaults.effort_field",
+            field_name: effort_field,
+            allowed: &[FieldType::Duration],
+            expected_label: "duration",
+            inverse_names_allowed: false,
+        });
+    }
+
+    roles
 }
 
 /// Check that one field-role key names a field that exists and can play
@@ -231,6 +254,16 @@ mod tests {
         graph_field: &str,
         display: DisplayConfig,
     ) -> Config {
+        config_with_all_roles(board_field, tree_field, graph_field, None, display)
+    }
+
+    fn config_with_all_roles(
+        board_field: &str,
+        tree_field: &str,
+        graph_field: &str,
+        effort_field: Option<&str>,
+        display: DisplayConfig,
+    ) -> Config {
         Config {
             project: ProjectMeta {
                 name: "test".into(),
@@ -247,6 +280,7 @@ mod tests {
                 board_field: board_field.into(),
                 tree_field: tree_field.into(),
                 graph_field: graph_field.into(),
+                effort_field: effort_field.map(str::to_owned),
                 display,
             },
             working_days: None,
@@ -286,6 +320,13 @@ mod tests {
                 FieldTypeConfig::Links {
                     allow_cycles: None,
                     inverse: None,
+                },
+            ),
+            (
+                "effort",
+                FieldTypeConfig::Duration {
+                    min: None,
+                    max: None,
                 },
             ),
         ])
@@ -513,6 +554,95 @@ mod tests {
             config_kind(&diagnostics[0]),
             ConfigDiagnosticKind::ConfigUnknownField { slot, field_name }
                 if *slot == "defaults.tree_field" && field_name == "children"
+        ));
+    }
+
+    fn roles_with_effort(effort_field: Option<&str>) -> Config {
+        config_with_all_roles(
+            "status",
+            "parent",
+            "depends_on",
+            effort_field,
+            DisplayConfig::default(),
+        )
+    }
+
+    #[test]
+    fn unset_effort_field_is_a_normal_state() {
+        // Unlike its three mandatory siblings the key is optional, and
+        // no key means "no effort field, deliberately" — nothing to
+        // check, nothing to report.
+        let config = roles_with_effort(None);
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn effort_field_naming_a_duration_produces_no_diagnostics() {
+        let config = roles_with_effort(Some("effort"));
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn unknown_effort_field_is_reported_as_a_warning() {
+        // The check this key exists for: its consumer is a timer in
+        // the web app, which has no command to run and no error to
+        // print — without this warning a typo would just mean "no
+        // timer" and say nothing.
+        let config = roles_with_effort(Some("efort"));
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert!(matches!(
+            config_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ConfigUnknownField { slot, field_name }
+                if *slot == "defaults.effort_field" && field_name == "efort"
+        ));
+    }
+
+    #[test]
+    fn effort_field_must_be_a_duration() {
+        let config = roles_with_effort(Some("status"));
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            config_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ConfigFieldTypeMismatch { slot, field_name, actual_type, expected }
+                if *slot == "defaults.effort_field"
+                    && field_name == "status"
+                    && *actual_type == FieldType::Choice
+                    && expected == "duration"
+        ));
+    }
+
+    #[test]
+    fn empty_effort_field_is_a_typo_not_a_second_unset() {
+        // `effort_field: ""` is a deleted value with the key left
+        // behind. Unset already means "no effort field", and a second
+        // spelling of that state would only be something to learn —
+        // so the empty string warns like any other name the schema
+        // does not know.
+        let config = roles_with_effort(Some(""));
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert!(matches!(
+            config_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ConfigUnknownField { slot, field_name }
+                if *slot == "defaults.effort_field" && field_name.is_empty()
+        ));
+    }
+
+    #[test]
+    fn virtual_id_is_rejected_as_effort_field() {
+        let config = roles_with_effort(Some("id"));
+        let diagnostics = evaluate(&config, &simple_schema(), config_path());
+        assert_eq!(diagnostics.len(), 1, "got: {diagnostics:?}");
+        assert!(matches!(
+            config_kind(&diagnostics[0]),
+            ConfigDiagnosticKind::ConfigVirtualIdNotAllowed { slot }
+                if *slot == "defaults.effort_field"
         ));
     }
 

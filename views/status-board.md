@@ -3,7 +3,6 @@
 Cards grouped into columns by `status`.
 
 ## to_do
-- [Project-level effort field in config.yaml](../workdown-items/effort-field-config.md)
 - [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
 - [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md)
@@ -47,6 +46,7 @@ Cards grouped into columns by `status`.
 - [Validate `defaults.display` in config.yaml against the schema](../workdown-items/display-defaults-validation.md)
 - [Duration delta starts from zero on an absent field](../workdown-items/duration-delta-absent-value.md)
 - [Add `duration` field type](../workdown-items/duration-field-type.md)
+- [Project-level effort field in config.yaml](../workdown-items/effort-field-config.md)
 - [Resolve the current date at evaluation time, reproducibly](../workdown-items/evaluation-time-now.md)
 - [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md)
 - [Comparisons, equality and booleans in the expression grammar](../workdown-items/expression-predicates.md)

@@ -18,7 +18,8 @@ pub struct Config {
     pub paths: Paths,
     /// Path to the schema file (relative to project root).
     pub schema: PathBuf,
-    /// CLI default settings (which fields to use for views).
+    /// Project-wide field roles and display defaults — which field
+    /// plays which role for the surfaces that need one.
     pub defaults: ViewDefaults,
     /// Project-wide working calendar — the days of the week that count
     /// as work days for views like workload. `None` means inherit the
@@ -82,7 +83,8 @@ pub struct ServeConfig {
     pub port: Option<u16>,
 }
 
-/// Default field selections for CLI views.
+/// Project-wide field roles: the project's answer to "which field
+/// plays this role", for surfaces that have nowhere else to ask.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ViewDefaults {
@@ -92,6 +94,16 @@ pub struct ViewDefaults {
     pub tree_field: String,
     /// Field used for dependency graph (must be a `links` field).
     pub graph_field: String,
+    /// Field that carries measured effort (must be a `duration`
+    /// field). Optional, and unset is a normal state: it means the
+    /// project records no effort, and surfaces that would write it —
+    /// the web app's timer — are simply absent. Never inferred, even
+    /// for a project with exactly one duration field: an existing
+    /// duration field is most likely a *calendar* duration, and
+    /// aiming a stopwatch at it would commit measured work into a
+    /// field meaning "this item spans three weeks".
+    #[serde(default)]
+    pub effort_field: Option<String>,
     /// Project-wide display roles, inherited by every view. A view's
     /// own `display:` block overrides these per role. Omitted section
     /// means no project defaults — views fall through to the per-kind

@@ -95,6 +95,7 @@ impl AppState {
                 board_field: "status".into(),
                 tree_field: "parent".into(),
                 graph_field: "depends_on".into(),
+                effort_field: None,
                 display: DisplayConfig::default(),
             },
             working_days: None,

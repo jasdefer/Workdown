@@ -85,17 +85,15 @@ doing it.
     front end. Exposing `defaults.effort_field` is part of this item,
     not of [[effort-field-config]].
 
-## Open questions
-
-- A picker that deviates from the configured field. The config key names
-  the project's effort field; a control on the timer could let a session
-  write to a different duration field instead. Against it: that is how
-  someone would split effort by activity, which both this item and
-  [[effort-field-config]] exclude, and it puts calendar duration one
-  click away from receiving measured work — the same wrong write
-  [[effort-field-config]] decision 3 refuses to make by inference, only
-  user-triggered. For it: the default stays the default, and deviating
-  from a default is a normal thing to want. Undecided.
+13. **No field picker.** A control on the timer letting a session
+    write to a different duration field was considered — deviating
+    from a default is a normal thing to want. Rejected: that is how
+    someone would split effort by activity, which this item excludes,
+    and it puts calendar duration one click away from receiving
+    measured work — the same wrong write [[effort-field-config]]
+    decision 3 refuses to make by inference, only user-triggered. A
+    one-off session that belongs elsewhere is fixed afterwards with a
+    delta on the right field.
 
 ## Not in scope
 
