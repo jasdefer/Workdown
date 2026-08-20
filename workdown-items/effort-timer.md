@@ -48,22 +48,34 @@ doing it.
    `workdown validate` and rejected it, because a project that uses
    durations for calendar planning and wants no timer would carry the
    warning forever. Someone looking for a timer looks where the timer
-   would be.
-3. **Start, pause, stop.** Start and pause never write anything; stop
-   writes the accumulated time and returns the timer to zero. A timer
-   that is never stopped never changes a file — the Friday evening you
-   forget about costs nothing until you deal with it on Monday.
+   would be. When the schema contains no duration field at all, the
+   slot shows nothing — a hint naming a config key that no existing
+   field could satisfy is not actionable. (Revised: the hint
+   originally appeared unconditionally.)
+3. **Start and stop — no pause.** Start never writes anything; stop
+   writes the elapsed time and returns the timer to zero. An
+   interruption is a stop and a later start: the same total effort,
+   written in pieces. A timer that is never stopped never changes a
+   file — the Friday evening you forget about costs nothing until you
+   deal with it on Monday. (Revised: this originally had a pause
+   between start and stop. Pause bought only "one session, one write"
+   and charged for it with a visibly distinct paused pill state, a
+   resume control and a paused-since line — stop-then-start does the
+   same job with machinery the feature already has.)
 4. **A stop says what it did, and offers to take it back.** A toast
    reports the amount added and the value before and after, and stays
    until dismissed or until the next timer action — an undo that
    expires after a few seconds is hostile to exactly the case it
-   exists for. *Undo* reverts the write; *Adjust* turns the added
-   amount into an editable duration pre-filled with what was written,
-   and confirming makes the effort the before-value plus the corrected
-   amount — which is also how an over-long forgotten session gets
-   fixed. Adjusting to zero is undo. Both are ordinary writes to the
-   effort field. The toast lives at the application level, not inside
-   the item view, because a stop can happen from any page.
+   exists for. *Undo* reverts the write: the effort returns to exactly
+   the before-value, including becoming absent again if it was absent
+   before. An ordinary write to the effort field. A stop that writes
+   nothing (see 5) still gets a toast saying so — silence after
+   pressing stop reads as breakage. The toast lives at the application
+   level, not inside the item view, because a stop can happen from any
+   page. (Revised: an *Adjust* control was originally here.
+   Corrections beyond undo need no special machinery — the effort
+   field is editable in the item form like any other field, which is
+   also how an over-long forgotten session gets fixed.)
 5. **Rounded to the minute** when the accumulated time is written.
    Anything under half a minute writes nothing at all.
 6. **One timer at a time, and no takeover.** While a timer runs, no
@@ -79,17 +91,16 @@ doing it.
    ever written to a file.
 8. **Reachable from anywhere in the app** as a pill in the header that
    appears when a timer starts: the elapsed time, nothing else, plus
-   an affordance to expand — and a visibly distinct paused state,
-   because a frozen number is indistinguishable from a ticking one at
-   a glance. Expanding opens the full controls: the item's title
-   linking to it, the wall-clock start time, the elapsed time, pause
-   and stop, and the projected write — "effort: 2h → 2h 42min on
+   an affordance to expand. Expanding opens the full controls: the
+   item's title linking to it, the wall-clock start time, the elapsed
+   time, stop, and the projected write — "effort: 2h → 2h 42min on
    stop" — naming the field it writes to and moving once a minute as
    the rounding dictates; under half a minute it says instead that
-   stop writes nothing. While paused it also says since when. Nothing
-   more: no roll-up reminder (the confirmation at start was the
-   decision point, see 9) and no further item fields (the title link
-   is the door to those — this is a timer, not a second item panel).
+   stop writes nothing. Nothing more: no roll-up reminder (the
+   confirmation at start was the decision point, see 9) and no further
+   item fields (the title link is the door to those — this is a timer,
+   not a second item panel). (Revised: the paused state, its distinct
+   pill look and the paused-since line left with pause itself, see 3.)
 9. **Timing an item whose effort rolls up from its children is
    allowed** and treated as what it is — a hand-written value that
    overrides the roll-up. The timer says so before it starts rather
@@ -128,13 +139,90 @@ doing it.
     where the hint naming `defaults.effort_field` appears. No separate
     timer window or pane — a timer with three buttons does not carry
     enough content to justify its own surface, and the item view
-    already provides the context.
+    already provides the context. The slot has exactly three states:
+    no timer running — the start button; this item being timed — it
+    says so, and clicking opens the header pill's expanded panel
+    rather than showing a second copy of the controls (one component,
+    never visible twice); another item being timed — the behavior of
+    decision 6.
 15. **The start control is a split button with a mode slot.**
     Stopwatch is the only mode this item implements;
     [[pomodoro-timer]] wires the second mode into the same control.
     The pomodoro option may sit visibly disabled during development
     because the whole milestone lands as one pull request — nothing
     dead reaches a release.
+
+## Implementation decisions
+
+1. **One timer in server memory, behind a single lock.** Decision 7
+   forces server memory; the lock is what makes two tabs pressing stop
+   at the same moment safe — one stop takes the timer and writes, the
+   other is told no timer is running. No double write possible.
+2. **Timestamps, not counters.** The timer's whole state is *which
+   item* and *when started*; elapsed time is current time minus start
+   time, computed fresh whenever asked. Wall-clock time, not the
+   machine's uptime counter — the uptime counter freezes while a
+   laptop sleeps, and the forgotten weekend timer of decision 3 must
+   keep counting. Elapsed time is clamped at zero so a backwards clock
+   jump cannot go negative.
+3. **Three endpoints:** get timer state, start (item plus an optional
+   confirmed flag, see 6), stop. Wrong moves get clean refusals —
+   start while a timer runs (the no-takeover rule of decision 6,
+   enforced server-side too), stop when nothing runs.
+4. **Stop writes on the server, as a duration delta** through the same
+   code path as `workdown set --delta` — taking the timer and writing
+   are one indivisible step. A delta rather than an overwrite: a hand
+   edit made during the session survives, and an absent effort field
+   starts from zero ([[duration-delta-absent-value]]). The stop
+   response carries what the toast needs: field, amount added, value
+   before and after, and any warnings the write caused.
+5. **The effort field reaches the UI on the timer endpoint**, in one
+   of three states: *unconfigured* (the slot shows the hint of
+   decision 2, when a duration field exists to point at), *invalid*
+   (the key names a field that is missing or not a duration — the
+   slot says that instead of pretending the key is absent), *ready*
+   (here is the field). No other part of `config.yaml` is exposed.
+   Config is read once at server start, so the hint tells the user to
+   restart after setting the key.
+6. **The roll-up confirmation of decision 9 is decided by the
+   server** — the browser cannot see an item's children. Start on a
+   qualifying item is refused with "needs confirmation"; the app shows
+   the dialog and sends start again with the confirmed flag. An item
+   qualifies when the effort field aggregates and the item has at
+   least one child over the aggregate's link field — children *with
+   values* would make the dialog appear and vanish as children gain
+   their first value.
+7. **Other tabs learn of timer changes via a second, timer-named
+   message** on the live-update stream each tab already holds. The
+   message carries no data; the tab refetches the timer state — the
+   same ping-then-refetch pattern everything else uses. Not the
+   generic file-change ping: that would refetch the timer on every
+   file save and reload the whole page on every timer action.
+8. **Rounding lives on the server** (nearest minute, thirty seconds
+   rounds up, zero minutes means no write) and is mirrored as the same
+   one-line rule in the browser for the projected write of decision 8,
+   so projection and write can never disagree. Both sides are tested
+   on the boundaries: 29s → nothing, 30s → 1min, 90s → 2min.
+9. **Undo is a plain field write through the existing edit endpoint:**
+   set the before-value back, or unset when the field was absent
+   before. No server-side undo memory.
+10. **A failed stop write keeps the timer running** and puts the error
+    in the toast — stop again after fixing the cause, or start another
+    timer to abandon the session deliberately. A transient failure
+    must not discard measured time.
+11. **Code placement follows the house pattern** (as field editing
+    does): the message shapes both sides must agree on, and the
+    rounding rule, live in the core crate — where TypeScript type
+    generation already looks and where the write path's set machinery
+    already is. The timer state machine lives in the server crate,
+    written against an injected clock so tests never wait. In the UI:
+    a timer store beside the schema store (ticking locally between
+    refreshes, anchored as "server said X seconds, Y moments ago", so
+    a wrong browser clock cannot skew it), the pill in the header's
+    action area next to "+ New item", a single-slot toast in the app
+    layout (decision 4 says one toast, replaced by the next action —
+    a queue would be dead machinery), and the split start button with
+    the disabled pomodoro entry of decision 15.
 
 ## Not in scope
 
