@@ -27,8 +27,12 @@
 </aside>
 
 <style>
+	/* Anchored to `.app-main` (the layout marks it `position: relative`),
+	   not the viewport, so the slide-over fills the content area below
+	   the app header — the header and the timer pill's expanded panel
+	   stay reachable while the panel is open. */
 	.panel {
-		position: fixed;
+		position: absolute;
 		top: 0;
 		right: 0;
 		bottom: 0;
