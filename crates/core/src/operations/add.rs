@@ -169,7 +169,14 @@ pub fn run_add(
     // Pre-write hard-fails are still possible from I/O and slug derivation.
     let yaml_content = build_frontmatter_yaml(&frontmatter, &schema, user_set_id);
 
-    // Write the file. Body (template or empty) follows the closing delimiter.
+    // Write the file. The items directory may not exist yet (git doesn't
+    // keep empty directories) — create it rather than failing the first
+    // add on a fresh project. Body (template or empty) follows the
+    // closing delimiter.
+    std::fs::create_dir_all(&items_path).map_err(|source| AddError::WriteFile {
+        path: items_path.clone(),
+        source,
+    })?;
     let file_content = format!("---\n{yaml_content}---\n{body}");
     std::fs::write(&file_path, &file_content).map_err(|source| AddError::WriteFile {
         path: file_path.clone(),

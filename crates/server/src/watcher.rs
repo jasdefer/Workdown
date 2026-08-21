@@ -56,6 +56,14 @@ pub fn start(
     })
     .context("initialising filesystem watcher")?;
 
+    // A missing work-items directory is a valid empty project (git keeps
+    // no empty directories), but a watch can only be placed on a path
+    // that exists — and without it, the first item added through the UI
+    // would land in an unwatched directory and never live-update. Create
+    // it up front; if creation fails, the skip below leaves it unwatched
+    // and the per-request project load reports the real problem.
+    let _ = std::fs::create_dir_all(project_root.join(&config.paths.work_items));
+
     for directory in watch_directories(config, project_root) {
         // A configured directory may not exist yet (e.g. no templates
         // dir). Skip the missing ones rather than failing server boot.
@@ -131,6 +139,20 @@ mod tests {
         assert!(!is_watched_file(Path::new("4913"))); // vim probe, no extension
         assert!(!is_watched_file(Path::new("notes.txt")));
         assert!(!is_watched_file(Path::new("workdown-items"))); // a directory
+    }
+
+    #[test]
+    fn start_creates_missing_items_directory() {
+        let state = crate::state::AppState::test_stub();
+        let root = tempfile::tempdir().unwrap();
+        // Only `.workdown` exists — the items directory is missing, the
+        // normal state of a fresh clone with no items.
+        std::fs::create_dir_all(root.path().join(".workdown")).unwrap();
+
+        let (events, _) = broadcast::channel(1);
+        let _guard = start(&state.config, root.path(), events).unwrap();
+
+        assert!(root.path().join("workdown-items").is_dir());
     }
 
     #[test]

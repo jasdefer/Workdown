@@ -55,8 +55,10 @@ impl Store {
     /// production code paths load through [`Store::load_with_resources`];
     /// this convenience exists for tests and resource-free callers.
     ///
-    /// Only returns `Err` if the directory itself cannot be read.
-    /// Per-file and per-field problems are collected in [`Store::diagnostics`].
+    /// Only returns `Err` if the directory itself cannot be read. A
+    /// directory that doesn't exist loads as an empty store — a valid
+    /// "project with no items yet" state. Per-file and per-field
+    /// problems are collected in [`Store::diagnostics`].
     pub fn load(items_dir: &Path, schema: &Schema) -> Result<Store, std::io::Error> {
         Self::load_with_resources(items_dir, schema, &Resources::default())
     }
@@ -92,17 +94,37 @@ impl Store {
     ) -> Result<Store, std::io::Error> {
         let mut diagnostics = Vec::new();
 
+        // A missing items directory is a project with no items, not an
+        // error: git doesn't keep empty directories, so a fresh clone of
+        // a project whose items were all deleted — or whose configured
+        // path was never created — legitimately has none. A path that
+        // exists but isn't a directory, or one whose metadata can't be
+        // read (permissions), is still a hard error.
+        let directory_exists = match std::fs::metadata(items_dir) {
+            Ok(metadata) if metadata.is_dir() => true,
+            Ok(_) => {
+                return Err(std::io::Error::other(format!(
+                    "{} exists but is not a directory",
+                    items_dir.display()
+                )))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+            Err(e) => return Err(e),
+        };
+
         // 1. Collect all .md file paths, sorted alphabetically for determinism.
         let mut paths = Vec::new();
-        for entry in walkdir::WalkDir::new(items_dir)
-            .min_depth(1)
-            .max_depth(1)
-            .sort_by_file_name()
-        {
-            let entry = entry.map_err(std::io::Error::other)?;
-            let path = entry.into_path();
-            if path.extension().is_some_and(|ext| ext == "md") {
-                paths.push(path);
+        if directory_exists {
+            for entry in walkdir::WalkDir::new(items_dir)
+                .min_depth(1)
+                .max_depth(1)
+                .sort_by_file_name()
+            {
+                let entry = entry.map_err(std::io::Error::other)?;
+                let path = entry.into_path();
+                if path.extension().is_some_and(|ext| ext == "md") {
+                    paths.push(path);
+                }
             }
         }
 
@@ -380,6 +402,31 @@ mod tests {
 
         let task_b = store.get("task-b").unwrap();
         assert_eq!(task_b.fields["status"], FieldValue::Choice("done".into()));
+    }
+
+    #[test]
+    fn load_missing_directory_returns_empty_store() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let path = dir.path().join("does-not-exist");
+        let schema = test_schema();
+        let store = Store::load(&path, &schema).unwrap();
+
+        assert!(store.is_empty());
+        assert!(!store.has_diagnostics());
+    }
+
+    #[test]
+    fn load_errors_when_path_is_a_file() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let path = dir.path().join("items");
+        fs::write(&path, "not a directory").unwrap();
+        let schema = test_schema();
+
+        let error = match Store::load(&path, &schema) {
+            Err(error) => error,
+            Ok(_) => panic!("expected load to fail on a file path"),
+        };
+        assert!(error.to_string().contains("not a directory"));
     }
 
     #[test]

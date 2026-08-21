@@ -132,6 +132,21 @@ fn add_creates_work_item_file() {
 }
 
 #[test]
+fn add_creates_missing_items_directory() {
+    let (_directory, root) = setup_project();
+    let config = load_test_config(&root);
+
+    // A fresh clone of a project with no items has no items directory
+    // at all (git keeps no empty directories) — add must create it.
+    fs::remove_dir(root.join("workdown-items")).unwrap();
+
+    let outcome = run_add(&config, &root, fields(&[("title", "First Item")]), None).unwrap();
+
+    assert!(outcome.path.exists());
+    assert_eq!(outcome.path, root.join("workdown-items/first-item.md"));
+}
+
+#[test]
 fn add_applies_default_generators() {
     let (_directory, root) = setup_project();
     let config = load_test_config(&root);
