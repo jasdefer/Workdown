@@ -45,8 +45,13 @@ pub enum EffortFieldState {
     /// The key names something no timer can write to. `problem` is a
     /// human-readable clause; the UI wraps it with the key name and the
     /// restart hint (config is read once at server start).
-    Invalid { field: String, problem: String },
-    Ready { field: String },
+    Invalid {
+        field: String,
+        problem: String,
+    },
+    Ready {
+        field: String,
+    },
 }
 
 impl EffortFieldState {
@@ -68,12 +73,10 @@ impl EffortFieldState {
         }
         match schema.fields.get(field) {
             None => invalid(format!("schema.yaml defines no field named '{field}'")),
-            Some(definition) if definition.field_type() != FieldType::Duration => {
-                invalid(format!(
-                    "field '{field}' has type {}, but effort needs a duration",
-                    definition.field_type()
-                ))
-            }
+            Some(definition) if definition.field_type() != FieldType::Duration => invalid(format!(
+                "field '{field}' has type {}, but effort needs a duration",
+                definition.field_type()
+            )),
             Some(_) => Self::Ready {
                 field: field.to_owned(),
             },
@@ -133,7 +136,9 @@ pub struct StartTimer {
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum TimerStartOutcome {
-    Started { timer: TimerState },
+    Started {
+        timer: TimerState,
+    },
     /// The item's effort rolls up from children; starting would record
     /// a hand-written value that overrides the roll-up. The app names
     /// the override in a confirmation dialog before anything starts.

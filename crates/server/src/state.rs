@@ -19,10 +19,13 @@
 //! wrapping in `Arc`.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use tokio::sync::broadcast;
 
 use workdown_core::model::config::Config;
+
+use crate::timer::TimerService;
 
 /// Capacity of the live-update broadcast channel. Pings are contentless
 /// and the client coalesces anyway (any ping → one refetch of the
@@ -49,6 +52,11 @@ pub struct AppState {
     /// request evaluates `$today` at its own current local date, so a
     /// long-running unpinned server stays current across midnight.
     pub evaluation_date_override: Option<chrono::NaiveDate>,
+    /// The one effort timer this process owns (see [`crate::timer`]).
+    /// The single exception to "no `Arc` here": unlike everything else
+    /// in this struct the timer is genuinely shared mutable state — every
+    /// cloned handler must see the *same* lock, not a copy of it.
+    pub timer: Arc<TimerService>,
 }
 
 impl AppState {
@@ -67,6 +75,7 @@ impl AppState {
             config_path,
             events,
             evaluation_date_override,
+            timer: Arc::new(TimerService::system()),
         }
     }
 }

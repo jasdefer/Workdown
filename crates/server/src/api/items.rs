@@ -139,7 +139,10 @@ async fn set_field(
 ///   op is invalid for the field's type, `id` isn't mutable, the current
 ///   value can't support the op, or the project/target won't parse.
 /// - `500` — a genuine server-side I/O failure reading or writing.
-fn set_error_status(error: &SetError) -> StatusCode {
+///
+/// `pub(super)` because the timer's stop write goes through the same
+/// `run_set` path and fails with the same taxonomy.
+pub(super) fn set_error_status(error: &SetError) -> StatusCode {
     match error {
         SetError::UnknownItem { .. } => StatusCode::NOT_FOUND,
 
