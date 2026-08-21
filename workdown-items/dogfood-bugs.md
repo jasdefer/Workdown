@@ -1,6 +1,6 @@
 ---
 id: dogfood-bugs
-status: to_do
+status: done
 title: Bugs found in daily use
 ---
 
