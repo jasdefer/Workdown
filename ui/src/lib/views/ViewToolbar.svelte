@@ -8,6 +8,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api/client';
+	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
 
 	interface Props {
 		/** The view whose page hosts this toolbar. */
@@ -18,9 +19,10 @@
 
 	let deleting = $state(false);
 	let deleteError = $state<string | null>(null);
+	let confirmingDelete = $state(false);
+	let deleteButton = $state<HTMLButtonElement>();
 
 	async function deleteView(): Promise<void> {
-		if (!confirm(`Delete view '${viewId}' from views.yaml?`)) return;
 		deleting = true;
 		deleteError = null;
 		const result = await api.deleteView(viewId);
@@ -36,10 +38,31 @@
 
 <div class="view-toolbar">
 	<a class="toolbar-action" href={`/views/${encodeURIComponent(viewId)}/edit`}>Edit view</a>
-	<button type="button" class="toolbar-action danger" disabled={deleting} onclick={deleteView}>
+	<button
+		type="button"
+		class="toolbar-action danger"
+		disabled={deleting}
+		bind:this={deleteButton}
+		onclick={() => (confirmingDelete = true)}
+	>
 		{deleting ? 'Deleting…' : 'Delete view'}
 	</button>
 </div>
+
+{#if confirmingDelete && deleteButton !== undefined}
+	<ConfirmDialog
+		anchor={deleteButton}
+		title="Delete view '{viewId}'?"
+		body="This removes the view from views.yaml."
+		confirmLabel="Delete"
+		destructive
+		onconfirm={() => {
+			confirmingDelete = false;
+			void deleteView();
+		}}
+		oncancel={() => (confirmingDelete = false)}
+	/>
+{/if}
 
 {#if deleteError !== null}
 	<p class="delete-error" role="alert">{deleteError}</p>

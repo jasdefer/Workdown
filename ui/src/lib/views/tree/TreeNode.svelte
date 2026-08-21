@@ -18,6 +18,8 @@
 	import type { TreeNode } from '$lib/api/generated/TreeNode';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { itemHref } from '$lib/items/itemLink';
+	import { timerStore } from '$lib/stores/timer.svelte';
+	import RecordingDot from '$lib/timer/RecordingDot.svelte';
 	import Cell from '$lib/views/table/Cell.svelte';
 	import { cardLabel } from '$lib/views/prettify';
 	import Self from './TreeNode.svelte';
@@ -60,6 +62,9 @@
 			</button>
 		{:else}
 			<span class="caret leaf" aria-hidden="true">·</span>
+		{/if}
+		{#if timerStore.runningItemId === id}
+			<RecordingDot />
 		{/if}
 		<span class="id" title={id}>{id}</span>
 		<a class="title-text" href={itemHref(id)}>{displayTitle}</a>

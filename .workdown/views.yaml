@@ -4,6 +4,8 @@ views:
   field: status
 - id: hierarchy
   type: tree
+  where:
+  - status not in done,removed
   display:
     fields:
     - status

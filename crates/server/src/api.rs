@@ -17,6 +17,7 @@ use crate::state::AppState;
 pub mod events;
 pub mod items;
 pub mod schema;
+pub mod timer;
 pub mod views;
 
 /// Build the `/api` router. State-typed `Router<AppState>` so child
@@ -27,4 +28,5 @@ pub fn router() -> Router<AppState> {
         .merge(schema::router())
         .merge(items::router())
         .merge(events::router())
+        .merge(timer::router())
 }

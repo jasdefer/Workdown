@@ -5,6 +5,22 @@ parent: multi-project-support
 title: Design multi-project support — set decisions and break out follow-up work
 ---
 
+## In plain words
+
+Turn the brainstorm about working across several repositories into firm
+decisions, and split the resulting building work into separate items.
+
+The parent item collects ideas and open questions but commits to
+nothing. This item's job is to answer each question with a reason, mark
+anything deliberately postponed, and leave behind clearly scoped
+follow-up items to implement. No product code is written here — the
+output is decisions and a work breakdown. **Example:** one open
+question is what should happen when two repositories describe the same
+person differently and the top-level project says nothing about it; the
+design work picks a winner and records why. It is finished when every
+idea is either confirmed, revised, or explicitly parked with a note on
+when to look at it again.
+
 Turn the initial thoughts collected in [[multi-project-support]] into committed decisions, then spawn the implementation milestones and issues that follow.
 
 ## Goal

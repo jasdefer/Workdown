@@ -37,6 +37,10 @@ use workdown_core::query::types::Operator;
 use workdown_core::schema_data::{
     FieldSchema, FieldTypeOperators, PaletteColor, ResourceList, ResourceOption, SchemaData,
 };
+use workdown_core::timer_data::{
+    EffortFieldState, StartTimer, TimerMode, TimerPhase, TimerStartOutcome, TimerState,
+    TimerStopResult, TimerWrite,
+};
 use workdown_core::view_data::{
     AggregateValue, AxisValue, BarChartBar, BarChartData, BoardColumn, BoardData, Card, CardField,
     Column, Edge, GanttBar, GanttByDepthData, GanttByInitiativeData, GanttData, GraphData,
@@ -96,6 +100,14 @@ const ALL_TYPES: &[&str] = &[
     "UpdateView",
     "ViewDefinition",
     "ViewMutationResult",
+    "EffortFieldState",
+    "TimerMode",
+    "TimerPhase",
+    "TimerState",
+    "StartTimer",
+    "TimerStartOutcome",
+    "TimerStopResult",
+    "TimerWrite",
     "ItemDetail",
     "ViewData",
     "Card",
@@ -192,6 +204,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_type::<UpdateView>(&target_dir)?;
     write_type::<ViewDefinition>(&target_dir)?;
     write_type::<ViewMutationResult>(&target_dir)?;
+
+    // Timer contracts (GET /api/timer, POST /api/timer/start, POST /api/timer/stop).
+    write_type::<EffortFieldState>(&target_dir)?;
+    write_type::<TimerMode>(&target_dir)?;
+    write_type::<TimerPhase>(&target_dir)?;
+    write_type::<TimerState>(&target_dir)?;
+    write_type::<StartTimer>(&target_dir)?;
+    write_type::<TimerStartOutcome>(&target_dir)?;
+    write_type::<TimerStopResult>(&target_dir)?;
+    write_type::<TimerWrite>(&target_dir)?;
 
     // Single-item read projection (GET /api/items/:id).
     write_type::<ItemDetail>(&target_dir)?;

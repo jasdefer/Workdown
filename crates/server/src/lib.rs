@@ -12,6 +12,7 @@
 pub mod api;
 pub mod envelope;
 pub mod state;
+pub mod timer;
 pub mod watcher;
 
 use std::net::SocketAddr;

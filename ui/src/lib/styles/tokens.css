@@ -35,6 +35,19 @@
 	--color-error-fg: #991b1b;
 	--color-error-bg: #fee2e2;
 
+	/* Destructive action color — a solid pair like accent (filled
+	   buttons), not a muted fg/bg text pair like warning and error.
+	   First surface to need it is the confirm dialog. */
+	--color-danger: #dc2626;
+	--color-danger-fg: #ffffff;
+
+	/* The recording red: the timer's dot, and its border/stroke stand-ins
+	   on surfaces a dot can't reach (gantt bar, graph node, treemap tile).
+	   Aliased to the danger red — the record-button red — so "recording"
+	   has a name of its own and can be retuned without touching danger.
+	   The alias resolves at use time, so the dark override flows through. */
+	--color-recording: var(--color-danger);
+
 	/* Spacing — 4px scale */
 	--space-1: 0.25rem;
 	--space-2: 0.5rem;
@@ -49,6 +62,7 @@
 	--tint-strength: 14%;
 
 	/* Radii */
+	--radius-sm: 0.25rem;
 	--radius-md: 0.375rem;
 	--radius-full: 9999px;
 
@@ -80,4 +94,8 @@
 	--color-warning-bg: #451a03;
 	--color-error-fg: #fca5a5;
 	--color-error-bg: #450a0a;
+
+	/* Dark danger is light — same inversion as the accent pair. */
+	--color-danger: #f87171;
+	--color-danger-fg: #09090b;
 }

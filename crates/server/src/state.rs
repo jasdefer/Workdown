@@ -19,10 +19,13 @@
 //! wrapping in `Arc`.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use tokio::sync::broadcast;
 
 use workdown_core::model::config::Config;
+
+use crate::timer::TimerService;
 
 /// Capacity of the live-update broadcast channel. Pings are contentless
 /// and the client coalesces anyway (any ping → one refetch of the
@@ -44,11 +47,25 @@ pub struct AppState {
     /// connection subscribes a receiver. `Sender` stays usable with zero
     /// receivers (no browser connected), so `send` failing is not an error.
     pub events: broadcast::Sender<()>,
+    /// The timer's own announcement board, same mechanics as `events`
+    /// but delivered as a *named* SSE event so tabs refetch only the
+    /// timer state — deliberately not the generic file-change ping,
+    /// which would refetch the timer on every file save and reload the
+    /// whole page on every timer action. A separate channel (rather
+    /// than a kind enum on one channel) keeps a lagged receiver
+    /// unambiguous: overflow on this channel can only mean missed
+    /// timer pings.
+    pub timer_events: broadcast::Sender<()>,
     /// Pinned evaluation date from `serve --as-of`, forwarded to every
     /// per-request `load_project` call. `None` (the default) means each
     /// request evaluates `$today` at its own current local date, so a
     /// long-running unpinned server stays current across midnight.
     pub evaluation_date_override: Option<chrono::NaiveDate>,
+    /// The one effort timer this process owns (see [`crate::timer`]).
+    /// The single exception to "no `Arc` here": unlike everything else
+    /// in this struct the timer is genuinely shared mutable state — every
+    /// cloned handler must see the *same* lock, not a copy of it.
+    pub timer: Arc<TimerService>,
 }
 
 impl AppState {
@@ -61,12 +78,15 @@ impl AppState {
         evaluation_date_override: Option<chrono::NaiveDate>,
     ) -> Self {
         let (events, _initial_receiver) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
+        let (timer_events, _initial_receiver) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         Self {
             project_root,
             config,
             config_path,
             events,
+            timer_events,
             evaluation_date_override,
+            timer: Arc::new(TimerService::system()),
         }
     }
 }
@@ -95,6 +115,7 @@ impl AppState {
                 board_field: "status".into(),
                 tree_field: "parent".into(),
                 graph_field: "depends_on".into(),
+                effort_field: None,
                 display: DisplayConfig::default(),
             },
             working_days: None,

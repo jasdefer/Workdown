@@ -34,6 +34,7 @@
 <script lang="ts">
 	import type { Card as CardData } from '$lib/api/generated/Card';
 	import { itemHref } from '$lib/items/itemLink';
+	import { timerStore } from '$lib/stores/timer.svelte';
 	import Card from '$lib/views/board/Card.svelte';
 	import { formatIsoDate } from '$lib/views/format';
 	import { cardLabel } from '$lib/views/prettify';
@@ -181,6 +182,7 @@
 							<div class="track">
 								<div
 									class="bar"
+									class:recording={timerStore.runningItemId === bar.card.id}
 									style:--item-color={bar.card.background}
 									style="left: {barGeom(bar).left}px; width: {barGeom(bar).width}px;"
 									role="img"
@@ -393,6 +395,14 @@
 		background-color: var(--item-color, var(--color-accent));
 		border-radius: var(--radius-sm, 3px);
 		cursor: default;
+	}
+
+	/* The item being timed. The bar is the item's body here and a dot
+	   floating on a colored bar reads poorly, so this view marks with the
+	   recording red as an outline instead (timer-recording-indicator). */
+	.bar.recording {
+		outline: 2px solid var(--color-recording);
+		outline-offset: 1px;
 	}
 
 	.bar:hover {

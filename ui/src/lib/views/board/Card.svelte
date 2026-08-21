@@ -7,6 +7,8 @@
 	import type { Card } from '$lib/api/generated/Card';
 	import { draggable } from '$lib/dnd/dnd';
 	import { openItem } from '$lib/items/itemLink';
+	import { timerStore } from '$lib/stores/timer.svelte';
+	import RecordingDot from '$lib/timer/RecordingDot.svelte';
 	import Markdown from '$lib/ui/Markdown.svelte';
 	import { cardLabel } from '$lib/views/prettify';
 
@@ -42,6 +44,9 @@
 >
 	<header class="card-header">
 		<span class="title">{displayTitle}</span>
+		{#if timerStore.runningItemId === card.id}
+			<RecordingDot />
+		{/if}
 		<span class="id" aria-label="Item id" title={card.id}>{card.id}</span>
 	</header>
 	{#if card.subtitle}

@@ -21,6 +21,11 @@ fields:
     allow_cycles: false
     inverse: children
 
+  depends_on:
+    type: links
+    required: false
+    allow_cycles: false
+
   effort:
     type: integer
     required: false

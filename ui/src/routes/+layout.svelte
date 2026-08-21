@@ -5,6 +5,9 @@
 	import type { Snippet } from 'svelte';
 	import type { LayoutData } from './$types';
 	import favicon from '$lib/assets/favicon.svg';
+	import { timerStore } from '$lib/stores/timer.svelte';
+	import TimerPill from '$lib/timer/TimerPill.svelte';
+	import TimerToast from '$lib/timer/TimerToast.svelte';
 	import ThemeToggle from '$lib/ui/ThemeToggle.svelte';
 	import ViewNav from '$lib/ui/ViewNav.svelte';
 
@@ -27,6 +30,13 @@
 		source.onmessage = () => {
 			void invalidateAll();
 		};
+		// Timer changes arrive as a *named* event so the generic handler
+		// above never fires for them: a timer action refetches the timer
+		// state alone, and a file save never refetches the timer.
+		source.addEventListener('timer', () => {
+			void timerStore.reload();
+		});
+		void timerStore.load();
 		return () => {
 			source.close();
 		};
@@ -34,7 +44,11 @@
 </script>
 
 <svelte:head>
-	<title>Workdown</title>
+	<!-- The store's title carries the pomodoro countdown and flips to an
+	     alarm form at zero — the "visible in the tab itself" channel of
+	     the timer notifications; plain "Workdown" whenever nothing
+	     counts down. -->
+	<title>{timerStore.documentTitle}</title>
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
@@ -49,6 +63,7 @@
 			     issues. -->
 		</div>
 		<div class="header-actions">
+			<TimerPill />
 			<a class="new-item" href="/items/new">+ New item</a>
 			<ThemeToggle />
 		</div>
@@ -56,6 +71,7 @@
 	<main class="app-main">
 		{@render children()}
 	</main>
+	<TimerToast />
 </div>
 
 <style>
@@ -115,8 +131,12 @@
 
 	/* Flex container so view-page's `flex: 1` can constrain against
 	   a known height — that's what lets columns scroll independently
-	   instead of the whole page scrolling. */
+	   instead of the whole page scrolling. Positioned so overlays that
+	   belong below the header (the item slide-over) can anchor to it
+	   instead of the viewport — the header, and the timer pill's
+	   expanded panel, stay visible above them. */
 	.app-main {
+		position: relative;
 		flex: 1;
 		min-height: 0;
 		padding: var(--space-6);

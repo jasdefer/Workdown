@@ -20,6 +20,11 @@ import type { FieldMutationResult } from './generated/FieldMutationResult';
 import type { ItemDetail } from './generated/ItemDetail';
 import type { SchemaData } from './generated/SchemaData';
 import type { SetViewFilter } from './generated/SetViewFilter';
+import type { StartTimer } from './generated/StartTimer';
+import type { TimerMode } from './generated/TimerMode';
+import type { TimerStartOutcome } from './generated/TimerStartOutcome';
+import type { TimerState } from './generated/TimerState';
+import type { TimerStopResult } from './generated/TimerStopResult';
 import type { UpdateView } from './generated/UpdateView';
 import type { ViewData } from './generated/ViewData';
 import type { ViewDefinition } from './generated/ViewDefinition';
@@ -51,25 +56,40 @@ export async function request<T>(
 				}
 			: { method };
 
-	const response = await fetch(path, init);
+	// A network-level failure (server restarting, machine offline) makes
+	// `fetch` reject; a truncated reply makes `JSON.parse` throw. Both
+	// become an ordinary error result — every caller already handles
+	// `error`, and a rejection here would escape fire-and-forget call
+	// sites and strand their in-flight state (a stuck `busy` flag
+	// disabling the timer controls, for one). Status `0` marks "no
+	// response at all", as `XMLHttpRequest` does.
+	try {
+		const response = await fetch(path, init);
 
-	// 204 (and any empty body — e.g. 404) is normalised to
-	// `{ diagnostics: [] }` so callers never see a parse error from
-	// `.json()` on an empty body.
-	const text = await response.text();
-	const envelope =
-		text.length > 0
-			? (JSON.parse(text) as { data?: T; diagnostics?: Diagnostic[]; error?: string })
-			: {};
+		// 204 (and any empty body — e.g. 404) is normalised to
+		// `{ diagnostics: [] }` so callers never see a parse error from
+		// `.json()` on an empty body.
+		const text = await response.text();
+		const envelope =
+			text.length > 0
+				? (JSON.parse(text) as { data?: T; diagnostics?: Diagnostic[]; error?: string })
+				: {};
 
-	// Same conditional-spread pattern for `data`/`error` — omitted on
-	// absence, not set to `undefined` (exactOptionalPropertyTypes).
-	return {
-		...(envelope.data !== undefined ? { data: envelope.data } : {}),
-		diagnostics: envelope.diagnostics ?? [],
-		...(envelope.error !== undefined ? { error: envelope.error } : {}),
-		status: response.status
-	};
+		// Same conditional-spread pattern for `data`/`error` — omitted on
+		// absence, not set to `undefined` (exactOptionalPropertyTypes).
+		return {
+			...(envelope.data !== undefined ? { data: envelope.data } : {}),
+			diagnostics: envelope.diagnostics ?? [],
+			...(envelope.error !== undefined ? { error: envelope.error } : {}),
+			status: response.status
+		};
+	} catch (failure) {
+		return {
+			diagnostics: [],
+			error: failure instanceof Error ? failure.message : 'The request failed to reach the server.',
+			status: 0
+		};
+	}
 }
 
 export const api = {
@@ -131,5 +151,19 @@ export const api = {
 			`/api/items/${encodeURIComponent(id)}/fields/${encodeURIComponent(field)}`,
 			mutation
 		),
-	createItem: (body: CreateItem) => request<CreateItemResult>('POST', '/api/items', body)
+	createItem: (body: CreateItem) => request<CreateItemResult>('POST', '/api/items', body),
+	getTimer: () => request<TimerState>('GET', '/api/timer'),
+	/**
+	 * Start the timer on an item. `confirmed` is the second leg of the
+	 * roll-up confirmation round trip: a `needs_confirmation` outcome
+	 * means show the dialog and send the same request again with `true`.
+	 */
+	startTimer: (item: string, mode: TimerMode, confirmed = false) =>
+		request<TimerStartOutcome>('POST', '/api/timer/start', {
+			item,
+			mode,
+			confirmed
+		} satisfies StartTimer),
+	stopTimer: () => request<TimerStopResult>('POST', '/api/timer/stop', {}),
+	endBreak: () => request<TimerState>('POST', '/api/timer/break/end', {})
 };

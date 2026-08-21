@@ -21,6 +21,7 @@ pub mod rules;
 pub mod schema_data;
 pub mod slug;
 pub mod store;
+pub mod timer_data;
 pub mod view_data;
 pub mod views_check;
 pub mod walker;

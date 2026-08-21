@@ -1,9 +1,10 @@
 ---
 id: view-edit-delete
-status: in_progress
 title: Edit and delete views from the UI
+status: done
 parent: phase-04-visualization
-depends_on: [view-authoring]
+depends_on:
+- view-authoring
 ---
 
 The view-authoring milestone deliberately stopped at "create a view and

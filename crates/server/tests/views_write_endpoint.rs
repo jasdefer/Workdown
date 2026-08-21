@@ -50,6 +50,13 @@ fields:
     required: false
     allow_cycles: false
     inverse: children
+  # Named by `defaults.graph_field` above: a field role pointing at a
+  # field the schema does not define is a `config_check` warning of its
+  # own, and these tests assert on view diagnostics.
+  depends_on:
+    type: links
+    required: false
+    allow_cycles: false
 ";
 
 /// Build a throwaway project with no `views.yaml` yet. The returned

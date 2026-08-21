@@ -2,15 +2,18 @@
 
 use std::collections::HashMap;
 
-use super::{ComputedMutation, SetError};
+use super::{current_value, ComputedMutation, SetError};
 
 /// Reject `--delta` when the field is absent or the current value isn't
 /// a number we can parse. Hard error — the file is not written.
+///
+/// Unlike a duration, a count is left strict: "absent" for a count can be
+/// a deliberate statement, and nothing needs the zero-start yet.
 pub(super) fn require_existing(
     frontmatter: &HashMap<String, serde_yaml::Value>,
     field: &str,
 ) -> Result<(), SetError> {
-    match frontmatter.get(field) {
+    match current_value(frontmatter, field) {
         None => Err(SetError::MutationRequiresExistingValue {
             mode: "delta",
             field: field.to_owned(),
@@ -170,6 +173,34 @@ mod tests {
         let error = result.unwrap_err();
         assert!(matches!(
             error,
+            SetError::MutationRequiresExistingValue { mode, ref field }
+                if mode == "delta" && field == "points"
+        ));
+    }
+
+    #[test]
+    fn delta_on_numeric_field_written_with_no_value_returns_requires_existing() {
+        // A null is absent, not malformed — there is no value to be
+        // invalid. Same rule as duration, different consequence: a count
+        // still asks for an initial value.
+        let (_directory, root) = setup_project();
+        let config = load_test_config(&root);
+        write_item(
+            &root,
+            "task-1",
+            "---\ntitle: Task 1\nstatus: open\npoints:\n---\n",
+        );
+
+        let result = run_set(
+            &config,
+            &root,
+            &WorkItemId::from("task-1".to_owned()),
+            "points",
+            SetOperation::Numeric(NumericMode::Delta(serde_yaml::Number::from(3))),
+        );
+
+        assert!(matches!(
+            result.unwrap_err(),
             SetError::MutationRequiresExistingValue { mode, ref field }
                 if mode == "delta" && field == "points"
         ));

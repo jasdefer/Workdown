@@ -118,7 +118,10 @@ pub struct SetOutcome {
     /// Path to the file that was written.
     pub path: PathBuf,
     /// The value that was in frontmatter before the write, if any.
-    /// `None` means the field was absent.
+    /// `None` means the field was absent. The value-dependent modes
+    /// (`--delta`, `--toggle`) count a field written with no value as
+    /// absent too, and report `None` for it rather than a null the file
+    /// never really said.
     pub previous_value: Option<serde_yaml::Value>,
     /// The value written, if any. `None` for future `Unset`.
     pub new_value: Option<serde_yaml::Value>,
@@ -385,9 +388,35 @@ fn operation_mode_label(operation: &SetOperation) -> &'static str {
     }
 }
 
-/// Reject mutations whose semantics need an existing, parseable current
-/// value (`--delta`, `--toggle`) when the field is absent or the on-disk
-/// value can't be interpreted.
+/// The field's current value as the value-dependent modes see it.
+///
+/// Three spellings mean the same thing — "nothing to start from": the
+/// key is missing, the key is written with no value (`effort:` parses as
+/// YAML null), and the key holds an empty string. None of them carries a
+/// value that arithmetic could destroy, so one rule decides what
+/// "absent" means and each family decides what to do about it: a
+/// `duration` starts its delta at zero, the strict families ask for an
+/// initial value.
+///
+/// Deliberately not applied to `Replace`, `Unset` or the collection
+/// modes. Those operate on the key itself, where `effort:` and a missing
+/// `effort` really are different — one has to be removed from the file,
+/// the other is already gone.
+pub(crate) fn current_value<'a>(
+    frontmatter: &'a HashMap<String, serde_yaml::Value>,
+    field: &str,
+) -> Option<&'a serde_yaml::Value> {
+    match frontmatter.get(field) {
+        None | Some(serde_yaml::Value::Null) => None,
+        Some(serde_yaml::Value::String(string)) if string.trim().is_empty() => None,
+        Some(value) => Some(value),
+    }
+}
+
+/// Reject mutations whose semantics need a current value the mode can
+/// interpret (`--delta`, `--toggle`) when the on-disk value can't be
+/// interpreted, or — for every family but `duration` — when there is no
+/// value at all.
 ///
 /// Runs after the frontmatter has been read so it can inspect the
 /// current value. Hard error — the file is not written. Each family
@@ -403,7 +432,7 @@ fn check_operation_preconditions(
             numeric::require_existing(frontmatter, field)
         }
         SetOperation::Duration(DurationMode::Delta(_)) => {
-            temporal::require_existing_duration(frontmatter, field)
+            temporal::require_absent_or_valid_duration(frontmatter, field)
         }
         SetOperation::Date(DateMode::Delta(_)) => {
             temporal::require_existing_date(frontmatter, field)
@@ -440,6 +469,11 @@ fn compute_mutation(
     let previous_value = context.frontmatter.get(field).cloned();
     let new_frontmatter = context.frontmatter.clone();
 
+    // The value-dependent modes see the current value through the same
+    // rule their preconditions used, so what they report as the previous
+    // value matches what they computed from.
+    let previous_interpreted_value = current_value(&context.frontmatter, field).cloned();
+
     match operation {
         SetOperation::Replace(new_value) => {
             compute_replace(new_frontmatter, field, previous_value, new_value)
@@ -449,16 +483,22 @@ fn compute_mutation(
             collection::compute(new_frontmatter, field, mode, previous_value)
         }
         SetOperation::Numeric(NumericMode::Delta(delta)) => {
-            numeric::compute_delta(new_frontmatter, field, delta, previous_value)
+            numeric::compute_delta(new_frontmatter, field, delta, previous_interpreted_value)
         }
-        SetOperation::Duration(DurationMode::Delta(seconds)) => {
-            temporal::compute_duration_delta(new_frontmatter, field, seconds, previous_value)
-        }
-        SetOperation::Date(DateMode::Delta(seconds)) => {
-            temporal::compute_date_delta(new_frontmatter, field, seconds, previous_value)
-        }
+        SetOperation::Duration(DurationMode::Delta(seconds)) => temporal::compute_duration_delta(
+            new_frontmatter,
+            field,
+            seconds,
+            previous_interpreted_value,
+        ),
+        SetOperation::Date(DateMode::Delta(seconds)) => temporal::compute_date_delta(
+            new_frontmatter,
+            field,
+            seconds,
+            previous_interpreted_value,
+        ),
         SetOperation::Boolean(BooleanMode::Toggle) => {
-            boolean::compute_toggle(new_frontmatter, field, previous_value)
+            boolean::compute_toggle(new_frontmatter, field, previous_interpreted_value)
         }
     }
 }

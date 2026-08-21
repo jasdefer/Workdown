@@ -50,7 +50,11 @@ defaults:
   graph_field: depends_on
 ";
     fs::write(root.join(".workdown/config.yaml"), config_yaml).unwrap();
-    fs::write(root.join(".workdown/schema.yaml"), schema_yaml).unwrap();
+    fs::write(
+        root.join(".workdown/schema.yaml"),
+        with_role_fields(schema_yaml),
+    )
+    .unwrap();
     if let Some(yaml) = resources_yaml {
         fs::write(root.join(".workdown/resources.yaml"), yaml).unwrap();
     }
@@ -60,6 +64,33 @@ defaults:
 
     let config = load_config(&root.join(".workdown/config.yaml")).unwrap();
     (tmp, config, root)
+}
+
+/// Prepend the three fields the fixture config's field roles name to a
+/// test's own schema.
+///
+/// The config above names `status`, `parent` and `depends_on` as the
+/// project's board, tree and graph fields, and `config_check` reports a
+/// role key whose field the schema does not define. These tests are
+/// about resource references, so the fixture project has to be
+/// internally consistent for its diagnostics to be only the ones under
+/// test — while each schema below stays focused on its own topic.
+fn with_role_fields(schema_yaml: &str) -> String {
+    let own_fields = schema_yaml
+        .strip_prefix("fields:\n")
+        .expect("fixture schemas start with `fields:`");
+    format!(
+        "\
+fields:
+  status:
+    type: choice
+    values: [open, done]
+  parent:
+    type: link
+  depends_on:
+    type: links
+{own_fields}"
+    )
 }
 
 fn run_validate(project: &(TempDir, Config, PathBuf)) -> Vec<Diagnostic> {

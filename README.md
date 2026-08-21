@@ -68,6 +68,18 @@ serve:
 
 Inside a devcontainer or remote SSH session, `--open` will silently fail to launch a browser (there's no display); VS Code's auto-forwarded-port notification handles the same job. The UI is local-only — `workdown serve` binds to `127.0.0.1` and never exposes anything to the network.
 
+### Effort timer
+
+The web UI includes an effort timer — an open-ended stopwatch or a pomodoro interval (25 minutes work, 5 minutes break). Stopping it adds the measured time, rounded to whole minutes, to the timed item's effort field. It appears once `defaults.effort_field` in `.workdown/config.yaml` names a `duration` field from your schema:
+
+```yaml
+# .workdown/config.yaml
+defaults:
+  effort_field: effort
+```
+
+The key is never inferred and unset means "this project records no effort" — the timer is simply absent. The running timer lives in the serve process (shared by every tab, gone when the server stops); only a stop writes to a file.
+
 ## Work item format
 
 Each work item is a single Markdown file. YAML frontmatter holds structured fields; the body is freeform Markdown.

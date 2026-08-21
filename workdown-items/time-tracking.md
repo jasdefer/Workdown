@@ -1,8 +1,23 @@
 ---
 id: time-tracking
-status: in_progress
+status: done
 title: Time tracking
 ---
+
+## In plain words
+
+Make the difference between how long something took on the calendar and
+how much actual work went into it a first-class part of the tool.
+
+"This took three weeks but only three hours of real work" is a normal
+thing to want to record, and the gap between the two numbers is a
+well-known measure of how smoothly work is flowing. Workdown can
+already express the calendar side; the work side is missing, and noting
+when something actually started or finished is entirely manual.
+**Example:** with both halves recorded, the tool could show that an
+item spent twelve of its fourteen days simply waiting — a strong hint
+that the delay was not the work itself. Breaking this area down further
+waits until the first children have landed.
 
 Make the difference between calendar time and work time first-class —
 "this took three weeks but only three hours of actual work." PM literature
