@@ -34,6 +34,7 @@
 	import type { TreemapNode } from '$lib/api/generated/TreemapNode';
 	import type { SizeValue } from '$lib/api/generated/SizeValue';
 	import type { Card as CardData } from '$lib/api/generated/Card';
+	import { timerStore } from '$lib/stores/timer.svelte';
 	import { textColorOn } from '$lib/views/colorContrast';
 	import { formatScalar } from '$lib/views/format';
 	import { cardLabel, prettifyId } from '$lib/views/prettify';
@@ -240,6 +241,8 @@
 							{#if laid.isLeaf}
 								<rect
 									class="leaf"
+									class:recording={laid.node.card !== null &&
+										timerStore.runningItemId === laid.node.card.id}
 									style:--item-color={nodeColor(laid.node)}
 									role="img"
 									aria-label={nodeLabel(laid.node)}
@@ -322,6 +325,13 @@
 		stroke: var(--color-border);
 		stroke-width: 1;
 		cursor: default;
+	}
+
+	/* The item being timed — the recording red as a stroke, the dot's
+	   meaning in SVG's vocabulary (timer-recording-indicator). */
+	.leaf.recording {
+		stroke: var(--color-recording);
+		stroke-width: 2;
 	}
 
 	.frame {

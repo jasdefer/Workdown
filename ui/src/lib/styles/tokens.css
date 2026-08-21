@@ -41,6 +41,13 @@
 	--color-danger: #dc2626;
 	--color-danger-fg: #ffffff;
 
+	/* The recording red: the timer's dot, and its border/stroke stand-ins
+	   on surfaces a dot can't reach (gantt bar, graph node, treemap tile).
+	   Aliased to the danger red — the record-button red — so "recording"
+	   has a name of its own and can be retuned without touching danger.
+	   The alias resolves at use time, so the dark override flows through. */
+	--color-recording: var(--color-danger);
+
 	/* Spacing — 4px scale */
 	--space-1: 0.25rem;
 	--space-2: 0.5rem;

@@ -18,6 +18,7 @@
 <script lang="ts">
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import { timerStore } from '$lib/stores/timer.svelte';
+	import RecordingDot from '$lib/timer/RecordingDot.svelte';
 	import { formatClock } from '$lib/timer/timerMath';
 	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
 	import { prettifyId } from '$lib/views/prettify';
@@ -127,7 +128,7 @@
 			</div>
 		{:else if running.item_id === itemId}
 			<button type="button" class="this-item" onclick={() => (timerStore.panelOpen = true)}>
-				<span class="dot" aria-hidden="true"></span>
+				<RecordingDot />
 				Timing this item — {formatClock(timerStore.elapsedSeconds ?? 0)}
 			</button>
 		{:else}
@@ -264,13 +265,6 @@
 		color: var(--color-fg);
 		padding: 0.3rem 0.7rem;
 		cursor: pointer;
-	}
-
-	.dot {
-		width: 0.5rem;
-		height: 0.5rem;
-		border-radius: 50%;
-		background: var(--color-error-fg);
 	}
 
 	.other-item {

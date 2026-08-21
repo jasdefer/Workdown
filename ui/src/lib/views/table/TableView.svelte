@@ -29,6 +29,8 @@
 	import type { WorkItemId } from '$lib/api/generated/WorkItemId';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { itemHref } from '$lib/items/itemLink';
+	import { timerStore } from '$lib/stores/timer.svelte';
+	import RecordingDot from '$lib/timer/RecordingDot.svelte';
 	import { itemRefLabel, prettifyId } from '$lib/views/prettify';
 	import ColumnResizeHandle from '$lib/views/ColumnResizeHandle.svelte';
 	import EmptyHint from '$lib/views/EmptyHint.svelte';
@@ -213,6 +215,9 @@
 					{#each row.cells as cell, cellIndex (cell.column.name)}
 						<td>
 							{#if cellIndex === 0}
+								{#if timerStore.runningItemId === row.id}
+									<RecordingDot />
+								{/if}
 								<a class="row-link" href={itemHref(row.id)} title="Open {row.id}">
 									<Cell value={cell.value} fieldType={cell.column.field_type} items={data.items} />
 								</a>

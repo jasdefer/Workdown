@@ -15,6 +15,7 @@
 -->
 <script lang="ts">
 	import { timerStore } from '$lib/stores/timer.svelte';
+	import RecordingDot from '$lib/timer/RecordingDot.svelte';
 	import { formatClock, projectedNewSeconds, roundedWriteSeconds } from '$lib/timer/timerMath';
 	import { formatDurationSeconds } from '$lib/views/format';
 	import { prettifyId } from '$lib/views/prettify';
@@ -65,7 +66,7 @@
 			aria-expanded={timerStore.panelOpen}
 			onclick={() => (timerStore.panelOpen = !timerStore.panelOpen)}
 		>
-			<span class="dot" aria-hidden="true"></span>
+			<RecordingDot />
 			<span class="clock">{formatClock(elapsed)}</span>
 			<span class="chevron" aria-hidden="true">▾</span>
 		</button>
@@ -127,13 +128,6 @@
 
 	.clock {
 		font-variant-numeric: tabular-nums;
-	}
-
-	.dot {
-		width: 0.5rem;
-		height: 0.5rem;
-		border-radius: 50%;
-		background: var(--color-error-fg);
 	}
 
 	.chevron {

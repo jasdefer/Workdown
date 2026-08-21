@@ -38,6 +38,7 @@
 	import { textColorOn } from '$lib/views/colorContrast';
 	import { cardLabel } from '$lib/views/prettify';
 	import { themeStore, type Theme } from '$lib/stores/theme.svelte';
+	import { timerStore } from '$lib/stores/timer.svelte';
 	import EmptyHint from '$lib/views/EmptyHint.svelte';
 	import RowCount from '$lib/views/RowCount.svelte';
 	import Card from '$lib/views/board/Card.svelte';
@@ -186,12 +187,21 @@
 			'target-arrow-shape': 'triangle',
 			'curve-style': 'bezier'
 		};
+		// The item being timed. A canvas can't host the recording dot, so
+		// the node's border carries the recording red instead
+		// (timer-recording-indicator). Listed last so it wins over the
+		// item-color and parent border colors.
+		const recordingStyle: cytoscape.Css.Node = {
+			'border-color': token('--color-recording'),
+			'border-width': 2
+		};
 		return [
 			{ selector: 'node', style: nodeStyle },
 			{ selector: 'node[itemColor]', style: coloredNodeStyle },
 			{ selector: ':parent', style: parentStyle },
 			{ selector: ':parent[itemColor]', style: coloredParentStyle },
-			{ selector: 'edge', style: edgeStyle }
+			{ selector: 'edge', style: edgeStyle },
+			{ selector: 'node.recording', style: recordingStyle }
 		];
 	}
 
@@ -255,6 +265,17 @@
 	// Repaint on theme flip — Cytoscape can't inherit the CSS-var change.
 	$effect(() => {
 		cy?.style(buildStyle(themeStore.value));
+	});
+
+	// Mark the node being timed; reacts to timer starts/stops in any tab.
+	// `getElementById` on a missing id yields an empty collection, so a
+	// timer on an item outside this view is a no-op.
+	$effect(() => {
+		const graph = cy;
+		const runningId = timerStore.runningItemId;
+		if (graph === undefined) return;
+		graph.nodes().removeClass('recording');
+		if (runningId !== null) graph.getElementById(runningId).addClass('recording');
 	});
 </script>
 

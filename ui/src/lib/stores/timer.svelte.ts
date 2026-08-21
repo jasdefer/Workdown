@@ -75,6 +75,11 @@ export const timerStore = {
 	get state(): TimerState | null {
 		return data;
 	},
+	/** The id of the item being timed; `null` when idle. What the views
+	 * compare against to mark the recording item in place. */
+	get runningItemId(): string | null {
+		return data?.running?.item_id ?? null;
+	},
 	/** Ticking elapsed seconds of the running timer; `null` when idle. */
 	get elapsedSeconds(): number | null {
 		const running = data?.running ?? null;
