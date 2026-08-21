@@ -1,6 +1,6 @@
 ---
 id: effort-timer
-status: in_progress
+status: done
 title: Stopwatch in the web app that records effort
 parent: time-tracking
 depends_on:

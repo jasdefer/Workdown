@@ -19,9 +19,7 @@ Cards grouped into columns by `status`.
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
-- [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md)
 - [Time tracking](../workdown-items/time-tracking.md)
-- [Show which item is being timed in the views](../workdown-items/timer-recording-indicator.md)
 
 ## done
 - [ADR — visualization architecture](../workdown-items/adr-phase-04-architecture.md)
@@ -49,6 +47,7 @@ Cards grouped into columns by `status`.
 - [Duration delta starts from zero on an absent field](../workdown-items/duration-delta-absent-value.md)
 - [Add `duration` field type](../workdown-items/duration-field-type.md)
 - [Project-level effort field in config.yaml](../workdown-items/effort-field-config.md)
+- [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md)
 - [Resolve the current date at evaluation time, reproducibly](../workdown-items/evaluation-time-now.md)
 - [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md)
 - [Comparisons, equality and booleans in the expression grammar](../workdown-items/expression-predicates.md)
@@ -89,6 +88,7 @@ Cards grouped into columns by `status`.
 - [Expose schema metadata so the UI can offer valid choices](../workdown-items/schema-metadata-api.md)
 - [Interactive UI (workdown serve)](../workdown-items/server.md)
 - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md)
+- [Show which item is being timed in the views](../workdown-items/timer-recording-indicator.md)
 - [UI foundation — conventions and scaffolding before the first view](../workdown-items/ui-foundation.md)
 - [Author and edit views from the UI](../workdown-items/view-authoring.md)
 - [Create a new view from the UI](../workdown-items/view-creation.md)

@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: done
 title: Show which item is being timed in the views
 parent: time-tracking
 depends_on:
