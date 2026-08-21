@@ -19,5 +19,4 @@ flowchart TD
         when-map-shorthand["`map:` — lookup-table shorthand over the `when:` evaluator"]
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end
-    time-tracking["Time tracking"]
 ```

@@ -14,4 +14,3 @@ Hierarchical outline following `parent` upward to roots.
   - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md) — status: to_do
   - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md) — status: to_do
   - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md) — status: to_do
-- [Time tracking](../workdown-items/time-tracking.md) — status: in_progress

@@ -17,7 +17,7 @@ Cards grouped into columns by `status`.
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
-- [Time tracking](../workdown-items/time-tracking.md)
+_(no cards)_
 
 ## done
 - [ADR — visualization architecture](../workdown-items/adr-phase-04-architecture.md)
@@ -87,6 +87,7 @@ Cards grouped into columns by `status`.
 - [Expose schema metadata so the UI can offer valid choices](../workdown-items/schema-metadata-api.md)
 - [Interactive UI (workdown serve)](../workdown-items/server.md)
 - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md)
+- [Time tracking](../workdown-items/time-tracking.md)
 - [Tell the user when a timed interval is over](../workdown-items/timer-notifications.md)
 - [Show which item is being timed in the views](../workdown-items/timer-recording-indicator.md)
 - [UI foundation — conventions and scaffolding before the first view](../workdown-items/ui-foundation.md)

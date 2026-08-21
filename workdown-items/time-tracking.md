@@ -1,6 +1,6 @@
 ---
 id: time-tracking
-status: in_progress
+status: done
 title: Time tracking
 ---
 

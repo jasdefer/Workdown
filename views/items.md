@@ -80,7 +80,7 @@
 | [server](../workdown-items/server.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md), [item-mutations](../workdown-items/item-mutations.md), [renderers](../workdown-items/renderers.md) |
 | [store-diagnostics-consistency](../workdown-items/store-diagnostics-consistency.md) | done | [polish](../workdown-items/polish.md) |  |
 | [tags-view](../workdown-items/tags-view.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
-| [time-tracking](../workdown-items/time-tracking.md) | in_progress |  |  |
+| [time-tracking](../workdown-items/time-tracking.md) | done |  |  |
 | [timer-notifications](../workdown-items/timer-notifications.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [pomodoro-timer](../workdown-items/pomodoro-timer.md) |
 | [timer-recording-indicator](../workdown-items/timer-recording-indicator.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [effort-timer](../workdown-items/effort-timer.md) |
 | [ui-foundation](../workdown-items/ui-foundation.md) | done | [server](../workdown-items/server.md) | [walking-skeleton](../workdown-items/walking-skeleton.md) |
