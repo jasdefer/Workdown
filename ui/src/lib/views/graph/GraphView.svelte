@@ -12,11 +12,13 @@
   handles both flat and compound (grouped) graphs; the built-in
   breadthfirst/cose layouts ordered nodes noticeably worse.
 
-  Read-only canvas: wheel zooms, dragging the background pans (there are
-  no scrollbars), node dragging is off (`autoungrabify`). Hovering a
+  Canvas interaction: wheel zooms, dragging the background pans (there
+  are no scrollbars), node dragging is off (`autoungrabify`). Hovering a
   node shows its full card (title, id, rendered body) by reusing the
-  board <Card>. Click-to-open-item is deferred until the real item page
-  lands — added across all views then.
+  board <Card>. Tapping a node opens the item panel via `?item=` like
+  every other item-presenting view — Cytoscape's `tap` only fires when
+  the gesture wasn't a drag, so panning stays safe. Group boxes are
+  items too (nodes and groups cover the same set) and open the same way.
 
   Cytoscape draws to <canvas>, so CSS custom properties don't cascade
   into it: colors are read from the resolved design tokens at build
@@ -35,6 +37,7 @@
 	import type { GraphData } from '$lib/api/generated/GraphData';
 	import type { Card as CardData } from '$lib/api/generated/Card';
 	import type { TreeNode } from '$lib/api/generated/TreeNode';
+	import { openItem } from '$lib/items/itemLink';
 	import { textColorOn } from '$lib/views/colorContrast';
 	import { cardLabel } from '$lib/views/prettify';
 	import { themeStore, type Theme } from '$lib/stores/theme.svelte';
@@ -239,14 +242,23 @@
 				const node = event.target as cytoscape.NodeSingular;
 				const card = cardById.get(node.id());
 				if (card === undefined) return;
+				// Inline style beats the .graph grab cursor; cleared on mouseout.
+				host.style.cursor = 'pointer';
 				const position = node.renderedPosition();
 				hovered = { card, x: position.x, y: position.y };
 			});
 			instance.on('mouseout', 'node', () => {
+				host.style.cursor = '';
 				hovered = null;
 			});
 			instance.on('pan zoom', () => {
 				hovered = null;
+			});
+			// `tap` fires only when the gesture wasn't a drag, so panning
+			// never opens an item. Group boxes resolve in cardById too.
+			instance.on('tap', 'node', (event: cytoscape.EventObject) => {
+				const node = event.target as cytoscape.NodeSingular;
+				if (cardById.has(node.id())) openItem(node.id());
 			});
 			cy = instance;
 		};
@@ -257,6 +269,7 @@
 		return () => {
 			destroyed = true;
 			instance?.destroy();
+			host.style.cursor = '';
 			cy = undefined;
 			hovered = null;
 		};
