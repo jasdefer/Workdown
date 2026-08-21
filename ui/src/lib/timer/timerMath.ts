@@ -41,6 +41,20 @@ export function formatClock(totalSeconds: number): string {
 }
 
 /**
+ * The pomodoro countdown, clock-style and signed: `18:42` on the way
+ * down, `−7:32` in overrun — the typographic minus (U+2212), not a
+ * hyphen. Reaching zero stops nothing, so the figure keeps going and
+ * carries hours without wrapping exactly as `formatClock` does: a
+ * forgotten work interval reads `−64:47:10`.
+ */
+export function formatCountdown(remainingSeconds: number): string {
+	if (remainingSeconds < 0) {
+		return `−${formatClock(-remainingSeconds)}`;
+	}
+	return formatClock(remainingSeconds);
+}
+
+/**
  * Elapsed seconds right now, from the last server answer: "the server
  * said `anchorElapsedSeconds`, `nowMs - anchorMs` ago". Anchoring to a
  * monotonic local timestamp (performance.now) means a wrong browser

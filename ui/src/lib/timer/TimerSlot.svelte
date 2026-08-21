@@ -8,18 +8,21 @@
   existing field could satisfy is not actionable).
 
   Three states when the field is ready: no timer running — the split
-  start button (stopwatch now, pomodoro wired in later, visibly
-  disabled); this item being timed — it says so, and clicking opens the
-  header pill's expanded panel rather than a second copy of the
+  start button, whose menu picks the mode (stopwatch or pomodoro,
+  preselected to the last-started one) and whose label says what a
+  click starts; this item being timed — it says so, and clicking opens
+  the header pill's expanded panel rather than a second copy of the
   controls; another item being timed — names it and offers to stop that
   timer or open the item instead (switching is stop first, then start —
-  no takeover).
+  no takeover). During a break the slot is back to the start button on
+  every item: a break records nothing, so there is no session a start
+  could destroy.
 -->
 <script lang="ts">
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import { timerStore } from '$lib/stores/timer.svelte';
 	import RecordingDot from '$lib/timer/RecordingDot.svelte';
-	import { formatClock } from '$lib/timer/timerMath';
+	import { formatClock, formatCountdown } from '$lib/timer/timerMath';
 	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
 	import { prettifyId } from '$lib/views/prettify';
 
@@ -44,6 +47,13 @@
 	const hasDurationField = $derived(
 		schemaStore.fields.some((field) => field.field_type === 'duration')
 	);
+	// The countdown of a pomodoro work interval; `null` on the stopwatch.
+	// Mirrors the header pill so the two never show different figures.
+	const remaining = $derived(
+		running !== null && running.phase_length_seconds !== null
+			? running.phase_length_seconds - (timerStore.elapsedSeconds ?? 0)
+			: null
+	);
 
 	$effect(() => {
 		void timerStore.load();
@@ -67,9 +77,7 @@
 
 	async function start(confirmed = false): Promise<void> {
 		error = null;
-		// The split button's pomodoro entry is still disabled, so the
-		// stopwatch is the only mode a click can mean.
-		const result = await timerStore.start(itemId, 'stopwatch', confirmed);
+		const result = await timerStore.start(itemId, timerStore.startMode, confirmed);
 		if (result === 'needs_confirmation') {
 			confirming = true;
 			return;
@@ -103,7 +111,7 @@
 					bind:this={startButton}
 					onclick={() => void start()}
 				>
-					▶ Start timer
+					{timerStore.startMode === 'pomodoro' ? '▶ Start pomodoro' : '▶ Start timer'}
 				</button>
 				<button
 					type="button"
@@ -123,12 +131,23 @@
 							type="button"
 							role="menuitem"
 							class="mode-item"
-							onclick={() => (menuOpen = false)}
+							onclick={() => {
+								timerStore.startMode = 'stopwatch';
+								menuOpen = false;
+							}}
 						>
-							✓ Stopwatch
+							{timerStore.startMode === 'stopwatch' ? '✓' : ''} Stopwatch
 						</button>
-						<button type="button" role="menuitem" class="mode-item" disabled title="Coming soon">
-							Pomodoro
+						<button
+							type="button"
+							role="menuitem"
+							class="mode-item"
+							onclick={() => {
+								timerStore.startMode = 'pomodoro';
+								menuOpen = false;
+							}}
+						>
+							{timerStore.startMode === 'pomodoro' ? '✓' : ''} Pomodoro
 						</button>
 					</div>
 				{/if}
@@ -136,7 +155,12 @@
 		{:else if running.item_id === itemId}
 			<button type="button" class="this-item" onclick={() => (timerStore.panelOpen = true)}>
 				<RecordingDot />
-				Timing this item — {formatClock(timerStore.elapsedSeconds ?? 0)}
+				Timing this item —
+				<span class:overrun={remaining !== null && remaining < 0}>
+					{remaining !== null
+						? formatCountdown(remaining)
+						: formatClock(timerStore.elapsedSeconds ?? 0)}
+				</span>
 			</button>
 		{:else}
 			<div class="other-item">
@@ -308,5 +332,9 @@
 		margin: 0;
 		color: var(--color-error-fg);
 		font-size: var(--text-sm);
+	}
+
+	.overrun {
+		color: var(--color-warning-fg);
 	}
 </style>

@@ -37,6 +37,10 @@ let nowMs = $state(0);
 let panelOpen = $state(false);
 let toast = $state<TimerToast | null>(null);
 let busy = $state(false);
+// The split button's selection before a start — local UI state; the
+// server remembers what was actually started (`last_mode`), which is
+// the default whenever nothing was selected in this tab.
+let selectedMode = $state<TimerMode | null>(null);
 let loadPromise: Promise<void> | null = null;
 
 function localNow(): number {
@@ -82,12 +86,20 @@ export const timerStore = {
 	get runningItemId(): string | null {
 		return data?.phase.phase === 'work' ? data.phase.item_id : null;
 	},
-	/** Ticking elapsed seconds of the running work phase; `null`
-	 * otherwise. */
+	/** Ticking elapsed seconds of the running phase — work or break;
+	 * `null` when idle. */
 	get elapsedSeconds(): number | null {
 		const phase = data?.phase;
-		if (phase?.phase !== 'work') return null;
+		if (phase === undefined || phase.phase === 'idle') return null;
 		return anchoredElapsedSeconds(phase.elapsed_seconds, anchorMs, nowMs);
+	},
+	/** The mode the split button would start: this tab's selection, or
+	 * the server's sticky last-started mode. */
+	get startMode(): TimerMode {
+		return selectedMode ?? data?.last_mode ?? 'stopwatch';
+	},
+	set startMode(mode: TimerMode) {
+		selectedMode = mode;
 	},
 	get panelOpen(): boolean {
 		return panelOpen;
@@ -123,8 +135,11 @@ export const timerStore = {
 		if (result.data.outcome === 'needs_confirmation') {
 			return 'needs_confirmation';
 		}
-		// A start is a timer action: it replaces (clears) the toast.
+		// A start is a timer action: it replaces (clears) the toast. The
+		// server now remembers the started mode, so the local selection
+		// has served its purpose.
 		toast = null;
+		selectedMode = null;
 		apply(result.data.timer);
 		return 'started';
 	},
@@ -140,10 +155,27 @@ export const timerStore = {
 			return;
 		}
 		toast = { kind: 'stopped', result: result.data };
-		if (data !== null) {
-			data = { ...data, phase: { phase: 'idle' } };
-		}
 		panelOpen = false;
+		// Where the stop landed is the server's decision — idle after a
+		// stopwatch session, a counting break after a pomodoro one — so
+		// the new state is fetched rather than guessed.
+		await this.reload();
+	},
+
+	/** End a running break: back to idle. Nothing was written, so there
+	 * is no toast — nothing needs reporting or taking back. */
+	async endBreak(): Promise<void> {
+		busy = true;
+		const result = await api.endBreak();
+		busy = false;
+		panelOpen = false;
+		if (result.data !== undefined) {
+			apply(result.data);
+			return;
+		}
+		// The break was already gone — another tab ended it or started
+		// the next interval. Resync instead of reporting.
+		await this.reload();
 	},
 
 	/** Revert the stop's write: put the exact before-value back, or unset

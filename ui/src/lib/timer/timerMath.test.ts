@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	anchoredElapsedSeconds,
 	formatClock,
+	formatCountdown,
 	projectedNewSeconds,
 	roundedWriteSeconds
 } from './timerMath';
@@ -58,6 +59,24 @@ describe('formatClock', () => {
 
 	it('clamps negatives to zero', () => {
 		expect(formatClock(-5)).toBe('0:00');
+	});
+});
+
+describe('formatCountdown', () => {
+	it('counts down like the clock while time remains', () => {
+		expect(formatCountdown(25 * 60)).toBe('25:00');
+		expect(formatCountdown(18 * 60 + 42)).toBe('18:42');
+		expect(formatCountdown(0)).toBe('0:00');
+	});
+
+	it('shows overrun as negative with the typographic minus', () => {
+		expect(formatCountdown(-1)).toBe('−0:01');
+		expect(formatCountdown(-(7 * 60 + 32))).toBe('−7:32');
+	});
+
+	it('carries overrun hours without wrapping', () => {
+		// The forgotten work interval: 64 hours, 47 minutes, 10 seconds over.
+		expect(formatCountdown(-(64 * 3600 + 47 * 60 + 10))).toBe('−64:47:10');
 	});
 });
 

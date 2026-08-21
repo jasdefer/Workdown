@@ -149,5 +149,6 @@ export const api = {
 			mode,
 			confirmed
 		} satisfies StartTimer),
-	stopTimer: () => request<TimerStopResult>('POST', '/api/timer/stop', {})
+	stopTimer: () => request<TimerStopResult>('POST', '/api/timer/stop', {}),
+	endBreak: () => request<TimerState>('POST', '/api/timer/break/end', {})
 };
