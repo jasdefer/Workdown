@@ -47,6 +47,15 @@ pub struct AppState {
     /// connection subscribes a receiver. `Sender` stays usable with zero
     /// receivers (no browser connected), so `send` failing is not an error.
     pub events: broadcast::Sender<()>,
+    /// The timer's own announcement board, same mechanics as `events`
+    /// but delivered as a *named* SSE event so tabs refetch only the
+    /// timer state — deliberately not the generic file-change ping,
+    /// which would refetch the timer on every file save and reload the
+    /// whole page on every timer action. A separate channel (rather
+    /// than a kind enum on one channel) keeps a lagged receiver
+    /// unambiguous: overflow on this channel can only mean missed
+    /// timer pings.
+    pub timer_events: broadcast::Sender<()>,
     /// Pinned evaluation date from `serve --as-of`, forwarded to every
     /// per-request `load_project` call. `None` (the default) means each
     /// request evaluates `$today` at its own current local date, so a
@@ -69,11 +78,13 @@ impl AppState {
         evaluation_date_override: Option<chrono::NaiveDate>,
     ) -> Self {
         let (events, _initial_receiver) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
+        let (timer_events, _initial_receiver) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         Self {
             project_root,
             config,
             config_path,
             events,
+            timer_events,
             evaluation_date_override,
             timer: Arc::new(TimerService::system()),
         }

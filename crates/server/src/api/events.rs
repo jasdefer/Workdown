@@ -34,15 +34,24 @@ pub fn router() -> Router<AppState> {
 async fn events(
     State(state): State<AppState>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let receiver = state.events.subscribe();
+    let file_receiver = state.events.subscribe();
+    let timer_receiver = state.timer_events.subscribe();
 
     // Each received ping maps to one contentless "changed" event. A
     // `Lagged` error (the browser fell behind and overflowed the buffer)
-    // equally means "something changed, refetch", so it maps the same way.
-    let stream = BroadcastStream::new(receiver)
+    // equally means "something changed, refetch", so it maps the same way
+    // — and because each channel carries one kind, a lagged receiver
+    // still knows *what* to refetch.
+    let file_changes = BroadcastStream::new(file_receiver)
         .map(|_result| Ok::<_, Infallible>(Event::default().data("changed")));
 
-    Sse::new(stream).keep_alive(KeepAlive::default())
+    // Timer changes travel as a *named* event, so the browser's generic
+    // `onmessage` (which reloads the page's data) never fires for them;
+    // a tab listens for "timer" and refetches the timer state alone.
+    let timer_changes = BroadcastStream::new(timer_receiver)
+        .map(|_result| Ok::<_, Infallible>(Event::default().event("timer").data("changed")));
+
+    Sse::new(file_changes.merge(timer_changes)).keep_alive(KeepAlive::default())
 }
 
 #[cfg(test)]

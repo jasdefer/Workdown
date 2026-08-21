@@ -346,3 +346,28 @@ async fn stop_on_a_deleted_item_keeps_the_timer_running() {
     assert_eq!(envelope["data"]["running"]["item_id"], "task-a");
     assert_eq!(envelope["data"]["running"]["elapsed_seconds"], 120);
 }
+
+// ── The timer-named live-update ping ─────────────────────────────────
+
+#[tokio::test]
+async fn start_and_stop_ping_the_timer_stream_and_refusals_stay_silent() {
+    let (_dir, state, clock) = temp_project(&config_with_effort_field("effort"));
+    let mut timer_pings = state.timer_events.subscribe();
+
+    start(state.clone(), json!({ "item": "task-a" })).await;
+    assert!(timer_pings.try_recv().is_ok(), "start pings other tabs");
+
+    // A refused start changed nothing, so nothing is announced.
+    let response = start(state.clone(), json!({ "item": "task-b" })).await;
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert!(timer_pings.try_recv().is_err());
+
+    // A no-write stop still removed the timer — that is a change.
+    clock.advance(chrono::Duration::seconds(10));
+    stop(state.clone()).await;
+    assert!(timer_pings.try_recv().is_ok(), "stop pings other tabs");
+
+    // A refused stop (nothing running) stays silent.
+    stop(state).await;
+    assert!(timer_pings.try_recv().is_err());
+}

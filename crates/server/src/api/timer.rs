@@ -102,9 +102,14 @@ async fn start_timer(
     }
 
     match state.timer.start(WorkItemId::from(request.item)) {
-        Ok(_started) => ApiResponse::ok(TimerStartOutcome::Started {
-            timer: timer_state(&state, &project),
-        }),
+        Ok(_started) => {
+            // Tell every other tab the timer changed. Zero receivers
+            // (no other tab) is fine, so the send result is ignored.
+            let _ = state.timer_events.send(());
+            ApiResponse::ok(TimerStartOutcome::Started {
+                timer: timer_state(&state, &project),
+            })
+        }
         Err(running) => ApiResponse::failed(
             StatusCode::CONFLICT,
             format!("a timer is already running on '{}'", running.item_id),
@@ -140,6 +145,15 @@ async fn stop_timer(State(state): State<AppState>) -> ApiResponse<TimerStopResul
         )
         .map(|outcome| Some((added_seconds, outcome)))
     });
+
+    // Any successful stop — written or not — removed the running timer,
+    // so the other tabs get the ping either way. A failed stop changed
+    // nothing and stays silent. (The write itself additionally lands on
+    // the generic file-change stream via the watcher, refreshing the
+    // effort value everywhere it is displayed.)
+    if stopped.is_ok() {
+        let _ = state.timer_events.send(());
+    }
 
     match stopped {
         Ok((snapshot, Some((added_seconds, outcome)))) => {
