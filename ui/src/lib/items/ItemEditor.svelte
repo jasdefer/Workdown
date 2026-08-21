@@ -18,6 +18,7 @@
 	import type { FieldValue } from '$lib/api/generated/FieldValue';
 	import type { ItemDetail } from '$lib/api/generated/ItemDetail';
 	import { schemaStore } from '$lib/stores/schema.svelte';
+	import TimerSlot from '$lib/timer/TimerSlot.svelte';
 	import DiagnosticList from '$lib/ui/DiagnosticList.svelte';
 	import Markdown from '$lib/ui/Markdown.svelte';
 	import { prettifyId } from '$lib/views/prettify';
@@ -87,6 +88,10 @@
 		<h2>{prettifyId(itemId)}</h2>
 		<code>{itemId}</code>
 	</header>
+
+	<!-- The timer's fixed slot: same place on every item regardless of
+	     schema, shared by the panel and the standalone page. -->
+	<TimerSlot {itemId} />
 
 	{#if loadError}
 		<p class="error">{loadError}</p>

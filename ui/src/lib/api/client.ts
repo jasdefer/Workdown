@@ -20,6 +20,10 @@ import type { FieldMutationResult } from './generated/FieldMutationResult';
 import type { ItemDetail } from './generated/ItemDetail';
 import type { SchemaData } from './generated/SchemaData';
 import type { SetViewFilter } from './generated/SetViewFilter';
+import type { StartTimer } from './generated/StartTimer';
+import type { TimerStartOutcome } from './generated/TimerStartOutcome';
+import type { TimerState } from './generated/TimerState';
+import type { TimerStopResult } from './generated/TimerStopResult';
 import type { UpdateView } from './generated/UpdateView';
 import type { ViewData } from './generated/ViewData';
 import type { ViewDefinition } from './generated/ViewDefinition';
@@ -131,5 +135,17 @@ export const api = {
 			`/api/items/${encodeURIComponent(id)}/fields/${encodeURIComponent(field)}`,
 			mutation
 		),
-	createItem: (body: CreateItem) => request<CreateItemResult>('POST', '/api/items', body)
+	createItem: (body: CreateItem) => request<CreateItemResult>('POST', '/api/items', body),
+	getTimer: () => request<TimerState>('GET', '/api/timer'),
+	/**
+	 * Start the timer on an item. `confirmed` is the second leg of the
+	 * roll-up confirmation round trip: a `needs_confirmation` outcome
+	 * means show the dialog and send the same request again with `true`.
+	 */
+	startTimer: (item: string, confirmed = false) =>
+		request<TimerStartOutcome>('POST', '/api/timer/start', {
+			item,
+			confirmed
+		} satisfies StartTimer),
+	stopTimer: () => request<TimerStopResult>('POST', '/api/timer/stop', {})
 };

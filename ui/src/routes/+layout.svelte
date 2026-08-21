@@ -5,6 +5,9 @@
 	import type { Snippet } from 'svelte';
 	import type { LayoutData } from './$types';
 	import favicon from '$lib/assets/favicon.svg';
+	import { timerStore } from '$lib/stores/timer.svelte';
+	import TimerPill from '$lib/timer/TimerPill.svelte';
+	import TimerToast from '$lib/timer/TimerToast.svelte';
 	import ThemeToggle from '$lib/ui/ThemeToggle.svelte';
 	import ViewNav from '$lib/ui/ViewNav.svelte';
 
@@ -27,6 +30,13 @@
 		source.onmessage = () => {
 			void invalidateAll();
 		};
+		// Timer changes arrive as a *named* event so the generic handler
+		// above never fires for them: a timer action refetches the timer
+		// state alone, and a file save never refetches the timer.
+		source.addEventListener('timer', () => {
+			void timerStore.reload();
+		});
+		void timerStore.load();
 		return () => {
 			source.close();
 		};
@@ -49,6 +59,7 @@
 			     issues. -->
 		</div>
 		<div class="header-actions">
+			<TimerPill />
 			<a class="new-item" href="/items/new">+ New item</a>
 			<ThemeToggle />
 		</div>
@@ -56,6 +67,7 @@
 	<main class="app-main">
 		{@render children()}
 	</main>
+	<TimerToast />
 </div>
 
 <style>
