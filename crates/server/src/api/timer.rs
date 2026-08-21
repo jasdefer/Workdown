@@ -34,13 +34,13 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 
-use workdown_core::model::field_value::FieldValue;
 use workdown_core::model::WorkItemId;
 use workdown_core::operations::set::{run_set, DurationMode, SetOperation};
 use workdown_core::project::{load_project, Project};
 use workdown_core::timer_data::{
-    rounded_write_seconds, EffortFieldState, StartTimer, TimerMode, TimerPhase, TimerStartOutcome,
-    TimerState, TimerStopResult, TimerWrite, POMODORO_BREAK_SECONDS, POMODORO_WORK_SECONDS,
+    hand_written_duration_seconds, rounded_write_seconds, EffortFieldState, StartTimer, TimerMode,
+    TimerPhase, TimerStartOutcome, TimerState, TimerStopResult, TimerWrite, POMODORO_BREAK_SECONDS,
+    POMODORO_WORK_SECONDS,
 };
 
 use super::items::set_error_status;
@@ -101,6 +101,20 @@ async fn start_timer(
         );
     }
 
+    // Refuse a start while a work interval runs *before* the roll-up
+    // confirmation below: a stale tab must hear the conflict, not be
+    // walked through a confirmation dialog whose confirmed retry could
+    // only meet this same refusal. Advisory only — the check under the
+    // lock in `TimerService::start` stays the authority for a start
+    // racing past this one.
+    let phase_before_start = state.timer.snapshot().phase;
+    if let PhaseSnapshot::Work(running) = &phase_before_start {
+        return ApiResponse::failed(
+            StatusCode::CONFLICT,
+            format!("a timer is already running on '{}'", running.item_id),
+        );
+    }
+
     // The roll-up confirmation is decided here — the browser cannot see
     // an item's children. An item qualifies when the effort field
     // aggregates and the item has at least one child over the
@@ -111,7 +125,7 @@ async fn start_timer(
     // any other item takes the normal round trip.
     let confirmed = request.confirmed
         || matches!(
-            &state.timer.snapshot().phase,
+            &phase_before_start,
             PhaseSnapshot::Break(running_break)
                 if running_break.followed_item.as_str() == request.item
         );
@@ -272,21 +286,19 @@ fn work_phase(
     effort_field: &EffortFieldState,
     project: &Project,
 ) -> TimerPhase {
-    // The projected write's basis is the item's *hand-written* value —
-    // the frontmatter, which is exactly what the store's coerced fields
-    // hold. A derived value (rolled up, computed) never appears there,
-    // so it reads as absent, matching what the delta write will do. An
-    // item deleted mid-session also reads as absent; stopping on it
-    // fails cleanly and keeps the timer running.
+    // The projected write's basis is the item's *hand-written* value,
+    // read from the file's own frontmatter — deliberately not from the
+    // loaded store, whose derive pass writes rolled-up and computed
+    // values into item fields where they are indistinguishable from
+    // hand-written ones. The delta a stop performs starts from zero on
+    // those, and the projection must agree with it. An item deleted
+    // mid-session reads as absent; stopping on it fails cleanly and
+    // keeps the timer running.
     let effort_before_seconds = match effort_field {
         EffortFieldState::Ready { field } => project
             .store
             .get(snapshot.item_id.as_str())
-            .and_then(|item| item.fields.get(field))
-            .and_then(|value| match value {
-                FieldValue::Duration(seconds) => Some(*seconds),
-                _ => None,
-            }),
+            .and_then(|item| hand_written_duration_seconds(&item.source_path, field)),
         _ => None,
     };
     TimerPhase::Work {

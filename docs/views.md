@@ -161,6 +161,7 @@ Resolution per role, first match wins:
 - Role fields must resolve in `schema.yaml`. The text roles accept any field type — every value renders as text — and also the virtual `id`. The `color` role requires a `color`-typed field (`id` is rejected — it can never feed a tint), or the sentinel `none` to render the view untinted at any rung (`none` is reserved — `schema.yaml` rejects it as a field name).
 - Every kind accepts the block and ignores roles it cannot place. `treemap` labels and tints its nodes and `line_chart` resolves point tooltips through the `title` role; the remaining aggregate kinds (`bar_chart`, `heatmap`, `metric`, `workload`) surface item-level roles only on their unplaced-items footer.
 - `defaults.display` role fields are validated against the schema (surfaced through `workdown validate` and the serve banner, pointing at `config.yaml`). Unlike a per-view role error — which makes that one view unrenderable — a bad project-wide default is reported but non-blocking: every view keeps rendering on its fallback, since one config typo shouldn't blank all views at once.
+- The field-role keys in `config.yaml` (`defaults.board_field`, `tree_field`, `graph_field`, and the optional `effort_field` the web UI's timer writes to) are checked the same way, but as warnings: each must name an existing schema field of a type that can play the role. `workdown validate` still exits zero on them — a typo there degrades one surface, not the rendered output.
 
 ## Output paths
 

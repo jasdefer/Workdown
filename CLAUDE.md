@@ -25,7 +25,7 @@ workdown-items/
 
 ## Configuration Files (consumer project)
 
-- **`config.yaml`** — Entry point for the CLI. Defines project metadata, file paths (where work items live, where templates are, where resources are), and CLI defaults: which field to use for board/tree/graph views, plus project-wide display-role defaults (`defaults.display`) inherited by every view.
+- **`config.yaml`** — Entry point for the CLI. Defines project metadata, file paths (where work items live, where templates are, where resources are), and project-wide field roles: which field to use for board/tree/graph views, the optional `duration` field the web UI's effort timer writes to (`defaults.effort_field`, unset means no timer), plus display-role defaults (`defaults.display`) inherited by every view.
 - **`schema.yaml`** — User-editable. Defines fields, their types, validation rules, defaults, and aggregate/compute behavior. This is what makes each project's work items structured differently. Fields can reference resources via `resource: <name>`.
 - **`resources.yaml`** — User-editable. Named lists of entities (people, teams, sprints, etc.) that work item fields can reference. A field with `resource: people` only accepts values matching an `id` from the `people` section. The reserved `constants` section holds named typed scalars (a daily rate, work hours per day) that schema expressions reference as `$constants.<name>`.
 - **`views.yaml`** — User-editable. Declares persisted views rendered by `workdown render` (board, tree, graph, table, gantt, charts, etc.). Each view references schema fields.

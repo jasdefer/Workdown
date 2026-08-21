@@ -53,7 +53,9 @@
 				{/if}
 			{:else if toast.kind === 'stop_failed'}
 				<p class="error">Stop failed: {toast.message}</p>
-				<p class="muted">The timer is still running — stop again after fixing the cause.</p>
+				{#if toast.timerStillRunning}
+					<p class="muted">The timer is still running — stop again after fixing the cause.</p>
+				{/if}
 			{:else if toast.kind === 'undone'}
 				<p>
 					Undone — {toast.result.field} on {prettifyId(toast.result.item_id)} is back to

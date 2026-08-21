@@ -11,12 +11,15 @@
 //! to the running app, never to a file — but the vocabulary lives here,
 //! next to the write path a stop feeds ([`crate::operations::set`]).
 
+use std::path::Path;
+
 use serde::{Deserialize, Serialize};
 
 use crate::model::duration::parse_duration;
 use crate::model::schema::{FieldType, Schema};
 use crate::model::WorkItemId;
-use crate::operations::set::SetOutcome;
+use crate::operations::set::{current_value, SetOutcome};
+use crate::parser;
 
 /// Round a stopped session's elapsed seconds into the seconds actually
 /// written: nearest whole minute, thirty seconds rounds up. Zero means
@@ -28,6 +31,25 @@ use crate::operations::set::SetOutcome;
 pub fn rounded_write_seconds(elapsed_seconds: u64) -> i64 {
     let minutes = elapsed_seconds.saturating_add(30) / 60;
     i64::try_from(minutes.saturating_mul(60)).unwrap_or(i64::MAX)
+}
+
+/// The hand-written effort value the projected write starts from: the
+/// field's value in the item file's own frontmatter, parsed as canonical
+/// seconds. `None` means absent — including a blank or null key, exactly
+/// as the delta write's own absence rule (`current_value`) decides.
+///
+/// Deliberately read from the file rather than from a loaded store: the
+/// store's derive pass writes rolled-up and computed values into item
+/// fields, where they are indistinguishable from hand-written ones — and
+/// the delta a stop performs starts from zero on those, so the
+/// projection must too. A value that is present but malformed also reads
+/// as absent here; the stop itself refuses to write over it and reports
+/// why.
+pub fn hand_written_duration_seconds(item_file: &Path, field: &str) -> Option<i64> {
+    let content = std::fs::read_to_string(item_file).ok()?;
+    let (frontmatter, _body) = parser::split_frontmatter(&content, item_file).ok()?;
+    let value = current_value(&frontmatter, field)?;
+    parse_duration(value.as_str()?).ok()
 }
 
 /// The pomodoro interval lengths, in seconds. Deliberately not
@@ -307,6 +329,39 @@ mod tests {
     #[test]
     fn absurd_elapsed_saturates_instead_of_panicking() {
         assert_eq!(rounded_write_seconds(u64::MAX), i64::MAX);
+    }
+
+    // ── hand_written_duration_seconds ────────────────────────────────
+
+    /// One throwaway item file with the given content; the directory
+    /// handle keeps the file alive for the test's duration.
+    fn item_file(content: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let directory = tempfile::tempdir().expect("create temp directory");
+        let path = directory.path().join("task-1.md");
+        std::fs::write(&path, content).expect("write item file");
+        (directory, path)
+    }
+
+    #[test]
+    fn hand_written_value_parses_to_canonical_seconds() {
+        let (_directory, path) = item_file("---\ntitle: Task\neffort: 2h\n---\n");
+        assert_eq!(hand_written_duration_seconds(&path, "effort"), Some(7200));
+    }
+
+    #[test]
+    fn absent_blank_and_malformed_values_read_as_absent() {
+        let (_directory, path) =
+            item_file("---\ntitle: Task\nblank:\nmalformed: not-a-duration\n---\n");
+        assert_eq!(hand_written_duration_seconds(&path, "missing"), None);
+        assert_eq!(hand_written_duration_seconds(&path, "blank"), None);
+        assert_eq!(hand_written_duration_seconds(&path, "malformed"), None);
+    }
+
+    #[test]
+    fn unreadable_file_reads_as_absent() {
+        let (directory, _path) = item_file("---\ntitle: Task\n---\n");
+        let gone = directory.path().join("no-such-item.md");
+        assert_eq!(hand_written_duration_seconds(&gone, "effort"), None);
     }
 
     // ── EffortFieldState::resolve ────────────────────────────────────

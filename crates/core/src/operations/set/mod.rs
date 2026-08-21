@@ -402,7 +402,7 @@ fn operation_mode_label(operation: &SetOperation) -> &'static str {
 /// modes. Those operate on the key itself, where `effort:` and a missing
 /// `effort` really are different — one has to be removed from the file,
 /// the other is already gone.
-fn current_value<'a>(
+pub(crate) fn current_value<'a>(
     frontmatter: &'a HashMap<String, serde_yaml::Value>,
     field: &str,
 ) -> Option<&'a serde_yaml::Value> {

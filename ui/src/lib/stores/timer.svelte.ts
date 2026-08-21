@@ -33,10 +33,13 @@ import { prettifyId } from '$lib/views/prettify';
 
 /** What the single toast slot shows. `stopped` carries the whole stop
  * result (the write half is what undo needs); the failure kinds keep the
- * server's one-line error. */
+ * server's one-line error. `timerStillRunning` decides the advice line:
+ * a failed write leaves the interval running ("stop again"), but a 409
+ * means there was no work interval to stop — advising another stop
+ * there would loop the same refusal. */
 export type TimerToast =
 	| { kind: 'stopped'; result: TimerStopResult }
-	| { kind: 'stop_failed'; message: string }
+	| { kind: 'stop_failed'; message: string; timerStillRunning: boolean }
 	| { kind: 'undone'; result: TimerStopResult }
 	| { kind: 'undo_failed'; result: TimerStopResult; message: string };
 
@@ -100,11 +103,27 @@ function apply(state: TimerState): void {
 	nowMs = anchorMs;
 }
 
-async function fetchState(): Promise<void> {
+async function fetchState(): Promise<boolean> {
 	const result = await api.getTimer();
-	if (result.data !== undefined) {
-		apply(result.data);
+	if (result.data === undefined) {
+		return false;
 	}
+	apply(result.data);
+	return true;
+}
+
+// One fetch at a time, shared by every caller — but never a cached
+// failure: a fetch that brought no state clears itself so the next
+// `load()` retries, instead of pinning a dead answer (and with it no
+// timer UI) on the tab for its whole lifetime.
+function beginFetch(): Promise<void> {
+	const attempt = fetchState().then((loaded) => {
+		if (!loaded && loadPromise === attempt) {
+			loadPromise = null;
+		}
+	});
+	loadPromise = attempt;
+	return attempt;
 }
 
 // Tick once a second while a timer runs; idle otherwise. `$effect.root`
@@ -197,15 +216,14 @@ export const timerStore = {
 		return busy;
 	},
 
-	/** Fetch once; concurrent callers share the in-flight request. */
+	/** Fetch once; concurrent callers share the in-flight request. A
+	 * failed fetch is not cached — the next caller retries. */
 	load(): Promise<void> {
-		loadPromise ??= fetchState();
-		return loadPromise;
+		return loadPromise ?? beginFetch();
 	},
 	/** Force a refetch — the timer-named live-update event lands here. */
 	reload(): Promise<void> {
-		loadPromise = fetchState();
-		return loadPromise;
+		return beginFetch();
 	},
 
 	async start(item: string, mode: TimerMode, confirmed = false): Promise<StartResult> {
@@ -239,9 +257,19 @@ export const timerStore = {
 		const result = await api.stopTimer();
 		busy = false;
 		if (result.data === undefined) {
-			// The write failed (or nothing was running) — the timer, if
-			// any, is still running server-side; only the toast changes.
-			toast = { kind: 'stop_failed', message: result.error ?? 'Stopping the timer failed.' };
+			// A failed write (or no response at all) leaves the interval
+			// running server-side. A `409` is the other family: there was
+			// no work interval to stop — this tab's state is stale, so
+			// resync it alongside the toast.
+			const nothingToStop = result.status === 409;
+			toast = {
+				kind: 'stop_failed',
+				message: result.error ?? 'Stopping the timer failed.',
+				timerStillRunning: !nothingToStop
+			};
+			if (nothingToStop) {
+				await this.reload();
+			}
 			return;
 		}
 		toast = { kind: 'stopped', result: result.data };

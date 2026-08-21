@@ -157,7 +157,10 @@
 					disabled={timerStore.busy}
 					onclick={() => void timerStore.stop()}
 				>
-					{remaining !== null ? '■ Stop → break' : '■ Stop'}
+					<!-- A break only follows a stop that wrote something: a
+				     sub-half-minute pomodoro stop goes straight to idle,
+				     so the label must not promise the break. -->
+					{remaining !== null && rounded > 0 ? '■ Stop → break' : '■ Stop'}
 				</button>
 			</div>
 		{:else if timerStore.panelOpen && breakPhase !== null}

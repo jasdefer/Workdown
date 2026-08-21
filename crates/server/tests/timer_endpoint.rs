@@ -248,6 +248,33 @@ async fn start_reports_the_existing_effort_value_as_the_write_basis() {
 }
 
 #[tokio::test]
+async fn the_projected_write_basis_ignores_a_rolled_up_value() {
+    let (dir, state, _clock) = temp_project(&config_with_effort_field("effort"));
+    // Give the child a value so `epic` carries a rolled-up `1h`. The
+    // roll-up is derived, so the projection must not start from it —
+    // the stop's delta reads the frontmatter and starts from zero.
+    fs::write(
+        dir.path().join("workdown-items/task-a.md"),
+        "---\ntitle: Task A\nstatus: open\nparent: epic\neffort: 1h\n---\n",
+    )
+    .unwrap();
+
+    let envelope = body_json(
+        start(
+            state,
+            json!({ "item": "epic", "mode": "stopwatch", "confirmed": true }),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(envelope["data"]["outcome"], "started");
+    assert_eq!(
+        envelope["data"]["timer"]["phase"]["effort_before_seconds"],
+        Value::Null
+    );
+}
+
+#[tokio::test]
 async fn start_while_a_timer_runs_is_a_conflict() {
     let (_dir, state, _clock) = temp_project(&config_with_effort_field("effort"));
     start(
@@ -260,6 +287,22 @@ async fn start_while_a_timer_runs_is_a_conflict() {
     assert_eq!(response.status(), StatusCode::CONFLICT);
     let envelope = body_json(response).await;
     assert!(envelope["error"].as_str().unwrap().contains("task-a"));
+}
+
+#[tokio::test]
+async fn start_while_a_timer_runs_refuses_before_asking_for_confirmation() {
+    let (_dir, state, _clock) = temp_project(&config_with_effort_field("effort"));
+    start(
+        state.clone(),
+        json!({ "item": "task-a", "mode": "stopwatch" }),
+    )
+    .await;
+
+    // `epic` qualifies for the roll-up confirmation, but with a timer
+    // already running the answer must be the conflict — not a dialog
+    // whose confirmed retry could only meet this same refusal.
+    let response = start(state, json!({ "item": "epic", "mode": "stopwatch" })).await;
+    assert_eq!(response.status(), StatusCode::CONFLICT);
 }
 
 #[tokio::test]
