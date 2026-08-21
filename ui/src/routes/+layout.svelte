@@ -44,7 +44,11 @@
 </script>
 
 <svelte:head>
-	<title>Workdown</title>
+	<!-- The store's title carries the pomodoro countdown and flips to an
+	     alarm form at zero — the "visible in the tab itself" channel of
+	     the timer notifications; plain "Workdown" whenever nothing
+	     counts down. -->
+	<title>{timerStore.documentTitle}</title>
 	<link rel="icon" href={favicon} />
 </svelte:head>
 

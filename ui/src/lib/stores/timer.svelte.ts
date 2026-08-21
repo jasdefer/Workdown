@@ -11,12 +11,25 @@
 // The toast lives here too: it is application-level (a stop can happen
 // from any page), single-slot, and replaced by the next timer action —
 // a queue would be dead machinery.
+//
+// The announcements live here as well: the store is the one place that
+// sees every tick, so it feeds the crossing detector, derives the
+// document title, and keeps the deadline worker aimed at the running
+// countdown's zero (see `announcements.ts` and `announcer.ts`).
 
 import { api } from '$lib/api/client';
 import type { TimerMode } from '$lib/api/generated/TimerMode';
 import type { TimerState } from '$lib/api/generated/TimerState';
 import type { TimerStopResult } from '$lib/api/generated/TimerStopResult';
+import {
+	countdownKey,
+	createCrossingDetector,
+	tabTitle,
+	type CountdownObservation
+} from '$lib/timer/announcements';
+import { announceCrossing, requestNotificationPermission } from '$lib/timer/announcer';
 import { anchoredElapsedSeconds } from '$lib/timer/timerMath';
+import { prettifyId } from '$lib/views/prettify';
 
 /** What the single toast slot shows. `stopped` carries the whole stop
  * result (the write half is what undo needs); the failure kinds keep the
@@ -47,6 +60,40 @@ function localNow(): number {
 	return typeof performance !== 'undefined' ? performance.now() : 0;
 }
 
+// The countdown this tab is watching right now — the phase's identity
+// plus its ticking remaining seconds; `null` when nothing counts toward
+// zero (idle, or a stopwatch session). Feeds the crossing detector, the
+// document title and the deadline worker.
+function currentCountdown(): CountdownObservation | null {
+	const phase = data?.phase;
+	if (phase === undefined || phase.phase === 'idle') return null;
+	const key = countdownKey(phase);
+	if (key === null || phase.phase_length_seconds === null) return null;
+	const elapsed = anchoredElapsedSeconds(phase.elapsed_seconds, anchorMs, nowMs);
+	return { key, kind: phase.phase, remainingSeconds: phase.phase_length_seconds - elapsed };
+}
+
+// The deadline worker: announcements need the exact zero even in a
+// background tab, where main-thread timers are throttled to once a
+// minute. Created on the first armed countdown, then kept; its 'due'
+// ping is just a fresh tick, so the crossing detector and the title
+// react exactly as on any other second.
+let deadlineWorker: Worker | null = null;
+
+function armDeadline(delayMs: number | null): void {
+	if (typeof Worker === 'undefined') return;
+	if (deadlineWorker === null) {
+		if (delayMs === null) return;
+		deadlineWorker = new Worker(new URL('../timer/deadlineWorker.ts', import.meta.url), {
+			type: 'module'
+		});
+		deadlineWorker.onmessage = () => {
+			nowMs = localNow();
+		};
+	}
+	deadlineWorker.postMessage(delayMs);
+}
+
 function apply(state: TimerState): void {
 	data = state;
 	anchorMs = localNow();
@@ -74,6 +121,35 @@ $effect.root(() => {
 			clearInterval(interval);
 		};
 	});
+
+	// Announce a countdown reaching zero — the one moment the timer is
+	// allowed to interrupt. Detection is per-tab (live crossings only);
+	// the chime and the notification are claimed across tabs by the
+	// announcer. The title needs no announcing — it is derived.
+	const detectCrossing = createCrossingDetector();
+	$effect(() => {
+		const crossing = detectCrossing(currentCountdown());
+		if (crossing === null) return;
+		const phase = data?.phase;
+		const itemName = phase?.phase === 'work' ? prettifyId(phase.item_id) : null;
+		void announceCrossing(crossing, itemName, () => {
+			panelOpen = true;
+		});
+	});
+
+	// Keep the worker's alarm aimed at the running countdown's zero.
+	// Depends on the server's answer alone, not the ticking clock, so
+	// it re-arms once per state change; past zero there is nothing left
+	// to aim at.
+	$effect(() => {
+		const phase = data?.phase;
+		if (phase === undefined || phase.phase === 'idle' || phase.phase_length_seconds === null) {
+			armDeadline(null);
+			return;
+		}
+		const remainingMs = (phase.phase_length_seconds - phase.elapsed_seconds) * 1000;
+		armDeadline(remainingMs > 0 ? remainingMs : null);
+	});
 });
 
 export const timerStore = {
@@ -92,6 +168,13 @@ export const timerStore = {
 		const phase = data?.phase;
 		if (phase === undefined || phase.phase === 'idle') return null;
 		return anchoredElapsedSeconds(phase.elapsed_seconds, anchorMs, nowMs);
+	},
+	/** What the browser tab says: the pomodoro countdown while one
+	 * runs, the alarm form past zero, the plain name otherwise. The
+	 * root layout binds this to the document title, so a background
+	 * tab is glanceable before zero, not only at it. */
+	get documentTitle(): string {
+		return tabTitle(currentCountdown());
 	},
 	/** The mode the split button would start: this tab's selection, or
 	 * the server's sticky last-started mode. */
@@ -126,6 +209,13 @@ export const timerStore = {
 	},
 
 	async start(item: string, mode: TimerMode, confirmed = false): Promise<StartResult> {
+		// The notifications item's permission ask, tied to a pomodoro
+		// start: a user gesture, and the moment the permission starts
+		// buying something. Prompts only while the answer is undecided;
+		// the start proceeds either way.
+		if (mode === 'pomodoro') {
+			requestNotificationPermission();
+		}
 		busy = true;
 		const result = await api.startTimer(item, mode, confirmed);
 		busy = false;
