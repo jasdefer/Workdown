@@ -15,4 +15,3 @@ Hierarchical outline following `parent` upward to roots.
   - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md) — status: to_do
   - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md) — status: to_do
 - [Time tracking](../workdown-items/time-tracking.md) — status: in_progress
-  - [Tell the user when a timed interval is over](../workdown-items/timer-notifications.md) — status: to_do

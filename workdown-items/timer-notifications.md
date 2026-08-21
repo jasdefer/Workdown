@@ -1,6 +1,6 @@
 ---
 id: timer-notifications
-status: to_do
+status: done
 title: Tell the user when a timed interval is over
 parent: time-tracking
 depends_on:
