@@ -149,6 +149,23 @@ the whole problem [[effort-timer]] is trying to solve.
 10. **UI mechanics:** the countdown formatter joins `timerMath` (the
     clock format, signed); pill, panel and item slot branch on the
     phase; the split button's pomodoro entry loses its `disabled`.
+11. **The timer's status report has three shapes — idle, work,
+    break — each carrying only the fields that exist in that phase.**
+    Not one "running" block with sometimes-empty fields: a break times
+    no item and writes nothing, and sometimes-meaningless fields force
+    every reader to guess (the argument of decision 3, applied to the
+    state shape).
+12. **The mode is stated twice on the wire.** A top-level last-used
+    mode, always present even when idle (the split button's default),
+    and the work phase's own mode (countdown vs. stopwatch face).
+    They are always equal by construction — every start sets both —
+    but neither reader has to rely on that hidden rule.
+13. **A start request always names the mode.** No default: the only
+    client is our own UI, so there is nothing to stay compatible
+    with, and an explicit request reads unambiguously in tests.
+14. **Cosmetics:** overrun uses the typographic minus (U+2212, as in
+    `−7:32`), and overrun amber reuses the existing warning color
+    token rather than introducing a new one.
 
 ## Implementation plan
 

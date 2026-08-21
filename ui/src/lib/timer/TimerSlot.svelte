@@ -35,7 +35,12 @@
 	let error = $state<string | null>(null);
 
 	const effort = $derived(timerStore.state?.effort_field ?? null);
-	const running = $derived(timerStore.state?.running ?? null);
+	// The running work phase; a break (once it exists) frees every slot,
+	// so it counts as "nothing running" here.
+	const running = $derived.by(() => {
+		const phase = timerStore.state?.phase;
+		return phase?.phase === 'work' ? phase : null;
+	});
 	const hasDurationField = $derived(
 		schemaStore.fields.some((field) => field.field_type === 'duration')
 	);
@@ -62,7 +67,9 @@
 
 	async function start(confirmed = false): Promise<void> {
 		error = null;
-		const result = await timerStore.start(itemId, confirmed);
+		// The split button's pomodoro entry is still disabled, so the
+		// stopwatch is the only mode a click can mean.
+		const result = await timerStore.start(itemId, 'stopwatch', confirmed);
 		if (result === 'needs_confirmation') {
 			confirming = true;
 			return;

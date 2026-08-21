@@ -13,6 +13,7 @@
 // a queue would be dead machinery.
 
 import { api } from '$lib/api/client';
+import type { TimerMode } from '$lib/api/generated/TimerMode';
 import type { TimerState } from '$lib/api/generated/TimerState';
 import type { TimerStopResult } from '$lib/api/generated/TimerStopResult';
 import { anchoredElapsedSeconds } from '$lib/timer/timerMath';
@@ -60,8 +61,8 @@ async function fetchState(): Promise<void> {
 // store).
 $effect.root(() => {
 	$effect(() => {
-		const running = data?.running ?? null;
-		if (running === null) return undefined;
+		const phase = data?.phase ?? null;
+		if (phase === null || phase.phase === 'idle') return undefined;
 		const interval = setInterval(() => {
 			nowMs = localNow();
 		}, 1000);
@@ -75,16 +76,18 @@ export const timerStore = {
 	get state(): TimerState | null {
 		return data;
 	},
-	/** The id of the item being timed; `null` when idle. What the views
-	 * compare against to mark the recording item in place. */
+	/** The id of the item being timed; `null` when no work phase runs
+	 * (idle, or a break — a break times no item). What the views compare
+	 * against to mark the recording item in place. */
 	get runningItemId(): string | null {
-		return data?.running?.item_id ?? null;
+		return data?.phase.phase === 'work' ? data.phase.item_id : null;
 	},
-	/** Ticking elapsed seconds of the running timer; `null` when idle. */
+	/** Ticking elapsed seconds of the running work phase; `null`
+	 * otherwise. */
 	get elapsedSeconds(): number | null {
-		const running = data?.running ?? null;
-		if (running === null) return null;
-		return anchoredElapsedSeconds(running.elapsed_seconds, anchorMs, nowMs);
+		const phase = data?.phase;
+		if (phase?.phase !== 'work') return null;
+		return anchoredElapsedSeconds(phase.elapsed_seconds, anchorMs, nowMs);
 	},
 	get panelOpen(): boolean {
 		return panelOpen;
@@ -110,9 +113,9 @@ export const timerStore = {
 		return loadPromise;
 	},
 
-	async start(item: string, confirmed = false): Promise<StartResult> {
+	async start(item: string, mode: TimerMode, confirmed = false): Promise<StartResult> {
 		busy = true;
-		const result = await api.startTimer(item, confirmed);
+		const result = await api.startTimer(item, mode, confirmed);
 		busy = false;
 		if (result.data === undefined) {
 			return { error: result.error ?? 'Starting the timer failed.' };
@@ -138,7 +141,7 @@ export const timerStore = {
 		}
 		toast = { kind: 'stopped', result: result.data };
 		if (data !== null) {
-			data = { ...data, running: null };
+			data = { ...data, phase: { phase: 'idle' } };
 		}
 		panelOpen = false;
 	},

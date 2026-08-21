@@ -1,8 +1,9 @@
 //! Effort-timer wire contracts — the shapes `GET /api/timer`,
-//! `POST /api/timer/start` and `POST /api/timer/stop` exchange with the
-//! web app, plus the two rules both sides must agree on: which field
-//! the timer writes to (resolved against the schema) and how a stopped
-//! session's elapsed time rounds into the write.
+//! `POST /api/timer/start`, `POST /api/timer/stop` and
+//! `POST /api/timer/break/end` exchange with the web app, plus the
+//! rules both sides must agree on: which field the timer writes to
+//! (resolved against the schema), how a stopped session's elapsed time
+//! rounds into the write, and the fixed pomodoro interval lengths.
 //!
 //! Like [`crate::mutation_data`], these carry a `ts_rs` derive so
 //! `cargo xtask gen-types` emits matching TypeScript. The timer's state
@@ -27,6 +28,24 @@ use crate::operations::set::SetOutcome;
 pub fn rounded_write_seconds(elapsed_seconds: u64) -> i64 {
     let minutes = elapsed_seconds.saturating_add(30) / 60;
     i64::try_from(minutes.saturating_mul(60)).unwrap_or(i64::MAX)
+}
+
+/// The pomodoro interval lengths, in seconds. Deliberately not
+/// configurable — a personal working habit, not project policy — and
+/// deliberately here, beside the rounding rule: the browser never
+/// hardcodes them, it reads the running phase's length off the wire.
+pub const POMODORO_WORK_SECONDS: u64 = 25 * 60;
+pub const POMODORO_BREAK_SECONDS: u64 = 5 * 60;
+
+/// The two ways the timer runs: the open-ended stopwatch, or pomodoro —
+/// a counted-down work interval followed by a break. The mode never
+/// changes what a stop records (measured work time, rounded); it
+/// changes the pacing and the display.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+pub enum TimerMode {
+    Stopwatch,
+    Pomodoro,
 }
 
 /// What `defaults.effort_field` in `config.yaml` resolves to, carried on
@@ -84,28 +103,60 @@ impl EffortFieldState {
     }
 }
 
-/// The running half of [`TimerState`] — which item is being timed and
-/// how long for.
+/// What the timer is doing right now — one of three shapes, each
+/// carrying only the fields that exist in that phase. A break is not a
+/// work session with blanks in it: it times no item and will write
+/// nothing, so it gets its own shape instead of a shared block of
+/// sometimes-meaningless fields.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
-pub struct RunningTimer {
-    pub item_id: WorkItemId,
-    /// Wall-clock start, milliseconds since the Unix epoch. Display
-    /// only — the browser formats it as a local time; elapsed time never
-    /// derives from it client-side.
-    #[ts(type = "number")]
-    pub started_at_ms: i64,
-    /// Elapsed seconds, computed server-side at response time (clamped
-    /// at zero against backwards clock jumps). The UI ticks locally from
-    /// this anchor — "the server said X seconds, Y moments ago" — so a
-    /// wrong browser clock cannot skew the display.
-    #[ts(type = "number")]
-    pub elapsed_seconds: u64,
-    /// The item's hand-written effort value in canonical seconds; `null`
-    /// when absent (a derived value — rolled up, computed — counts as
-    /// absent too, exactly as the delta write does). The basis of the
-    /// projected write: stop lands `effort_before + rounded elapsed`.
-    #[ts(type = "number | null")]
-    pub effort_before_seconds: Option<i64>,
+#[serde(tag = "phase", rename_all = "snake_case")]
+pub enum TimerPhase {
+    /// No timer runs.
+    Idle,
+    /// An item is being timed — an open-ended stopwatch session or a
+    /// pomodoro work interval, distinguished by `mode`.
+    Work {
+        item_id: WorkItemId,
+        /// Wall-clock start, milliseconds since the Unix epoch. Display
+        /// only — the browser formats it as a local time; elapsed time
+        /// never derives from it client-side.
+        #[ts(type = "number")]
+        started_at_ms: i64,
+        /// Elapsed seconds, computed server-side at response time
+        /// (clamped at zero against backwards clock jumps). The UI
+        /// ticks locally from this anchor — "the server said X seconds,
+        /// Y moments ago" — so a wrong browser clock cannot skew the
+        /// display.
+        #[ts(type = "number")]
+        elapsed_seconds: u64,
+        /// The item's hand-written effort value in canonical seconds;
+        /// `null` when absent (a derived value — rolled up, computed —
+        /// counts as absent too, exactly as the delta write does). The
+        /// basis of the projected write: stop lands `effort_before +
+        /// rounded elapsed`.
+        #[ts(type = "number | null")]
+        effort_before_seconds: Option<i64>,
+        mode: TimerMode,
+        /// The countdown's target: [`POMODORO_WORK_SECONDS`] in
+        /// pomodoro mode, `null` on the stopwatch, which counts toward
+        /// nothing.
+        #[ts(type = "number | null")]
+        phase_length_seconds: Option<u64>,
+    },
+    /// A pomodoro break — counted down but never recorded.
+    Break {
+        /// The item whose stop began this break: the default for the
+        /// next interval, and the one item a start needs no repeated
+        /// roll-up confirmation for.
+        followed_item: WorkItemId,
+        #[ts(type = "number")]
+        started_at_ms: i64,
+        #[ts(type = "number")]
+        elapsed_seconds: u64,
+        /// The countdown's target: [`POMODORO_BREAK_SECONDS`].
+        #[ts(type = "number")]
+        phase_length_seconds: u64,
+    },
 }
 
 /// The timer's whole client-visible state — `GET /api/timer`, and the
@@ -114,7 +165,13 @@ pub struct RunningTimer {
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct TimerState {
     pub effort_field: EffortFieldState,
-    pub running: Option<RunningTimer>,
+    pub phase: TimerPhase,
+    /// The sticky mode: what the last started session ran as, stopwatch
+    /// until a pomodoro session has ever started. Always present, even
+    /// when idle — it preselects the split button. While a work phase
+    /// runs it always equals that phase's `mode` (every start sets
+    /// both); stated twice so neither reader relies on the invariant.
+    pub last_mode: TimerMode,
 }
 
 /// A request to start the timer. `confirmed` is the second leg of the
@@ -125,6 +182,10 @@ pub struct TimerState {
 #[derive(Debug, Clone, Deserialize, ts_rs::TS)]
 pub struct StartTimer {
     pub item: String,
+    /// Required, no default: the only client is our own UI, which
+    /// always knows which button was pressed, and an explicit request
+    /// reads unambiguously in tests and logs.
+    pub mode: TimerMode,
     #[serde(default)]
     pub confirmed: bool,
 }

@@ -38,8 +38,8 @@ use workdown_core::schema_data::{
     FieldSchema, FieldTypeOperators, PaletteColor, ResourceList, ResourceOption, SchemaData,
 };
 use workdown_core::timer_data::{
-    EffortFieldState, RunningTimer, StartTimer, TimerStartOutcome, TimerState, TimerStopResult,
-    TimerWrite,
+    EffortFieldState, StartTimer, TimerMode, TimerPhase, TimerStartOutcome, TimerState,
+    TimerStopResult, TimerWrite,
 };
 use workdown_core::view_data::{
     AggregateValue, AxisValue, BarChartBar, BarChartData, BoardColumn, BoardData, Card, CardField,
@@ -101,7 +101,8 @@ const ALL_TYPES: &[&str] = &[
     "ViewDefinition",
     "ViewMutationResult",
     "EffortFieldState",
-    "RunningTimer",
+    "TimerMode",
+    "TimerPhase",
     "TimerState",
     "StartTimer",
     "TimerStartOutcome",
@@ -206,7 +207,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Timer contracts (GET /api/timer, POST /api/timer/start, POST /api/timer/stop).
     write_type::<EffortFieldState>(&target_dir)?;
-    write_type::<RunningTimer>(&target_dir)?;
+    write_type::<TimerMode>(&target_dir)?;
+    write_type::<TimerPhase>(&target_dir)?;
     write_type::<TimerState>(&target_dir)?;
     write_type::<StartTimer>(&target_dir)?;
     write_type::<TimerStartOutcome>(&target_dir)?;

@@ -1,5 +1,5 @@
-//! `/api/timer` — the effort timer's three endpoints: get state, start,
-//! stop.
+//! `/api/timer` — the effort timer's four endpoints: get state, start,
+//! stop, and break end.
 //!
 //! The timer itself lives in [`crate::timer`] (server memory, one per
 //! process); these handlers translate between it and the wire contracts
@@ -20,6 +20,14 @@
 //! and writing are one indivisible step. A failed write keeps the timer
 //! running and reports the failure; a session under half a minute
 //! clears the timer and writes nothing.
+//!
+//! Pomodoro's break rides the same contracts: a pomodoro stop whose
+//! write landed begins the break, stop during a break is `409` (a
+//! break has nothing to write), and `POST /api/timer/break/end` is the
+//! state-only exit — refused whenever no break runs. Start during a
+//! break is one transition, and while a break runs, start on the item
+//! it followed skips the roll-up confirmation: the loop was confirmed
+//! when its first interval was.
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -31,14 +39,14 @@ use workdown_core::model::WorkItemId;
 use workdown_core::operations::set::{run_set, DurationMode, SetOperation};
 use workdown_core::project::{load_project, Project};
 use workdown_core::timer_data::{
-    rounded_write_seconds, EffortFieldState, RunningTimer, StartTimer, TimerStartOutcome,
-    TimerState, TimerStopResult, TimerWrite,
+    rounded_write_seconds, EffortFieldState, StartTimer, TimerMode, TimerPhase, TimerStartOutcome,
+    TimerState, TimerStopResult, TimerWrite, POMODORO_BREAK_SECONDS, POMODORO_WORK_SECONDS,
 };
 
 use super::items::set_error_status;
 use crate::envelope::ApiResponse;
 use crate::state::AppState;
-use crate::timer::{StopError, TimerSnapshot};
+use crate::timer::{BreakEndError, PhaseSnapshot, StopError, WorkSnapshot};
 
 /// Router for the timer endpoints under `/api`.
 pub fn router() -> Router<AppState> {
@@ -46,6 +54,7 @@ pub fn router() -> Router<AppState> {
         .route("/timer", get(get_timer))
         .route("/timer/start", post(start_timer))
         .route("/timer/stop", post(stop_timer))
+        .route("/timer/break/end", post(end_break))
 }
 
 async fn get_timer(State(state): State<AppState>) -> ApiResponse<TimerState> {
@@ -97,11 +106,23 @@ async fn start_timer(
     // aggregates and the item has at least one child over the
     // aggregate's link field; children *with values* would make the
     // dialog appear and vanish as children gain their first value.
-    if !request.confirmed && rollup_confirmation_needed(&project, &field, &request.item) {
+    // While a break runs, the item it followed is confirmed already —
+    // the confirmation of the loop's first interval carries through;
+    // any other item takes the normal round trip.
+    let confirmed = request.confirmed
+        || matches!(
+            &state.timer.snapshot().phase,
+            PhaseSnapshot::Break(running_break)
+                if running_break.followed_item.as_str() == request.item
+        );
+    if !confirmed && rollup_confirmation_needed(&project, &field, &request.item) {
         return ApiResponse::ok(TimerStartOutcome::NeedsConfirmation);
     }
 
-    match state.timer.start(WorkItemId::from(request.item)) {
+    match state
+        .timer
+        .start(WorkItemId::from(request.item), request.mode)
+    {
         Ok(_started) => {
             // Tell every other tab the timer changed. Zero receivers
             // (no other tab) is fine, so the send result is ignored.
@@ -174,9 +195,36 @@ async fn stop_timer(State(state): State<AppState>) -> ApiResponse<TimerStopResul
         Err(StopError::NotRunning) => {
             ApiResponse::failed(StatusCode::CONFLICT, "no timer is running".to_owned())
         }
+        Err(StopError::BreakRunning) => ApiResponse::failed(
+            StatusCode::CONFLICT,
+            "a break is running and records nothing — end it or start the next interval".to_owned(),
+        ),
         Err(StopError::Write(error)) => {
             ApiResponse::failed(set_error_status(&error), error.to_string())
         }
+    }
+}
+
+/// End a running break: back to idle, nothing written — so no result
+/// beyond the new timer state, and nothing for a toast to say. Refused
+/// whenever no break runs; a work interval's exit is stop.
+async fn end_break(State(state): State<AppState>) -> ApiResponse<TimerState> {
+    let project = match load_state_project(&state) {
+        Ok(project) => project,
+        Err(response) => return response,
+    };
+    match state.timer.end_break() {
+        Ok(()) => {
+            let _ = state.timer_events.send(());
+            ApiResponse::ok(timer_state(&state, &project))
+        }
+        Err(BreakEndError::NotRunning) => {
+            ApiResponse::failed(StatusCode::CONFLICT, "no break is running".to_owned())
+        }
+        Err(BreakEndError::WorkRunning) => ApiResponse::failed(
+            StatusCode::CONFLICT,
+            "a work interval is running — stop it instead of ending a break".to_owned(),
+        ),
     }
 }
 
@@ -201,21 +249,29 @@ fn timer_state(state: &AppState, project: &Project) -> TimerState {
         state.config.defaults.effort_field.as_deref(),
         &project.schema,
     );
-    let running = state
-        .timer
-        .snapshot()
-        .map(|snapshot| running_timer(snapshot, &effort_field, project));
+    let snapshot = state.timer.snapshot();
+    let phase = match snapshot.phase {
+        PhaseSnapshot::Idle => TimerPhase::Idle,
+        PhaseSnapshot::Work(work) => work_phase(work, &effort_field, project),
+        PhaseSnapshot::Break(running_break) => TimerPhase::Break {
+            followed_item: running_break.followed_item,
+            started_at_ms: running_break.started_at.timestamp_millis(),
+            elapsed_seconds: running_break.elapsed_seconds,
+            phase_length_seconds: POMODORO_BREAK_SECONDS,
+        },
+    };
     TimerState {
         effort_field,
-        running,
+        phase,
+        last_mode: snapshot.last_mode,
     }
 }
 
-fn running_timer(
-    snapshot: TimerSnapshot,
+fn work_phase(
+    snapshot: WorkSnapshot,
     effort_field: &EffortFieldState,
     project: &Project,
-) -> RunningTimer {
+) -> TimerPhase {
     // The projected write's basis is the item's *hand-written* value —
     // the frontmatter, which is exactly what the store's coerced fields
     // hold. A derived value (rolled up, computed) never appears there,
@@ -233,11 +289,16 @@ fn running_timer(
             }),
         _ => None,
     };
-    RunningTimer {
+    TimerPhase::Work {
         item_id: snapshot.item_id,
         started_at_ms: snapshot.started_at.timestamp_millis(),
         elapsed_seconds: snapshot.elapsed_seconds,
         effort_before_seconds,
+        mode: snapshot.mode,
+        phase_length_seconds: match snapshot.mode {
+            TimerMode::Pomodoro => Some(POMODORO_WORK_SECONDS),
+            TimerMode::Stopwatch => None,
+        },
     }
 }
 

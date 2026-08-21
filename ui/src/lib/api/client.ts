@@ -21,6 +21,7 @@ import type { ItemDetail } from './generated/ItemDetail';
 import type { SchemaData } from './generated/SchemaData';
 import type { SetViewFilter } from './generated/SetViewFilter';
 import type { StartTimer } from './generated/StartTimer';
+import type { TimerMode } from './generated/TimerMode';
 import type { TimerStartOutcome } from './generated/TimerStartOutcome';
 import type { TimerState } from './generated/TimerState';
 import type { TimerStopResult } from './generated/TimerStopResult';
@@ -142,9 +143,10 @@ export const api = {
 	 * roll-up confirmation round trip: a `needs_confirmation` outcome
 	 * means show the dialog and send the same request again with `true`.
 	 */
-	startTimer: (item: string, confirmed = false) =>
+	startTimer: (item: string, mode: TimerMode, confirmed = false) =>
 		request<TimerStartOutcome>('POST', '/api/timer/start', {
 			item,
+			mode,
 			confirmed
 		} satisfies StartTimer),
 	stopTimer: () => request<TimerStopResult>('POST', '/api/timer/stop', {})

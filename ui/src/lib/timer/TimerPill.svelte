@@ -22,7 +22,12 @@
 
 	let container = $state<HTMLElement>();
 
-	const running = $derived(timerStore.state?.running ?? null);
+	// The running work phase; a break (once it exists) renders its own
+	// treatment, not this one.
+	const running = $derived.by(() => {
+		const phase = timerStore.state?.phase;
+		return phase?.phase === 'work' ? phase : null;
+	});
 	const elapsed = $derived(timerStore.elapsedSeconds ?? 0);
 	const field = $derived(
 		timerStore.state !== null && timerStore.state.effort_field.state === 'ready'
