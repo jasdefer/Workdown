@@ -51,7 +51,7 @@
 | [mutations-slice](../workdown-items/mutations-slice.md) | done | [server](../workdown-items/server.md) | [first-view-end-to-end](../workdown-items/first-view-end-to-end.md) |
 | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | done |  |  |
 | [polish](../workdown-items/polish.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [view-authoring](../workdown-items/view-authoring.md) |
-| [pomodoro-timer](../workdown-items/pomodoro-timer.md) | to_do | [time-tracking](../workdown-items/time-tracking.md) | [effort-timer](../workdown-items/effort-timer.md) |
+| [pomodoro-timer](../workdown-items/pomodoro-timer.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [effort-timer](../workdown-items/effort-timer.md) |
 | [project-constants](../workdown-items/project-constants.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [pull-fields](../workdown-items/pull-fields.md) | done | [schema-expressions](../workdown-items/schema-expressions.md) | [computed-fields](../workdown-items/computed-fields.md), [aggregate-rollup](../workdown-items/aggregate-rollup.md) |
 | [readme-visualization-update](../workdown-items/readme-visualization-update.md) | done | [polish](../workdown-items/polish.md) |  |

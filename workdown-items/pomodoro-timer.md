@@ -1,6 +1,6 @@
 ---
 id: pomodoro-timer
-status: to_do
+status: done
 title: Pomodoro mode for the effort timer
 parent: time-tracking
 depends_on:

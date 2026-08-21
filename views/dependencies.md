@@ -20,8 +20,6 @@ flowchart TD
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end
     subgraph time-tracking ["Time tracking"]
-        pomodoro-timer["Pomodoro mode for the effort timer"]
         timer-notifications["Tell the user when a timed interval is over"]
     end
-    timer-notifications --> pomodoro-timer
 ```
