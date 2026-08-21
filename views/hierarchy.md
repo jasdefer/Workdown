@@ -18,3 +18,4 @@ Hierarchical outline following `parent` upward to roots.
   - [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md) — status: in_progress
   - [Pomodoro mode for the effort timer](../workdown-items/pomodoro-timer.md) — status: to_do
   - [Tell the user when a timed interval is over](../workdown-items/timer-notifications.md) — status: to_do
+  - [Show which item is being timed in the views](../workdown-items/timer-recording-indicator.md) — status: in_progress

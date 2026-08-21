@@ -23,7 +23,9 @@ flowchart TD
         effort-timer["Stopwatch in the web app that records effort"]
         pomodoro-timer["Pomodoro mode for the effort timer"]
         timer-notifications["Tell the user when a timed interval is over"]
+        timer-recording-indicator["Show which item is being timed in the views"]
     end
     pomodoro-timer --> effort-timer
     timer-notifications --> pomodoro-timer
+    timer-recording-indicator --> effort-timer
 ```

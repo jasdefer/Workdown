@@ -21,6 +21,7 @@ Cards grouped into columns by `status`.
 ## in_progress
 - [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md)
 - [Time tracking](../workdown-items/time-tracking.md)
+- [Show which item is being timed in the views](../workdown-items/timer-recording-indicator.md)
 
 ## done
 - [ADR — visualization architecture](../workdown-items/adr-phase-04-architecture.md)
