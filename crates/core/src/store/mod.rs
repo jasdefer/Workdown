@@ -17,7 +17,7 @@ mod resource_refs;
 mod rollup;
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::model::diagnostic::{
     Diagnostic, FileDiagnosticKind, FilesDiagnosticKind, ItemDiagnosticKind,
@@ -94,43 +94,12 @@ impl Store {
     ) -> Result<Store, std::io::Error> {
         let mut diagnostics = Vec::new();
 
-        // A missing items directory is a project with no items, not an
-        // error: git doesn't keep empty directories, so a fresh clone of
-        // a project whose items were all deleted — or whose configured
-        // path was never created — legitimately has none. A path that
-        // exists but isn't a directory, or one whose metadata can't be
-        // read (permissions), is still a hard error.
-        let directory_exists = match std::fs::metadata(items_dir) {
-            Ok(metadata) if metadata.is_dir() => true,
-            Ok(_) => {
-                return Err(std::io::Error::other(format!(
-                    "{} exists but is not a directory",
-                    items_dir.display()
-                )))
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
-            Err(e) => return Err(e),
-        };
-
         // 1. Collect all .md file paths, sorted alphabetically for determinism.
-        let mut paths = Vec::new();
-        if directory_exists {
-            for entry in walkdir::WalkDir::new(items_dir)
-                .min_depth(1)
-                .max_depth(1)
-                .sort_by_file_name()
-            {
-                let entry = entry.map_err(std::io::Error::other)?;
-                let path = entry.into_path();
-                if path.extension().is_some_and(|ext| ext == "md") {
-                    paths.push(path);
-                }
-            }
-        }
+        let paths = collect_item_paths(items_dir)?;
 
         // 2. Parse each file and check ID uniqueness.
         let mut items = HashMap::new();
-        let mut seen_ids: HashMap<WorkItemId, std::path::PathBuf> = HashMap::new();
+        let mut seen_ids: HashMap<WorkItemId, PathBuf> = HashMap::new();
 
         for path in &paths {
             let raw = match parser::parse_work_item_file(path) {
@@ -310,6 +279,46 @@ impl Store {
     }
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────
+
+/// The `.md` files directly inside `items_dir`, sorted by file name for
+/// determinism.
+///
+/// A directory that doesn't exist yields an empty list rather than an
+/// error: that's a project with no items, which is a valid state. Git
+/// doesn't keep empty directories, so a fresh clone of a project whose
+/// items were all deleted — or one whose configured path was never
+/// created — legitimately has none. A path that exists but isn't a
+/// directory, or one whose metadata can't be read (permissions), is
+/// still a hard error.
+fn collect_item_paths(items_dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
+    match std::fs::metadata(items_dir) {
+        Ok(metadata) if metadata.is_dir() => {}
+        Ok(_) => {
+            return Err(std::io::Error::other(format!(
+                "{} exists but is not a directory",
+                items_dir.display()
+            )))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    }
+
+    let mut paths = Vec::new();
+    for entry in walkdir::WalkDir::new(items_dir)
+        .min_depth(1)
+        .max_depth(1)
+        .sort_by_file_name()
+    {
+        let entry = entry.map_err(std::io::Error::other)?;
+        let path = entry.into_path();
+        if path.extension().is_some_and(|ext| ext == "md") {
+            paths.push(path);
+        }
+    }
+    Ok(paths)
+}
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -320,7 +329,6 @@ mod tests {
     use crate::model::FieldValue;
     use indexmap::IndexMap;
     use std::fs;
-    use std::path::PathBuf;
 
     /// Build a minimal schema for store tests.
     fn test_schema() -> Schema {

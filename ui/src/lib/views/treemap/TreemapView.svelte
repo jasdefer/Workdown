@@ -27,8 +27,7 @@
   prepends a size row. Clicking a rectangle opens its item panel via
   `?item=`, matching every other item-presenting view: leaves directly,
   frames through their label strip and the gaps between children
-  (children are drawn on top and keep their own clicks). Only the
-  synthetic root stays inert.
+  (children are drawn on top and keep their own clicks).
 -->
 <script lang="ts">
 	import { hierarchy, treemap, treemapSquarify } from 'd3-hierarchy';
@@ -36,7 +35,7 @@
 	import type { TreemapNode } from '$lib/api/generated/TreemapNode';
 	import type { SizeValue } from '$lib/api/generated/SizeValue';
 	import type { Card as CardData } from '$lib/api/generated/Card';
-	import { openItem } from '$lib/items/itemLink';
+	import { activateOnKey, openItem } from '$lib/items/itemLink';
 	import { timerStore } from '$lib/stores/timer.svelte';
 	import { textColorOn } from '$lib/views/colorContrast';
 	import { formatScalar } from '$lib/views/format';
@@ -215,17 +214,11 @@
 	}
 
 	// Click (or Enter/Space) opens the item panel via `?item=`, matching
-	// the board card. Both leaves and frames are work items; only the
-	// synthetic root frame (no card) stays inert.
+	// the board card. Every laid-out node is a real item — leaf or
+	// frame alike — because `laidNodes` skips the cardless synthetic
+	// root; the null check below only satisfies the type.
 	function open(laid: LaidNode): void {
 		if (laid.node.card !== null) openItem(laid.node.card.id);
-	}
-
-	function onKeydown(event: KeyboardEvent, laid: LaidNode): void {
-		if (event.key === 'Enter' || event.key === ' ') {
-			event.preventDefault();
-			open(laid);
-		}
 	}
 </script>
 
@@ -273,7 +266,9 @@
 										open(laid);
 									}}
 									onkeydown={(event) => {
-										onKeydown(event, laid);
+										activateOnKey(event, () => {
+											open(laid);
+										});
 									}}
 								/>
 								{#if laid.width >= MIN_LEAF_LABEL_WIDTH && laid.height >= MIN_LEAF_LABEL_HEIGHT}
@@ -288,35 +283,27 @@
 									>
 								{/if}
 							{:else}
-								{#if laid.node.card !== null}
-									<!-- Children are drawn on top and keep their own clicks; the
-									     frame itself catches clicks on its label strip and gaps,
-									     opening the parent item. -->
-									<rect
-										class="frame openable"
-										style:--item-color={nodeColor(laid.node)}
-										width={laid.width}
-										height={laid.height}
-										stroke-width={frameStrokeWidth(laid.depth)}
-										role="button"
-										tabindex="0"
-										aria-label={nodeLabel(laid.node)}
-										onclick={() => {
+								<!-- Children are drawn on top and keep their own clicks, so
+								     the frame only catches its label strip and the gaps
+								     between its children. -->
+								<rect
+									class="frame"
+									style:--item-color={nodeColor(laid.node)}
+									width={laid.width}
+									height={laid.height}
+									stroke-width={frameStrokeWidth(laid.depth)}
+									role="button"
+									tabindex="0"
+									aria-label={nodeLabel(laid.node)}
+									onclick={() => {
+										open(laid);
+									}}
+									onkeydown={(event) => {
+										activateOnKey(event, () => {
 											open(laid);
-										}}
-										onkeydown={(event) => {
-											onKeydown(event, laid);
-										}}
-									/>
-								{:else}
-									<rect
-										class="frame"
-										style:--item-color={nodeColor(laid.node)}
-										width={laid.width}
-										height={laid.height}
-										stroke-width={frameStrokeWidth(laid.depth)}
-									/>
-								{/if}
+										});
+									}}
+								/>
 								{#if laid.width >= MIN_FRAME_LABEL_WIDTH && laid.height >= FRAME_LABEL_STRIP}
 									<text class="frame-label" x={6} y={14} clip-path="url(#{clipId})"
 										>{nodeLabel(laid.node)}</text
@@ -387,16 +374,19 @@
 		stroke: var(--item-color, var(--color-border));
 		/* stroke-width is set per-rect via the `stroke-width` attribute
 		   (scaled by depth); a CSS rule here would override that attribute. */
-		pointer-events: none;
-	}
-
-	/* A frame backed by a real item opens on click. `all` (not the
-	   visiblePainted default) so the transparent fill reliably catches
-	   clicks; children are drawn on top, so only the label strip and
-	   the gaps between children actually reach the frame. */
-	.frame.openable {
+		/* `all`, not the visiblePainted default, so the transparent fill
+		   catches clicks; children are drawn on top, so only the label
+		   strip and the gaps between children actually reach the frame. */
 		pointer-events: all;
 		cursor: pointer;
+	}
+
+	/* Both marks are keyboard-reachable openers, so they get the same
+	   visible focus ring as every other opener in the app. */
+	.leaf:focus-visible,
+	.frame:focus-visible {
+		outline: 2px solid var(--color-fg-muted);
+		outline-offset: 1px;
 	}
 
 	.frame-label {
