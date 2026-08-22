@@ -43,7 +43,6 @@ _(no cards)_
 - [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md)
 - [Collapse parallel View* slot variants and unify their validation helpers](../workdown-items/diagnostic-variant-cleanup.md)
 - [Validate `defaults.display` in config.yaml against the schema](../workdown-items/display-defaults-validation.md)
-- [Bugs found in daily use](../workdown-items/dogfood-bugs.md)
 - [Duration delta starts from zero on an absent field](../workdown-items/duration-delta-absent-value.md)
 - [Add `duration` field type](../workdown-items/duration-field-type.md)
 - [Project-level effort field in config.yaml](../workdown-items/effort-field-config.md)

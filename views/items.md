@@ -2,7 +2,7 @@
 
 | id | status | parent | depends_on |
 | --- | --- | --- | --- |
-| [add-missing-items-directory](../workdown-items/add-missing-items-directory.md) | done | [dogfood-bugs](../workdown-items/dogfood-bugs.md) |  |
+| [add-missing-items-directory](../workdown-items/add-missing-items-directory.md) | done |  |  |
 | [adr-phase-04-architecture](../workdown-items/adr-phase-04-architecture.md) | done | [foundation](../workdown-items/foundation.md) |  |
 | [aggregate-rollup](../workdown-items/aggregate-rollup.md) | done | [renderers](../workdown-items/renderers.md) |  |
 | [app-shell-navigation](../workdown-items/app-shell-navigation.md) | done | [server](../workdown-items/server.md) | [first-view-end-to-end](../workdown-items/first-view-end-to-end.md) |
@@ -25,7 +25,6 @@
 | [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [diagnostic-variant-cleanup](../workdown-items/diagnostic-variant-cleanup.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [display-defaults-validation](../workdown-items/display-defaults-validation.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [view-display-config](../workdown-items/view-display-config.md) |
-| [dogfood-bugs](../workdown-items/dogfood-bugs.md) | done |  |  |
 | [duration-delta-absent-value](../workdown-items/duration-delta-absent-value.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [duration-field-type](../workdown-items/duration-field-type.md) | done | [renderers](../workdown-items/renderers.md) |  |
 | [effort-field-config](../workdown-items/effort-field-config.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [config-field-role-validation](../workdown-items/config-field-role-validation.md) |
@@ -44,7 +43,7 @@
 | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) | done | [renderers](../workdown-items/renderers.md) | [render-gantt](../workdown-items/render-gantt.md), [duration-field-type](../workdown-items/duration-field-type.md) |
 | [gantt-predecessor-mode](../workdown-items/gantt-predecessor-mode.md) | done | [renderers](../workdown-items/renderers.md) | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) |
 | [github-render-action](../workdown-items/github-render-action.md) | removed | [polish](../workdown-items/polish.md) |  |
-| [graph-item-open](../workdown-items/graph-item-open.md) | done | [dogfood-bugs](../workdown-items/dogfood-bugs.md) |  |
+| [graph-item-open](../workdown-items/graph-item-open.md) | done |  |  |
 | [init-install-hooks](../workdown-items/init-install-hooks.md) | done | [polish](../workdown-items/polish.md) |  |
 | [item-mutations](../workdown-items/item-mutations.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md) |
 | [live-updates](../workdown-items/live-updates.md) | done | [server](../workdown-items/server.md) | [walking-skeleton](../workdown-items/walking-skeleton.md) |

@@ -3,7 +3,6 @@ id: graph-item-open
 status: done
 title: Clicking an item in the graph view does not open it
 tags: [bug]
-parent: dogfood-bugs
 ---
 
 ## In plain words

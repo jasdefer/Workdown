@@ -3,7 +3,6 @@ id: add-missing-items-directory
 status: done
 title: Commands fail when the work-items directory is missing
 tags: [bug]
-parent: dogfood-bugs
 ---
 
 ## In plain words
