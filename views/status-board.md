@@ -20,6 +20,7 @@ Cards grouped into columns by `status`.
 _(no cards)_
 
 ## done
+- [Commands fail when the work-items directory is missing](../workdown-items/add-missing-items-directory.md)
 - [ADR — visualization architecture](../workdown-items/adr-phase-04-architecture.md)
 - [Compute schema-declared aggregate fields up the parent chain](../workdown-items/aggregate-rollup.md)
 - [App shell navigation (views menu + future link slots)](../workdown-items/app-shell-navigation.md)
@@ -55,6 +56,7 @@ _(no cards)_
 - [Consolidate duplication and tighten types before more foundation work](../workdown-items/foundation-cleanup.md)
 - [Gantt duration input mode](../workdown-items/gantt-duration-mode.md)
 - [Gantt predecessor input mode](../workdown-items/gantt-predecessor-mode.md)
+- [Clicking an item in the graph view does not open it](../workdown-items/graph-item-open.md)
 - [Optional --install-hooks for pre-commit render](../workdown-items/init-install-hooks.md)
 - [Item mutations](../workdown-items/item-mutations.md)
 - [File watcher and SSE for live updates](../workdown-items/live-updates.md)

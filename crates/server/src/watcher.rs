@@ -34,6 +34,10 @@ pub type WatchGuard = Debouncer<RecommendedWatcher, RecommendedCache>;
 /// Start watching the project's directories. Every debounced change that
 /// touches a watched file kind sends a ping on `events`. Returns a guard
 /// that must be kept alive — dropping it tears the watcher down.
+///
+/// Creates the work-items directory if it is missing — see
+/// `ensure_items_directory` below for why. This is the one place the
+/// server writes to the project without being asked to.
 pub fn start(
     config: &Config,
     project_root: &Path,
@@ -56,6 +60,8 @@ pub fn start(
     })
     .context("initialising filesystem watcher")?;
 
+    ensure_items_directory(config, project_root);
+
     for directory in watch_directories(config, project_root) {
         // A configured directory may not exist yet (e.g. no templates
         // dir). Skip the missing ones rather than failing server boot.
@@ -67,6 +73,29 @@ pub fn start(
     }
 
     Ok(debouncer)
+}
+
+/// Create the work-items directory if it is missing.
+///
+/// A missing one is a valid empty project — git keeps no empty
+/// directories — but a watch can only be placed on a path that exists,
+/// and item mutations are announced to browsers by this watcher alone
+/// (nothing else pings the channel). Without the directory, the first
+/// item added through the UI would land unwatched and no browser would
+/// ever see it appear.
+///
+/// A failure here is not fatal: the watch is skipped, live updates stay
+/// off, and the next project load reports the real problem — so it warns
+/// rather than aborting server boot.
+fn ensure_items_directory(config: &Config, project_root: &Path) {
+    let items_directory = project_root.join(&config.paths.work_items);
+    if let Err(error) = std::fs::create_dir_all(&items_directory) {
+        tracing::warn!(
+            error = %error,
+            path = %items_directory.display(),
+            "could not create the work-items directory; live updates may stay off",
+        );
+    }
 }
 
 /// True when `path` is a file kind a project change can live in:
@@ -131,6 +160,20 @@ mod tests {
         assert!(!is_watched_file(Path::new("4913"))); // vim probe, no extension
         assert!(!is_watched_file(Path::new("notes.txt")));
         assert!(!is_watched_file(Path::new("workdown-items"))); // a directory
+    }
+
+    #[test]
+    fn start_creates_missing_items_directory() {
+        let state = crate::state::AppState::test_stub();
+        let root = tempfile::tempdir().unwrap();
+        // Only `.workdown` exists — the items directory is missing, the
+        // normal state of a fresh clone with no items.
+        std::fs::create_dir_all(root.path().join(".workdown")).unwrap();
+
+        let (events, _) = broadcast::channel(1);
+        let _guard = start(&state.config, root.path(), events).unwrap();
+
+        assert!(root.path().join("workdown-items").is_dir());
     }
 
     #[test]

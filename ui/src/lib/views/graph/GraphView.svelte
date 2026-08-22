@@ -12,11 +12,15 @@
   handles both flat and compound (grouped) graphs; the built-in
   breadthfirst/cose layouts ordered nodes noticeably worse.
 
-  Read-only canvas: wheel zooms, dragging the background pans (there are
-  no scrollbars), node dragging is off (`autoungrabify`). Hovering a
+  Canvas interaction: wheel zooms, dragging the background pans (there
+  are no scrollbars), node dragging is off (`autoungrabify`). Hovering a
   node shows its full card (title, id, rendered body) by reusing the
-  board <Card>. Click-to-open-item is deferred until the real item page
-  lands — added across all views then.
+  board <Card>. Tapping a node — or a group box, which is an item too —
+  opens the item panel via `?item=` like every other item-presenting
+  view; Cytoscape's `tap` only fires when the gesture wasn't a drag, so
+  panning stays safe. Mouse only: the graph is one <canvas> element, so
+  there is nothing per node to focus or tab to. Views drawn as real
+  elements (board, treemap) do open from the keyboard.
 
   Cytoscape draws to <canvas>, so CSS custom properties don't cascade
   into it: colors are read from the resolved design tokens at build
@@ -35,6 +39,7 @@
 	import type { GraphData } from '$lib/api/generated/GraphData';
 	import type { Card as CardData } from '$lib/api/generated/Card';
 	import type { TreeNode } from '$lib/api/generated/TreeNode';
+	import { openItem } from '$lib/items/itemLink';
 	import { textColorOn } from '$lib/views/colorContrast';
 	import { cardLabel } from '$lib/views/prettify';
 	import { themeStore, type Theme } from '$lib/stores/theme.svelte';
@@ -248,6 +253,10 @@
 			instance.on('pan zoom', () => {
 				hovered = null;
 			});
+			instance.on('tap', 'node', (event: cytoscape.EventObject) => {
+				const node = event.target as cytoscape.NodeSingular;
+				if (cardById.has(node.id())) openItem(node.id());
+			});
 			cy = instance;
 		};
 		build().catch((error: unknown) => {
@@ -283,7 +292,13 @@
 	<EmptyHint />
 {:else}
 	<div class="graph-wrap">
-		<div class="graph" bind:this={container} role="region" aria-label="Graph view"></div>
+		<div
+			class="graph"
+			class:on-node={hovered !== null}
+			bind:this={container}
+			role="region"
+			aria-label="Graph view"
+		></div>
 		{#if hovered}
 			<div class="tooltip" style="left: {hovered.x}px; top: {hovered.y}px;">
 				<Card card={hovered.card} />
@@ -309,6 +324,14 @@
 		position: absolute;
 		inset: 0;
 		cursor: grab;
+	}
+
+	/* Nodes live in the canvas, so a per-node cursor can't come from CSS
+	   alone — `hovered` (set by the same handler that opens the tooltip)
+	   stands in for :hover. Declared before `:active` so dragging still
+	   reads as grabbing. */
+	.graph.on-node {
+		cursor: pointer;
 	}
 
 	.graph:active {

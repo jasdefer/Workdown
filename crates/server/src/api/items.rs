@@ -104,7 +104,9 @@ fn add_error_status(error: &AddError) -> StatusCode {
         | AddError::InvalidId { .. }
         | AddError::Template(_) => StatusCode::UNPROCESSABLE_ENTITY,
 
-        AddError::WriteFile { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        AddError::CreateItemsDir { .. } | AddError::WriteFile { .. } => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
     }
 }
 

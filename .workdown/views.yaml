@@ -24,6 +24,17 @@ views:
     - status
     - parent
     - depends_on
+# `tags` is a list, so `=` matches membership: the tag carries the
+# bug/tech-debt distinction that used to be a `type` field.
+- id: bugs
+  type: table
+  where:
+  - tags=bug
+  display:
+    fields:
+    - id
+    - status
+    - depends_on
 - id: items-by-status
   type: bar_chart
   where:

@@ -6,7 +6,7 @@
 <script lang="ts">
 	import type { Card } from '$lib/api/generated/Card';
 	import { draggable } from '$lib/dnd/dnd';
-	import { openItem } from '$lib/items/itemLink';
+	import { activateOnKey, openItem } from '$lib/items/itemLink';
 	import { timerStore } from '$lib/stores/timer.svelte';
 	import RecordingDot from '$lib/timer/RecordingDot.svelte';
 	import Markdown from '$lib/ui/Markdown.svelte';
@@ -36,10 +36,7 @@
 	tabindex="0"
 	onclick={open}
 	onkeydown={(event) => {
-		if (event.key === 'Enter' || event.key === ' ') {
-			event.preventDefault();
-			open();
-		}
+		activateOnKey(event, open);
 	}}
 >
 	<header class="card-header">

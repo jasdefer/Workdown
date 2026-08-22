@@ -57,6 +57,12 @@ pub enum AddError {
     #[error("work item '{id}' already exists at {path}")]
     AlreadyExists { id: String, path: PathBuf },
 
+    #[error("failed to create the work items directory '{path}': {source}")]
+    CreateItemsDir {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
     #[error("failed to write '{path}': {source}")]
     WriteFile {
         path: PathBuf,
@@ -169,7 +175,16 @@ pub fn run_add(
     // Pre-write hard-fails are still possible from I/O and slug derivation.
     let yaml_content = build_frontmatter_yaml(&frontmatter, &schema, user_set_id);
 
-    // Write the file. Body (template or empty) follows the closing delimiter.
+    // The items directory may not exist yet: git keeps no empty
+    // directories, so a fresh clone of a project with no items has none.
+    // Create it rather than failing the first add.
+    std::fs::create_dir_all(&items_path).map_err(|source| AddError::CreateItemsDir {
+        path: items_path.clone(),
+        source,
+    })?;
+
+    // Write the file. Body (template or empty) follows the closing
+    // delimiter.
     let file_content = format!("---\n{yaml_content}---\n{body}");
     std::fs::write(&file_path, &file_content).map_err(|source| AddError::WriteFile {
         path: file_path.clone(),
