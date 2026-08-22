@@ -36,8 +36,8 @@ pub type WatchGuard = Debouncer<RecommendedWatcher, RecommendedCache>;
 /// that must be kept alive — dropping it tears the watcher down.
 ///
 /// Creates the work-items directory if it is missing — see
-/// [`ensure_items_directory`]. This is the one place the server writes to
-/// the project without being asked to.
+/// `ensure_items_directory` below for why. This is the one place the
+/// server writes to the project without being asked to.
 pub fn start(
     config: &Config,
     project_root: &Path,
