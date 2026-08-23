@@ -6,6 +6,8 @@
 | [adr-phase-04-architecture](../workdown-items/adr-phase-04-architecture.md) | done | [foundation](../workdown-items/foundation.md) |  |
 | [aggregate-rollup](../workdown-items/aggregate-rollup.md) | done | [renderers](../workdown-items/renderers.md) |  |
 | [app-shell-navigation](../workdown-items/app-shell-navigation.md) | done | [server](../workdown-items/server.md) | [first-view-end-to-end](../workdown-items/first-view-end-to-end.md) |
+| [assorted-small-fixes](../workdown-items/assorted-small-fixes.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
+| [chart-renderer-sharing](../workdown-items/chart-renderer-sharing.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [view-order-in-extractor](../workdown-items/view-order-in-extractor.md) |
 | [ci-workspace-coverage](../workdown-items/ci-workspace-coverage.md) | done |  |  |
 | [cli-add-audit](../workdown-items/cli-add-audit.md) | done | [item-mutations](../workdown-items/item-mutations.md) |  |
 | [cli-body-command](../workdown-items/cli-body-command.md) | done | [item-mutations](../workdown-items/item-mutations.md) |  |
@@ -22,6 +24,7 @@
 | [config-field-role-validation](../workdown-items/config-field-role-validation.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [confirm-dialog](../workdown-items/confirm-dialog.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [cross-cutting-helpers](../workdown-items/cross-cutting-helpers.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
+| [derived-field-single-predicate](../workdown-items/derived-field-single-predicate.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [diagnostic-variant-cleanup](../workdown-items/diagnostic-variant-cleanup.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [display-defaults-validation](../workdown-items/display-defaults-validation.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [view-display-config](../workdown-items/view-display-config.md) |
@@ -47,20 +50,27 @@
 | [init-install-hooks](../workdown-items/init-install-hooks.md) | done | [polish](../workdown-items/polish.md) |  |
 | [item-mutations](../workdown-items/item-mutations.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md) |
 | [live-updates](../workdown-items/live-updates.md) | done | [server](../workdown-items/server.md) | [walking-skeleton](../workdown-items/walking-skeleton.md) |
+| [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | to_do |  |  |
+| [message-style-consistency](../workdown-items/message-style-consistency.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) |
+| [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [misc-work](../workdown-items/misc-work.md) | to_do |  |  |
 | [multi-project-design](../workdown-items/multi-project-design.md) | to_do | [multi-project-support](../workdown-items/multi-project-support.md) |  |
 | [multi-project-support](../workdown-items/multi-project-support.md) | to_do |  |  |
 | [mutations-slice](../workdown-items/mutations-slice.md) | done | [server](../workdown-items/server.md) | [first-view-end-to-end](../workdown-items/first-view-end-to-end.md) |
+| [over-default-single-definition](../workdown-items/over-default-single-definition.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | done |  |  |
 | [polish](../workdown-items/polish.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [view-authoring](../workdown-items/view-authoring.md) |
 | [pomodoro-timer](../workdown-items/pomodoro-timer.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [effort-timer](../workdown-items/effort-timer.md) |
 | [project-constants](../workdown-items/project-constants.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
+| [project-load-cache](../workdown-items/project-load-cache.md) | to_do |  |  |
 | [pull-fields](../workdown-items/pull-fields.md) | done | [schema-expressions](../workdown-items/schema-expressions.md) | [computed-fields](../workdown-items/computed-fields.md), [aggregate-rollup](../workdown-items/aggregate-rollup.md) |
+| [query-value-consolidation](../workdown-items/query-value-consolidation.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [readme-visualization-update](../workdown-items/readme-visualization-update.md) | done | [polish](../workdown-items/polish.md) |  |
 | [remaining-read-views](../workdown-items/remaining-read-views.md) | done | [server](../workdown-items/server.md) | [first-view-end-to-end](../workdown-items/first-view-end-to-end.md) |
 | [render-bar-chart](../workdown-items/render-bar-chart.md) | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-board](../workdown-items/render-board.md) | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-command](../workdown-items/render-command.md) | done | [renderers](../workdown-items/renderers.md) | [render-board](../workdown-items/render-board.md), [render-tree](../workdown-items/render-tree.md), [render-graph](../workdown-items/render-graph.md), [render-table](../workdown-items/render-table.md), [render-gantt](../workdown-items/render-gantt.md), [render-bar-chart](../workdown-items/render-bar-chart.md), [render-line-chart](../workdown-items/render-line-chart.md), [render-workload](../workdown-items/render-workload.md), [render-metric](../workdown-items/render-metric.md), [render-treemap](../workdown-items/render-treemap.md), [render-heatmap](../workdown-items/render-heatmap.md) |
+| [render-flow-doc](../workdown-items/render-flow-doc.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [render-gantt](../workdown-items/render-gantt.md) | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-gantt-by-depth](../workdown-items/render-gantt-by-depth.md) | done | [renderers](../workdown-items/renderers.md) | [render-gantt](../workdown-items/render-gantt.md) |
 | [render-gantt-by-initiative](../workdown-items/render-gantt-by-initiative.md) | done | [renderers](../workdown-items/renderers.md) | [render-gantt](../workdown-items/render-gantt.md) |
@@ -79,7 +89,10 @@
 | [rules-current-date-reference](../workdown-items/rules-current-date-reference.md) | done | [polish](../workdown-items/polish.md) | [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
 | [schema-expressions](../workdown-items/schema-expressions.md) | to_do |  |  |
 | [schema-metadata-api](../workdown-items/schema-metadata-api.md) | done | [view-authoring](../workdown-items/view-authoring.md) |  |
+| [schema-property-table](../workdown-items/schema-property-table.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [server](../workdown-items/server.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md), [item-mutations](../workdown-items/item-mutations.md), [renderers](../workdown-items/renderers.md) |
+| [stale-docs-refresh](../workdown-items/stale-docs-refresh.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
+| [stateful-test-gaps](../workdown-items/stateful-test-gaps.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [store-diagnostics-consistency](../workdown-items/store-diagnostics-consistency.md) | done | [polish](../workdown-items/polish.md) |  |
 | [tags-view](../workdown-items/tags-view.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
 | [time-tracking](../workdown-items/time-tracking.md) | done |  |  |
@@ -93,6 +106,8 @@
 | [view-display-config](../workdown-items/view-display-config.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [remaining-read-views](../workdown-items/remaining-read-views.md) |
 | [view-edit-delete](../workdown-items/view-edit-delete.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [view-authoring](../workdown-items/view-authoring.md) |
 | [view-filter-editor](../workdown-items/view-filter-editor.md) | done | [view-authoring](../workdown-items/view-authoring.md) | [remaining-read-views](../workdown-items/remaining-read-views.md), [schema-metadata-api](../workdown-items/schema-metadata-api.md), [view-write-backend](../workdown-items/view-write-backend.md) |
+| [view-kind-sync-guards](../workdown-items/view-kind-sync-guards.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
+| [view-order-in-extractor](../workdown-items/view-order-in-extractor.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [view-presentation](../workdown-items/view-presentation.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [server](../workdown-items/server.md) |
 | [view-write-backend](../workdown-items/view-write-backend.md) | done | [view-authoring](../workdown-items/view-authoring.md) |  |
 | [views-check-metric-row-dedup](../workdown-items/views-check-metric-row-dedup.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
@@ -106,6 +121,7 @@
 | [virtual-id-in-structural-slots](../workdown-items/virtual-id-in-structural-slots.md) | done | [polish](../workdown-items/polish.md) |  |
 | [walker-primitives](../workdown-items/walker-primitives.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [walking-skeleton](../workdown-items/walking-skeleton.md) | done | [server](../workdown-items/server.md) |  |
+| [web-layer-adr](../workdown-items/web-layer-adr.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [when-map-shorthand](../workdown-items/when-map-shorthand.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [conditional-field-value](../workdown-items/conditional-field-value.md) |
 | [when-then-value-expressions](../workdown-items/when-then-value-expressions.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [conditional-field-value](../workdown-items/conditional-field-value.md) |
 | [where-clause-value-validation](../workdown-items/where-clause-value-validation.md) | done | [polish](../workdown-items/polish.md) | [explicit-in-operator](../workdown-items/explicit-in-operator.md) |
