@@ -24,7 +24,7 @@
 | [config-field-role-validation](../workdown-items/config-field-role-validation.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [confirm-dialog](../workdown-items/confirm-dialog.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [cross-cutting-helpers](../workdown-items/cross-cutting-helpers.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
-| [derived-field-single-predicate](../workdown-items/derived-field-single-predicate.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
+| [derived-field-single-predicate](../workdown-items/derived-field-single-predicate.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [diagnostic-variant-cleanup](../workdown-items/diagnostic-variant-cleanup.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [display-defaults-validation](../workdown-items/display-defaults-validation.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [view-display-config](../workdown-items/view-display-config.md) |
@@ -50,7 +50,7 @@
 | [init-install-hooks](../workdown-items/init-install-hooks.md) | done | [polish](../workdown-items/polish.md) |  |
 | [item-mutations](../workdown-items/item-mutations.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md) |
 | [live-updates](../workdown-items/live-updates.md) | done | [server](../workdown-items/server.md) | [walking-skeleton](../workdown-items/walking-skeleton.md) |
-| [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | to_do |  |  |
+| [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | in_progress |  |  |
 | [message-style-consistency](../workdown-items/message-style-consistency.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) |
 | [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [misc-work](../workdown-items/misc-work.md) | to_do |  |  |
@@ -99,6 +99,7 @@
 | [timer-notifications](../workdown-items/timer-notifications.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [pomodoro-timer](../workdown-items/pomodoro-timer.md) |
 | [timer-recording-indicator](../workdown-items/timer-recording-indicator.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [effort-timer](../workdown-items/effort-timer.md) |
 | [ui-foundation](../workdown-items/ui-foundation.md) | done | [server](../workdown-items/server.md) | [walking-skeleton](../workdown-items/walking-skeleton.md) |
+| [validation-phase-boundaries](../workdown-items/validation-phase-boundaries.md) | in_progress | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [derived-field-single-predicate](../workdown-items/derived-field-single-predicate.md) |
 | [value-coercion-layering](../workdown-items/value-coercion-layering.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
 | [view-authoring](../workdown-items/view-authoring.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [server](../workdown-items/server.md) |
 | [view-creation](../workdown-items/view-creation.md) | done | [view-authoring](../workdown-items/view-authoring.md) | [view-write-backend](../workdown-items/view-write-backend.md), [schema-metadata-api](../workdown-items/schema-metadata-api.md), [view-filter-editor](../workdown-items/view-filter-editor.md), [app-shell-navigation](../workdown-items/app-shell-navigation.md) |

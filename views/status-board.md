@@ -5,11 +5,9 @@ Cards grouped into columns by `status`.
 ## to_do
 - [Grab bag of small consistency fixes from the review](../workdown-items/assorted-small-fixes.md)
 - [Make the terminal chart renderers share what they each rebuilt](../workdown-items/chart-renderer-sharing.md)
-- [One shared answer to "is this field filled in automatically?"](../workdown-items/derived-field-single-predicate.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
 - [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md)
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
-- [Maintenance pass: findings from the 2026-08 codebase review](../workdown-items/maintenance-review-2026-08.md)
 - [One voice for validation messages](../workdown-items/message-style-consistency.md)
 - [Stop validating views and metric rows with two copies of every check](../workdown-items/metric-row-check-unification.md)
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
@@ -33,7 +31,8 @@ Cards grouped into columns by `status`.
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
-_(no cards)_
+- [Maintenance pass: findings from the 2026-08 codebase review](../workdown-items/maintenance-review-2026-08.md)
+- [Decide where the required-field check belongs in the load pipeline](../workdown-items/validation-phase-boundaries.md)
 
 ## done
 - [Commands fail when the work-items directory is missing](../workdown-items/add-missing-items-directory.md)
@@ -56,6 +55,7 @@ _(no cards)_
 - [Validate the field-role keys in config.yaml against the schema](../workdown-items/config-field-role-validation.md)
 - [Shared confirmation dialog component](../workdown-items/confirm-dialog.md)
 - [Relocate cross-cutting helpers out of feature modules](../workdown-items/cross-cutting-helpers.md)
+- [Stop pull-filled required fields from raising false missing-value errors](../workdown-items/derived-field-single-predicate.md)
 - [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md)
 - [Collapse parallel View* slot variants and unify their validation helpers](../workdown-items/diagnostic-variant-cleanup.md)
 - [Validate `defaults.display` in config.yaml against the schema](../workdown-items/display-defaults-validation.md)

@@ -63,12 +63,19 @@ pub(crate) fn coerce_fields(
             },
             _ => {
                 // Value is absent or null. Required-field check is deferred
-                // for derivable fields — aggregate, compute, and when
-                // configs can fill them in, so the post-derive check in
-                // `derive::run` reports only items that remain blank.
+                // for derivable fields — aggregate, compute, pull, and
+                // when configs can fill them in, so the post-derive check
+                // in `derive::run` reports only items that remain blank.
+                //
+                // This list must stay the exact complement of the one
+                // `derive::required_check` screens on. A mechanism named
+                // here but not there is never checked; one named there
+                // but not here is checked twice — once here, falsely,
+                // before it has had its chance to run.
                 if def.required
                     && def.aggregate.is_none()
                     && def.compute.is_none()
+                    && def.pull.is_none()
                     && def.when.is_none()
                 {
                     diagnostics.push(Diagnostic::item(

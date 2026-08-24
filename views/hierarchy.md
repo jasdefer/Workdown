@@ -2,10 +2,9 @@
 
 Hierarchical outline following `parent` upward to roots.
 
-- [Maintenance pass: findings from the 2026-08 codebase review](../workdown-items/maintenance-review-2026-08.md) — status: to_do
+- [Maintenance pass: findings from the 2026-08 codebase review](../workdown-items/maintenance-review-2026-08.md) — status: in_progress
   - [Grab bag of small consistency fixes from the review](../workdown-items/assorted-small-fixes.md) — status: to_do
   - [Make the terminal chart renderers share what they each rebuilt](../workdown-items/chart-renderer-sharing.md) — status: to_do
-  - [One shared answer to "is this field filled in automatically?"](../workdown-items/derived-field-single-predicate.md) — status: to_do
   - [One voice for validation messages](../workdown-items/message-style-consistency.md) — status: to_do
   - [Stop validating views and metric rows with two copies of every check](../workdown-items/metric-row-check-unification.md) — status: to_do
   - [Define the "parent" roll-up default exactly once](../workdown-items/over-default-single-definition.md) — status: to_do
@@ -14,6 +13,7 @@ Hierarchical outline following `parent` upward to roots.
   - [Table-drive the "is this property allowed on this field type?" check](../workdown-items/schema-property-table.md) — status: to_do
   - [Fix the documentation that is actively wrong](../workdown-items/stale-docs-refresh.md) — status: to_do
   - [Test the two stateful areas that currently have no coverage](../workdown-items/stateful-test-gaps.md) — status: to_do
+  - [Decide where the required-field check belongs in the load pipeline](../workdown-items/validation-phase-boundaries.md) — status: in_progress
   - [Make the non-Rust view-kind mirrors fail loudly when they drift](../workdown-items/view-kind-sync-guards.md) — status: to_do
   - [Sort and group view items in one place, not per renderer](../workdown-items/view-order-in-extractor.md) — status: to_do
   - [Write down the web layer's design decisions as an ADR](../workdown-items/web-layer-adr.md) — status: to_do

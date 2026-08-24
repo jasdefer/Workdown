@@ -843,6 +843,13 @@ fn required_check(
                     ItemDiagnosticKind::MissingRequired {
                         field: field_name.clone(),
                     }
+                } else if pull.error_on_missing {
+                    // The pull pass already reported these very inputs
+                    // against this item — `error_on_missing` is what
+                    // asked it to. Repeating it here would say the same
+                    // thing twice; adding the generic missing-required
+                    // message instead would say it twice less usefully.
+                    continue;
                 } else {
                     ItemDiagnosticKind::PullMissingInputs {
                         field: field_name.clone(),

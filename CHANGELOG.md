@@ -7,6 +7,15 @@ its source — internal refactors are deliberately absent.
 
 ## Unreleased
 
+### Fixed
+
+- A required field filled by `pull` is no longer accused of being empty
+  before the pull has had its chance to run — previously a false error
+  when the pull succeeded, and a doubled or contradictory pair of errors
+  when it could not. The check now waits for a pull the way it already
+  waited for computed, rolled-up and conditional values, and an
+  incomplete pull is reported exactly once.
+
 ## 0.2.3 - 2026-08-22
 
 ### Fixed

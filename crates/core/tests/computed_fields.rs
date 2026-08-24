@@ -1,7 +1,9 @@
-//! Integration tests for computed fields through the full project
+//! Integration tests for derived fields through the full project
 //! loader: constants defined in `resources.yaml` reach the store's
-//! derive pass, and a check-failed compute config surfaces as exactly
-//! one schema diagnostic with no per-item noise.
+//! derive pass, a check-failed compute config surfaces as exactly one
+//! schema diagnostic with no per-item noise, and the required-field
+//! check agrees with itself across the coercion/derive seam that the
+//! in-memory derive tests bypass.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -672,5 +674,129 @@ fn without_an_override_the_evaluation_date_is_today() {
             .num_days()
             .abs()
             <= 1
+    );
+}
+
+// ── Required + pull, across the coercion/derive seam ─────────────────
+//
+// These three cross the seam the derive unit tests bypass by
+// construction: they build items in memory, so `coerce_fields` — which
+// owns the early half of the required-field check — never runs. Every
+// case below turns on the two halves agreeing about `pull`.
+// See `validation-phase-boundaries` for the standing question of
+// whether that check should be split at all.
+
+/// A required date pulled one hop forward over `parent`. `depends_on`
+/// cannot carry a pull — the config demands `allow_cycles: false`.
+fn pulled_target_date_schema(error_on_missing: bool) -> String {
+    format!(
+        "{COMMON_FIELDS}  target_date:
+    type: date
+    required: true
+    pull:
+      over: parent
+      field: target_date
+      function: max
+      error_on_missing: {error_on_missing}
+"
+    )
+}
+
+/// Every diagnostic raised against one item file, in load order.
+fn messages_for(project: &Project, file_name: &str) -> Vec<String> {
+    project
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic
+                .source_path()
+                .is_some_and(|path| path.ends_with(file_name))
+        })
+        .map(|diagnostic| diagnostic.message.clone())
+        .collect()
+}
+
+#[test]
+fn a_required_field_the_pull_fills_raises_nothing() {
+    // The regression: coercion used to raise `MissingRequired` here
+    // before the pull pass ran, so a field that ends up correctly
+    // filled was still reported missing.
+    let (_directory, root) = setup_project(
+        &pulled_target_date_schema(false),
+        "",
+        &[
+            ("epic.md", "---\ntarget_date: 2026-03-01\n---\n"),
+            ("task.md", "---\nparent: epic\n---\n"),
+        ],
+    );
+
+    let project = load(&root);
+
+    assert!(
+        project.diagnostics.is_empty(),
+        "got: {:?}",
+        project.diagnostics
+    );
+    let task = project.store.get("task").expect("task must load");
+    assert_eq!(
+        task.fields.get("target_date"),
+        Some(&FieldValue::Date(
+            NaiveDate::from_ymd_opt(2026, 3, 1).unwrap()
+        ))
+    );
+}
+
+#[test]
+fn a_required_field_the_pull_cannot_fill_is_reported_once() {
+    // An unanchored root: nothing to pull from and no hand-written
+    // value. One complaint, from the post-derive half — not one from
+    // each half.
+    let (_directory, root) = setup_project(
+        &pulled_target_date_schema(false),
+        "",
+        &[("root.md", "---\nstatus: open\n---\n")],
+    );
+
+    let project = load(&root);
+
+    assert_eq!(
+        messages_for(&project, "root.md"),
+        vec!["required field 'target_date' is missing".to_owned()],
+        "got: {:?}",
+        project.diagnostics
+    );
+}
+
+#[test]
+fn an_incomplete_pull_source_reports_only_the_pull_message() {
+    // The parent exists but has no `target_date`, so the pull has an
+    // incomplete input to name. The child must get that specific
+    // message alone — not the generic missing-required one as well.
+    // The parent, unanchored, keeps its own generic message.
+    let (_directory, root) = setup_project(
+        &pulled_target_date_schema(true),
+        "",
+        &[
+            ("epic.md", "---\nstatus: open\n---\n"),
+            ("task.md", "---\nparent: epic\n---\n"),
+        ],
+    );
+
+    let project = load(&root);
+
+    assert_eq!(
+        messages_for(&project, "task.md"),
+        vec![
+            "pull field 'target_date' could not be evaluated: missing 'epic.target_date'"
+                .to_owned()
+        ],
+        "got: {:?}",
+        project.diagnostics
+    );
+    assert_eq!(
+        messages_for(&project, "epic.md"),
+        vec!["required field 'target_date' is missing".to_owned()],
+        "got: {:?}",
+        project.diagnostics
     );
 }
