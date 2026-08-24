@@ -14,7 +14,6 @@ Hierarchical outline following `parent` upward to roots.
   - [Fix the documentation that is actively wrong](../workdown-items/stale-docs-refresh.md) — status: to_do
   - [Test the two stateful areas that currently have no coverage](../workdown-items/stateful-test-gaps.md) — status: to_do
   - [Make the non-Rust view-kind mirrors fail loudly when they drift](../workdown-items/view-kind-sync-guards.md) — status: to_do
-  - [Sort and group view items in one place, not per renderer](../workdown-items/view-order-in-extractor.md) — status: to_do
   - [Write down the web layer's design decisions as an ADR](../workdown-items/web-layer-adr.md) — status: to_do
 - [Miscellaneous improvements](../workdown-items/misc-work.md) — status: to_do
   - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md) — status: to_do

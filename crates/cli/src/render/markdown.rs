@@ -1,9 +1,10 @@
 //! Shared Markdown primitives used across every renderer.
 //!
 //! Link emission, structural escapes (link text, table cell, blockquote
-//! italic), description emission, and numeric formatting. Kept
-//! deliberately small: only primitives that more than one renderer
-//! needs. Renderer-specific formatting stays in its own module.
+//! italic), description emission, numeric formatting, and the wording for
+//! a view's synthetic "no value" bucket. Kept deliberately small: only
+//! primitives that more than one renderer needs. Renderer-specific
+//! formatting stays in its own module.
 
 use workdown_core::view_data::Card;
 
@@ -30,6 +31,30 @@ pub fn card_link(card: &Card, item_link_base: &str) -> String {
 /// validated to `[a-z0-9][a-z0-9-]*`, so the link text needs no escaping.
 pub fn id_link(id: &str, item_link_base: &str) -> String {
     format!("[{id}]({item_link_base}/{id}.md)")
+}
+
+/// Name the synthetic "no value" bucket a grouped view produces —
+/// legends, gantt sections, and anything else that labels it inline.
+///
+/// The extractor reports that bucket as a structural `None` and never
+/// names it (ADR-006: ViewData owns structure and order, renderers own
+/// wording). Every terminal renderer routes through here so board,
+/// gantt, and the line chart can't drift apart on the wording again.
+/// The web front end has its own equivalent in `views/format.ts`;
+/// the two differ only in that the web prettifies field names, as it
+/// does everywhere it displays one.
+pub fn no_value_label(field: &str) -> String {
+    format!("(no {field})")
+}
+
+/// [`no_value_label`] in heading position — no surrounding parentheses,
+/// leading capital, for renderers that give the bucket its own `##`
+/// section rather than an inline label.
+///
+/// Paired with `no_value_label` in one place so the two forms stay a
+/// deliberate choice about position rather than an accident.
+pub fn no_value_heading(field: &str) -> String {
+    format!("No {field}")
 }
 
 /// Emit a one-line view description below the `# Heading`.

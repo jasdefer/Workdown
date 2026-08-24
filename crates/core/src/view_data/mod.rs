@@ -56,7 +56,7 @@ pub use gantt_by_depth::{GanttByDepthData, Level};
 pub use gantt_by_initiative::{GanttByInitiativeData, Initiative};
 pub use graph::{Edge, GraphData};
 pub use heatmap::{HeatmapCell, HeatmapData};
-pub use line_chart::{LineChartData, LinePoint};
+pub use line_chart::{LineChartData, LinePoint, LineSeries};
 pub use metric::{MetricData, MetricRowData};
 pub use table::{TableData, TableRow};
 pub use tree::{TreeData, TreeNode};

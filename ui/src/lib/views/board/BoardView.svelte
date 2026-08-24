@@ -57,6 +57,7 @@
 	{#each visibleColumns as column (column.value ?? '__synthetic__')}
 		<Column
 			{column}
+			field={data.field}
 			onmove={(cardId: string, toValue: string | null) => {
 				void moveCard(cardId, toValue);
 			}}

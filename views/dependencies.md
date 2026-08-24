@@ -16,7 +16,6 @@ flowchart TD
         stale-docs-refresh["Fix the documentation that is actively wrong"]
         stateful-test-gaps["Test the two stateful areas that currently have no coverage"]
         view-kind-sync-guards["Make the non-Rust view-kind mirrors fail loudly when they drift"]
-        view-order-in-extractor["Sort and group view items in one place, not per renderer"]
         web-layer-adr["Write down the web layer's design decisions as an ADR"]
     end
     subgraph misc-work ["Miscellaneous improvements"]
@@ -35,6 +34,5 @@ flowchart TD
         when-map-shorthand["`map:` — lookup-table shorthand over the `when:` evaluator"]
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end
-    chart-renderer-sharing --> view-order-in-extractor
     message-style-consistency --> metric-row-check-unification
 ```

@@ -4,13 +4,12 @@
 //! optional one-line description, a `**Total: <size>**` line summarizing
 //! the synthetic root, then a nested bullet list. Each line leads with
 //! the rolled-up size, an optional `(N%)` share-of-parent annotation,
-//! and an em-dash followed by the linked title. Children of every node
-//! sort by size descending; ties break by id ascending. Items that
-//! filter-matched but lack the size field appear in a trailing
+//! and an em-dash followed by the linked title. Children are drawn in
+//! the order the extractor decided — size descending, ties by id.
+//! Items that filter-matched but lack the size field appear in a trailing
 //! `## Unplaced (missing <field>)` section. An empty view (no roots, no
 //! unplaced) emits the heading, the description, and `_(no items)_`.
 
-use std::cmp::Ordering;
 use std::fmt::Write as _;
 
 use workdown_core::model::duration::format_duration_seconds;
@@ -41,8 +40,7 @@ pub fn render_treemap(data: &TreemapData, item_link_base: &str, description: &st
     out.push('\n');
 
     let parent_size = data.root.size.as_f64();
-    let sorted = sorted_children(&data.root.children);
-    for child in &sorted {
+    for child in &data.root.children {
         render_node(child, parent_size, 0, item_link_base, &mut out);
     }
 
@@ -88,29 +86,9 @@ fn render_node(
     }
 
     let child_parent = node.size.as_f64();
-    let sorted = sorted_children(&node.children);
-    for child in &sorted {
+    for child in &node.children {
         render_node(child, child_parent, depth + 1, item_link_base, out);
     }
-}
-
-/// Sort children by size descending; ties break by id ascending so
-/// snapshot tests and rendered output are deterministic.
-fn sorted_children(children: &[TreemapNode]) -> Vec<&TreemapNode> {
-    let mut refs: Vec<&TreemapNode> = children.iter().collect();
-    refs.sort_by(|left, right| {
-        right
-            .size
-            .as_f64()
-            .partial_cmp(&left.size.as_f64())
-            .unwrap_or(Ordering::Equal)
-            .then_with(|| {
-                let left_id = left.card.as_ref().map(|c| c.id.as_str()).unwrap_or("");
-                let right_id = right.card.as_ref().map(|c| c.id.as_str()).unwrap_or("");
-                left_id.cmp(right_id)
-            })
-    });
-    refs
 }
 
 /// Compute child's share of its parent as an integer percent.
@@ -273,7 +251,10 @@ mod tests {
     }
 
     #[test]
-    fn children_sort_by_size_desc() {
+    fn draws_children_in_received_order() {
+        // Ordering is the extractor's call (see view_data::treemap); the
+        // renderer must not re-sort. Feed deliberately unsorted children
+        // and expect them back untouched.
         let root = synthetic_root(
             SizeValue::Number(10.0),
             vec![
@@ -283,29 +264,13 @@ mod tests {
             ],
         );
         let output = render_treemap(&data("effort", root, vec![]), "../workdown-items", "");
+        let a_at = output.find("/a.md").expect("a link");
         let b_at = output.find("/b.md").expect("b link");
         let c_at = output.find("/c.md").expect("c link");
-        let a_at = output.find("/a.md").expect("a link");
-        assert!(b_at < c_at, "5 should appear before 3");
-        assert!(c_at < a_at, "3 should appear before 2");
-    }
-
-    #[test]
-    fn ties_on_size_broken_by_id_asc() {
-        let root = synthetic_root(
-            SizeValue::Number(9.0),
-            vec![
-                leaf("c", None, SizeValue::Number(3.0)),
-                leaf("a", None, SizeValue::Number(3.0)),
-                leaf("b", None, SizeValue::Number(3.0)),
-            ],
+        assert!(
+            a_at < b_at && b_at < c_at,
+            "expected received order a, b, c"
         );
-        let output = render_treemap(&data("effort", root, vec![]), "../workdown-items", "");
-        let a_at = output.find("/a.md").expect("a link");
-        let b_at = output.find("/b.md").expect("b link");
-        let c_at = output.find("/c.md").expect("c link");
-        assert!(a_at < b_at);
-        assert!(b_at < c_at);
     }
 
     #[test]

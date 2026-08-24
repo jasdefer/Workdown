@@ -244,7 +244,10 @@ fn extract_exercises_every_variant() {
             }
             ("deadline-progress", ViewData::LineChart(line)) => {
                 // task-login and task-logout have both deadline and points.
-                assert_eq!(line.points.len(), 2);
+                // Ungrouped view: one no-group series holding both points.
+                assert_eq!(line.series.len(), 1);
+                assert_eq!(line.series[0].group, None);
+                assert_eq!(line.series[0].points.len(), 2);
             }
             ("status-by-assignee", ViewData::Heatmap(heatmap)) => {
                 // 3 distinct statuses, same on both axes.

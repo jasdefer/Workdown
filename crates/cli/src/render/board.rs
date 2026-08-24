@@ -7,7 +7,7 @@
 
 use workdown_core::view_data::{BoardColumn, BoardData, Card};
 
-use crate::render::markdown::{card_link, emit_description};
+use crate::render::markdown::{card_link, emit_description, no_value_heading};
 
 /// Render a `BoardData` as a Markdown string.
 ///
@@ -33,7 +33,7 @@ pub fn render_board(data: &BoardData, item_link_base: &str, description: &str) -
 fn render_column(column: &BoardColumn, field: &str, item_link_base: &str) -> String {
     let heading = match &column.value {
         Some(value) => value.clone(),
-        None => format!("No {field}"),
+        None => no_value_heading(field),
     };
     let mut section = format!("## {heading}\n");
     if column.cards.is_empty() {

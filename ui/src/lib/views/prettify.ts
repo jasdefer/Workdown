@@ -17,6 +17,22 @@ export function prettifyId(id: string): string {
 }
 
 /**
+ * Name the synthetic "no value" bucket a grouped view produces — the
+ * board's column header, a gantt band, a line-chart legend entry.
+ *
+ * The extractor reports that bucket as a structural `null` and never
+ * names it (ADR-006: ViewData owns structure and order, renderers own
+ * wording). Every view routes through here so board, gantt, and the
+ * line chart can't drift apart on the wording again. The terminal
+ * renderers have their own equivalent in
+ * `crates/cli/src/render/markdown.rs`; the two differ only in that this
+ * side prettifies the field name, as it does everywhere it shows one.
+ */
+export function noValueLabel(field: string): string {
+	return `(no ${prettifyId(field)})`;
+}
+
+/**
  * Display label for a card: its title, falling back to the prettified
  * id. This is the documented title-fallback convention — `title` is
  * optional on work items — kept in one place so every view renders the

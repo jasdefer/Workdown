@@ -15,7 +15,7 @@
 <script lang="ts">
 	import type { GanttData } from '$lib/api/generated/GanttData';
 	import type { GanttBar } from '$lib/api/generated/GanttBar';
-	import { prettifyId } from '$lib/views/prettify';
+	import { noValueLabel } from '$lib/views/prettify';
 	import type { GanttSection } from './GanttChart.svelte';
 	import GanttShell from './GanttShell.svelte';
 
@@ -39,9 +39,8 @@
 		}
 		return order.map((group) => ({
 			// No band when the view isn't grouped. Otherwise the group value,
-			// or "(no <field>)" for the missing-value bucket — matching the
-			// Markdown renderer's convention.
-			label: data.group_field === null ? null : (group ?? `(no ${prettifyId(data.group_field)})`),
+			// or the shared no-value label for the missing-value bucket.
+			label: data.group_field === null ? null : (group ?? noValueLabel(data.group_field)),
 			bars: buckets.get(group) ?? []
 		}));
 	});

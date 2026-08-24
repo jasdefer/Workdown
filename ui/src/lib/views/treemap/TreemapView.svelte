@@ -155,9 +155,11 @@
 
 	const laidNodes = $derived.by((): LaidNode[] => {
 		if (availableWidth === 0) return [];
-		const root = hierarchy<TreemapNode>(data.root, (n) => n.children)
-			.sum(leafValue)
-			.sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+		// No `.sort()`: the extractor already ordered children (size
+		// descending, ties by id), and d3-hierarchy keeps input order when
+		// not told otherwise. Re-sorting here is what let the browser and
+		// the terminal disagree on equal-sized items.
+		const root = hierarchy<TreemapNode>(data.root, (n) => n.children).sum(leafValue);
 		const laid = treemap<TreemapNode>()
 			.size([availableWidth, chartHeight])
 			.tile(treemapSquarify)

@@ -108,7 +108,7 @@
 | [view-edit-delete](../workdown-items/view-edit-delete.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [view-authoring](../workdown-items/view-authoring.md) |
 | [view-filter-editor](../workdown-items/view-filter-editor.md) | done | [view-authoring](../workdown-items/view-authoring.md) | [remaining-read-views](../workdown-items/remaining-read-views.md), [schema-metadata-api](../workdown-items/schema-metadata-api.md), [view-write-backend](../workdown-items/view-write-backend.md) |
 | [view-kind-sync-guards](../workdown-items/view-kind-sync-guards.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
-| [view-order-in-extractor](../workdown-items/view-order-in-extractor.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
+| [view-order-in-extractor](../workdown-items/view-order-in-extractor.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [view-presentation](../workdown-items/view-presentation.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [server](../workdown-items/server.md) |
 | [view-write-backend](../workdown-items/view-write-backend.md) | done | [view-authoring](../workdown-items/view-authoring.md) |  |
 | [views-check-metric-row-dedup](../workdown-items/views-check-metric-row-dedup.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |

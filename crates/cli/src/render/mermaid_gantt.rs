@@ -11,7 +11,7 @@ use std::fmt::Write as _;
 
 use workdown_core::view_data::{Card, GanttBar, UnplacedCard, UnplacedReason};
 
-use super::markdown::escape_blockquote_italic;
+use super::markdown::{escape_blockquote_italic, no_value_label};
 
 /// Render a Mermaid `gantt` block (fenced code block included) for a list
 /// of bars, optionally split into `section <value>` blocks.
@@ -57,7 +57,7 @@ pub(crate) fn render_gantt_block(bars: &[GanttBar], group_field: Option<&str>) -
 fn section_heading(group_value: &Option<String>, group_field: Option<&str>) -> String {
     match group_value {
         Some(value) => sanitize_label(value),
-        None => format!("(no {})", group_field.unwrap_or("group")),
+        None => no_value_label(group_field.unwrap_or("group")),
     }
 }
 
