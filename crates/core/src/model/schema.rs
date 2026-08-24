@@ -106,6 +106,30 @@ pub struct FieldDefinition {
     pub when: Option<WhenConfig>,
 }
 
+/// The closed set of mechanisms that can fill a field's value during
+/// the load pipeline's fill-in phase when the file itself carries none.
+///
+/// This enumeration is *the* definition of "fillable". Every piece of
+/// code that behaves differently per mechanism matches on it
+/// exhaustively, so adding a mechanism is a compile error at every
+/// site that has not been taught about it — the guarantee that
+/// replaced the two hand-mirrored mechanism lists the required check
+/// once kept (see ADR-012).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FillMechanism {
+    /// `aggregate:` — rolled up cross-item from the bearers below,
+    /// along the aggregate's `over` link (same field).
+    Aggregate,
+    /// `compute:` — evaluated from the same item's other fields and
+    /// project constants.
+    Compute,
+    /// `pull:` — read from a forward link target's field and reduced
+    /// (cross-item, cross-field).
+    Pull,
+    /// `when:` — the first matching condition's value (same item).
+    When,
+}
+
 impl FieldDefinition {
     /// Create a new field definition with only type-specific config.
     /// All shared fields default to `None`/`false`.
@@ -151,11 +175,45 @@ impl FieldDefinition {
         }
     }
 
+    /// The fill mechanisms this field declares, in canonical order.
+    /// Empty means the file's own frontmatter is the only source of a
+    /// value. This is the single place that maps configuration to
+    /// mechanism — nothing else may probe the config fields to answer
+    /// "can something fill this field at load time?".
+    pub fn fill_mechanisms(&self) -> Vec<FillMechanism> {
+        let mut mechanisms = Vec::new();
+        if self.aggregate.is_some() {
+            mechanisms.push(FillMechanism::Aggregate);
+        }
+        if self.compute.is_some() {
+            mechanisms.push(FillMechanism::Compute);
+        }
+        if self.pull.is_some() {
+            mechanisms.push(FillMechanism::Pull);
+        }
+        if self.when.is_some() {
+            mechanisms.push(FillMechanism::When);
+        }
+        mechanisms
+    }
+
+    /// Whether any fill mechanism can supply this field's value at
+    /// load time.
+    pub fn has_fill_mechanism(&self) -> bool {
+        !self.fill_mechanisms().is_empty()
+    }
+
     /// Whether this field's value is derived same-item — by a `compute:`
-    /// expression or a `when:` config. (`aggregate` is cross-item and
-    /// deliberately not included.)
+    /// expression or a `when:` config. (`aggregate` and `pull` are
+    /// cross-item and deliberately not included.) Matches exhaustively
+    /// so a new mechanism must declare which side it falls on.
     pub fn is_derived(&self) -> bool {
-        self.compute.is_some() || self.when.is_some()
+        self.fill_mechanisms()
+            .iter()
+            .any(|mechanism| match mechanism {
+                FillMechanism::Compute | FillMechanism::When => true,
+                FillMechanism::Aggregate | FillMechanism::Pull => false,
+            })
     }
 
     /// Names of the fields this field's derivation reads — the compute

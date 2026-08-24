@@ -39,11 +39,16 @@
 //! pass (an aggregate on the same field still runs), so a broken
 //! config surfaces once against `schema.yaml` and never per item.
 //!
-//! Ends with the deferred required check that coercion skipped for
-//! derivable fields: an item still blank on a `required` aggregate
-//! field gets the classic `MissingRequired`; on a `required` computed
-//! field it gets `ComputeMissingInputs` naming the actual inputs that
-//! were absent — the real cause, one step before the symptom.
+//! A field coercion recorded as written-but-invalid (see
+//! `conversion_failures`) is never filled: the author wrote a value,
+//! and replacing a broken hand-written value with a derived one would
+//! silently override the file. Its slot stays absent until the file is
+//! fixed; an aggregating ancestor still passes its children's
+//! contributions through, so the rest of the tree degrades gracefully.
+//!
+//! Completeness is judged elsewhere: the required check
+//! ([`super::required`]) runs as its own phase after this one, per the
+//! pipeline contract in [`super`] (ADR-012).
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -64,9 +69,11 @@ use super::rollup;
 /// Run every derive pass. Mutates `items` in place; returns all
 /// diagnostics the passes produced. `constants` are the project
 /// constants from `resources.yaml`, resolved by compute expressions;
-/// `evaluation_date` is what `$today` resolves to; and
+/// `evaluation_date` is what `$today` resolves to;
 /// `disabled_compute_fields` names the compute configs that failed
-/// `compute_check` and must not evaluate.
+/// `compute_check` and must not evaluate; and `conversion_failures` is
+/// coercion's per-item record of written-but-invalid fields, whose
+/// slots no pass may fill.
 pub(crate) fn run(
     items: &mut HashMap<WorkItemId, WorkItem>,
     reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
@@ -74,6 +81,7 @@ pub(crate) fn run(
     constants: &IndexMap<String, FieldValue>,
     evaluation_date: NaiveDate,
     disabled_compute_fields: &HashSet<String>,
+    conversion_failures: &HashMap<WorkItemId, HashSet<String>>,
 ) -> Vec<Diagnostic> {
     let derive_fields = derive_fields_in_order(schema, disabled_compute_fields);
 
@@ -100,10 +108,13 @@ pub(crate) fn run(
     // the input. An item whose file already carries the field is
     // *settled*: its node waits for nothing (manual wins, so evaluation
     // reads no inputs there) — which is what lets a hand-written anchor
-    // break any dependency loop. And an item the same-item/pull pass is
-    // not eligible for (a non-leaf of a derive+aggregate field) never
-    // waits for that pass's inputs either — a wait for a pass that
-    // never runs could close a loop that doesn't exist semantically.
+    // break any dependency loop. A field coercion recorded as
+    // written-but-invalid is treated the same way here: its pass never
+    // runs (the slot is never filled), so waiting for its inputs could
+    // close a loop that doesn't exist semantically. And an item the
+    // same-item/pull pass is not eligible for (a non-leaf of a
+    // derive+aggregate field) never waits for that pass's inputs
+    // either, for the same reason.
     let mut dependents: Vec<Vec<usize>> = vec![Vec::new(); node_count];
     let mut pending_inputs: Vec<usize> = vec![0; node_count];
     for (slot, derive_field) in derive_fields.iter().enumerate() {
@@ -125,6 +136,7 @@ pub(crate) fn run(
                         continue;
                     };
                     if item.fields.contains_key(derive_field.name)
+                        || conversion_failed(conversion_failures, item_id, derive_field.name)
                         || !same_item_pass_runs_on(derive_field, reverse_links, item_id)
                     {
                         continue;
@@ -204,6 +216,7 @@ pub(crate) fn run(
         reverse_links,
         constants,
         today: compute::timestamp_of(evaluation_date),
+        conversion_failures,
     };
     let mut state = EvaluationState {
         contributions: vec![Vec::new(); node_count],
@@ -287,13 +300,6 @@ pub(crate) fn run(
         items,
     ));
 
-    required_check(
-        items,
-        reverse_links,
-        schema,
-        disabled_compute_fields,
-        &mut diagnostics,
-    );
     diagnostics
 }
 
@@ -372,6 +378,21 @@ struct EvaluationInputs<'run> {
     /// The evaluation date as a midnight timestamp — what `$today`
     /// resolves to for every node.
     today: Value,
+    /// Coercion's per-item record of written-but-invalid fields —
+    /// slots no pass may fill.
+    conversion_failures: &'run HashMap<WorkItemId, HashSet<String>>,
+}
+
+/// Whether coercion recorded this item's field as written but invalid
+/// — a slot no pass may fill.
+fn conversion_failed(
+    conversion_failures: &HashMap<WorkItemId, HashSet<String>>,
+    item_id: &WorkItemId,
+    field_name: &str,
+) -> bool {
+    conversion_failures
+        .get(item_id)
+        .is_some_and(|failed_fields| failed_fields.contains(field_name))
 }
 
 /// Mutable evaluation state, indexed by node id.
@@ -414,9 +435,12 @@ fn evaluate_node(
 
     // Derivation pass: compute, when, or pull fills absence — on
     // leaves only when the field also aggregates (the rollup owns
-    // everything above).
+    // everything above), and never where coercion recorded a
+    // written-but-invalid value (the author wrote something; the file
+    // must be fixed, not silently overridden).
     let mut derived_value: Option<FieldValue> = None;
     if !had_value
+        && !conversion_failed(inputs.conversion_failures, item_id, derive_field.name)
         && (derive_field.same_item_enabled || derive_field.pull_enabled)
         && same_item_pass_runs_on(derive_field, inputs.reverse_links, item_id)
     {
@@ -524,7 +548,9 @@ fn evaluate_node(
     // are deterministic.
     gathered.sort_by_key(|(bearer_position, _)| *bearer_position);
 
-    if !gathered.is_empty() {
+    if !gathered.is_empty()
+        && !conversion_failed(inputs.conversion_failures, item_id, derive_field.name)
+    {
         let values: Vec<FieldValue> = gathered.iter().map(|(_, value)| value.clone()).collect();
         if let Some(reduced) = rollup::apply_aggregate(aggregate.function, &values) {
             if let Some(item) = items.get_mut(item_id) {
@@ -532,6 +558,8 @@ fn evaluate_node(
             }
         }
     }
+    // The children's contributions pass through regardless — a broken
+    // value on this item must not cut its subtree off from ancestors.
     state.contributions[node] = gathered;
 }
 
@@ -595,24 +623,6 @@ fn evaluate_pull(
         Some(reduced) => PullOutcome::Value(reduced),
         None => PullOutcome::Skip,
     }
-}
-
-/// The pull's link targets that have no source value, as
-/// `target_id.field` — the cause the required-field diagnostic names.
-fn pull_missing_inputs(
-    item: &WorkItem,
-    pull: &PullConfig,
-    items: &HashMap<WorkItemId, WorkItem>,
-) -> Vec<String> {
-    targets_of(item, &pull.over)
-        .into_iter()
-        .filter(|target_id| {
-            !items
-                .get(*target_id)
-                .is_some_and(|target| target.fields.contains_key(&pull.field))
-        })
-        .map(|target_id| format!("{}.{}", target_id.as_str(), pull.field))
-        .collect()
 }
 
 // ── Cross-link cycle diagnostics ────────────────────────────────────
@@ -773,109 +783,6 @@ fn cycle_diagnostic(
     ))
 }
 
-/// Deferred required check for derivable fields (coercion skipped them —
-/// the derive passes may have filled them in).
-fn required_check(
-    items: &HashMap<WorkItemId, WorkItem>,
-    reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
-    schema: &Schema,
-    disabled_compute_fields: &HashSet<String>,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    for (field_name, field_definition) in &schema.fields {
-        if !field_definition.required
-            || (field_definition.aggregate.is_none()
-                && !field_definition.is_derived()
-                && field_definition.pull.is_none())
-        {
-            continue;
-        }
-        let disabled = disabled_compute_fields.contains(field_name.as_str());
-        let mut missing: Vec<(&WorkItemId, &WorkItem)> = items
-            .iter()
-            .filter(|(_, item)| !item.fields.contains_key(field_name))
-            .collect();
-        missing.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
-
-        for (item_id, item) in missing {
-            // Name the actual cause instead of just the blank output: a
-            // computed field's absent inputs, or a conditional field's
-            // unmatched branches. Falls back to the classic message when
-            // there is no per-input or per-branch cause to name — the
-            // same-item pass never ran here (a non-leaf of a
-            // derive+aggregate field, where the rollup found nothing to
-            // aggregate), a computed field's inputs are all present, or
-            // the schema-level check disabled the config and its
-            // diagnostic carries the cause.
-            let pass_skipped_this_item = (field_definition.is_derived()
-                || field_definition.pull.is_some())
-                && field_definition
-                    .aggregate
-                    .as_ref()
-                    .is_some_and(|aggregate| {
-                        let over = aggregate
-                            .over
-                            .as_deref()
-                            .unwrap_or(rollup::DEFAULT_OVER_FIELD);
-                        !compute::is_leaf(reverse_links, item_id, over)
-                    });
-            let kind = if disabled || pass_skipped_this_item {
-                ItemDiagnosticKind::MissingRequired {
-                    field: field_name.clone(),
-                }
-            } else if let Some(config) = &field_definition.compute {
-                let missing_inputs = compute::missing_inputs(item, config);
-                if missing_inputs.is_empty() {
-                    ItemDiagnosticKind::MissingRequired {
-                        field: field_name.clone(),
-                    }
-                } else {
-                    ItemDiagnosticKind::ComputeMissingInputs {
-                        field: field_name.clone(),
-                        missing_inputs,
-                    }
-                }
-            } else if let Some(pull) = &field_definition.pull {
-                let missing_inputs = pull_missing_inputs(item, pull, items);
-                if missing_inputs.is_empty() {
-                    // No incomplete link target — an unanchored root
-                    // (or a manual anchor simply not written yet).
-                    ItemDiagnosticKind::MissingRequired {
-                        field: field_name.clone(),
-                    }
-                } else if pull.error_on_missing {
-                    // The pull pass already reported these very inputs
-                    // against this item — `error_on_missing` is what
-                    // asked it to. Repeating it here would say the same
-                    // thing twice; adding the generic missing-required
-                    // message instead would say it twice less usefully.
-                    continue;
-                } else {
-                    ItemDiagnosticKind::PullMissingInputs {
-                        field: field_name.clone(),
-                        missing_inputs,
-                    }
-                }
-            } else if let Some(when_config) = &field_definition.when {
-                ItemDiagnosticKind::WhenUnmatched {
-                    field: field_name.clone(),
-                    missing_inputs: conditional::missing_inputs(item, when_config),
-                }
-            } else {
-                ItemDiagnosticKind::MissingRequired {
-                    field: field_name.clone(),
-                }
-            };
-            diagnostics.push(Diagnostic::item(
-                Severity::Error,
-                item.source_path.clone(),
-                item_id.clone(),
-                kind,
-            ));
-        }
-    }
-}
-
 /// Schema fields in evaluation order: a derivation's inputs (compute
 /// expression or `when:` condition references) before the field that
 /// consumes them; declaration order otherwise. Cycles are not descended
@@ -990,16 +897,29 @@ mod tests {
         let resources = parse_resources(resources_yaml).expect("test resources must parse");
         let reverse_links = reverse_links_of(items);
         // Mirror Store::load_with_resources: check-failed compute
-        // fields are skipped, exactly as in production.
+        // fields are skipped and the required check follows the derive
+        // passes as its own phase, exactly as in production. In-memory
+        // items never went through coercion, so there are no
+        // conversion failures to carry.
         let disabled_compute_fields = crate::compute_check::failed_fields(&schema, &resources);
-        run(
+        let conversion_failures = HashMap::new();
+        let mut diagnostics = run(
             items,
             &reverse_links,
             &schema,
             &resources.constants,
             test_evaluation_date(),
             &disabled_compute_fields,
-        )
+            &conversion_failures,
+        );
+        diagnostics.extend(super::super::required::check(
+            items,
+            &reverse_links,
+            &schema,
+            &disabled_compute_fields,
+            &conversion_failures,
+        ));
+        diagnostics
     }
 
     fn field<'a>(

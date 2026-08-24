@@ -1,6 +1,6 @@
 ---
 id: validation-phase-boundaries
-status: in_progress
+status: done
 title: Decide where the required-field check belongs in the load pipeline
 parent: maintenance-review-2026-08
 depends_on:
@@ -170,3 +170,22 @@ decisions below taken, that reason no longer applies.
    final values runs post-derivation), since it is a rule future checks
    must obey, not just a note about this change. The concrete choices
    live here.
+
+## Where it landed
+
+- `FillMechanism` and `fill_mechanisms()` on the field definition —
+  `crates/core/src/model/schema.rs`. `is_derived()` now matches on the
+  enumeration, so a new mechanism must declare which side it falls on.
+- The single check: `crates/core/src/store/required.rs`, its own
+  pipeline phase between the fill-ins and the resource check.
+- Coercion returns a `CoercionOutcome` carrying the per-item
+  `conversion_failures` record; the fill-in phase refuses to fill
+  recorded fields (no silent override of a broken hand-written value;
+  aggregate contributions still pass through).
+- The pipeline contract is stated once in the `store` module docs;
+  `load` reads as six named phases. The ADR is
+  `docs/adr/012-validation-after-derivation.md`.
+- New seam tests in `crates/core/tests/computed_fields.rs` pin the
+  invalid-vs-missing rows, the no-fill-over rule, the aggregate
+  pass-through, and the item-first report order. Changelog carries the
+  ordering change and the invalid-value fixes.

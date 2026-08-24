@@ -7,7 +7,21 @@ its source — internal refactors are deliberately absent.
 
 ## Unreleased
 
+### Changed
+
+- Missing-required-field errors are now reported item by item (ascending item
+  id, schema order within an item) instead of partly per file and partly per
+  field. Every complaint about one file now sits together in the output. Only
+  the order changed — projects that loaded cleanly before still do.
+
 ### Fixed
+
+- A required field whose written value is invalid gets exactly one error —
+  about the value. Previously, a derivable required field with an invalid
+  value could earn a second, false, "missing" complaint on top, or have the
+  broken hand-written value silently replaced by a computed, conditional,
+  pulled or rolled-up one. An invalid value now always stays an error until
+  the file is fixed; an aggregating ancestor's children still roll up past it.
 
 - A required field filled by `pull` is no longer accused of being empty
   before the pull has had its chance to run — previously a false error

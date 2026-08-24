@@ -13,7 +13,6 @@ Hierarchical outline following `parent` upward to roots.
   - [Table-drive the "is this property allowed on this field type?" check](../workdown-items/schema-property-table.md) — status: to_do
   - [Fix the documentation that is actively wrong](../workdown-items/stale-docs-refresh.md) — status: to_do
   - [Test the two stateful areas that currently have no coverage](../workdown-items/stateful-test-gaps.md) — status: to_do
-  - [Decide where the required-field check belongs in the load pipeline](../workdown-items/validation-phase-boundaries.md) — status: in_progress
   - [Make the non-Rust view-kind mirrors fail loudly when they drift](../workdown-items/view-kind-sync-guards.md) — status: to_do
   - [Sort and group view items in one place, not per renderer](../workdown-items/view-order-in-extractor.md) — status: to_do
   - [Write down the web layer's design decisions as an ADR](../workdown-items/web-layer-adr.md) — status: to_do

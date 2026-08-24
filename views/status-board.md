@@ -32,7 +32,6 @@ Cards grouped into columns by `status`.
 
 ## in_progress
 - [Maintenance pass: findings from the 2026-08 codebase review](../workdown-items/maintenance-review-2026-08.md)
-- [Decide where the required-field check belongs in the load pipeline](../workdown-items/validation-phase-boundaries.md)
 
 ## done
 - [Commands fail when the work-items directory is missing](../workdown-items/add-missing-items-directory.md)
@@ -109,6 +108,7 @@ Cards grouped into columns by `status`.
 - [Tell the user when a timed interval is over](../workdown-items/timer-notifications.md)
 - [Show which item is being timed in the views](../workdown-items/timer-recording-indicator.md)
 - [UI foundation — conventions and scaffolding before the first view](../workdown-items/ui-foundation.md)
+- [Decide where the required-field check belongs in the load pipeline](../workdown-items/validation-phase-boundaries.md)
 - [Author and edit views from the UI](../workdown-items/view-authoring.md)
 - [Create a new view from the UI](../workdown-items/view-creation.md)
 - [Design ViewData and extractors](../workdown-items/view-data-intermediate.md)

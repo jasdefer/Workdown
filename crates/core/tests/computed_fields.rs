@@ -800,3 +800,179 @@ fn an_incomplete_pull_source_reports_only_the_pull_message() {
         project.diagnostics
     );
 }
+
+// ── The consolidated required check (validation-phase-boundaries) ────
+//
+// One check, after the fill-in phase, consulting coercion's record of
+// written-but-invalid fields. These tests pin the three behaviors the
+// consolidation decided: no false "missing" on top of an invalid
+// value, no fill-in overriding a broken hand-written value, and
+// item-first report ordering.
+
+#[test]
+fn a_written_but_invalid_required_field_reports_only_the_invalid_value() {
+    // "Written but invalid" and "never written" both end up as an
+    // absent key after coercion drops the broken value. Only the
+    // failure record lets the required check tell them apart — without
+    // it, this file would get a second, false, "missing" complaint.
+    let schema_yaml = format!(
+        "{COMMON_FIELDS}  target_date:
+    type: date
+    required: true
+"
+    );
+    let (_directory, root) = setup_project(
+        &schema_yaml,
+        "",
+        &[("task.md", "---\ntarget_date: not-a-date\n---\n")],
+    );
+
+    let project = load(&root);
+
+    assert_eq!(
+        messages_for(&project, "task.md"),
+        vec![
+            "field 'target_date': 'not-a-date' is not a valid date (expected YYYY-MM-DD)"
+                .to_owned()
+        ],
+        "got: {:?}",
+        project.diagnostics
+    );
+}
+
+#[test]
+fn a_written_but_invalid_computed_field_is_not_filled_over() {
+    // The author wrote a value; that it failed conversion means the
+    // file must be fixed — not that the compute pass may quietly
+    // replace it. The field stays absent and the only complaint is
+    // about the written value.
+    let schema_yaml = format!(
+        "{COMMON_FIELDS}  duration:
+    type: duration
+  end_date:
+    type: date
+    required: true
+    compute: start_date + duration
+  start_date:
+    type: date
+"
+    );
+    let (_directory, root) = setup_project(
+        &schema_yaml,
+        "",
+        &[(
+            "task.md",
+            "---\nstart_date: 2026-03-01\nduration: 5d\nend_date: not-a-date\n---\n",
+        )],
+    );
+
+    let project = load(&root);
+
+    let task = project.store.get("task").expect("task must load");
+    assert_eq!(task.fields.get("end_date"), None, "must not be filled");
+    assert_eq!(
+        messages_for(&project, "task.md"),
+        vec!["field 'end_date': 'not-a-date' is not a valid date (expected YYYY-MM-DD)".to_owned()],
+        "got: {:?}",
+        project.diagnostics
+    );
+}
+
+#[test]
+fn an_invalid_value_on_an_aggregating_ancestor_is_not_overwritten() {
+    // The middle item's hand-written (broken) effort must not be
+    // replaced by the rollup — but its child's contribution still
+    // passes through to the grandparent, so one broken file does not
+    // cut its subtree off from the rest of the tree.
+    let schema_yaml = format!(
+        "{COMMON_FIELDS}  effort:
+    type: integer
+    aggregate:
+      function: sum
+      over: parent
+"
+    );
+    let (_directory, root) = setup_project(
+        &schema_yaml,
+        "",
+        &[
+            ("epic.md", "---\nstatus: open\n---\n"),
+            ("story.md", "---\nparent: epic\neffort: broken\n---\n"),
+            ("task.md", "---\nparent: story\neffort: 3\n---\n"),
+        ],
+    );
+
+    let project = load(&root);
+
+    let story = project.store.get("story").expect("story must load");
+    assert_eq!(story.fields.get("effort"), None, "must not be filled");
+    let epic = project.store.get("epic").expect("epic must load");
+    assert_eq!(epic.fields.get("effort"), Some(&FieldValue::Integer(3)));
+    assert_eq!(messages_for(&project, "story.md").len(), 1);
+    assert!(messages_for(&project, "story.md")[0].starts_with("field 'effort':"));
+}
+
+#[test]
+fn missing_required_findings_are_ordered_item_first() {
+    // The consolidated check reports by item, then by schema
+    // declaration order within the item — users fix files, not schema
+    // fields. Pinned because consolidation changed this order (the old
+    // late half reported field-by-field) and the changelog documents
+    // the new one.
+    let schema_yaml = format!(
+        "{COMMON_FIELDS}  owner:
+    type: string
+    required: true
+  target_date:
+    type: date
+    required: true
+"
+    );
+    let (_directory, root) = setup_project(
+        &schema_yaml,
+        "",
+        &[
+            ("alpha.md", "---\nstatus: open\n---\n"),
+            ("beta.md", "---\nstatus: open\n---\n"),
+        ],
+    );
+
+    let project = load(&root);
+
+    let required_messages: Vec<(String, String)> = project
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.message.contains("required field"))
+        .map(|diagnostic| {
+            let file_name = diagnostic
+                .source_path()
+                .and_then(|path| path.file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            (file_name, diagnostic.message.clone())
+        })
+        .collect();
+    assert_eq!(
+        required_messages,
+        vec![
+            (
+                "alpha.md".to_owned(),
+                "required field 'owner' is missing".to_owned()
+            ),
+            (
+                "alpha.md".to_owned(),
+                "required field 'target_date' is missing".to_owned()
+            ),
+            (
+                "beta.md".to_owned(),
+                "required field 'owner' is missing".to_owned()
+            ),
+            (
+                "beta.md".to_owned(),
+                "required field 'target_date' is missing".to_owned()
+            ),
+        ],
+        "got: {:?}",
+        project.diagnostics
+    );
+}

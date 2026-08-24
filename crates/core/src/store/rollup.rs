@@ -347,20 +347,33 @@ mod tests {
 
     /// The all-fields entry point these scenarios were written against
     /// now lives in the derive orchestrator; this shim keeps them
-    /// reading naturally while exercising the real pipeline.
+    /// reading naturally while exercising the real pipeline — the
+    /// derive passes followed by the required check, as in
+    /// `Store::load`. In-memory items never went through coercion, so
+    /// there are no conversion failures to carry.
     fn run(
         items: &mut HashMap<WorkItemId, WorkItem>,
         reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
         schema: &Schema,
     ) -> Vec<Diagnostic> {
-        crate::store::derive::run(
+        let conversion_failures = HashMap::new();
+        let mut diagnostics = crate::store::derive::run(
             items,
             reverse_links,
             schema,
             &IndexMap::new(),
             chrono::NaiveDate::from_ymd_opt(2026, 1, 8).expect("valid date"),
             &HashSet::new(),
-        )
+            &conversion_failures,
+        );
+        diagnostics.extend(crate::store::required::check(
+            items,
+            reverse_links,
+            schema,
+            &HashSet::new(),
+            &conversion_failures,
+        ));
+        diagnostics
     }
 
     // ── apply_aggregate (table-driven) ──────────────────────────────

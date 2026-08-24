@@ -15,7 +15,6 @@ flowchart TD
         schema-property-table["Table-drive the 'is this property allowed on this field type?' check"]
         stale-docs-refresh["Fix the documentation that is actively wrong"]
         stateful-test-gaps["Test the two stateful areas that currently have no coverage"]
-        validation-phase-boundaries["Decide where the required-field check belongs in the load pipeline"]
         view-kind-sync-guards["Make the non-Rust view-kind mirrors fail loudly when they drift"]
         view-order-in-extractor["Sort and group view items in one place, not per renderer"]
         web-layer-adr["Write down the web layer's design decisions as an ADR"]
