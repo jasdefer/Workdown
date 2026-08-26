@@ -8,7 +8,6 @@ flowchart TD
         assorted-small-fixes["Grab bag of small consistency fixes from the review"]
         chart-renderer-sharing["Make the terminal chart renderers share what they each rebuilt"]
         message-style-consistency["One voice for validation messages"]
-        metric-row-check-unification["Stop validating views and metric rows with two copies of every check"]
         query-value-consolidation["Deduplicate the filter engine's comparison and formatting logic"]
         render-flow-doc["One page that shows how a render flows through the system"]
         schema-property-table["Table-drive the 'is this property allowed on this field type?' check"]
@@ -33,5 +32,4 @@ flowchart TD
         when-map-shorthand["`map:` — lookup-table shorthand over the `when:` evaluator"]
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end
-    message-style-consistency --> metric-row-check-unification
 ```

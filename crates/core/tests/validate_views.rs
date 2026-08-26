@@ -151,8 +151,8 @@ views:
         DiagnosticBody::Config(c)
             if matches!(
                 &c.kind,
-                ConfigDiagnosticKind::ViewUnknownField { view_id, field_name, .. }
-                if view_id == "bad-board" && field_name == "nonexistent"
+                ConfigDiagnosticKind::ViewUnknownField { location, field_name, .. }
+                if location.view_id == "bad-board" && field_name == "nonexistent"
             )
     ));
 }

@@ -52,7 +52,7 @@
 | [live-updates](../workdown-items/live-updates.md) | done | [server](../workdown-items/server.md) | [walking-skeleton](../workdown-items/walking-skeleton.md) |
 | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | in_progress |  |  |
 | [message-style-consistency](../workdown-items/message-style-consistency.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) |
-| [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
+| [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [misc-work](../workdown-items/misc-work.md) | to_do |  |  |
 | [multi-project-design](../workdown-items/multi-project-design.md) | to_do | [multi-project-support](../workdown-items/multi-project-support.md) |  |
 | [multi-project-support](../workdown-items/multi-project-support.md) | to_do |  |  |

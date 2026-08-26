@@ -280,7 +280,7 @@ mod tests {
     use super::*;
 
     use std::path::PathBuf;
-    use workdown_core::model::diagnostic::ConfigDiagnosticKind;
+    use workdown_core::model::diagnostic::{ConfigDiagnosticKind, ViewLocation};
 
     fn view_diagnostic(severity: Severity, kind: ConfigDiagnosticKind) -> Diagnostic {
         Diagnostic::config(severity, PathBuf::from("views.yaml"), kind)
@@ -292,8 +292,7 @@ mod tests {
         let diagnostics = [view_diagnostic(
             Severity::Error,
             ConfigDiagnosticKind::ViewUnknownField {
-                view_id: "board".to_owned(),
-                slot: "field",
+                location: ViewLocation::view("board", "field"),
                 field_name: "nonexistent".to_owned(),
             },
         )];
@@ -309,7 +308,7 @@ mod tests {
         let diagnostics = [view_diagnostic(
             Severity::Warning,
             ConfigDiagnosticKind::ViewWhereUnknownValue {
-                view_id: "board".to_owned(),
+                location: ViewLocation::view("board", "where"),
                 raw: "status=nonsense".to_owned(),
                 field_name: "status".to_owned(),
                 detail: "'nonsense' is not one of: done, open".to_owned(),
@@ -326,7 +325,7 @@ mod tests {
             view_diagnostic(
                 Severity::Warning,
                 ConfigDiagnosticKind::ViewWhereUnknownValue {
-                    view_id: "board".to_owned(),
+                    location: ViewLocation::view("board", "where"),
                     raw: "status=nonsense".to_owned(),
                     field_name: "status".to_owned(),
                     detail: "…".to_owned(),

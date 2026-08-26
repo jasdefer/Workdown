@@ -1,6 +1,6 @@
 ---
 id: metric-row-check-unification
-status: to_do
+status: done
 title: Stop validating views and metric rows with two copies of every check
 parent: maintenance-review-2026-08
 ---
@@ -61,11 +61,58 @@ Two adjacent fixes in the same file:
 - One set of slot-check functions taking a "slot locus" parameter
   (top-level slot vs `metrics[i].slot`); the four twin functions are
   deleted.
-- Folding the six mirrored diagnostic variants is desirable but
-  changes the JSON diagnostic shape — acceptable pre-1.0 per ADR-007;
-  decide explicitly rather than by default.
+- The six mirrored diagnostic variants are folded into the `View*`
+  family, each carrying the slot location instead.
 - Tests move to a submodule file; the stale doc table is corrected.
+
+## Decisions taken
+
+**1. Unify both the checks and the diagnostics.** The four twin check
+functions collapse into one set, *and* the six mirrored
+`ViewMetricRow*` diagnostic variants collapse into the `View*` family.
+Sharing only the check bodies would leave the diagnostic bloom
+standing, and metric rows are the first nested locus, not the last.
+
+**2. Location is a structured value, not a formatted string.** Each
+diagnostic carries a slot location: a slot name (a compile-time
+constant, as today) plus an optional metric-row index, absent for
+view-level findings. Human-readable text (`metrics[3].value`) is
+rendered from it, so the row index stays machine-readable for a
+consumer that wants to highlight the offending row.
+
+**3. The JSON/TypeScript diagnostic shape changes freely.** No
+external consumers; the web UI reads only `scope` and the rendered
+`message` and never branches on a variant name. Documentation
+describes the resulting state, without changelog archaeology.
+
+**4. One wording for both loci, house style.** Every slot-named
+finding reads `view '<id>', slot '<location>': ...`, where
+`<location>` is `value` or `metrics[3].value`. Where-clause findings
+carry the full location too: `view '<id>', slot 'metrics[3].where',
+clause '<raw>': ...`. Row messages shift slightly; view messages do
+not move. Tests asserting on message text are updated here, and the
+wording is then settled for [[message-style-consistency]].
+
+**5. The doc table is wrong, the code is right.** `duration` is
+allowed for `sum`/`avg`/`min`/`max` deliberately - the effort timer
+writes duration values. Fix the table; do not tighten the types.
+(Closes the deferral from [[stale-docs-refresh]].)
+
+**6. `count`-with-`value` becomes one rule everywhere.** Today only
+metric rows reject `aggregate: count` together with a `value` field;
+`bar_chart` and `heatmap` accept it silently. The unified check
+rejects it in all three. This narrows which `views.yaml` files are
+valid, which is accepted: it is the same rule, enforced in one of
+three places only by accident of the duplication.
+
+**7. Test extraction lands first, as its own commit.** Move the
+`#[cfg(test)]` block to `views_check/tests.rs` unchanged, so the
+refactor's diff shows only real logic. Do not split the tests
+thematically yet, and do not split the implementation per view kind.
 
 ## Out of scope
 
-- New validations, and any change to which configurations are valid.
+- New validations beyond extending `count`-with-`value` to every
+  aggregate slot (decision 6).
+- Splitting the implementation per view kind, and splitting the test
+  file thematically.
