@@ -46,7 +46,7 @@ Slot semantics:
 - **`field`** — a single schema field name. Type per view: `choice`/`multichoice`/`string` for board, `link` for tree, `links` for graph.
 - **`start` / `end`** — `date` fields. **`duration`** — `duration` field; mutually exclusive with `end`. **`after`** — `link`/`links` field naming each item's predecessors (predecessor mode); requires `duration`, forbids `end`. Predecessor fields must have `allow_cycles: false` and not be inverse names.
 - **`group_by`** — categorical field for bar chart grouping; `link` field for graph subgraph nesting. **`group`** — field for in-chart sectioning (gantt only). **`root_link`** — single `link` field whose chain identifies each item's top-level ancestor (`gantt_by_initiative`). **`depth_link`** — single `link` field whose chain depth places each item in a level (`gantt_by_depth`). Both must have `allow_cycles: false` and not be inverse names.
-- **`value`** — numeric field to aggregate. Omitted when `aggregate: count`.
+- **`value`** — numeric field to aggregate. Must be omitted when `aggregate: count`; setting both is an error.
 - **`aggregate`** — one of `count`, `sum`, `avg`, `min`, `max`.
 - **`x` / `y`** — field names for axis values (numeric or date for line chart; categorical or date for heatmap).
 - **`bucket`** — date bucketing for a heatmap axis bound to a date field: `day`, `week`, or `month`.
@@ -259,7 +259,7 @@ Severity carries meaning. An **error** describes a view that cannot produce outp
 - **Gantt input modes** — every gantt-family view (`gantt`, `gantt_by_initiative`, `gantt_by_depth`) must declare `start` plus exactly one of: `end`, `duration`, or `after`+`duration`. `end` and `duration` together is rejected; `after` requires `duration` and forbids `end`.
 - **Predecessor / partition link slots** — `gantt.after`, `gantt_by_initiative.root_link`, and `gantt_by_depth.depth_link` must point at a `link`/`links` field (single-target only for `root_link`/`depth_link`) with `allow_cycles: false`, and not at an inverse relation name (e.g. `children` when `parent.inverse: children`).
 - **Heatmap bucket coupling** — if `bucket:` is set, at least one of `x` or `y` must resolve to a `date` field.
-- **Metric row count + value** — within a metric row, `aggregate: count` combined with `value:` is an error (count takes no value field). Diagnostics carry the row index so messages pinpoint which row failed.
+- **Count + value** — `aggregate: count` combined with `value:` is an error wherever an aggregate lives: `bar_chart`, `heatmap`, and each row of a `metric` view (count counts items, so a value field is meaningless). One check enforces it at all three, and a diagnostic names its location — `slot 'value'` for a view-level slot, `slot 'metrics[2].value'` for a row. The `value` slot's contents are not judged further when this fires: a slot that shouldn't be there is not also reported as mistyped.
 - **Where-clause parsing** — each string in a view's `where:` list must parse as a valid `--where` expression.
 - **Where-clause field references** — local field names must exist in `schema.fields` (or be `id`); relation names (left side of a dot) must resolve to a `link`/`links` field or a known inverse name.
 - **Where-clause operands** *(warning)* — the value a clause compares against must be one the field could actually hold. Applies to a view's `where:` and to a metric row's per-row `where:`. See [Operand checking](#operand-checking) for the rules and the exclusions.

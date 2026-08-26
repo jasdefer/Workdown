@@ -19,13 +19,24 @@ genuinely *missing* documentation the review found.
 
 ## The problem in detail
 
-`docs/` contains the ADRs plus `schema.md` and `views.md` (both
-verified in sync with the code); CLAUDE.md maps the crates. There is
-no "how `workdown render` flows" narrative: config → schema parse →
-store load and coercion → derive graph → checks → `view_data`
-extraction → renderer (CLI) or endpoint (server). The module headers
-individually are excellent — the page should link them, not duplicate
-them.
+`docs/` contains the ADRs plus `schema.md` and `views.md`; CLAUDE.md
+maps the crates. There is no "how `workdown render` flows" narrative:
+config → schema parse → store load and coercion → derive graph →
+checks → `view_data` extraction → renderer (CLI) or endpoint (server).
+The module headers individually are excellent — the page should link
+them, not duplicate them.
+
+Two things to build on rather than re-derive, both landed after this
+item was written:
+
+- `Store::load`'s middle is no longer prose to reconstruct. It is six
+  named phase functions with the ordering contract stated in the
+  module docs, and ADR-012 records the principle (a field's final
+  value is judged only after everything that could produce it has
+  run). Link them; don't restate them.
+- ADR-006 now carries the ViewData/renderer dividing line — ViewData
+  owns structure and order, renderers own wording and color — which is
+  the last hop of the pipeline this page describes.
 
 The page is also the natural home for the **"adding a view kind"
 checklist**. Today a new kind touches roughly eight places — the

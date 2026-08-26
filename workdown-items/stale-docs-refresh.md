@@ -37,9 +37,10 @@ you *less* correct about the code.
   say "Regex for valid field names" over what are hand-rolled
   character loops, not regexes.
 
-(The stale doc table inside `views_check.rs` is handled by
-[[metric-row-check-unification]], which rewrites those functions
-anyway.)
+(The stale doc table inside `views_check.rs` was handled by
+[[metric-row-check-unification]], which rewrote those functions;
+nothing left to do there. `docs/views.md`'s count-with-value rule was
+corrected in the same pass.)
 
 ## Objective
 

@@ -255,7 +255,9 @@ views:
 #[test]
 fn metric_count_with_value_rejected() {
     // `aggregate: count` combined with `value:` is forbidden — count takes
-    // no value field. Mirrors the cross-file validator's check.
+    // no value field. Mirrors the cross-file validator's check, which
+    // applies the rule at every aggregate locus from one function; the
+    // three tests here are the schema side of that same rule.
     let schema = compile_schema();
     assert_invalid(
         &schema,
@@ -270,6 +272,72 @@ views:
     );
 }
 
+#[test]
+fn bar_chart_count_with_value_rejected() {
+    // Same rule, view-level locus. `check_aggregate_value_slot` rejects
+    // this in Rust; the schema has to agree or the editor stays silent
+    // about a config the CLI refuses.
+    let schema = compile_schema();
+    assert_invalid(
+        &schema,
+        "\
+views:
+  - id: bad-count-bar
+    type: bar_chart
+    group_by: status
+    aggregate: count
+    value: effort
+",
+    );
+}
+
+#[test]
+fn bar_chart_count_without_value_validates() {
+    let schema = compile_schema();
+    assert_valid(
+        &schema,
+        "\
+views:
+  - id: items-by-status
+    type: bar_chart
+    group_by: status
+    aggregate: count
+",
+    );
+}
+
+#[test]
+fn heatmap_count_with_value_rejected() {
+    let schema = compile_schema();
+    assert_invalid(
+        &schema,
+        "\
+views:
+  - id: bad-count-heatmap
+    type: heatmap
+    x: status
+    y: assignee
+    aggregate: count
+    value: effort
+",
+    );
+}
+
+#[test]
+fn bar_chart_sum_with_value_validates() {
+    let schema = compile_schema();
+    assert_valid(
+        &schema,
+        "\
+views:
+  - id: effort-by-status
+    type: bar_chart
+    group_by: status
+    aggregate: sum
+    value: effort
+",
+    );
+}
 #[test]
 fn metric_sum_with_value_validates() {
     let schema = compile_schema();

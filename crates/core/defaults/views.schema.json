@@ -45,6 +45,17 @@
       "enum": ["count", "sum", "avg", "min", "max"]
     },
 
+    "count_takes_no_value": {
+      "$comment": "Shared by every definition carrying an `aggregate` + `value` pair (bar_chart, heatmap, metric_row). Mirrors check_aggregate_value_slot in crates/core/src/views_check.rs, which enforces the rule at every aggregate locus from one function. Keep the two together.",
+      "if": {
+        "properties": { "aggregate": { "const": "count" } },
+        "required": ["aggregate"]
+      },
+      "then": {
+        "properties": { "value": false }
+      }
+    },
+
     "bucket": {
       "type": "string",
       "description": "Date bucketing for heatmap axes bound to date fields.",
@@ -250,7 +261,8 @@
         "aggregate": { "$ref": "#/$defs/aggregate" }
       },
       "required": ["id", "type", "group_by", "aggregate"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [{ "$ref": "#/$defs/count_takes_no_value" }]
     },
 
     "line_chart": {
@@ -318,17 +330,7 @@
       },
       "required": ["aggregate"],
       "additionalProperties": false,
-      "allOf": [
-        {
-          "if": {
-            "properties": { "aggregate": { "const": "count" } },
-            "required": ["aggregate"]
-          },
-          "then": {
-            "properties": { "value": false }
-          }
-        }
-      ]
+      "allOf": [{ "$ref": "#/$defs/count_takes_no_value" }]
     },
 
     "treemap": {
@@ -361,7 +363,8 @@
         "bucket":    { "$ref": "#/$defs/bucket" }
       },
       "required": ["id", "type", "x", "y", "aggregate"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [{ "$ref": "#/$defs/count_takes_no_value" }]
     }
   }
 }
