@@ -14,6 +14,8 @@ Work items form parent-child hierarchies. Certain fields (dates, estimates) shou
 
 Fields can declare an `aggregate` configuration with a function (sum, min, max, average, median, count, all, any, none) and `error_on_missing` behavior. These fields are set manually on leaf items and computed automatically for parent items. If two items in the same ancestor-child chain both define the value manually, it is a validation error.
 
+The hierarchy climbed is named explicitly: `over` is a required key, as it is for `pull` (ADR-011). There is no implicit `parent` fallback — a field name would otherwise carry behavior, which this project reserves for `id` alone (ADR-002).
+
 ## Consequences
 
 - Parent items automatically reflect their children's data

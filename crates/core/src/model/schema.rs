@@ -492,12 +492,11 @@ pub struct AggregateConfig {
     #[serde(default)]
     pub error_on_missing: bool,
 
-    /// Name of the link field to walk upward for the rollup. Must reference
-    /// a `link` (single-valued) field in the schema. `None` defaults to
-    /// `"parent"` at use sites; the parser still requires that target field
-    /// to exist.
-    #[serde(default)]
-    pub over: Option<String>,
+    /// Name of the link field to walk upward for the rollup. Must
+    /// reference a `link` (single-valued) field in the schema that
+    /// declares `allow_cycles: false`. Mandatory, like `pull`'s `over`:
+    /// a rollup names the relation it climbs, so no use site defaults.
+    pub over: String,
 }
 
 /// Available aggregation functions.

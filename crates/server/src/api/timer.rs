@@ -324,6 +324,6 @@ fn rollup_confirmation_needed(project: &Project, effort_field: &str, item_id: &s
     let Some(aggregate) = definition.aggregate.as_ref() else {
         return false;
     };
-    let over = aggregate.over.as_deref().unwrap_or("parent");
+    let over = aggregate.over.as_str();
     !project.store.referring_items(item_id, over).is_empty()
 }

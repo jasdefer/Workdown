@@ -9,6 +9,13 @@ its source — internal refactors are deliberately absent.
 
 ### Changed
 
+- **Breaking:** a rollup field must now name the relation it climbs. `over` is
+  a required key under `aggregate:`, as it already was under `pull:` — it no
+  longer falls back to a field named `parent`. A schema whose rollup omits
+  `over` stops loading; add `over: parent` to keep the previous behaviour. A
+  rollup is now readable on its own, and no field name except `id` carries
+  behavior.
+
 - Missing-required-field errors are now reported item by item (ascending item
   id, schema order within an item) instead of partly per file and partly per
   field. Every complaint about one file now sits together in the output. Only

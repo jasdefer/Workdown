@@ -795,7 +795,7 @@ mod tests {
         effort.aggregate = Some(AggregateConfig {
             function: AggregateFunction::Sum,
             error_on_missing: false,
-            over: None,
+            over: "parent".to_owned(),
         });
         fields.insert("effort".to_owned(), effort);
 

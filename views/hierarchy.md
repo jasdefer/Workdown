@@ -7,7 +7,6 @@ Hierarchical outline following `parent` upward to roots.
   - [Make the terminal chart renderers share what they each rebuilt](../workdown-items/chart-renderer-sharing.md) — status: to_do
   - [One voice for validation messages](../workdown-items/message-style-consistency.md) — status: to_do
   - [Stop validating views and metric rows with two copies of every check](../workdown-items/metric-row-check-unification.md) — status: to_do
-  - [Define the "parent" roll-up default exactly once](../workdown-items/over-default-single-definition.md) — status: to_do
   - [Deduplicate the filter engine's comparison and formatting logic](../workdown-items/query-value-consolidation.md) — status: to_do
   - [One page that shows how a render flows through the system](../workdown-items/render-flow-doc.md) — status: to_do
   - [Table-drive the "is this property allowed on this field type?" check](../workdown-items/schema-property-table.md) — status: to_do

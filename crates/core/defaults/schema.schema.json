@@ -329,8 +329,8 @@
 
     "aggregate": {
       "type": "object",
-      "description": "Aggregation config. The field is set manually on leaf items and computed automatically by walking the link field named in `over` (default 'parent') upward through the hierarchy.",
-      "required": ["function"],
+      "description": "Aggregation config. The field is set manually on leaf items and computed automatically by walking the link field named in `over` upward through the hierarchy.",
+      "required": ["function", "over"],
       "properties": {
         "function": {
           "type": "string",
@@ -344,8 +344,7 @@
         },
         "over": {
           "type": "string",
-          "default": "parent",
-          "description": "Name of the link field to walk upward for the rollup. Must reference a `link` (single-valued) field in the schema that declares allow_cycles: false — aggregated values need an acyclic hierarchy to evaluate in. Defaults to 'parent' when omitted.",
+          "description": "Name of the link field to walk upward for the rollup. Must reference a `link` (single-valued) field in the schema that declares allow_cycles: false — aggregated values need an acyclic hierarchy to evaluate in.",
           "pattern": "^[a-z_][a-z0-9_]*$"
         }
       },

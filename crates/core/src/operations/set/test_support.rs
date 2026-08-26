@@ -94,6 +94,7 @@ fields:
     required: false
     aggregate:
       function: sum
+      over: parent
       error_on_missing: true
 ";
 
@@ -133,6 +134,7 @@ fields:
     required: false
     aggregate:
       function: sum
+      over: parent
   computed_effort:
     type: duration
     required: false

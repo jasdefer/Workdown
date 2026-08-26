@@ -28,9 +28,6 @@ use crate::model::schema::{AggregateFunction, Severity};
 use crate::model::{FieldValue, WorkItem, WorkItemId};
 use crate::walker::walk_up_in;
 
-/// Link field walked when an aggregate config doesn't set `over`.
-pub(super) const DEFAULT_OVER_FIELD: &str = "parent";
-
 // ── Aggregate checks ────────────────────────────────────────────────
 
 /// Report every bearer whose `over` chain reaches another bearer: the
@@ -636,7 +633,7 @@ mod tests {
         field_name: &str,
         type_config: FieldTypeConfig,
         function: AggregateFunction,
-        over: Option<&str>,
+        over: &str,
         error_on_missing: bool,
     ) -> Schema {
         let mut fields = IndexMap::new();
@@ -659,7 +656,7 @@ mod tests {
         def.aggregate = Some(AggregateConfig {
             function,
             error_on_missing,
-            over: over.map(str::to_owned),
+            over: over.to_owned(),
         });
         fields.insert(field_name.to_owned(), def);
 
@@ -743,7 +740,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             false,
         );
         let mut items = map_of(vec![
@@ -774,7 +771,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             false,
         );
         let mut items = map_of(vec![
@@ -802,7 +799,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             false,
         );
         let mut items = map_of(vec![
@@ -843,7 +840,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             false,
         );
         let mut items = map_of(vec![
@@ -865,7 +862,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             true,
         );
         let mut items = map_of(vec![
@@ -901,7 +898,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             true,
         );
         let mut items = map_of(vec![
@@ -928,7 +925,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            Some("epic"),
+            "epic",
             false,
         );
         let mut items = map_of(vec![
@@ -954,7 +951,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             false,
         );
         schema.fields.get_mut("effort").unwrap().required = true;
@@ -991,7 +988,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             false,
         );
         schema.fields.get_mut("effort").unwrap().required = true;
@@ -1028,7 +1025,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             false,
         );
         let mut items = map_of(vec![

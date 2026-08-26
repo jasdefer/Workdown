@@ -1040,8 +1040,9 @@ fn validate_aggregate_compatibility(
 /// Check that the aggregate's `over` link field exists, is of type
 /// `link`, and declares `allow_cycles: false`.
 ///
-/// `over` defaults to `"parent"` when unset; the same rules apply to
-/// the default. The acyclicity requirement mirrors the pull config's:
+/// `over` is mandatory, so absence is the deserializer's finding and
+/// never reaches here. The acyclicity requirement mirrors the pull
+/// config's:
 /// aggregated values need an acyclic hierarchy to evaluate in, and it
 /// guarantees that any data-level cycle in the hierarchy is the link
 /// cycle detector's finding (which only checks fields declared
@@ -1058,18 +1059,14 @@ fn validate_aggregate_over(
         None => return,
     };
 
-    let target_name = agg.over.as_deref().unwrap_or("parent");
+    let target_name = agg.over.as_str();
     let target = match all_fields.get(target_name) {
         Some(f) => f,
         None => {
-            let detail = if agg.over.is_some() {
-                format!("aggregate.over references unknown field '{target_name}'")
-            } else {
-                "aggregate uses the default 'over: parent' but no field 'parent' is defined; \
-                 add a `parent` link field or set `over` explicitly"
-                    .to_owned()
-            };
-            errors.push(field_error(name, detail));
+            errors.push(field_error(
+                name,
+                format!("aggregate.over references unknown field '{target_name}'"),
+            ));
             return;
         }
     };
@@ -1744,6 +1741,7 @@ fields:
     type: duration
     aggregate:
       function: all
+      over: parent
 ";
         let err = parse_schema(yaml).unwrap_err();
         let errors = match err {
@@ -1769,6 +1767,7 @@ fields:
     type: duration
     aggregate:
       function: sum
+      over: parent
 ";
         parse_schema(yaml).expect("duration field with sum aggregate parses");
     }
@@ -1904,6 +1903,7 @@ fields:
     type: color
     aggregate:
       function: sum
+      over: parent
 ";
         let err = parse_schema(yaml).unwrap_err();
         let errors = match err {
@@ -1976,6 +1976,7 @@ fields:
     type: link
     aggregate:
       function: sum
+      over: parent
 ";
         let err = parse_schema(yaml).unwrap_err();
         let errors = match err {
@@ -1998,6 +1999,7 @@ fields:
     type: boolean
     aggregate:
       function: sum
+      over: parent
 ";
         let err = parse_schema(yaml).unwrap_err();
         let errors = match err {
@@ -2020,6 +2022,7 @@ fields:
     type: date
     aggregate:
       function: average
+      over: parent
 ";
         parse_schema(yaml).expect("date + average should parse");
     }
@@ -2035,28 +2038,36 @@ fields:
     type: boolean
     aggregate:
       function: count
+      over: parent
 ";
         parse_schema(yaml).expect("boolean + count should parse");
     }
 
     #[test]
-    fn aggregate_default_over_requires_parent_field() {
+    fn aggregate_without_over_is_rejected_by_the_deserializer() {
+        // `over` is mandatory: a rollup names the relation it climbs,
+        // there is no implicit `parent`. Absence is unconditional, so it
+        // is the file reader's finding — like a missing `function` — and
+        // never reaches the validation pass.
         let yaml = "\
 fields:
+  parent:
+    type: link
+    allow_cycles: false
   effort:
     type: integer
     aggregate:
       function: sum
 ";
         let err = parse_schema(yaml).unwrap_err();
-        let errors = match err {
-            SchemaLoadError::Validation(e) => e,
-            other => panic!("expected Validation error, got: {other}"),
-        };
-        assert!(errors
-            .iter()
-            .any(|e| e.message.contains("default 'over: parent'")
-                && e.message.contains("no field 'parent' is defined")));
+        assert!(
+            matches!(err, SchemaLoadError::InvalidYaml(_)),
+            "expected a deserialization error, got: {err}"
+        );
+        assert!(
+            err.to_string().contains("over"),
+            "the error should name the missing key, got: {err}"
+        );
     }
 
     #[test]
@@ -2134,6 +2145,7 @@ fields:
     type: integer
     aggregate:
       function: sum
+      over: parent
 ";
         let err = parse_schema(yaml).unwrap_err();
         let errors = match err {
@@ -2361,6 +2373,7 @@ fields:
     type: date
     aggregate:
       function: min
+      over: parent
     pull:
       over: depends_on
       field: end

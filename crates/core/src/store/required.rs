@@ -31,7 +31,6 @@ use crate::walker::targets_of;
 
 use super::compute;
 use super::conditional;
-use super::rollup;
 
 /// What the check concluded about one blank required field.
 enum Finding {
@@ -134,13 +133,7 @@ fn finding(
         && field_definition
             .aggregate
             .as_ref()
-            .is_some_and(|aggregate| {
-                let over = aggregate
-                    .over
-                    .as_deref()
-                    .unwrap_or(rollup::DEFAULT_OVER_FIELD);
-                !compute::is_leaf(reverse_links, &item.id, over)
-            });
+            .is_some_and(|aggregate| !compute::is_leaf(reverse_links, &item.id, &aggregate.over));
     if same_item_pass_skipped {
         return Finding::Report(generic);
     }

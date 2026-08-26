@@ -429,6 +429,7 @@ fn required_when_aggregate_non_leaf_gets_the_classic_message() {
         then: 2026-01-01
     aggregate:
       function: max
+      over: parent
 "
     );
     let (_directory, root) = setup_project(
@@ -573,6 +574,7 @@ fn when_composes_with_aggregate_on_leaves() {
     default: 10
     aggregate:
       function: max
+      over: parent
 "
     );
     let (_directory, root) = setup_project(

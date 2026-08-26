@@ -339,12 +339,10 @@ fn derive_fields_in_order<'schema>(
             Some(DeriveField {
                 name: name.as_str(),
                 definition,
-                aggregate_over: definition.aggregate.as_ref().map(|aggregate| {
-                    aggregate
-                        .over
-                        .clone()
-                        .unwrap_or_else(|| rollup::DEFAULT_OVER_FIELD.to_owned())
-                }),
+                aggregate_over: definition
+                    .aggregate
+                    .as_ref()
+                    .map(|aggregate| aggregate.over.clone()),
                 same_item_enabled,
                 pull_enabled,
             })
@@ -748,11 +746,11 @@ fn cycle_diagnostic(
         let from_slot = from_node / item_count;
         let to_slot = to_node / item_count;
         if from_slot == to_slot {
-            let over = derive_fields[to_slot]
-                .aggregate_over
-                .clone()
-                .unwrap_or_else(|| rollup::DEFAULT_OVER_FIELD.to_owned());
-            provenances.insert(EdgeProvenance::AggregateReverse(over));
+            // A same-slot edge is an aggregate-reverse edge, so the slot
+            // always carries an `over`; no aggregate means no such edge.
+            if let Some(over) = derive_fields[to_slot].aggregate_over.clone() {
+                provenances.insert(EdgeProvenance::AggregateReverse(over));
+            }
         } else if let Some(pull) = &derive_fields[to_slot].definition.pull {
             provenances.insert(EdgeProvenance::PullForward(pull.over.clone()));
         }
@@ -939,15 +937,18 @@ fields:
     type: date
     aggregate:
       function: min
+      over: parent
   duration:
     type: duration
     aggregate:
       function: sum
+      over: parent
   end_date:
     type: date
     compute: start_date + duration
     aggregate:
       function: max
+      over: parent
 ";
 
     // ── The motivating scenario ───────────────────────────────────────
@@ -1024,10 +1025,12 @@ fields:
     type: duration
     aggregate:
       function: sum
+      over: parent
   duration:
     type: duration
     aggregate:
       function: sum
+      over: parent
   flow_efficiency:
     type: float
     compute: effort / duration
@@ -1517,6 +1520,7 @@ fields:
     compute: start + duration
     aggregate:
       function: max
+      over: parent
 ";
         let mut items = HashMap::from([
             item(
@@ -1574,11 +1578,13 @@ fields:
       function: max
     aggregate:
       function: min
+      over: parent
   end:
     type: date
     compute: start + duration
     aggregate:
       function: max
+      over: parent
 ";
         let mut items = HashMap::from([
             item(
@@ -1747,11 +1753,13 @@ fields:
       function: max
     aggregate:
       function: min
+      over: parent
   end:
     type: date
     compute: start + duration
     aggregate:
       function: max
+      over: parent
 ";
         let mut items = HashMap::from([
             item(
