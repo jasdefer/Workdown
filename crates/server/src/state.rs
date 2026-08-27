@@ -68,6 +68,11 @@ pub struct AppState {
     /// in this struct the timer is genuinely shared mutable state — every
     /// cloned handler must see the *same* lock, not a copy of it.
     pub timer: Arc<TimerService>,
+    /// Serialises the git operations that touch the repository or the
+    /// remote (pull, push, fetch): two overlapping pulls would race over
+    /// the same work tree. Like `timer`, shared state — same `Arc`
+    /// reasoning.
+    pub git_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 /// Cold-load the project this request is about, mapping a load failure
@@ -115,6 +120,7 @@ impl AppState {
             timer_events,
             evaluation_date_override,
             timer: Arc::new(TimerService::system()),
+            git_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 }

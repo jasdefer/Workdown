@@ -215,7 +215,10 @@ defaults:
 
     #[test]
     fn flag_wins_over_config() {
-        let config = config_with(Some(ServeConfig { port: Some(7000) }));
+        let config = config_with(Some(ServeConfig {
+            port: Some(7000),
+            ..ServeConfig::default()
+        }));
         let resolution = resolve_port(&config, Some(8080));
         assert_eq!(resolution.start_port, 8080);
         assert!(resolution.explicit);
@@ -223,7 +226,10 @@ defaults:
 
     #[test]
     fn config_used_when_no_flag() {
-        let config = config_with(Some(ServeConfig { port: Some(7000) }));
+        let config = config_with(Some(ServeConfig {
+            port: Some(7000),
+            ..ServeConfig::default()
+        }));
         let resolution = resolve_port(&config, None);
         assert_eq!(resolution.start_port, 7000);
         assert!(!resolution.explicit);
@@ -239,7 +245,10 @@ defaults:
 
     #[test]
     fn empty_serve_section_uses_default() {
-        let config = config_with(Some(ServeConfig { port: None }));
+        let config = config_with(Some(ServeConfig {
+            port: None,
+            ..ServeConfig::default()
+        }));
         let resolution = resolve_port(&config, None);
         assert_eq!(resolution.start_port, DEFAULT_PORT);
         assert!(!resolution.explicit);

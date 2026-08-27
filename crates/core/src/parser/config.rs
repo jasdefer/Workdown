@@ -239,6 +239,31 @@ serve: {}
     }
 
     #[test]
+    fn parse_config_with_serve_git_controls() {
+        let yaml = r#"
+project:
+  name: Test
+paths:
+  work_items: items
+  templates: .workdown/templates
+  resources: .workdown/resources.yaml
+  views: .workdown/views.yaml
+schema: .workdown/schema.yaml
+defaults:
+  board_field: status
+  tree_field: parent
+  graph_field: depends_on
+serve:
+  git_controls: true
+"#;
+        let config = parse_config(yaml).unwrap();
+        let serve = config.serve.unwrap();
+        assert_eq!(serve.git_controls, Some(true));
+        // `git_controls` alone leaves `port` on the CLI default.
+        assert!(serve.port.is_none());
+    }
+
+    #[test]
     fn parse_rejects_abbreviated_working_day() {
         // Memory rule: full day names only.
         let yaml = r#"

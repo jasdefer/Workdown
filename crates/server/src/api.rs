@@ -14,6 +14,7 @@ use axum::Router;
 use crate::state::AppState;
 
 pub mod events;
+pub mod git;
 pub mod items;
 pub mod schema;
 pub mod timer;
@@ -28,4 +29,5 @@ pub fn router() -> Router<AppState> {
         .merge(items::router())
         .merge(events::router())
         .merge(timer::router())
+        .merge(git::router())
 }

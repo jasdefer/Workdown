@@ -7,6 +7,16 @@ its source — internal refactors are deliberately absent.
 
 ## Unreleased
 
+### Added
+
+- Git sync controls in the web UI, for teams whose item repo is shared:
+  a header pill showing the branch, ahead/behind counts and uncommitted
+  files, with Pull and Push buttons. Pull rebases (stashing local edits
+  around it) and backs out cleanly on conflict; Push publishes committed
+  work only — uncommitted edits never leave the machine. Opt-in via
+  `serve.git_controls: true` in `config.yaml`, since the buttons act on
+  whatever git repository contains the project.
+
 ### Changed
 
 - **Breaking:** a rollup field must now name the relation it climbs. `over` is

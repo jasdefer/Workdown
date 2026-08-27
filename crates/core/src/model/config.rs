@@ -81,6 +81,12 @@ pub struct ServeConfig {
     /// and scan upward on conflict.
     #[serde(default)]
     pub port: Option<u16>,
+    /// Show git pull/push controls in the web UI. Off unless explicitly
+    /// enabled: pull and push act on whatever git repository contains
+    /// the project, which may be the user's whole code repo — nobody
+    /// should get network-touching buttons they didn't ask for.
+    #[serde(default)]
+    pub git_controls: Option<bool>,
 }
 
 /// Project-wide field roles: the project's answer to "which field
