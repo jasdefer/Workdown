@@ -17,6 +17,14 @@ changes behavior users can see, except where noted.
 
 **Core layering and duplicate helpers**
 
+- The field-type → allowed-properties matrix now lives once in Rust
+  (`model/schema.rs::allowed_field_properties`, an exhaustive match a
+  new type cannot dodge), but `defaults/schema.schema.json` still
+  hand-encodes the same matrix as `allOf` / `if`-`then` blocks for
+  editor autocomplete. The CLI never reads it (ADR-005), so drift is a
+  UX gap rather than a correctness one — but it is the same silent-copy
+  shape as [[view-kind-sync-guards]], and one test comparing the two
+  would close it.
 - The schema parser imports coercion from the store layer
   (`crates/core/src/parser/schema.rs:18` uses `store::coerce`), while
   the store depends on the parser — a layering inversion. Coercion is

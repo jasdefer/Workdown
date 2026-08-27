@@ -587,6 +587,90 @@ pub(crate) fn aggregate_result_type(
     }
 }
 
+// ── Type-restricted field properties ─────────────────────────────────
+
+/// A property in `schema.yaml` whose validity depends on the field's
+/// type. Type-agnostic properties (`description`, `required`,
+/// `default`) and the ones policed by their own checks (`compute`,
+/// `pull`, `when`) are deliberately absent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FieldProperty {
+    Values,
+    Pattern,
+    Min,
+    Max,
+    AllowCycles,
+    Resource,
+    Aggregate,
+    Inverse,
+}
+
+impl FieldProperty {
+    /// Every type-restricted property, in the order violations are
+    /// reported.
+    pub(crate) const ALL: [FieldProperty; 8] = [
+        Self::Values,
+        Self::Pattern,
+        Self::Min,
+        Self::Max,
+        Self::AllowCycles,
+        Self::Resource,
+        Self::Aggregate,
+        Self::Inverse,
+    ];
+}
+
+impl std::fmt::Display for FieldProperty {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Values => "values",
+            Self::Pattern => "pattern",
+            Self::Min => "min",
+            Self::Max => "max",
+            Self::AllowCycles => "allow_cycles",
+            Self::Resource => "resource",
+            Self::Aggregate => "aggregate",
+            Self::Inverse => "inverse",
+        };
+        f.write_str(s)
+    }
+}
+
+/// The type → allowed-properties table. Anything a row omits is
+/// rejected on that type, so a property added to
+/// `RawFieldDefinition` is invalid everywhere until a row opts in.
+///
+/// `Aggregate` is absent from every row on purpose: whether a type can
+/// be aggregated is already recorded by
+/// [`allowed_aggregate_functions`], and [`field_property_allowed`]
+/// reads it from there rather than restating it here.
+///
+/// The exhaustive `match` is the point of the table — a thirteenth
+/// [`FieldType`] fails to compile until it gets a row.
+fn allowed_field_properties(field_type: FieldType) -> &'static [FieldProperty] {
+    use FieldProperty as P;
+    match field_type {
+        FieldType::String => &[P::Pattern, P::Resource],
+        FieldType::Choice | FieldType::Multichoice => &[P::Values],
+        FieldType::Integer | FieldType::Float => &[P::Min, P::Max],
+        FieldType::Date => &[],
+        FieldType::Duration => &[P::Min, P::Max],
+        FieldType::Color => &[],
+        FieldType::Boolean => &[],
+        FieldType::List => &[P::Resource],
+        FieldType::Link | FieldType::Links => &[P::AllowCycles, P::Inverse],
+    }
+}
+
+/// Whether `property` may be set on a field of `field_type`.
+pub(crate) fn field_property_allowed(field_type: FieldType, property: FieldProperty) -> bool {
+    match property {
+        // Single source of truth: a type accepts `aggregate:` exactly
+        // when it has aggregate functions defined.
+        FieldProperty::Aggregate => allowed_aggregate_functions(field_type).is_some(),
+        other => allowed_field_properties(field_type).contains(&other),
+    }
+}
 // ── Pull config ───────────────────────────────────────────────────────
 
 /// Configuration of a pull field (`pull:` in `schema.yaml`): read

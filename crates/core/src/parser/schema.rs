@@ -9,10 +9,10 @@ use indexmap::IndexMap;
 
 use crate::expression::parse_expression;
 use crate::model::schema::{
-    allowed_aggregate_functions, is_defined_inverse, is_relation_anchor, Assertion, ComputeConfig,
-    Condition, ConditionValue, CountConstraint, DefaultValue, FieldDefinition, FieldType,
-    FieldTypeConfig, Generator, NegationValue, RawFieldDefinition, RawRule, RawSchema, RoundMode,
-    Rule, Schema, WhenBranch, WhenConfig,
+    allowed_aggregate_functions, field_property_allowed, is_defined_inverse, is_relation_anchor,
+    Assertion, ComputeConfig, Condition, ConditionValue, CountConstraint, DefaultValue,
+    FieldDefinition, FieldProperty, FieldType, FieldTypeConfig, Generator, NegationValue,
+    RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema, WhenBranch, WhenConfig,
 };
 use crate::model::views::COLOR_NONE_SENTINEL;
 use crate::store::coerce::coerce_value;
@@ -643,123 +643,42 @@ fn validate_inverse_property(
     }
 }
 
-/// Check that only properties valid for the field's type are set.
+/// Check that only properties valid for the field's type are set, and
+/// that the ones which are valid hold usable values.
+///
+/// Which property goes with which type is the table in
+/// [`field_property_allowed`]; this function only walks it. What stays
+/// here is the handful of rules a yes/no table cannot express: a
+/// `choice` field does not merely *permit* `values`, it requires a
+/// non-empty list, and the numeric and duration bounds have to parse.
 fn validate_type_specific_properties(
     name: &str,
     field: &RawFieldDefinition,
     errors: &mut Vec<SchemaValidationError>,
 ) {
+    for property in FieldProperty::ALL {
+        if property_is_set(field, property) && !field_property_allowed(field.field_type, property) {
+            errors.push(field_error(
+                name,
+                format!("'{property}' is not valid for type '{}'", field.field_type),
+            ));
+        }
+    }
+
     match field.field_type {
-        FieldType::Choice | FieldType::Multichoice => {
-            // Must have values
-            match &field.values {
-                None => errors.push(field_error(
-                    name,
-                    format!("'values' is required for type '{}'", field.field_type),
-                )),
-                Some(v) if v.is_empty() => {
-                    errors.push(field_error(name, "'values' must not be empty"))
-                }
-                _ => {}
-            }
-            // Reject invalid properties
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(name, "min", &field.min, field.field_type, errors);
-            reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(
+        FieldType::Choice | FieldType::Multichoice => match &field.values {
+            None => errors.push(field_error(
                 name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(
-                name,
-                "aggregate",
-                &field.aggregate,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
-        }
-        FieldType::String => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "min", &field.min, field.field_type, errors);
-            reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(
-                name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(
-                name,
-                "aggregate",
-                &field.aggregate,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
-        }
+                format!("'values' is required for type '{}'", field.field_type),
+            )),
+            Some(v) if v.is_empty() => errors.push(field_error(name, "'values' must not be empty")),
+            _ => {}
+        },
         FieldType::Integer | FieldType::Float => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(
-                name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
             validate_numeric_bound(name, "min", &field.min, field.field_type, errors);
             validate_numeric_bound(name, "max", &field.max, field.field_type, errors);
         }
-        FieldType::Date => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(name, "min", &field.min, field.field_type, errors);
-            reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(
-                name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
-        }
-        FieldType::Boolean => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(name, "min", &field.min, field.field_type, errors);
-            reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(
-                name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
-        }
         FieldType::Duration => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(
-                name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
             // min/max are duration strings; validate they parse and that
             // min ≤ max if both are present.
             validate_duration_bound(name, "min", &field.min, errors);
@@ -776,80 +695,29 @@ fn validate_type_specific_properties(
                 }
             }
         }
-        FieldType::Color => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(name, "min", &field.min, field.field_type, errors);
-            reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(
-                name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(
-                name,
-                "aggregate",
-                &field.aggregate,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
-        }
-        FieldType::List => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(name, "min", &field.min, field.field_type, errors);
-            reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(
-                name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(
-                name,
-                "aggregate",
-                &field.aggregate,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
-        }
-        FieldType::Link | FieldType::Links => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(name, "min", &field.min, field.field_type, errors);
-            reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(
-                name,
-                "aggregate",
-                &field.aggregate,
-                field.field_type,
-                errors,
-            );
-            // Note: inverse IS valid for link/links — no rejection here.
-        }
+        FieldType::String
+        | FieldType::Date
+        | FieldType::Color
+        | FieldType::Boolean
+        | FieldType::List
+        | FieldType::Link
+        | FieldType::Links => {}
     }
 }
 
-/// Helper: push an error if the property is `Some` (i.e. set when it shouldn't be).
-fn reject_prop<T: std::fmt::Debug>(
-    field_name: &str,
-    prop_name: &str,
-    value: &Option<T>,
-    field_type: FieldType,
-    errors: &mut Vec<SchemaValidationError>,
-) {
-    if value.is_some() {
-        errors.push(field_error(
-            field_name,
-            format!("'{prop_name}' is not valid for type '{field_type}'"),
-        ));
+/// Whether `property` carries a value on this field. The one place the
+/// flat [`RawFieldDefinition`] layout is mapped onto
+/// [`FieldProperty`]; each arm reads the field of that name.
+fn property_is_set(field: &RawFieldDefinition, property: FieldProperty) -> bool {
+    match property {
+        FieldProperty::Values => field.values.is_some(),
+        FieldProperty::Pattern => field.pattern.is_some(),
+        FieldProperty::Min => field.min.is_some(),
+        FieldProperty::Max => field.max.is_some(),
+        FieldProperty::AllowCycles => field.allow_cycles.is_some(),
+        FieldProperty::Resource => field.resource.is_some(),
+        FieldProperty::Aggregate => field.aggregate.is_some(),
+        FieldProperty::Inverse => field.inverse.is_some(),
     }
 }
 
@@ -1017,9 +885,9 @@ fn validate_aggregate_compatibility(
     };
 
     let Some(allowed) = allowed_aggregate_functions(field.field_type) else {
-        // Other types can't have aggregate (caught by reject_prop) —
-        // already reported by type-specific validation; skip to avoid
-        // a duplicate.
+        // No functions defined means the type cannot carry `aggregate`
+        // at all, which the property table already reported; skip to
+        // avoid a duplicate.
         return;
     };
 
