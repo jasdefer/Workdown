@@ -15,6 +15,23 @@
 	import { pillModel } from './gitPill';
 
 	const model = $derived(pillModel(gitStore.status, gitStore.busy));
+
+	// A commit made in a terminal changes nothing the file watcher sees
+	// (only `.git/`), so no live-update ping arrives and the counts go
+	// stale. But to click Pull or Push the user must focus this window
+	// again — refresh at that moment, and the pill is current by the
+	// time the cursor reaches the button.
+	$effect(() => {
+		const refresh = () => {
+			void gitStore.refresh();
+		};
+		window.addEventListener('focus', refresh);
+		document.addEventListener('visibilitychange', refresh);
+		return () => {
+			window.removeEventListener('focus', refresh);
+			document.removeEventListener('visibilitychange', refresh);
+		};
+	});
 </script>
 
 {#if model.visible}
