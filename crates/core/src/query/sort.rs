@@ -6,7 +6,7 @@
 
 use std::cmp::Ordering;
 
-use crate::model::duration::format_duration_seconds;
+use crate::model::field_value::format_field_value;
 use crate::model::schema::{FieldType, Schema};
 use crate::model::{FieldValue, WorkItem};
 use crate::query::types::{SortDirection, SortSpec};
@@ -164,33 +164,13 @@ fn compare_id_lists(value_a: &FieldValue, value_b: &FieldValue) -> Ordering {
     }
 }
 
-/// Compare two values as strings (lexicographic).
+/// Compare two values as text (lexicographic) — the fallback for
+/// string-like and unknown field types; typed fields never reach it. The
+/// fallback sorts by *display text*: both sides go through
+/// [`format_field_value`] on purpose, so the order is whatever the
+/// displayed values sort to.
 fn compare_as_strings(value_a: &FieldValue, value_b: &FieldValue) -> Ordering {
-    let string_a = extract_sort_string(value_a);
-    let string_b = extract_sort_string(value_b);
-    string_a.cmp(&string_b)
-}
-
-/// Extract a string for sorting purposes.
-fn extract_sort_string(value: &FieldValue) -> String {
-    match value {
-        FieldValue::String(string) => string.clone(),
-        FieldValue::Choice(string) => string.clone(),
-        FieldValue::Date(date) => date.format("%Y-%m-%d").to_string(),
-        FieldValue::Duration(seconds) => format_duration_seconds(*seconds),
-        FieldValue::Color(color) => color.clone(),
-        FieldValue::Link(id) => id.as_str().to_owned(),
-        FieldValue::Integer(number) => number.to_string(),
-        FieldValue::Float(number) => number.to_string(),
-        FieldValue::Boolean(flag) => flag.to_string(),
-        FieldValue::Multichoice(values) => values.join(", "),
-        FieldValue::List(values) => values.join(", "),
-        FieldValue::Links(ids) => ids
-            .iter()
-            .map(|id| id.as_str())
-            .collect::<Vec<_>>()
-            .join(", "),
-    }
+    format_field_value(value_a).cmp(&format_field_value(value_b))
 }
 
 // ── Tests ───────────────────────────────────────────────────────────

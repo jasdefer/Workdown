@@ -180,7 +180,7 @@ fn check_comparison(
     };
 
     let is_equality = matches!(comparison.operator, Operator::Equal | Operator::NotEqual);
-    let value = comparison.value.as_str();
+    let value = comparison.operand.text();
 
     let violation = match check {
         // An option set answers "is this a member", a question the

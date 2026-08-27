@@ -8,7 +8,6 @@ flowchart TD
         assorted-small-fixes["Grab bag of small consistency fixes from the review"]
         chart-renderer-sharing["Make the terminal chart renderers share what they each rebuilt"]
         message-style-consistency["One voice for validation messages"]
-        query-value-consolidation["Deduplicate the filter engine's comparison and formatting logic"]
         render-flow-doc["One page that shows how a render flows through the system"]
         schema-property-table["Table-drive the 'is this property allowed on this field type?' check"]
         stale-docs-refresh["Fix the documentation that is actively wrong"]
@@ -19,6 +18,7 @@ flowchart TD
     subgraph misc-work ["Miscellaneous improvements"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
         tags-view["A view over tags"]
+        typed-date-filter-comparison["Compare dates in filters as dates, not as text"]
         value-coercion-layering["Move value coercion out of the store to break the parser↔store cycle"]
         views-check-metric-row-dedup["Collapse the metric-row duplicates of the generic view checks"]
     end

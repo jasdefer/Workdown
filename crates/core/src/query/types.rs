@@ -22,16 +22,80 @@ pub enum Predicate {
     Not(Box<Predicate>),
 }
 
-/// A comparison of a single field against a value.
+/// A comparison of a single field against an operand.
 #[derive(Debug, Clone)]
 pub struct Comparison {
     /// Which field to compare.
     pub field: FieldReference,
     /// The comparison operator.
     pub operator: Operator,
-    /// The raw value to compare against — resolved against the field's
-    /// schema type at evaluation time.
-    pub value: String,
+    /// What to compare against.
+    pub operand: Operand,
+}
+
+/// The right-hand side of a comparison.
+#[derive(Debug, Clone)]
+pub enum Operand {
+    /// A literal value — resolved against the field's schema type at
+    /// evaluation time.
+    Value(String),
+    /// A regular expression, compiled once at parse time. Carried by
+    /// [`Operator::Matches`] comparisons.
+    Regex(QueryRegex),
+}
+
+impl Operand {
+    /// The operand as clause text: the literal value, or the regex's
+    /// original `/pattern/flags` form.
+    pub fn text(&self) -> &str {
+        match self {
+            Operand::Value(value) => value,
+            Operand::Regex(regex) => regex.source(),
+        }
+    }
+
+    /// The compiled regex, when this operand is one.
+    pub fn regex(&self) -> Option<&QueryRegex> {
+        match self {
+            Operand::Regex(regex) => Some(regex),
+            Operand::Value(_) => None,
+        }
+    }
+}
+
+/// A regex operand: compiled once at parse time, carrying its original
+/// `/pattern/flags` clause form for serialization. The convention lives
+/// here and nowhere else — no other code re-encodes or re-splits it.
+#[derive(Debug, Clone)]
+pub struct QueryRegex {
+    source: String,
+    compiled: regex::Regex,
+}
+
+impl QueryRegex {
+    /// Compile a pattern with its flags. `i` (case-insensitive) is the only
+    /// flag; anything else the grammar rejects before reaching here.
+    pub fn new(pattern: &str, flags: &str) -> Result<Self, regex::Error> {
+        let full_pattern = if flags.contains('i') {
+            format!("(?i){pattern}")
+        } else {
+            pattern.to_owned()
+        };
+        Ok(Self {
+            source: format!("/{pattern}/{flags}"),
+            compiled: regex::Regex::new(&full_pattern)?,
+        })
+    }
+
+    /// Whether the pattern matches anywhere in `haystack`.
+    pub fn is_match(&self, haystack: &str) -> bool {
+        self.compiled.is_match(haystack)
+    }
+
+    /// The original `/pattern/flags` clause form.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
 }
 
 /// A reference to a field on a work item.
@@ -39,8 +103,8 @@ pub struct Comparison {
 pub enum FieldReference {
     /// A field on the current item, e.g. `"status"`.
     Local(String),
-    /// A field on a related item, e.g. `"parent.status"`.
-    /// Defined for future use — not yet supported by the parser or evaluator.
+    /// A field on a related item, e.g. `"parent.status"` — the relation
+    /// segment is a link/links field or a derived inverse.
     Related { relation: String, field: String },
 }
 

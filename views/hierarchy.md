@@ -6,7 +6,6 @@ Hierarchical outline following `parent` upward to roots.
   - [Grab bag of small consistency fixes from the review](../workdown-items/assorted-small-fixes.md) — status: to_do
   - [Make the terminal chart renderers share what they each rebuilt](../workdown-items/chart-renderer-sharing.md) — status: to_do
   - [One voice for validation messages](../workdown-items/message-style-consistency.md) — status: to_do
-  - [Deduplicate the filter engine's comparison and formatting logic](../workdown-items/query-value-consolidation.md) — status: to_do
   - [One page that shows how a render flows through the system](../workdown-items/render-flow-doc.md) — status: to_do
   - [Table-drive the "is this property allowed on this field type?" check](../workdown-items/schema-property-table.md) — status: to_do
   - [Fix the documentation that is actively wrong](../workdown-items/stale-docs-refresh.md) — status: to_do
@@ -16,6 +15,7 @@ Hierarchical outline following `parent` upward to roots.
 - [Miscellaneous improvements](../workdown-items/misc-work.md) — status: to_do
   - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md) — status: to_do
   - [A view over tags](../workdown-items/tags-view.md) — status: to_do
+  - [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md) — status: to_do
   - [Move value coercion out of the store to break the parser↔store cycle](../workdown-items/value-coercion-layering.md) — status: to_do
   - [Collapse the metric-row duplicates of the generic view checks](../workdown-items/views-check-metric-row-dedup.md) — status: to_do
 - [Multi-project support](../workdown-items/multi-project-support.md) — status: to_do

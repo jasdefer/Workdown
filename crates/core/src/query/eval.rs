@@ -3,7 +3,8 @@
 //! The evaluator is type-aware — it uses the schema to determine how to
 //! compare field values (numeric for integers, lexicographic for strings, etc.).
 
-use crate::model::duration::{format_duration_seconds, parse_duration};
+use crate::model::duration::parse_duration;
+use crate::model::field_value::format_field_value;
 use crate::model::schema::{FieldType, Schema};
 use crate::model::{FieldValue, WorkItem};
 use crate::query::types::{Comparison, FieldReference, Operator, Predicate};
@@ -15,9 +16,6 @@ use crate::store::Store;
 /// Errors produced during predicate evaluation.
 #[derive(Debug, thiserror::Error)]
 pub enum QueryEvalError {
-    #[error("invalid regex: {0}")]
-    InvalidRegex(String),
-
     #[error("'{relation}' is not a relation field (type {actual_type:?}); dot notation requires a link or links field or an inverse relation")]
     NotARelation {
         relation: String,
@@ -76,7 +74,7 @@ fn eval_comparison(
                 .fields
                 .get(name)
                 .map(|definition| definition.field_type());
-            eval_single(field_value, field_type, comparison)
+            Ok(eval_single(field_value, field_type, comparison))
         }
         FieldReference::Related { relation, field } => {
             validate_relation(relation, schema)?;
@@ -92,17 +90,14 @@ fn eval_comparison(
 
             match resolved {
                 ResolvedValues::Single(field_value) => {
-                    eval_single(field_value, field_type, comparison)
+                    Ok(eval_single(field_value, field_type, comparison))
                 }
                 ResolvedValues::Many(values) => {
                     // "Any" semantics: matches if at least one resolved
                     // value satisfies the predicate.
-                    for value in values.iter() {
-                        if eval_single(*value, field_type, comparison)? {
-                            return Ok(true);
-                        }
-                    }
-                    Ok(false)
+                    Ok(values
+                        .iter()
+                        .any(|value| eval_single(*value, field_type, comparison)))
                 }
             }
         }
@@ -136,11 +131,11 @@ fn eval_single(
     field_value: Option<&FieldValue>,
     field_type: Option<FieldType>,
     comparison: &Comparison,
-) -> Result<bool, QueryEvalError> {
+) -> bool {
     // IsSet / IsNotSet don't need a value.
     match comparison.operator {
-        Operator::IsSet => return Ok(field_value.is_some()),
-        Operator::IsNotSet => return Ok(field_value.is_none()),
+        Operator::IsSet => return field_value.is_some(),
+        Operator::IsNotSet => return field_value.is_none(),
         _ => {}
     }
 
@@ -154,7 +149,7 @@ fn eval_single(
     // `status != removed` + `status?`.
     let field_value = match field_value {
         Some(value) => value,
-        None => return Ok(comparison.operator.is_negative()),
+        None => return comparison.operator.is_negative(),
     };
 
     match field_type {
@@ -172,20 +167,45 @@ fn eval_single(
 
 // ── Type-specific evaluation ────────────────────────────────────────
 
+/// The ordered-scalar operator table, shared by the integer, float, and
+/// duration evaluators — the one place a comparison operator is mapped onto
+/// `PartialOrd`. `None` on either side (a wrong-variant field value, an
+/// unparseable right-hand side) matches nothing, whatever the operator.
+fn eval_ordered<T: PartialOrd>(actual: Option<T>, expected: Option<T>, operator: Operator) -> bool {
+    let (Some(actual), Some(expected)) = (actual, expected) else {
+        return false;
+    };
+    match operator {
+        Operator::Equal => actual == expected,
+        Operator::NotEqual => actual != expected,
+        Operator::GreaterThan => actual > expected,
+        Operator::LessThan => actual < expected,
+        Operator::GreaterOrEqual => actual >= expected,
+        Operator::LessOrEqual => actual <= expected,
+        Operator::Contains | Operator::Matches => false,
+        Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
+        Operator::In | Operator::NotIn => {
+            unreachable!("desugared into Or/And by query::parse")
+        }
+    }
+}
+
 /// String-like comparison: String, Choice, Date, Link, and unknown fields.
-fn eval_string(field_value: &FieldValue, comparison: &Comparison) -> Result<bool, QueryEvalError> {
-    let actual = extract_string(field_value);
-    let expected = &comparison.value;
+/// The field value is coerced to text via [`format_field_value`], so a
+/// filter compares exactly the text a view displays.
+fn eval_string(field_value: &FieldValue, comparison: &Comparison) -> bool {
+    let actual = format_field_value(field_value);
+    let expected = comparison.operand.text();
 
     match comparison.operator {
-        Operator::Equal => Ok(actual == *expected),
-        Operator::NotEqual => Ok(actual != *expected),
-        Operator::GreaterThan => Ok(actual.as_str() > expected.as_str()),
-        Operator::LessThan => Ok(actual.as_str() < expected.as_str()),
-        Operator::GreaterOrEqual => Ok(actual.as_str() >= expected.as_str()),
-        Operator::LessOrEqual => Ok(actual.as_str() <= expected.as_str()),
-        Operator::Contains => Ok(actual.contains(expected.as_str())),
-        Operator::Matches => eval_regex(&actual, expected),
+        Operator::Equal => actual == expected,
+        Operator::NotEqual => actual != expected,
+        Operator::GreaterThan => actual.as_str() > expected,
+        Operator::LessThan => actual.as_str() < expected,
+        Operator::GreaterOrEqual => actual.as_str() >= expected,
+        Operator::LessOrEqual => actual.as_str() <= expected,
+        Operator::Contains => actual.contains(expected),
+        Operator::Matches => eval_regex(comparison, &actual),
         Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
         Operator::In | Operator::NotIn => {
             unreachable!("desugared into Or/And by query::parse")
@@ -194,243 +214,140 @@ fn eval_string(field_value: &FieldValue, comparison: &Comparison) -> Result<bool
 }
 
 /// Integer comparison.
-fn eval_integer(field_value: &FieldValue, comparison: &Comparison) -> Result<bool, QueryEvalError> {
+fn eval_integer(field_value: &FieldValue, comparison: &Comparison) -> bool {
     let actual = match field_value {
-        FieldValue::Integer(number) => *number,
-        _ => return Ok(false),
+        FieldValue::Integer(number) => Some(*number),
+        _ => None,
     };
-    let expected = match comparison.value.parse::<i64>() {
-        Ok(number) => number,
-        Err(_) => return Ok(false),
-    };
-
-    Ok(match comparison.operator {
-        Operator::Equal => actual == expected,
-        Operator::NotEqual => actual != expected,
-        Operator::GreaterThan => actual > expected,
-        Operator::LessThan => actual < expected,
-        Operator::GreaterOrEqual => actual >= expected,
-        Operator::LessOrEqual => actual <= expected,
-        Operator::Contains | Operator::Matches => false,
-        Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
-        Operator::In | Operator::NotIn => {
-            unreachable!("desugared into Or/And by query::parse")
-        }
-    })
+    let expected = comparison.operand.text().parse::<i64>().ok();
+    eval_ordered(actual, expected, comparison.operator)
 }
 
 /// Float comparison.
-fn eval_float(field_value: &FieldValue, comparison: &Comparison) -> Result<bool, QueryEvalError> {
+fn eval_float(field_value: &FieldValue, comparison: &Comparison) -> bool {
     let actual = match field_value {
-        FieldValue::Float(number) => *number,
-        _ => return Ok(false),
+        FieldValue::Float(number) => Some(*number),
+        _ => None,
     };
-    let expected = match comparison.value.parse::<f64>() {
-        Ok(number) => number,
-        Err(_) => return Ok(false),
-    };
-
-    Ok(match comparison.operator {
-        Operator::Equal => actual == expected,
-        Operator::NotEqual => actual != expected,
-        Operator::GreaterThan => actual > expected,
-        Operator::LessThan => actual < expected,
-        Operator::GreaterOrEqual => actual >= expected,
-        Operator::LessOrEqual => actual <= expected,
-        Operator::Contains | Operator::Matches => false,
-        Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
-        Operator::In | Operator::NotIn => {
-            unreachable!("desugared into Or/And by query::parse")
-        }
-    })
+    let expected = comparison.operand.text().parse::<f64>().ok();
+    eval_ordered(actual, expected, comparison.operator)
 }
 
-/// Duration comparison. Mirrors `eval_integer`: the value is compared
-/// as canonical i64 seconds. The RHS string is parsed via the same
-/// suffix-shorthand grammar used everywhere else (`5d`, `1w 2d`, etc.).
-fn eval_duration(
-    field_value: &FieldValue,
-    comparison: &Comparison,
-) -> Result<bool, QueryEvalError> {
+/// Duration comparison: canonical i64 seconds. The RHS string is parsed via
+/// the same suffix-shorthand grammar used everywhere else (`5d`, `1w 2d`, …).
+fn eval_duration(field_value: &FieldValue, comparison: &Comparison) -> bool {
     let actual = match field_value {
-        FieldValue::Duration(seconds) => *seconds,
-        _ => return Ok(false),
+        FieldValue::Duration(seconds) => Some(*seconds),
+        _ => None,
     };
-    let expected = match parse_duration(&comparison.value) {
-        Ok(seconds) => seconds,
-        Err(_) => return Ok(false),
-    };
-
-    Ok(match comparison.operator {
-        Operator::Equal => actual == expected,
-        Operator::NotEqual => actual != expected,
-        Operator::GreaterThan => actual > expected,
-        Operator::LessThan => actual < expected,
-        Operator::GreaterOrEqual => actual >= expected,
-        Operator::LessOrEqual => actual <= expected,
-        Operator::Contains | Operator::Matches => false,
-        Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
-        Operator::In | Operator::NotIn => {
-            unreachable!("desugared into Or/And by query::parse")
-        }
-    })
+    let expected = parse_duration(comparison.operand.text()).ok();
+    eval_ordered(actual, expected, comparison.operator)
 }
 
 /// Color comparison. Both sides are resolved to hex before comparing,
 /// so `color == red` matches an item that stores red's pinned hex and
 /// vice versa. A RHS that isn't a valid color never matches, mirroring
 /// how unparseable numbers behave for numeric fields.
-fn eval_color(field_value: &FieldValue, comparison: &Comparison) -> Result<bool, QueryEvalError> {
+fn eval_color(field_value: &FieldValue, comparison: &Comparison) -> bool {
     use crate::model::color::{parse_color, resolve_color_to_hex};
 
     let actual = match field_value {
         FieldValue::Color(canonical) => resolve_color_to_hex(canonical),
-        _ => return Ok(false),
+        _ => return false,
     };
     let Some(actual) = actual else {
-        return Ok(false);
+        return false;
     };
-    let expected = match parse_color(&comparison.value) {
+    let expected = match parse_color(comparison.operand.text()) {
         Ok(canonical) => resolve_color_to_hex(&canonical),
-        Err(_) => return Ok(false),
+        Err(_) => return false,
     };
     let Some(expected) = expected else {
-        return Ok(false);
+        return false;
     };
 
-    Ok(match comparison.operator {
+    match comparison.operator {
         Operator::Equal => actual == expected,
         Operator::NotEqual => actual != expected,
         // Ordering/contains/regex don't make sense for colors.
         _ => false,
-    })
+    }
 }
 
 /// Boolean comparison.
-fn eval_boolean(field_value: &FieldValue, comparison: &Comparison) -> Result<bool, QueryEvalError> {
+fn eval_boolean(field_value: &FieldValue, comparison: &Comparison) -> bool {
     let actual = match field_value {
         FieldValue::Boolean(flag) => *flag,
-        _ => return Ok(false),
+        _ => return false,
     };
-    let expected = match comparison.value.as_str() {
+    let expected = match comparison.operand.text() {
         "true" => true,
         "false" => false,
-        _ => return Ok(false),
+        _ => return false,
     };
 
-    Ok(match comparison.operator {
+    match comparison.operator {
         Operator::Equal => actual == expected,
         Operator::NotEqual => actual != expected,
         // Ordering/contains/regex don't make sense for booleans.
         _ => false,
-    })
+    }
+}
+
+/// The collection operator table, shared by the list-like and links
+/// evaluators. `Equal`/`NotEqual` test membership (any element equals the
+/// value); `Contains`/`Matches` test each element; ordering never matches.
+fn eval_collection(elements: &[&str], comparison: &Comparison) -> bool {
+    let expected = comparison.operand.text();
+    match comparison.operator {
+        Operator::Equal => elements.contains(&expected),
+        Operator::NotEqual => !elements.contains(&expected),
+        Operator::Contains => elements.iter().any(|element| element.contains(expected)),
+        Operator::Matches => elements
+            .iter()
+            .any(|element| eval_regex(comparison, element)),
+        Operator::GreaterThan
+        | Operator::LessThan
+        | Operator::GreaterOrEqual
+        | Operator::LessOrEqual => false,
+        Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
+        Operator::In | Operator::NotIn => {
+            unreachable!("desugared into Or/And by query::parse")
+        }
+    }
 }
 
 /// List-like comparison: Multichoice and List fields.
-/// Equal checks membership (any element equals the value).
-fn eval_list(field_value: &FieldValue, comparison: &Comparison) -> Result<bool, QueryEvalError> {
+fn eval_list(field_value: &FieldValue, comparison: &Comparison) -> bool {
     let elements: Vec<&str> = match field_value {
-        FieldValue::Multichoice(values) => values.iter().map(|string| string.as_str()).collect(),
-        FieldValue::List(values) => values.iter().map(|string| string.as_str()).collect(),
-        _ => return Ok(false),
-    };
-    let expected = &comparison.value;
-
-    match comparison.operator {
-        Operator::Equal => Ok(elements.contains(&expected.as_str())),
-        Operator::NotEqual => Ok(!elements.contains(&expected.as_str())),
-        Operator::Contains => Ok(elements
-            .iter()
-            .any(|element| element.contains(expected.as_str()))),
-        Operator::Matches => {
-            let compiled_regex = compile_regex(expected)?;
-            Ok(elements
-                .iter()
-                .any(|element| compiled_regex.is_match(element)))
+        FieldValue::Multichoice(values) | FieldValue::List(values) => {
+            values.iter().map(String::as_str).collect()
         }
-        // Ordering doesn't make sense for lists.
-        _ => Ok(false),
-    }
+        _ => return false,
+    };
+    eval_collection(&elements, comparison)
 }
 
-/// Links comparison: same as list but extracts strings from WorkItemIds.
-fn eval_links(field_value: &FieldValue, comparison: &Comparison) -> Result<bool, QueryEvalError> {
+/// Links comparison: the collection table over the target ids.
+fn eval_links(field_value: &FieldValue, comparison: &Comparison) -> bool {
     let elements: Vec<&str> = match field_value {
         FieldValue::Links(ids) => ids.iter().map(|id| id.as_str()).collect(),
-        _ => return Ok(false),
+        _ => return false,
     };
-    let expected = &comparison.value;
-
-    match comparison.operator {
-        Operator::Equal => Ok(elements.contains(&expected.as_str())),
-        Operator::NotEqual => Ok(!elements.contains(&expected.as_str())),
-        Operator::Contains => Ok(elements
-            .iter()
-            .any(|element| element.contains(expected.as_str()))),
-        Operator::Matches => {
-            let compiled_regex = compile_regex(expected)?;
-            Ok(elements
-                .iter()
-                .any(|element| compiled_regex.is_match(element)))
-        }
-        _ => Ok(false),
-    }
+    eval_collection(&elements, comparison)
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-/// Extract the string content from any string-like FieldValue.
-fn extract_string(value: &FieldValue) -> String {
-    match value {
-        FieldValue::String(string) => string.clone(),
-        FieldValue::Choice(string) => string.clone(),
-        FieldValue::Date(date) => date.format("%Y-%m-%d").to_string(),
-        FieldValue::Duration(seconds) => format_duration_seconds(*seconds),
-        FieldValue::Color(color) => color.clone(),
-        FieldValue::Link(id) => id.as_str().to_owned(),
-        // For non-string types, fall back to a reasonable string representation.
-        FieldValue::Integer(number) => number.to_string(),
-        FieldValue::Float(number) => number.to_string(),
-        FieldValue::Boolean(flag) => flag.to_string(),
-        FieldValue::Multichoice(values) => values.join(", "),
-        FieldValue::List(values) => values.join(", "),
-        FieldValue::Links(ids) => ids
-            .iter()
-            .map(|id| id.as_str())
-            .collect::<Vec<_>>()
-            .join(", "),
+/// Evaluate the comparison's regex operand against one haystack. A literal
+/// operand under `Matches` — impossible via the parser, possible in a
+/// hand-built predicate — matches nothing, mirroring how an unparseable
+/// number behaves for numeric fields.
+fn eval_regex(comparison: &Comparison, haystack: &str) -> bool {
+    match comparison.operand.regex() {
+        Some(regex) => regex.is_match(haystack),
+        None => false,
     }
-}
-
-/// Evaluate a regex match. The value is stored as `/pattern/flags`.
-fn eval_regex(haystack: &str, regex_value: &str) -> Result<bool, QueryEvalError> {
-    let compiled_regex = compile_regex(regex_value)?;
-    Ok(compiled_regex.is_match(haystack))
-}
-
-/// Compile a regex from the stored `/pattern/flags` format.
-fn compile_regex(regex_value: &str) -> Result<regex::Regex, QueryEvalError> {
-    let (pattern, flags) = parse_regex_value(regex_value);
-    let full_pattern = if flags.contains('i') {
-        format!("(?i){pattern}")
-    } else {
-        pattern.to_owned()
-    };
-    regex::Regex::new(&full_pattern)
-        .map_err(|error| QueryEvalError::InvalidRegex(error.to_string()))
-}
-
-/// Parse `/pattern/flags` into (pattern, flags). If the format doesn't
-/// match, treat the whole string as a pattern with no flags.
-fn parse_regex_value(value: &str) -> (&str, &str) {
-    if let Some(inner) = value.strip_prefix('/') {
-        if let Some(closing) = inner.rfind('/') {
-            let pattern = &inner[..closing];
-            let flags = &inner[closing + 1..];
-            return (pattern, flags);
-        }
-    }
-    (value, "")
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -441,7 +358,7 @@ mod tests {
     use crate::model::schema::{FieldDefinition, FieldTypeConfig};
     use crate::model::WorkItemId;
     use crate::query::parse::parse_where;
-    use crate::query::types::FieldReference;
+    use crate::query::types::{FieldReference, Operand, QueryRegex};
     use indexmap::IndexMap;
     use std::path::PathBuf;
 
@@ -556,11 +473,26 @@ mod tests {
         }
     }
 
+    /// Build the operand a parsed clause would carry: `Matches` values are
+    /// given in the `/pattern/flags` form and become compiled regexes.
+    fn operand_for(operator: Operator, value: &str) -> Operand {
+        if operator != Operator::Matches {
+            return Operand::Value(value.to_owned());
+        }
+        let inner = value
+            .strip_prefix('/')
+            .expect("test regex value uses the /pattern/flags form");
+        let closing = inner
+            .rfind('/')
+            .expect("test regex value uses the /pattern/flags form");
+        Operand::Regex(QueryRegex::new(&inner[..closing], &inner[closing + 1..]).unwrap())
+    }
+
     fn comparison(field: &str, operator: Operator, value: &str) -> Predicate {
         Predicate::Comparison(Comparison {
             field: FieldReference::Local(field.to_owned()),
             operator,
-            value: value.to_owned(),
+            operand: operand_for(operator, value),
         })
     }
 
@@ -1137,7 +1069,7 @@ mod tests {
                 field: field.to_owned(),
             },
             operator,
-            value: value.to_owned(),
+            operand: operand_for(operator, value),
         })
     }
 
@@ -1300,6 +1232,49 @@ mod tests {
         let item = store.get("task-a").unwrap();
         let predicate = related_comparison("parent", "title", Operator::Contains, "login");
         assert!(matches_predicate(item, &predicate, &schema, &store).unwrap());
+    }
+
+    /// A regex on a related field parses and evaluates like every other
+    /// operator on a related field — pinned end-to-end because a stale
+    /// parser comment used to claim the combination was rejected.
+    #[test]
+    fn related_regex_matches_target_value() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![
+                ("epic.md", "---\ntitle: Fix login flow\nstatus: open\n---\n"),
+                ("task-a.md", "---\nstatus: done\nparent: epic\n---\n"),
+            ],
+        );
+        let item = store.get("task-a").unwrap();
+        let matching = parse_where("parent.title/^Fix/").unwrap();
+        assert!(matches_predicate(item, &matching, &schema, &store).unwrap());
+        let case_insensitive = parse_where("parent.title/^fix/i").unwrap();
+        assert!(matches_predicate(item, &case_insensitive, &schema, &store).unwrap());
+        let not_matching = parse_where("parent.title/^Add/").unwrap();
+        assert!(!matches_predicate(item, &not_matching, &schema, &store).unwrap());
+    }
+
+    /// A regex reaching a collection-valued target field tests each element.
+    #[test]
+    fn related_regex_on_collection_target() {
+        let schema = test_schema();
+        let (_dir, store) = store_from_files(
+            &schema,
+            vec![
+                (
+                    "dep-a.md",
+                    "---\nstatus: open\ntags: [auth, backend]\n---\n",
+                ),
+                ("task.md", "---\nstatus: open\ndepends_on: [dep-a]\n---\n"),
+            ],
+        );
+        let item = store.get("task").unwrap();
+        let matching = parse_where("depends_on.tags/^back/").unwrap();
+        assert!(matches_predicate(item, &matching, &schema, &store).unwrap());
+        let not_matching = parse_where("depends_on.tags/^front/").unwrap();
+        assert!(!matches_predicate(item, &not_matching, &schema, &store).unwrap());
     }
 
     #[test]
