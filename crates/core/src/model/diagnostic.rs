@@ -14,11 +14,16 @@
 //! Adding a new diagnostic is a two-step structural decision: pick a
 //! scope category (which wrapper), then add a variant to that wrapper's
 //! inner kind enum.
+//!
+//! How the resulting message is *worded* is not a decision per variant:
+//! [`super::message`] holds the house style and the helpers every
+//! `Display` arm here builds its lists and chains from.
 
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use super::message::{chain, one_of, quoted_list};
 use super::schema::{FieldType, Severity};
 use super::views::ViewType;
 use super::WorkItemId;
@@ -557,6 +562,30 @@ pub enum ConfigDiagnosticKind {
 
 // ── Field value errors ───────────────────────────────────────────────
 
+/// Which side of a declared range a value fell off.
+///
+/// A parameter rather than a variant per side: the two cases differ by
+/// one word of message and nothing else, and naming the side lets the
+/// message say which limit was broken instead of restating both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+pub enum RangeBound {
+    /// The value was below the field's declared `min`.
+    Minimum,
+    /// The value was above the field's declared `max`.
+    Maximum,
+}
+
+impl RangeBound {
+    /// How a message names this side.
+    fn describe(self) -> &'static str {
+        match self {
+            Self::Minimum => "below the minimum",
+            Self::Maximum => "above the maximum",
+        }
+    }
+}
+
 /// Specific reason a field value is invalid.
 ///
 /// Produced by the coercion layer when converting raw YAML values to
@@ -576,18 +605,21 @@ pub enum FieldValueError {
         allowed: Vec<String>,
     },
 
-    /// Numeric value is outside the allowed range.
+    /// Numeric value is outside the allowed range. `bound` names the
+    /// side it fell off and `limit` the declared value it broke.
     OutOfRange {
         value: f64,
-        min: Option<f64>,
-        max: Option<f64>,
+        bound: RangeBound,
+        limit: f64,
     },
 
-    /// Duration value is outside the allowed range.
+    /// Duration value is outside the allowed range. Same shape as
+    /// [`Self::OutOfRange`], with value and limit already formatted as
+    /// duration strings.
     OutOfRangeDuration {
         value: String,
-        min: Option<String>,
-        max: Option<String>,
+        bound: RangeBound,
+        limit: String,
     },
 
     /// Duration string failed to parse.
@@ -851,11 +883,7 @@ impl std::fmt::Display for ItemDiagnosticKind {
                 write!(
                     f,
                     "computed field '{field}' could not be evaluated: missing {}",
-                    missing_inputs
-                        .iter()
-                        .map(|input| format!("'{input}'"))
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                    quoted_list(missing_inputs)
                 )
             }
             ItemDiagnosticKind::ComputeFailed { field, detail } => {
@@ -873,11 +901,7 @@ impl std::fmt::Display for ItemDiagnosticKind {
                     write!(
                         f,
                         " (absent condition inputs: {})",
-                        missing_inputs
-                            .iter()
-                            .map(|input| format!("'{input}'"))
-                            .collect::<Vec<_>>()
-                            .join(", ")
+                        quoted_list(missing_inputs)
                     )?;
                 }
                 Ok(())
@@ -899,18 +923,14 @@ impl std::fmt::Display for ItemDiagnosticKind {
                 write!(
                     f,
                     "pull field '{field}' could not be evaluated: missing {}",
-                    missing_inputs
-                        .iter()
-                        .map(|input| format!("'{input}'"))
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                    quoted_list(missing_inputs)
                 )
             }
-            ItemDiagnosticKind::DeriveCycle { chain } => {
+            ItemDiagnosticKind::DeriveCycle { chain: chain_ids } => {
                 write!(
                     f,
                     "derived values form a cross-item cycle: {}",
-                    chain.join(" -> ")
+                    chain(chain_ids)
                 )
             }
         }
@@ -928,9 +948,11 @@ impl std::fmt::Display for FilesDiagnosticKind {
 impl std::fmt::Display for CollectionDiagnosticKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CollectionDiagnosticKind::Cycle { field, chain } => {
-                let ids: Vec<&str> = chain.iter().map(|id| id.as_str()).collect();
-                write!(f, "cycle in '{field}': {}", ids.join(" \u{2192} "))
+            CollectionDiagnosticKind::Cycle {
+                field,
+                chain: chain_ids,
+            } => {
+                write!(f, "cycle in '{field}': {}", chain(chain_ids))
             }
             CollectionDiagnosticKind::CountViolation {
                 rule,
@@ -1034,7 +1056,7 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                 field_name,
             } => write!(
                 f,
-                "{location}: field '{field_name}' must set `allow_cycles: false`"
+                "{location}: field '{field_name}' must set 'allow_cycles: false'"
             ),
             ConfigDiagnosticKind::ViewSlotInverseNotAllowed {
                 location,
@@ -1096,11 +1118,11 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                 f,
                 "field '{field}', compute expression '{expression}': result type is {result_type}, but the field is declared {declared_type}"
             ),
-            ConfigDiagnosticKind::ComputeCycle { chain } => {
+            ConfigDiagnosticKind::ComputeCycle { chain: chain_ids } => {
                 write!(
                     f,
                     "derived fields form a reference cycle: {}",
-                    chain.join(" -> ")
+                    chain(chain_ids)
                 )
             }
             ConfigDiagnosticKind::PullInvalidConfig { field, detail } => {
@@ -1150,19 +1172,29 @@ impl std::fmt::Display for FieldValueError {
                 write!(f, "expected {expected}, got {got}")
             }
             Self::InvalidChoice { value, allowed } => {
-                write!(f, "'{value}' is not one of the allowed values: {allowed:?}")
+                write!(f, "'{value}' is not {}", one_of(allowed))
             }
             Self::InvalidMultichoice { values, allowed } => {
-                write!(f, "invalid values {values:?}, allowed: {allowed:?}")
-            }
-            Self::OutOfRange { value, min, max } => {
-                write!(f, "{value} is out of range (min: {min:?}, max: {max:?})")
-            }
-            Self::OutOfRangeDuration { value, min, max } => {
                 write!(
                     f,
-                    "duration '{value}' is out of range (min: {min:?}, max: {max:?})"
+                    "invalid values {} — expected {}",
+                    quoted_list(values),
+                    one_of(allowed)
                 )
+            }
+            Self::OutOfRange {
+                value,
+                bound,
+                limit,
+            } => {
+                write!(f, "{value} is {} of {limit}", bound.describe())
+            }
+            Self::OutOfRangeDuration {
+                value,
+                bound,
+                limit,
+            } => {
+                write!(f, "duration '{value}' is {} of {limit}", bound.describe())
             }
             Self::InvalidDuration { value, reason } => {
                 write!(f, "'{value}' is not a valid duration: {reason}")
@@ -1173,8 +1205,8 @@ impl std::fmt::Display for FieldValueError {
             Self::InvalidColor { value, allowed } => {
                 write!(
                     f,
-                    "'{value}' is not a valid color (expected #rgb / #rrggbb or one of: {})",
-                    allowed.join(", ")
+                    "'{value}' is not a valid color (expected #rgb / #rrggbb or {})",
+                    one_of(allowed)
                 )
             }
             Self::PatternMismatch { value, pattern } => {
@@ -1183,6 +1215,174 @@ impl std::fmt::Display for FieldValueError {
             Self::InvalidPattern { pattern, error } => {
                 write!(f, "invalid regex pattern '{pattern}': {error}")
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Render a config diagnostic kind against a throwaway view slot.
+    fn view_slot() -> ViewLocation {
+        ViewLocation {
+            view_id: "board".to_owned(),
+            metric_index: None,
+            slot: "group_by",
+        }
+    }
+
+    fn ids(ids: &[&str]) -> Vec<WorkItemId> {
+        ids.iter()
+            .map(|id| WorkItemId::from((*id).to_owned()))
+            .collect()
+    }
+
+    fn strings(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn an_invalid_choice_lists_the_values_in_the_order_they_were_declared() {
+        let error = FieldValueError::InvalidChoice {
+            value: "blocked".to_owned(),
+            allowed: strings(&["open", "in_progress", "done"]),
+        };
+        assert_eq!(
+            error.to_string(),
+            "'blocked' is not one of: open, in_progress, done"
+        );
+    }
+
+    #[test]
+    fn invalid_multichoice_quotes_what_was_given_and_lists_what_was_allowed() {
+        let error = FieldValueError::InvalidMultichoice {
+            values: strings(&["urgent", "sideways"]),
+            allowed: strings(&["backend", "frontend"]),
+        };
+        assert_eq!(
+            error.to_string(),
+            "invalid values 'urgent', 'sideways' — expected one of: backend, frontend"
+        );
+    }
+
+    #[test]
+    fn an_out_of_range_number_names_only_the_limit_it_broke() {
+        let above = FieldValueError::OutOfRange {
+            value: 11.0,
+            bound: RangeBound::Maximum,
+            limit: 10.0,
+        };
+        assert_eq!(above.to_string(), "11 is above the maximum of 10");
+
+        let below = FieldValueError::OutOfRange {
+            value: 0.0,
+            bound: RangeBound::Minimum,
+            limit: 1.0,
+        };
+        assert_eq!(below.to_string(), "0 is below the minimum of 1");
+    }
+
+    #[test]
+    fn an_out_of_range_duration_reads_the_same_way() {
+        let error = FieldValueError::OutOfRangeDuration {
+            value: "3d".to_owned(),
+            bound: RangeBound::Maximum,
+            limit: "2d".to_owned(),
+        };
+        assert_eq!(
+            error.to_string(),
+            "duration '3d' is above the maximum of 2d"
+        );
+    }
+
+    #[test]
+    fn an_invalid_color_keeps_the_palette_in_spectrum_order() {
+        let error = FieldValueError::InvalidColor {
+            value: "teal".to_owned(),
+            allowed: strings(&["red", "orange", "yellow", "green"]),
+        };
+        assert_eq!(
+            error.to_string(),
+            "'teal' is not a valid color (expected #rgb / #rrggbb or one of: red, orange, yellow, green)"
+        );
+    }
+
+    #[test]
+    fn no_field_value_message_prints_rust_syntax() {
+        // The mistake this guards is easier to reintroduce than to spot
+        // in review: `{allowed:?}` on a `Vec` renders `["open", "done"]`
+        // and `{min:?}` on an `Option` renders `Some(1.0)`. Neither is
+        // anything a reader wrote or can act on.
+        let rendered = [
+            FieldValueError::InvalidChoice {
+                value: "blocked".to_owned(),
+                allowed: strings(&["open", "done"]),
+            },
+            FieldValueError::InvalidMultichoice {
+                values: strings(&["urgent"]),
+                allowed: strings(&["backend"]),
+            },
+            FieldValueError::OutOfRange {
+                value: 11.0,
+                bound: RangeBound::Maximum,
+                limit: 10.0,
+            },
+            FieldValueError::OutOfRangeDuration {
+                value: "3d".to_owned(),
+                bound: RangeBound::Minimum,
+                limit: "1h".to_owned(),
+            },
+            FieldValueError::InvalidColor {
+                value: "teal".to_owned(),
+                allowed: strings(&["red"]),
+            },
+        ];
+
+        for error in rendered {
+            let message = error.to_string();
+            for leak in ['[', ']', '"'] {
+                assert!(!message.contains(leak), "debug syntax in: {message}");
+            }
+            assert!(!message.contains("Some("), "debug syntax in: {message}");
+            assert!(!message.contains("None"), "debug syntax in: {message}");
+        }
+    }
+
+    #[test]
+    fn a_cyclic_view_slot_quotes_the_config_key_rather_than_fencing_it() {
+        let kind = ConfigDiagnosticKind::ViewSlotCyclic {
+            location: view_slot(),
+            field_name: "parent".to_owned(),
+        };
+        let message = kind.to_string();
+        assert!(
+            message.ends_with("field 'parent' must set 'allow_cycles: false'"),
+            "{message}"
+        );
+        assert!(!message.contains('`'), "backtick in: {message}");
+    }
+
+    #[test]
+    fn every_kind_of_cycle_chain_uses_the_same_arrow() {
+        let item_cycle = CollectionDiagnosticKind::Cycle {
+            field: "parent".to_owned(),
+            chain: ids(&["a", "b", "a"]),
+        };
+        let derive_cycle = ItemDiagnosticKind::DeriveCycle {
+            chain: strings(&["a.total", "b.total", "a.total"]),
+        };
+        let compute_cycle = ConfigDiagnosticKind::ComputeCycle {
+            chain: strings(&["cost", "days", "cost"]),
+        };
+
+        for message in [
+            item_cycle.to_string(),
+            derive_cycle.to_string(),
+            compute_cycle.to_string(),
+        ] {
+            assert!(message.contains(" → "), "wrong arrow in: {message}");
+            assert!(!message.contains("->"), "wrong arrow in: {message}");
         }
     }
 }

@@ -8,6 +8,7 @@ pub mod config;
 pub mod diagnostic;
 pub mod duration;
 pub mod field_value;
+pub mod message;
 pub mod resources;
 pub mod rule;
 pub mod schema;

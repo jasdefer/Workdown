@@ -22,7 +22,7 @@ use workdown_core::item_data::ItemDetail;
 use workdown_core::model::diagnostic::{
     CollectionDiagnostic, CollectionDiagnosticKind, ConfigDiagnostic, ConfigDiagnosticKind,
     Diagnostic, DiagnosticBody, FieldValueError, FileDiagnostic, FileDiagnosticKind,
-    FilesDiagnostic, FilesDiagnosticKind, ItemDiagnostic, ItemDiagnosticKind,
+    FilesDiagnostic, FilesDiagnosticKind, ItemDiagnostic, ItemDiagnosticKind, RangeBound,
 };
 use workdown_core::model::field_value::FieldValue;
 use workdown_core::model::schema::{FieldType, Severity};
@@ -74,6 +74,7 @@ const ALL_TYPES: &[&str] = &[
     "ConfigDiagnostic",
     "ConfigDiagnosticKind",
     "FieldValueError",
+    "RangeBound",
     "WorkItemId",
     "FieldValue",
     "FieldType",
@@ -170,6 +171,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_type::<ConfigDiagnostic>(&target_dir)?;
     write_type::<ConfigDiagnosticKind>(&target_dir)?;
     write_type::<FieldValueError>(&target_dir)?;
+    write_type::<RangeBound>(&target_dir)?;
 
     // Core model wire types.
     write_type::<WorkItemId>(&target_dir)?;

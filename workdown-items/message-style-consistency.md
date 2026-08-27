@@ -1,6 +1,6 @@
 ---
 id: message-style-consistency
-status: to_do
+status: done
 title: One voice for validation messages
 parent: maintenance-review-2026-08
 depends_on:

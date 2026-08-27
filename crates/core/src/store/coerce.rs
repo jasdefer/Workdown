@@ -17,7 +17,7 @@ use std::collections::{HashMap, HashSet};
 use chrono::NaiveDate;
 use regex::Regex;
 
-use crate::model::diagnostic::{Diagnostic, FieldValueError, ItemDiagnosticKind};
+use crate::model::diagnostic::{Diagnostic, FieldValueError, ItemDiagnosticKind, RangeBound};
 use crate::model::schema::{FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity};
 use crate::model::{FieldValue, WorkItemId};
 use crate::parser::RawWorkItem;
@@ -235,8 +235,8 @@ fn coerce_integer(
         if (n as f64) < min {
             return Err(FieldValueError::OutOfRange {
                 value: n as f64,
-                min: Some(min),
-                max,
+                bound: RangeBound::Minimum,
+                limit: min,
             });
         }
     }
@@ -244,8 +244,8 @@ fn coerce_integer(
         if (n as f64) > max {
             return Err(FieldValueError::OutOfRange {
                 value: n as f64,
-                min,
-                max: Some(max),
+                bound: RangeBound::Maximum,
+                limit: max,
             });
         }
     }
@@ -269,8 +269,8 @@ fn coerce_float(
         if n < min {
             return Err(FieldValueError::OutOfRange {
                 value: n,
-                min: Some(min),
-                max,
+                bound: RangeBound::Minimum,
+                limit: min,
             });
         }
     }
@@ -278,8 +278,8 @@ fn coerce_float(
         if n > max {
             return Err(FieldValueError::OutOfRange {
                 value: n,
-                min,
-                max: Some(max),
+                bound: RangeBound::Maximum,
+                limit: max,
             });
         }
     }
@@ -310,8 +310,8 @@ fn coerce_duration(
         if seconds < min {
             return Err(FieldValueError::OutOfRangeDuration {
                 value: format_duration_seconds(seconds),
-                min: Some(format_duration_seconds(min)),
-                max: max.map(format_duration_seconds),
+                bound: RangeBound::Minimum,
+                limit: format_duration_seconds(min),
             });
         }
     }
@@ -319,8 +319,8 @@ fn coerce_duration(
         if seconds > max {
             return Err(FieldValueError::OutOfRangeDuration {
                 value: format_duration_seconds(seconds),
-                min: min.map(format_duration_seconds),
-                max: Some(format_duration_seconds(max)),
+                bound: RangeBound::Maximum,
+                limit: format_duration_seconds(max),
             });
         }
     }
@@ -717,13 +717,27 @@ mod tests {
         let raw = raw_item("t", vec![("priority", yaml_int(0))]);
         let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
         assert_field_error(&diagnostics, |e| {
-            matches!(e, FieldValueError::OutOfRange { .. })
+            matches!(
+                e,
+                FieldValueError::OutOfRange {
+                    bound: RangeBound::Minimum,
+                    limit,
+                    ..
+                } if *limit == 1.0
+            )
         });
 
         let raw = raw_item("t", vec![("priority", yaml_int(11))]);
         let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
         assert_field_error(&diagnostics, |e| {
-            matches!(e, FieldValueError::OutOfRange { .. })
+            matches!(
+                e,
+                FieldValueError::OutOfRange {
+                    bound: RangeBound::Maximum,
+                    limit,
+                    ..
+                } if *limit == 10.0
+            )
         });
     }
 
@@ -797,7 +811,14 @@ mod tests {
         let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
-            matches!(e, FieldValueError::OutOfRange { .. })
+            matches!(
+                e,
+                FieldValueError::OutOfRange {
+                    bound: RangeBound::Maximum,
+                    limit,
+                    ..
+                } if *limit == 1.0
+            )
         });
     }
 
@@ -951,7 +972,13 @@ mod tests {
         let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
-            matches!(e, FieldValueError::OutOfRangeDuration { .. })
+            matches!(
+                e,
+                FieldValueError::OutOfRangeDuration {
+                    bound: RangeBound::Minimum,
+                    ..
+                }
+            )
         });
     }
 
@@ -968,7 +995,13 @@ mod tests {
         let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
-            matches!(e, FieldValueError::OutOfRangeDuration { .. })
+            matches!(
+                e,
+                FieldValueError::OutOfRangeDuration {
+                    bound: RangeBound::Maximum,
+                    ..
+                }
+            )
         });
     }
 
