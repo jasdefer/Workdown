@@ -16,14 +16,15 @@
 //! drop those. Workdown ids match `[a-z0-9][a-z0-9-]*` and pass through
 //! unchanged.
 //!
-//! The block-builder, label sanitizer, and unplaced-footer helpers live
-//! in [`super::mermaid_gantt`] and are shared with sibling Gantt-shaped
-//! renderers (`render_gantt_by_initiative`, etc.).
+//! The block-builder and label sanitizer live in
+//! [`super::mermaid_gantt`] and are shared with sibling Gantt-shaped
+//! renderers (`render_gantt_by_initiative`, etc.); the unplaced
+//! blockquote summary comes from [`super::markdown`].
 
 use workdown_core::view_data::GanttData;
 
-use super::mermaid_gantt::{render_gantt_block, render_unplaced_footer};
-use crate::render::markdown::emit_description;
+use super::markdown::{emit_description, emit_unplaced_blockquote};
+use super::mermaid_gantt::render_gantt_block;
 
 /// Render a `GanttData` as a Markdown string.
 ///
@@ -36,7 +37,7 @@ pub fn render_gantt(data: &GanttData, description: &str) -> String {
     if !data.bars.is_empty() {
         out.push_str(&render_gantt_block(&data.bars, data.group_field.as_deref()));
     }
-    render_unplaced_footer(&data.unplaced, &mut out);
+    emit_unplaced_blockquote(&data.unplaced, &mut out);
     out
 }
 
@@ -197,12 +198,12 @@ mod tests {
             "",
         );
         assert!(output.contains("> _4 items dropped:_\n"));
-        assert!(output.contains("> _- missing 'end': \"Title C\"_\n"));
-        assert!(output.contains("> _- missing 'start': \"Title A\", \"Title B\"_\n"));
-        assert!(output.contains("> _- invalid range: \"Title D\"_\n"));
-        let end_at = output.find("missing 'end'").unwrap();
-        let start_at = output.find("missing 'start'").unwrap();
-        let invalid_at = output.find("invalid range").unwrap();
+        assert!(output.contains("> _- missing `end`: \"Title C\"_\n"));
+        assert!(output.contains("> _- missing `start`: \"Title A\", \"Title B\"_\n"));
+        assert!(output.contains("> _- start `start` after end `end`: \"Title D\"_\n"));
+        let end_at = output.find("missing `end`").unwrap();
+        let start_at = output.find("missing `start`").unwrap();
+        let invalid_at = output.find("start `start` after end `end`").unwrap();
         assert!(end_at < start_at);
         assert!(start_at < invalid_at);
     }
@@ -216,7 +217,7 @@ mod tests {
             },
         }];
         let output = render_gantt(&data(vec![], None, unplaced), "");
-        assert!(output.contains("> _- missing 'start': \"orphan\"_\n"));
+        assert!(output.contains("> _- missing `start`: \"orphan\"_\n"));
     }
 
     #[test]
@@ -230,7 +231,7 @@ mod tests {
         let output = render_gantt(&data(vec![], None, unplaced), "");
         assert!(output.starts_with("# Gantt\n\n"));
         assert!(!output.contains("```mermaid"));
-        assert!(output.contains("> _1 items dropped:_\n"));
+        assert!(output.contains("> _1 item dropped:_\n"));
     }
 
     #[test]
@@ -291,7 +292,7 @@ mod tests {
             },
         }];
         let output = render_gantt(&data(vec![], None, unplaced), "");
-        assert!(output.contains(r#"> _- missing 'start': "snake\_case\_title"_"#));
+        assert!(output.contains(r#"> _- missing `start`: "snake\_case\_title"_"#));
     }
 
     #[test]
@@ -319,8 +320,8 @@ mod tests {
             section ops\n    \
             Beta :b, 2026-01-01, 2026-01-05\n\
             ```\n\n\
-            > _1 items dropped:_\n\
-            > _- invalid range: \"Zeta\"_\n";
+            > _1 item dropped:_\n\
+            > _- start `start` after end `end`: \"Zeta\"_\n";
         assert_eq!(output, expected);
     }
 }

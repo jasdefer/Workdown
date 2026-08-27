@@ -51,13 +51,14 @@ use plotters::coord::ranged1d::SegmentValue;
 use plotters::coord::Shift;
 use plotters::prelude::*;
 
-use workdown_core::model::views::Aggregate;
-use workdown_core::view_data::{AggregateValue, HeatmapData, UnplacedReason};
+use workdown_core::view_data::{ChartValue, HeatmapData};
 
-use crate::render::markdown::{card_link, emit_description, escape_cell};
+use crate::render::markdown::{
+    aggregate_label, emit_description, emit_unplaced_section, escape_cell,
+};
 use crate::render::svg_chart::{
-    axis_kind_for, format_aggregate_value, format_axis_tick, hex_to_rgb, strip_svg_blank_lines,
-    value_to_f64, AxisKind,
+    axis_kind_for, format_axis_tick, format_chart_value, hex_to_rgb, numeric_extent,
+    strip_svg_blank_lines, value_to_f64, AxisKind,
 };
 
 const CELL_PX: u32 = 40;
@@ -103,41 +104,18 @@ pub fn render_heatmap(data: &HeatmapData, item_link_base: &str, description: &st
         out.push('\n');
     }
 
-    if !data.unplaced.is_empty() {
-        out.push_str("## Unplaced\n");
-        for unplaced in &data.unplaced {
-            let link = card_link(&unplaced.card, item_link_base);
-            match &unplaced.reason {
-                UnplacedReason::MissingValue { field } => {
-                    let _ = writeln!(out, "- {link} — missing `{field}`");
-                }
-                // The heatmap extractor only emits MissingValue today;
-                // listing the rest explicitly so adding a new variant
-                // fails compilation here and prompts an audit.
-                UnplacedReason::InvalidRange { .. }
-                | UnplacedReason::NoWorkingDays { .. }
-                | UnplacedReason::NonNumericValue { .. }
-                | UnplacedReason::NoAnchor
-                | UnplacedReason::PredecessorUnresolved { .. }
-                | UnplacedReason::Cycle { .. } => {}
-            }
-        }
-    }
+    emit_unplaced_section(&data.unplaced, item_link_base, &mut out);
 
     out
 }
 
 fn heading(data: &HeatmapData) -> String {
-    match data.aggregate {
-        Aggregate::Count => format!("# Heatmap: count by {} × {}", data.x_field, data.y_field),
-        agg => match &data.value_field {
-            Some(value) => format!(
-                "# Heatmap: {agg} of {value} by {} × {}",
-                data.x_field, data.y_field
-            ),
-            None => format!("# Heatmap: {agg} by {} × {}", data.x_field, data.y_field),
-        },
-    }
+    format!(
+        "# Heatmap: {label} by {x} × {y}",
+        label = aggregate_label(data.aggregate, data.value_field.as_deref()),
+        x = data.x_field,
+        y = data.y_field,
+    )
 }
 
 // ── Values table ────────────────────────────────────────────────────
@@ -166,7 +144,7 @@ fn emit_values_table(data: &HeatmapData, out: &mut String) {
     }
     out.push('\n');
 
-    let cell_lookup: BTreeMap<(&str, &str), &AggregateValue> = data
+    let cell_lookup: BTreeMap<(&str, &str), &ChartValue> = data
         .cells
         .iter()
         .map(|cell| ((cell.x.as_str(), cell.y.as_str()), &cell.value))
@@ -177,7 +155,7 @@ fn emit_values_table(data: &HeatmapData, out: &mut String) {
         for x_label in &data.x_labels {
             let cell_str = cell_lookup
                 .get(&(x_label.as_str(), y_label.as_str()))
-                .map(|value| format_aggregate_value(value))
+                .map(|value| format_chart_value(value))
                 .unwrap_or_default();
             let _ = write!(out, " {cell_str} |");
         }
@@ -194,7 +172,7 @@ fn render_svg(data: &HeatmapData) -> String {
     let n_x = data.x_labels.len();
     let n_y = data.y_labels.len();
 
-    let (vmin, vmax) = compute_extent(cell_lookup.values().copied());
+    let (vmin, vmax) = numeric_extent(cell_lookup.values().copied());
     let scheme = ColorScheme::pick(vmin, vmax);
 
     // Segmented coord adds one extra "Last" segment beyond the data
@@ -246,25 +224,6 @@ fn encode_cells(data: &HeatmapData, kind: AxisKind) -> BTreeMap<(usize, usize), 
             ((xi, yi), value_to_f64(cell.value, kind))
         })
         .collect()
-}
-
-fn compute_extent(values: impl Iterator<Item = f64>) -> (f64, f64) {
-    let mut min = f64::INFINITY;
-    let mut max = f64::NEG_INFINITY;
-    for value in values {
-        if value.is_finite() {
-            if value < min {
-                min = value;
-            }
-            if value > max {
-                max = value;
-            }
-        }
-    }
-    if !min.is_finite() || !max.is_finite() {
-        return (0.0, 1.0);
-    }
-    (min, max)
 }
 
 #[derive(Clone, Copy)]
@@ -463,9 +422,9 @@ mod tests {
     use super::*;
 
     use workdown_core::model::views::{Aggregate, Bucket};
-    use workdown_core::view_data::{AggregateValue, HeatmapCell, HeatmapData, UnplacedCard};
+    use workdown_core::view_data::{ChartValue, HeatmapCell, HeatmapData, UnplacedCard};
 
-    fn cell(x: &str, y: &str, value: AggregateValue) -> HeatmapCell {
+    fn cell(x: &str, y: &str, value: ChartValue) -> HeatmapCell {
         HeatmapCell {
             x: x.to_owned(),
             y: y.to_owned(),
@@ -603,8 +562,8 @@ mod tests {
     #[test]
     fn sequential_scheme_renders_positive_hue_for_max_cell() {
         let cells = vec![
-            cell("open", "eng", AggregateValue::Number(1.0)),
-            cell("done", "eng", AggregateValue::Number(5.0)),
+            cell("open", "eng", ChartValue::Number(1.0)),
+            cell("done", "eng", ChartValue::Number(5.0)),
         ];
         let output = render_heatmap(
             &data(
@@ -631,8 +590,8 @@ mod tests {
     #[test]
     fn diverging_scheme_used_when_any_value_is_negative() {
         let cells = vec![
-            cell("alpha", "row", AggregateValue::Number(-3.0)),
-            cell("beta", "row", AggregateValue::Number(3.0)),
+            cell("alpha", "row", ChartValue::Number(-3.0)),
+            cell("beta", "row", ChartValue::Number(3.0)),
         ];
         let output = render_heatmap(
             &data(
@@ -663,7 +622,7 @@ mod tests {
     fn missing_cell_drawn_in_empty_color() {
         // 2x2 grid, only one cell populated → three cells must use the
         // empty-cell color so the grid stays solid.
-        let cells = vec![cell("open", "eng", AggregateValue::Number(1.0))];
+        let cells = vec![cell("open", "eng", ChartValue::Number(1.0))];
         let output = render_heatmap(
             &data(
                 "status",
@@ -688,8 +647,8 @@ mod tests {
     #[test]
     fn all_same_value_renders_without_panic() {
         let cells = vec![
-            cell("a", "x", AggregateValue::Number(7.0)),
-            cell("b", "x", AggregateValue::Number(7.0)),
+            cell("a", "x", ChartValue::Number(7.0)),
+            cell("b", "x", ChartValue::Number(7.0)),
         ];
         let output = render_heatmap(
             &data(
@@ -714,8 +673,8 @@ mod tests {
     #[test]
     fn values_table_has_pivoted_header_with_corner_label() {
         let cells = vec![
-            cell("done", "eng", AggregateValue::Number(2.0)),
-            cell("open", "ops", AggregateValue::Number(5.0)),
+            cell("done", "eng", ChartValue::Number(2.0)),
+            cell("open", "ops", ChartValue::Number(5.0)),
         ];
         let output = render_heatmap(
             &data(
@@ -739,7 +698,7 @@ mod tests {
     #[test]
     fn values_table_blank_for_missing_cells() {
         // (open, eng) populated; (done, eng), (done, ops), (open, ops) blank.
-        let cells = vec![cell("open", "eng", AggregateValue::Number(3.0))];
+        let cells = vec![cell("open", "eng", ChartValue::Number(3.0))];
         let output = render_heatmap(
             &data(
                 "status",
@@ -773,7 +732,7 @@ mod tests {
         let cells = vec![cell(
             "open",
             "eng",
-            AggregateValue::Date(NaiveDate::from_ymd_opt(2026, 5, 15).unwrap()),
+            ChartValue::Date(NaiveDate::from_ymd_opt(2026, 5, 15).unwrap()),
         )];
         let output = render_heatmap(
             &data(
@@ -799,7 +758,7 @@ mod tests {
         let cells = vec![cell(
             "open",
             "eng",
-            AggregateValue::Duration(SECONDS_PER_DAY + SECONDS_PER_HOUR),
+            ChartValue::Duration(SECONDS_PER_DAY + SECONDS_PER_HOUR),
         )];
         let output = render_heatmap(
             &data(
@@ -821,7 +780,7 @@ mod tests {
 
     #[test]
     fn values_table_escapes_pipe_in_axis_label() {
-        let cells = vec![cell("a | b", "row", AggregateValue::Number(1.0))];
+        let cells = vec![cell("a | b", "row", ChartValue::Number(1.0))];
         let output = render_heatmap(
             &data(
                 "status",
@@ -850,8 +809,8 @@ mod tests {
         // pass them through directly since the renderer is axis-type-
         // agnostic and the extractor is covered by its own tests.
         let cells = vec![
-            cell("eng", "2026-W02", AggregateValue::Number(2.0)),
-            cell("ops", "2026-W03", AggregateValue::Number(1.0)),
+            cell("eng", "2026-W02", ChartValue::Number(2.0)),
+            cell("ops", "2026-W03", ChartValue::Number(1.0)),
         ];
         let output = render_heatmap(
             &data(
@@ -884,7 +843,7 @@ mod tests {
 
     #[test]
     fn unplaced_footer_lists_missing_field_per_item() {
-        let cells = vec![cell("open", "eng", AggregateValue::Number(1.0))];
+        let cells = vec![cell("open", "eng", ChartValue::Number(1.0))];
         let output = render_heatmap(
             &data(
                 "status",
@@ -914,7 +873,7 @@ mod tests {
 
     #[test]
     fn no_unplaced_section_when_clean() {
-        let cells = vec![cell("open", "eng", AggregateValue::Number(1.0))];
+        let cells = vec![cell("open", "eng", ChartValue::Number(1.0))];
         let output = render_heatmap(
             &data(
                 "status",

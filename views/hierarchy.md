@@ -4,7 +4,6 @@ Hierarchical outline following `parent` upward to roots.
 
 - [Maintenance pass: findings from the 2026-08 codebase review](../workdown-items/maintenance-review-2026-08.md) — status: in_progress
   - [Grab bag of small consistency fixes from the review](../workdown-items/assorted-small-fixes.md) — status: to_do
-  - [Make the terminal chart renderers share what they each rebuilt](../workdown-items/chart-renderer-sharing.md) — status: to_do
   - [One voice for validation messages](../workdown-items/message-style-consistency.md) — status: to_do
   - [One page that shows how a render flows through the system](../workdown-items/render-flow-doc.md) — status: to_do
   - [Table-drive the "is this property allowed on this field type?" check](../workdown-items/schema-property-table.md) — status: to_do

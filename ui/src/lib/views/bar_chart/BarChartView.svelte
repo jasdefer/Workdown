@@ -1,6 +1,6 @@
 <!--
   Bar chart view. Bars are pre-aggregated server-side: each carries a
-  group key (categorical string) and an AggregateValue (number, date,
+  group key (categorical string) and an ChartValue (number, date,
   or duration). The y-axis adapts to that variant — linear for number
   and duration, time scale for date. Tick labels run through the same
   shared formatter as the metric tiles so a duration axis reads as
@@ -21,9 +21,9 @@
 <script lang="ts">
 	import type { BarChartData } from '$lib/api/generated/BarChartData';
 	import type { BarChartBar } from '$lib/api/generated/BarChartBar';
-	import type { AggregateValue } from '$lib/api/generated/AggregateValue';
+	import type { ChartValue } from '$lib/api/generated/ChartValue';
 	import type { Aggregate } from '$lib/api/generated/Aggregate';
-	import { formatAggregateValue, formatIsoDate } from '$lib/views/format';
+	import { formatChartValue, formatIsoDate } from '$lib/views/format';
 	import { mountPlot, PLOT_STYLE } from '$lib/views/plot';
 	import { prettifyId } from '$lib/views/prettify';
 	import EmptyHint from '$lib/views/EmptyHint.svelte';
@@ -46,7 +46,7 @@
 
 	const barCount = $derived(data.bars.length);
 
-	function valueAsPlotNumber(value: AggregateValue): number {
+	function valueAsPlotNumber(value: ChartValue): number {
 		if (value.type === 'date') return new Date(value.value).getTime();
 		return value.value;
 	}
@@ -79,19 +79,19 @@
 		const host = container;
 		if (host === undefined || data.bars.length === 0 || availableWidth === 0) return;
 
-		const valueType: AggregateValue['type'] | undefined = data.bars[0]?.value.type;
+		const valueType: ChartValue['type'] | undefined = data.bars[0]?.value.type;
 
 		const formatYTick = (n: number): string => {
 			if (valueType === 'duration') {
-				return formatAggregateValue({ type: 'duration', value: n });
+				return formatChartValue({ type: 'duration', value: n });
 			}
 			if (valueType === 'date') {
 				return formatIsoDate(new Date(n));
 			}
-			return formatAggregateValue({ type: 'number', value: n });
+			return formatChartValue({ type: 'number', value: n });
 		};
 
-		const tipFormatBar = (bar: BarChartBar): string => formatAggregateValue(bar.value);
+		const tipFormatBar = (bar: BarChartBar): string => formatChartValue(bar.value);
 
 		return mountPlot(
 			host,

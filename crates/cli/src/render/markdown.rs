@@ -1,12 +1,18 @@
 //! Shared Markdown primitives used across every renderer.
 //!
 //! Link emission, structural escapes (link text, table cell, blockquote
-//! italic), description emission, numeric formatting, and the wording for
-//! a view's synthetic "no value" bucket. Kept deliberately small: only
-//! primitives that more than one renderer needs. Renderer-specific
-//! formatting stays in its own module.
+//! italic), description emission, numeric formatting, the wording for
+//! a view's synthetic "no value" bucket, and the two unplaced-item
+//! conventions (detailed `## Unplaced` section, compact blockquote
+//! summary). Kept deliberately small: only primitives that more than
+//! one renderer needs. Renderer-specific formatting stays in its own
+//! module.
 
-use workdown_core::view_data::Card;
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
+
+use workdown_core::model::views::Aggregate;
+use workdown_core::view_data::{Card, UnplacedCard, UnplacedReason};
 
 /// Render a work item as a Markdown link: `[title-or-id](base/id.md)`.
 ///
@@ -126,4 +132,125 @@ pub fn escape_cell(text: &str) -> String {
 /// that emit `> _… "<title>" …_` footers (gantt, metric, workload).
 pub fn escape_blockquote_italic(text: &str) -> String {
     text.replace('_', r"\_")
+}
+
+/// `1 item` / `3 items` — count plus noun with a plural `s` past one.
+/// Mirrors the web front end's `pluralize` in `views/format.ts`.
+pub fn pluralize(count: usize, noun: &str) -> String {
+    if count == 1 {
+        format!("1 {noun}")
+    } else {
+        format!("{count} {noun}s")
+    }
+}
+
+/// The label naming what an aggregating view computed: `count`,
+/// `sum of estimate`, or the bare aggregate when no value field is
+/// configured. One phrase feeding the H1, the values-table header, and
+/// the SVG axis title so the three can't drift apart.
+pub fn aggregate_label(aggregate: Aggregate, value_field: Option<&str>) -> String {
+    match aggregate {
+        Aggregate::Count => "count".to_owned(),
+        aggregate => match value_field {
+            Some(value_field) => format!("{aggregate} of {value_field}"),
+            None => format!("{aggregate}"),
+        },
+    }
+}
+
+// ── Unplaced items ──────────────────────────────────────────────────
+
+/// The one place an [`UnplacedReason`] is put into words. Both unplaced
+/// conventions (the `## Unplaced` section and the blockquote summary)
+/// route through here, so a new variant is worded exactly once and the
+/// two conventions can't drift apart on phrasing.
+pub fn unplaced_reason_phrase(reason: &UnplacedReason) -> String {
+    match reason {
+        UnplacedReason::MissingValue { field } => format!("missing `{field}`"),
+        UnplacedReason::InvalidRange {
+            start_field,
+            end_field,
+        } => format!("start `{start_field}` after end `{end_field}`"),
+        UnplacedReason::NoWorkingDays {
+            start_field,
+            end_field,
+        } => format!("interval `{start_field}..{end_field}` falls entirely on non-working days"),
+        UnplacedReason::NonNumericValue { field, .. } => format!("non-numeric `{field}`"),
+        UnplacedReason::NoAnchor => "no anchor".to_owned(),
+        UnplacedReason::PredecessorUnresolved { id } => format!("predecessor `{id}` unresolved"),
+        UnplacedReason::Cycle { via } => format!("cycle in `{via}`"),
+    }
+}
+
+/// Emit the chart family's unplaced convention: a `## Unplaced` section
+/// with one linked bullet per item, reason inline. Emits nothing when
+/// every item was placed.
+///
+/// The match over reasons lives in [`unplaced_reason_phrase`] and is
+/// exhaustive — which reasons actually occur in a given view is the
+/// extractor's knowledge, and the renderer displays whatever arrives.
+pub fn emit_unplaced_section(unplaced: &[UnplacedCard], item_link_base: &str, out: &mut String) {
+    if unplaced.is_empty() {
+        return;
+    }
+    out.push_str("## Unplaced\n");
+    for unplaced_card in unplaced {
+        let link = card_link(&unplaced_card.card, item_link_base);
+        let phrase = unplaced_reason_phrase(&unplaced_card.reason);
+        let _ = writeln!(out, "- {link} — {phrase}");
+    }
+}
+
+/// Emit the gantt family's unplaced convention: a compact blockquote
+/// summary, one line per reason phrase with the affected titles. Groups
+/// appear alphabetically by phrase (see [`group_unplaced_by_phrase`]);
+/// items inside a group keep the extractor's id-sorted order. Emits
+/// nothing when every item was placed.
+pub fn emit_unplaced_blockquote(unplaced: &[UnplacedCard], out: &mut String) {
+    if unplaced.is_empty() {
+        return;
+    }
+    out.push('\n');
+    let _ = writeln!(out, "> _{} dropped:_", pluralize(unplaced.len(), "item"));
+    for (phrase, cards) in group_unplaced_by_phrase(unplaced) {
+        let _ = writeln!(
+            out,
+            "> _- {phrase}: {titles}_",
+            phrase = escape_blockquote_italic(&phrase),
+            titles = format_quoted_titles(&cards),
+        );
+    }
+}
+
+/// Bucket unplaced cards by their reason phrase — the grouping the
+/// blockquote summary renders. Keying on the generated phrase (rather
+/// than hand-written per-variant buckets) means a new [`UnplacedReason`]
+/// variant needs no edit here; the `BTreeMap` orders groups
+/// alphabetically by phrase.
+pub fn group_unplaced_by_phrase(unplaced: &[UnplacedCard]) -> BTreeMap<String, Vec<&UnplacedCard>> {
+    let mut grouped: BTreeMap<String, Vec<&UnplacedCard>> = BTreeMap::new();
+    for unplaced_card in unplaced {
+        grouped
+            .entry(unplaced_reason_phrase(&unplaced_card.reason))
+            .or_default()
+            .push(unplaced_card);
+    }
+    grouped
+}
+
+/// Comma-joined, quoted item titles (id when the title is absent) for
+/// blockquote-italic footers: `"Fix login", "Add tests"`.
+pub fn format_quoted_titles(cards: &[&UnplacedCard]) -> String {
+    cards
+        .iter()
+        .map(|unplaced_card| {
+            let name = unplaced_card
+                .card
+                .title
+                .as_deref()
+                .unwrap_or_else(|| unplaced_card.card.id.as_str());
+            format!("\"{}\"", escape_blockquote_italic(name))
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }

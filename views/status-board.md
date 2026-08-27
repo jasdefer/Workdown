@@ -4,7 +4,6 @@ Cards grouped into columns by `status`.
 
 ## to_do
 - [Grab bag of small consistency fixes from the review](../workdown-items/assorted-small-fixes.md)
-- [Make the terminal chart renderers share what they each rebuilt](../workdown-items/chart-renderer-sharing.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
 - [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md)
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
@@ -35,6 +34,7 @@ Cards grouped into columns by `status`.
 - [ADR — visualization architecture](../workdown-items/adr-phase-04-architecture.md)
 - [Compute schema-declared aggregate fields up the parent chain](../workdown-items/aggregate-rollup.md)
 - [App shell navigation (views menu + future link slots)](../workdown-items/app-shell-navigation.md)
+- [Make the terminal chart renderers share what they each rebuilt](../workdown-items/chart-renderer-sharing.md)
 - [Run the whole workspace in CI](../workdown-items/ci-workspace-coverage.md)
 - [Audit workdown add for UI-driven creation](../workdown-items/cli-add-audit.md)
 - [workdown body — replace the Markdown body](../workdown-items/cli-body-command.md)

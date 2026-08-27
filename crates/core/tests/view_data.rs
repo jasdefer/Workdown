@@ -15,7 +15,7 @@ use workdown_core::model::calendar::WorkingCalendar;
 use workdown_core::parser::schema::load_schema;
 use workdown_core::parser::views::load_views;
 use workdown_core::store::Store;
-use workdown_core::view_data::{extract, AggregateValue, ViewData};
+use workdown_core::view_data::{extract, ChartValue, ViewData};
 
 const SCHEMA_YAML: &str = "\
 fields:
@@ -225,17 +225,17 @@ fn extract_exercises_every_variant() {
                 // where status=open → 2 items (task-login, task-reset).
                 assert_eq!(metric.rows.len(), 1);
                 match metric.rows[0].value {
-                    Some(AggregateValue::Number(n)) => assert_eq!(n, 2.0),
+                    Some(ChartValue::Number(n)) => assert_eq!(n, 2.0),
                     other => panic!("expected Number(2), got {other:?}"),
                 }
             }
             ("points-by-status", ViewData::BarChart(bar)) => {
                 // Sum of points per status: open = 5 + 2 = 7; in_progress = 13; done = 3.
                 let open = bar.bars.iter().find(|b| b.group == "open").unwrap();
-                assert!(matches!(open.value, AggregateValue::Number(n) if (n - 7.0).abs() < 1e-9));
+                assert!(matches!(open.value, ChartValue::Number(n) if (n - 7.0).abs() < 1e-9));
                 let in_progress = bar.bars.iter().find(|b| b.group == "in_progress").unwrap();
                 assert!(
-                    matches!(in_progress.value, AggregateValue::Number(n) if (n - 13.0).abs() < 1e-9)
+                    matches!(in_progress.value, ChartValue::Number(n) if (n - 13.0).abs() < 1e-9)
                 );
             }
             ("workload-view", ViewData::Workload(workload)) => {

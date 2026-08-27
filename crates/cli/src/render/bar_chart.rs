@@ -24,13 +24,14 @@ use std::fmt::Write as _;
 use plotters::coord::ranged1d::SegmentValue;
 use plotters::prelude::*;
 
-use workdown_core::model::views::Aggregate;
-use workdown_core::view_data::{BarChartData, UnplacedReason};
+use workdown_core::view_data::BarChartData;
 
-use crate::render::markdown::{card_link, emit_description, escape_cell};
+use crate::render::markdown::{
+    aggregate_label, emit_description, emit_unplaced_section, escape_cell,
+};
 use crate::render::svg_chart::{
-    axis_kind_for, axis_label, format_aggregate_value, format_axis_tick, hex_to_rgb,
-    numeric_extent, pad_extent, strip_svg_blank_lines, value_to_f64, AxisKind, OKABE_ITO,
+    axis_kind_for, axis_label, format_axis_tick, format_chart_value, hex_to_rgb, numeric_extent,
+    pad_extent, strip_svg_blank_lines, value_to_f64, AxisKind, OKABE_ITO,
 };
 
 const SVG_WIDTH: u32 = 800;
@@ -65,61 +66,35 @@ pub fn render_bar_chart(data: &BarChartData, item_link_base: &str, description: 
         out.push('\n');
     }
 
-    if !data.unplaced.is_empty() {
-        out.push_str("## Unplaced\n");
-        for unplaced in &data.unplaced {
-            let link = card_link(&unplaced.card, item_link_base);
-            match &unplaced.reason {
-                UnplacedReason::MissingValue { field } => {
-                    let _ = writeln!(out, "- {link} — missing `{field}`");
-                }
-                // The bar chart extractor only emits MissingValue today;
-                // listing the rest explicitly so adding a new variant
-                // fails compilation here and prompts an audit.
-                UnplacedReason::InvalidRange { .. }
-                | UnplacedReason::NoWorkingDays { .. }
-                | UnplacedReason::NonNumericValue { .. }
-                | UnplacedReason::NoAnchor
-                | UnplacedReason::PredecessorUnresolved { .. }
-                | UnplacedReason::Cycle { .. } => {}
-            }
-        }
-    }
+    emit_unplaced_section(&data.unplaced, item_link_base, &mut out);
 
     out
 }
 
 fn heading(data: &BarChartData) -> String {
-    match data.aggregate {
-        Aggregate::Count => format!("# Bar chart: count by {}", data.group_by),
-        agg => match &data.value_field {
-            Some(value) => format!("# Bar chart: {agg} of {value} by {}", data.group_by),
-            None => format!("# Bar chart: {agg} by {}", data.group_by),
-        },
-    }
+    format!(
+        "# Bar chart: {label} by {group}",
+        label = aggregate_label(data.aggregate, data.value_field.as_deref()),
+        group = data.group_by,
+    )
 }
 
 fn emit_values_table(data: &BarChartData, out: &mut String) {
     out.push_str("## Values\n\n");
-    let _ = writeln!(out, "| {} | {} |", data.group_by, value_column_header(data));
+    let _ = writeln!(
+        out,
+        "| {} | {} |",
+        data.group_by,
+        aggregate_label(data.aggregate, data.value_field.as_deref()),
+    );
     out.push_str("| --- | --- |\n");
     for bar in &data.bars {
         let _ = writeln!(
             out,
             "| {group} | {value} |",
             group = escape_cell(&bar.group),
-            value = format_aggregate_value(&bar.value),
+            value = format_chart_value(&bar.value),
         );
-    }
-}
-
-fn value_column_header(data: &BarChartData) -> String {
-    match data.aggregate {
-        Aggregate::Count => "count".to_owned(),
-        agg => match &data.value_field {
-            Some(value) => format!("{agg} of {value}"),
-            None => format!("{agg}"),
-        },
     }
 }
 
@@ -202,14 +177,10 @@ fn render_svg(data: &BarChartData) -> String {
 /// Compose the value-axis title: aggregate function over the value field,
 /// suffixed with the duration unit when applicable.
 fn bar_value_axis_label(data: &BarChartData, kind: AxisKind) -> String {
-    let base = match data.aggregate {
-        Aggregate::Count => "count".to_owned(),
-        agg => match &data.value_field {
-            Some(value) => format!("{agg} of {value}"),
-            None => format!("{agg}"),
-        },
-    };
-    axis_label(&base, kind)
+    axis_label(
+        &aggregate_label(data.aggregate, data.value_field.as_deref()),
+        kind,
+    )
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -223,9 +194,9 @@ mod tests {
 
     use crate::render::svg_chart::{SECONDS_PER_DAY, SECONDS_PER_HOUR};
     use workdown_core::model::views::Aggregate;
-    use workdown_core::view_data::{AggregateValue, BarChartBar, BarChartData, UnplacedCard};
+    use workdown_core::view_data::{BarChartBar, BarChartData, ChartValue, UnplacedCard};
 
-    fn bar(group: &str, value: AggregateValue) -> BarChartBar {
+    fn bar(group: &str, value: ChartValue) -> BarChartBar {
         BarChartBar {
             group: group.to_owned(),
             value,
@@ -296,8 +267,8 @@ mod tests {
     #[test]
     fn number_bars_emit_svg_with_first_palette_color() {
         let bars = vec![
-            bar("done", AggregateValue::Number(1.0)),
-            bar("open", AggregateValue::Number(2.0)),
+            bar("done", ChartValue::Number(1.0)),
+            bar("open", ChartValue::Number(2.0)),
         ];
         let output = render_bar_chart(
             &data("status", None, Aggregate::Count, bars, vec![]),
@@ -315,7 +286,7 @@ mod tests {
     fn negative_number_bar_keeps_zero_in_range() {
         // A single negative bar must still leave 0 inside the visible
         // x-range, so the bar reads as "below zero" not as "the whole axis".
-        let bars = vec![bar("alpha", AggregateValue::Number(-5.0))];
+        let bars = vec![bar("alpha", ChartValue::Number(-5.0))];
         let output = render_bar_chart(
             &data("g", None, Aggregate::Sum, bars, vec![]),
             "../workdown-items",
@@ -333,8 +304,8 @@ mod tests {
     #[test]
     fn all_same_value_renders_without_panic() {
         let bars = vec![
-            bar("a", AggregateValue::Number(7.0)),
-            bar("b", AggregateValue::Number(7.0)),
+            bar("a", ChartValue::Number(7.0)),
+            bar("b", ChartValue::Number(7.0)),
         ];
         let output = render_bar_chart(
             &data("g", None, Aggregate::Count, bars, vec![]),
@@ -351,11 +322,11 @@ mod tests {
         let bars = vec![
             bar(
                 "open",
-                AggregateValue::Date(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+                ChartValue::Date(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
             ),
             bar(
                 "done",
-                AggregateValue::Date(NaiveDate::from_ymd_opt(2026, 6, 1).unwrap()),
+                ChartValue::Date(NaiveDate::from_ymd_opt(2026, 6, 1).unwrap()),
             ),
         ];
         let output = render_bar_chart(
@@ -374,8 +345,8 @@ mod tests {
     #[test]
     fn duration_bars_axis_label_includes_unit() {
         let bars = vec![
-            bar("alpha", AggregateValue::Duration(2 * SECONDS_PER_DAY)),
-            bar("beta", AggregateValue::Duration(4 * SECONDS_PER_DAY)),
+            bar("alpha", ChartValue::Duration(2 * SECONDS_PER_DAY)),
+            bar("beta", ChartValue::Duration(4 * SECONDS_PER_DAY)),
         ];
         let output = render_bar_chart(
             &data("tag", Some("estimate"), Aggregate::Sum, bars, vec![]),
@@ -391,8 +362,8 @@ mod tests {
     #[test]
     fn duration_bars_axis_chooses_hours_for_short_ranges() {
         let bars = vec![
-            bar("alpha", AggregateValue::Duration(2 * SECONDS_PER_HOUR)),
-            bar("beta", AggregateValue::Duration(5 * SECONDS_PER_HOUR)),
+            bar("alpha", ChartValue::Duration(2 * SECONDS_PER_HOUR)),
+            bar("beta", ChartValue::Duration(5 * SECONDS_PER_HOUR)),
         ];
         let output = render_bar_chart(
             &data("tag", Some("estimate"), Aggregate::Sum, bars, vec![]),
@@ -407,8 +378,8 @@ mod tests {
     #[test]
     fn category_labels_appear_in_extractor_order() {
         let bars = vec![
-            bar("apples", AggregateValue::Number(3.0)),
-            bar("bananas", AggregateValue::Number(5.0)),
+            bar("apples", ChartValue::Number(3.0)),
+            bar("bananas", ChartValue::Number(5.0)),
         ];
         let output = render_bar_chart(
             &data("fruit", None, Aggregate::Count, bars, vec![]),
@@ -432,8 +403,8 @@ mod tests {
     #[test]
     fn values_table_lists_each_bar() {
         let bars = vec![
-            bar("done", AggregateValue::Number(2.0)),
-            bar("open", AggregateValue::Number(5.0)),
+            bar("done", ChartValue::Number(2.0)),
+            bar("open", ChartValue::Number(5.0)),
         ];
         let output = render_bar_chart(
             &data("status", None, Aggregate::Count, bars, vec![]),
@@ -450,7 +421,7 @@ mod tests {
     fn values_table_formats_durations_as_shorthand() {
         let bars = vec![bar(
             "alpha",
-            AggregateValue::Duration(SECONDS_PER_DAY + SECONDS_PER_HOUR),
+            ChartValue::Duration(SECONDS_PER_DAY + SECONDS_PER_HOUR),
         )];
         let output = render_bar_chart(
             &data("tag", Some("estimate"), Aggregate::Sum, bars, vec![]),
@@ -467,7 +438,7 @@ mod tests {
     fn values_table_formats_dates_as_iso() {
         let bars = vec![bar(
             "open",
-            AggregateValue::Date(NaiveDate::from_ymd_opt(2026, 5, 15).unwrap()),
+            ChartValue::Date(NaiveDate::from_ymd_opt(2026, 5, 15).unwrap()),
         )];
         let output = render_bar_chart(
             &data("status", Some("deadline"), Aggregate::Avg, bars, vec![]),
@@ -479,7 +450,7 @@ mod tests {
 
     #[test]
     fn values_table_escapes_pipe_in_group_name() {
-        let bars = vec![bar("a | b", AggregateValue::Number(1.0))];
+        let bars = vec![bar("a | b", ChartValue::Number(1.0))];
         let output = render_bar_chart(
             &data("status", None, Aggregate::Count, bars, vec![]),
             "../workdown-items",
@@ -492,7 +463,7 @@ mod tests {
 
     #[test]
     fn unplaced_footer_lists_missing_field_per_item() {
-        let bars = vec![bar("open", AggregateValue::Number(1.0))];
+        let bars = vec![bar("open", ChartValue::Number(1.0))];
         let output = render_bar_chart(
             &data(
                 "status",
@@ -517,7 +488,7 @@ mod tests {
 
     #[test]
     fn no_unplaced_section_when_clean() {
-        let bars = vec![bar("open", AggregateValue::Number(1.0))];
+        let bars = vec![bar("open", ChartValue::Number(1.0))];
         let output = render_bar_chart(
             &data("status", None, Aggregate::Count, bars, vec![]),
             "../workdown-items",

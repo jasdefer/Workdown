@@ -7,7 +7,7 @@
 | [aggregate-rollup](../workdown-items/aggregate-rollup.md) | done | [renderers](../workdown-items/renderers.md) |  |
 | [app-shell-navigation](../workdown-items/app-shell-navigation.md) | done | [server](../workdown-items/server.md) | [first-view-end-to-end](../workdown-items/first-view-end-to-end.md) |
 | [assorted-small-fixes](../workdown-items/assorted-small-fixes.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
-| [chart-renderer-sharing](../workdown-items/chart-renderer-sharing.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [view-order-in-extractor](../workdown-items/view-order-in-extractor.md) |
+| [chart-renderer-sharing](../workdown-items/chart-renderer-sharing.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [view-order-in-extractor](../workdown-items/view-order-in-extractor.md) |
 | [ci-workspace-coverage](../workdown-items/ci-workspace-coverage.md) | done |  |  |
 | [cli-add-audit](../workdown-items/cli-add-audit.md) | done | [item-mutations](../workdown-items/item-mutations.md) |  |
 | [cli-body-command](../workdown-items/cli-body-command.md) | done | [item-mutations](../workdown-items/item-mutations.md) |  |

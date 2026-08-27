@@ -29,9 +29,9 @@ use plotters::coord::ranged1d::SegmentValue;
 use plotters::prelude::*;
 
 use workdown_core::model::duration::format_duration_seconds;
-use workdown_core::view_data::{UnplacedReason, WorkloadData, WorkloadUnit};
+use workdown_core::view_data::{WorkloadData, WorkloadUnit};
 
-use crate::render::markdown::{card_link, emit_description, format_number};
+use crate::render::markdown::{emit_description, emit_unplaced_section, format_number};
 use crate::render::svg_chart::{
     format_compact_number, hex_to_rgb, pad_extent, pick_duration_unit, strip_svg_blank_lines,
     OKABE_ITO,
@@ -78,43 +78,7 @@ pub fn render_workload(data: &WorkloadData, item_link_base: &str, description: &
         out.push('\n');
     }
 
-    if !data.unplaced.is_empty() {
-        out.push_str("## Unplaced\n");
-        for unplaced in &data.unplaced {
-            let link = card_link(&unplaced.card, item_link_base);
-            match &unplaced.reason {
-                UnplacedReason::MissingValue { field } => {
-                    let _ = writeln!(out, "- {link} — missing `{field}`");
-                }
-                UnplacedReason::InvalidRange {
-                    start_field,
-                    end_field,
-                } => {
-                    let _ = writeln!(
-                        out,
-                        "- {link} — start `{start_field}` after end `{end_field}`",
-                    );
-                }
-                UnplacedReason::NoWorkingDays {
-                    start_field,
-                    end_field,
-                } => {
-                    let _ = writeln!(
-                        out,
-                        "- {link} — interval `{start_field}..{end_field}` falls entirely on non-working days",
-                    );
-                }
-                // The workload extractor doesn't emit these — listing them
-                // explicitly so adding a new `UnplacedReason` variant fails
-                // compilation here, prompting an audit of whether workload
-                // should surface it.
-                UnplacedReason::NonNumericValue { .. }
-                | UnplacedReason::NoAnchor
-                | UnplacedReason::PredecessorUnresolved { .. }
-                | UnplacedReason::Cycle { .. } => {}
-            }
-        }
-    }
+    emit_unplaced_section(&data.unplaced, item_link_base, &mut out);
 
     out
 }

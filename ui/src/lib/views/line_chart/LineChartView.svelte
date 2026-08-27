@@ -1,6 +1,6 @@
 <!--
   Line chart view. The extractor ships points already partitioned into
-  series and ordered: each point carries an item id, an AxisValue x and
+  series and ordered: each point carries an item id, an ChartValue x and
   a SizeValue y, and each series carries the group value its points
   share (null for the synthetic no-value series). The wire also ships an
   `items` sidecar resolving each point's id to its title (via the view's
@@ -28,7 +28,7 @@
 <script lang="ts">
 	import type { LineChartData } from '$lib/api/generated/LineChartData';
 	import type { LinePoint } from '$lib/api/generated/LinePoint';
-	import type { AxisValue } from '$lib/api/generated/AxisValue';
+	import type { ChartValue } from '$lib/api/generated/ChartValue';
 	import type { WorkItemId } from '$lib/api/generated/WorkItemId';
 	import { formatDurationSeconds, formatIsoDate, formatNumber } from '$lib/views/format';
 	import { mountPlot, PLOT_STYLE } from '$lib/views/plot';
@@ -71,7 +71,7 @@
 	);
 	const pointCount = $derived(plotPoints.length);
 
-	function axisAsNumber(value: AxisValue): number {
+	function axisAsNumber(value: ChartValue): number {
 		if (value.type === 'date') return new Date(value.value).getTime();
 		return value.value;
 	}
@@ -84,7 +84,7 @@
 		const host = container;
 		if (host === undefined || plotPoints.length === 0 || availableWidth === 0) return;
 
-		const xType: AxisValue['type'] | undefined = plotPoints[0]?.x.type;
+		const xType: ChartValue['type'] | undefined = plotPoints[0]?.x.type;
 		const yType = plotPoints[0]?.y.type;
 		const isGrouped = data.group_field !== null;
 		const groupLabel = data.group_field !== null ? prettifyId(data.group_field) : '';

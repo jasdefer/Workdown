@@ -42,12 +42,11 @@ use workdown_core::timer_data::{
     TimerStopResult, TimerWrite,
 };
 use workdown_core::view_data::{
-    AggregateValue, AxisValue, BarChartBar, BarChartData, BoardColumn, BoardData, Card, CardField,
-    Column, Edge, GanttBar, GanttByDepthData, GanttByInitiativeData, GanttData, GraphData,
-    HeatmapCell, HeatmapData, Initiative, ItemRef, Level, LineChartData, LinePoint, LineSeries,
-    MetricData, MetricRowData, SizeValue, TableData, TableRow, TreeData, TreeNode, TreemapData,
-    TreemapNode, UnplacedCard, UnplacedReason, ViewData, WorkloadBucket, WorkloadData,
-    WorkloadUnit,
+    BarChartBar, BarChartData, BoardColumn, BoardData, Card, CardField, ChartValue, Column, Edge,
+    GanttBar, GanttByDepthData, GanttByInitiativeData, GanttData, GraphData, HeatmapCell,
+    HeatmapData, Initiative, ItemRef, Level, LineChartData, LinePoint, LineSeries, MetricData,
+    MetricRowData, SizeValue, TableData, TableRow, TreeData, TreeNode, TreemapData, TreemapNode,
+    UnplacedCard, UnplacedReason, ViewData, WorkloadBucket, WorkloadData, WorkloadUnit,
 };
 
 const FILE_HEADER: &str =
@@ -115,8 +114,7 @@ const ALL_TYPES: &[&str] = &[
     "CardField",
     "UnplacedCard",
     "UnplacedReason",
-    "AggregateValue",
-    "AxisValue",
+    "ChartValue",
     "SizeValue",
     "BoardData",
     "BoardColumn",
@@ -226,8 +224,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_type::<CardField>(&target_dir)?;
     write_type::<UnplacedCard>(&target_dir)?;
     write_type::<UnplacedReason>(&target_dir)?;
-    write_type::<AggregateValue>(&target_dir)?;
-    write_type::<AxisValue>(&target_dir)?;
+    write_type::<ChartValue>(&target_dir)?;
     write_type::<SizeValue>(&target_dir)?;
 
     // Per-view-kind data.

@@ -1,7 +1,7 @@
 //! Aggregate functions over typed field values.
 //!
 //! Called from bar_chart, metric, and heatmap extractors. Returns an
-//! [`AggregateValue`] so the same helper serves numeric aggregates
+//! [`ChartValue`] so the same helper serves numeric aggregates
 //! (sum/avg/min/max over integer/float), date aggregates (avg/min/max
 //! on dates), and duration aggregates (sum/avg/min/max on durations).
 //! `count` always returns `Number(n as f64)`.
@@ -16,7 +16,7 @@ use chrono::{Datelike, NaiveDate};
 use crate::model::views::Aggregate;
 use crate::model::{FieldValue, WorkItem};
 
-use super::common::AggregateValue;
+use super::common::ChartValue;
 
 /// Aggregate a bucket of items (a bar's group, a heatmap cell) into one
 /// value. `Count` returns the item count; every other aggregate collects
@@ -27,9 +27,9 @@ pub(super) fn aggregate_bucket(
     items: &[&WorkItem],
     value_field: Option<&str>,
     aggregate: Aggregate,
-) -> Option<AggregateValue> {
+) -> Option<ChartValue> {
     if aggregate == Aggregate::Count {
-        return Some(AggregateValue::Number(items.len() as f64));
+        return Some(ChartValue::Number(items.len() as f64));
     }
     let field_values: Vec<&FieldValue> = match value_field {
         Some(field) => items
@@ -44,9 +44,9 @@ pub(super) fn aggregate_bucket(
 pub(super) fn compute_aggregate(
     values: &[&FieldValue],
     aggregate: Aggregate,
-) -> Option<AggregateValue> {
+) -> Option<ChartValue> {
     match aggregate {
-        Aggregate::Count => Some(AggregateValue::Number(values.len() as f64)),
+        Aggregate::Count => Some(ChartValue::Number(values.len() as f64)),
         Aggregate::Sum => Some(sum(values)),
         Aggregate::Avg => average(values),
         Aggregate::Min => extremum(values, true),
@@ -76,24 +76,24 @@ fn as_date(value: &FieldValue) -> Option<NaiveDate> {
     }
 }
 
-fn sum(values: &[&FieldValue]) -> AggregateValue {
+fn sum(values: &[&FieldValue]) -> ChartValue {
     let durations: Vec<i64> = values.iter().copied().filter_map(as_duration).collect();
     if !durations.is_empty() {
-        return AggregateValue::Duration(durations.iter().sum());
+        return ChartValue::Duration(durations.iter().sum());
     }
-    AggregateValue::Number(values.iter().copied().filter_map(as_number).sum())
+    ChartValue::Number(values.iter().copied().filter_map(as_number).sum())
 }
 
-fn average(values: &[&FieldValue]) -> Option<AggregateValue> {
+fn average(values: &[&FieldValue]) -> Option<ChartValue> {
     let durations: Vec<i64> = values.iter().copied().filter_map(as_duration).collect();
     if !durations.is_empty() {
         let sum: i64 = durations.iter().sum();
-        return Some(AggregateValue::Duration(sum / durations.len() as i64));
+        return Some(ChartValue::Duration(sum / durations.len() as i64));
     }
     let numbers: Vec<f64> = values.iter().copied().filter_map(as_number).collect();
     if !numbers.is_empty() {
         let sum: f64 = numbers.iter().sum();
-        return Some(AggregateValue::Number(sum / numbers.len() as f64));
+        return Some(ChartValue::Number(sum / numbers.len() as f64));
     }
     let dates: Vec<NaiveDate> = values.iter().copied().filter_map(as_date).collect();
     if !dates.is_empty() {
@@ -104,12 +104,12 @@ fn average(values: &[&FieldValue]) -> Option<AggregateValue> {
             .map(|date| date.num_days_from_ce() as i64)
             .sum();
         let avg_days = sum_days / dates.len() as i64;
-        return NaiveDate::from_num_days_from_ce_opt(avg_days as i32).map(AggregateValue::Date);
+        return NaiveDate::from_num_days_from_ce_opt(avg_days as i32).map(ChartValue::Date);
     }
     None
 }
 
-fn extremum(values: &[&FieldValue], pick_min: bool) -> Option<AggregateValue> {
+fn extremum(values: &[&FieldValue], pick_min: bool) -> Option<ChartValue> {
     let durations: Vec<i64> = values.iter().copied().filter_map(as_duration).collect();
     if !durations.is_empty() {
         let result = if pick_min {
@@ -117,7 +117,7 @@ fn extremum(values: &[&FieldValue], pick_min: bool) -> Option<AggregateValue> {
         } else {
             *durations.iter().max().unwrap()
         };
-        return Some(AggregateValue::Duration(result));
+        return Some(ChartValue::Duration(result));
     }
     let numbers: Vec<f64> = values.iter().copied().filter_map(as_number).collect();
     if !numbers.is_empty() {
@@ -126,7 +126,7 @@ fn extremum(values: &[&FieldValue], pick_min: bool) -> Option<AggregateValue> {
         } else {
             numbers.iter().copied().fold(f64::NEG_INFINITY, f64::max)
         };
-        return Some(AggregateValue::Number(result));
+        return Some(ChartValue::Number(result));
     }
     let dates: Vec<NaiveDate> = values.iter().copied().filter_map(as_date).collect();
     if !dates.is_empty() {
@@ -135,7 +135,7 @@ fn extremum(values: &[&FieldValue], pick_min: bool) -> Option<AggregateValue> {
         } else {
             *dates.iter().max().unwrap()
         };
-        return Some(AggregateValue::Date(result));
+        return Some(ChartValue::Date(result));
     }
     None
 }
@@ -166,7 +166,7 @@ mod tests {
         ];
         let refs: Vec<&FieldValue> = values.iter().collect();
         let result = compute_aggregate(&refs, Aggregate::Count);
-        assert!(matches!(result, Some(AggregateValue::Number(n)) if n == 3.0));
+        assert!(matches!(result, Some(ChartValue::Number(n)) if n == 3.0));
     }
 
     #[test]
@@ -174,14 +174,14 @@ mod tests {
         let values = [number(1.0), number(2.5), number(0.5)];
         let refs: Vec<&FieldValue> = values.iter().collect();
         let result = compute_aggregate(&refs, Aggregate::Sum);
-        assert!(matches!(result, Some(AggregateValue::Number(n)) if (n - 4.0).abs() < 1e-9));
+        assert!(matches!(result, Some(ChartValue::Number(n)) if (n - 4.0).abs() < 1e-9));
     }
 
     #[test]
     fn sum_empty_returns_zero() {
         let refs: Vec<&FieldValue> = Vec::new();
         let result = compute_aggregate(&refs, Aggregate::Sum);
-        assert!(matches!(result, Some(AggregateValue::Number(n)) if n == 0.0));
+        assert!(matches!(result, Some(ChartValue::Number(n)) if n == 0.0));
     }
 
     #[test]
@@ -189,7 +189,7 @@ mod tests {
         let values = [number(2.0), number(4.0), number(6.0)];
         let refs: Vec<&FieldValue> = values.iter().collect();
         let result = compute_aggregate(&refs, Aggregate::Avg);
-        assert!(matches!(result, Some(AggregateValue::Number(n)) if (n - 4.0).abs() < 1e-9));
+        assert!(matches!(result, Some(ChartValue::Number(n)) if (n - 4.0).abs() < 1e-9));
     }
 
     #[test]
@@ -199,7 +199,7 @@ mod tests {
         let result = compute_aggregate(&refs, Aggregate::Avg);
         assert_eq!(
             result,
-            Some(AggregateValue::Date(
+            Some(ChartValue::Date(
                 NaiveDate::from_ymd_opt(2026, 1, 3).unwrap()
             ))
         );
@@ -211,8 +211,8 @@ mod tests {
         let refs: Vec<&FieldValue> = values.iter().collect();
         let min = compute_aggregate(&refs, Aggregate::Min);
         let max = compute_aggregate(&refs, Aggregate::Max);
-        assert!(matches!(min, Some(AggregateValue::Number(n)) if n == 1.0));
-        assert!(matches!(max, Some(AggregateValue::Number(n)) if n == 3.0));
+        assert!(matches!(min, Some(ChartValue::Number(n)) if n == 1.0));
+        assert!(matches!(max, Some(ChartValue::Number(n)) if n == 3.0));
     }
 
     #[test]
@@ -223,13 +223,13 @@ mod tests {
         let max = compute_aggregate(&refs, Aggregate::Max);
         assert_eq!(
             min,
-            Some(AggregateValue::Date(
+            Some(ChartValue::Date(
                 NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
             ))
         );
         assert_eq!(
             max,
-            Some(AggregateValue::Date(
+            Some(ChartValue::Date(
                 NaiveDate::from_ymd_opt(2026, 5, 1).unwrap()
             ))
         );
@@ -250,7 +250,7 @@ mod tests {
         let values = [duration(3600), duration(7200), duration(1800)];
         let refs: Vec<&FieldValue> = values.iter().collect();
         let result = compute_aggregate(&refs, Aggregate::Sum);
-        assert_eq!(result, Some(AggregateValue::Duration(12600)));
+        assert_eq!(result, Some(ChartValue::Duration(12600)));
     }
 
     #[test]
@@ -258,7 +258,7 @@ mod tests {
         let values = [duration(60), duration(120), duration(180)];
         let refs: Vec<&FieldValue> = values.iter().collect();
         let result = compute_aggregate(&refs, Aggregate::Avg);
-        assert_eq!(result, Some(AggregateValue::Duration(120)));
+        assert_eq!(result, Some(ChartValue::Duration(120)));
     }
 
     #[test]
@@ -267,7 +267,7 @@ mod tests {
         let refs: Vec<&FieldValue> = values.iter().collect();
         let min = compute_aggregate(&refs, Aggregate::Min);
         let max = compute_aggregate(&refs, Aggregate::Max);
-        assert_eq!(min, Some(AggregateValue::Duration(100)));
-        assert_eq!(max, Some(AggregateValue::Duration(300)));
+        assert_eq!(min, Some(ChartValue::Duration(100)));
+        assert_eq!(max, Some(ChartValue::Duration(300)));
     }
 }

@@ -6,16 +6,19 @@
 //! the rolled-up size, an optional `(N%)` share-of-parent annotation,
 //! and an em-dash followed by the linked title. Children are drawn in
 //! the order the extractor decided — size descending, ties by id.
-//! Items that filter-matched but lack the size field appear in a trailing
-//! `## Unplaced (missing <field>)` section. An empty view (no roots, no
-//! unplaced) emits the heading, the description, and `_(no items)_`.
+//! Items that filter-matched but lack the size field appear in the
+//! chart family's shared trailing `## Unplaced` section. An empty view
+//! (no roots, no unplaced) emits the heading, the description, and
+//! `_(no items)_`.
 
 use std::fmt::Write as _;
 
 use workdown_core::model::duration::format_duration_seconds;
 use workdown_core::view_data::{SizeValue, TreemapData, TreemapNode};
 
-use crate::render::markdown::{card_link, emit_description, format_number, id_link};
+use crate::render::markdown::{
+    card_link, emit_description, emit_unplaced_section, format_number, id_link,
+};
 
 /// Render a `TreemapData` as a Markdown string.
 ///
@@ -46,14 +49,7 @@ pub fn render_treemap(data: &TreemapData, item_link_base: &str, description: &st
 
     if !data.unplaced.is_empty() {
         out.push('\n');
-        let _ = writeln!(
-            out,
-            "## Unplaced (missing `{field}`)",
-            field = data.size_field,
-        );
-        for unplaced in &data.unplaced {
-            let _ = writeln!(out, "- {}", card_link(&unplaced.card, item_link_base));
-        }
+        emit_unplaced_section(&data.unplaced, item_link_base, &mut out);
     }
 
     out
@@ -324,9 +320,11 @@ mod tests {
             "../workdown-items",
             "",
         );
-        assert!(output.contains("## Unplaced (missing `effort`)\n"));
-        assert!(output.contains("- [First missing](../workdown-items/missing-1.md)"));
-        assert!(output.contains("- [missing-2](../workdown-items/missing-2.md)"));
+        assert!(output.contains("## Unplaced\n"));
+        assert!(
+            output.contains("- [First missing](../workdown-items/missing-1.md) — missing `effort`")
+        );
+        assert!(output.contains("- [missing-2](../workdown-items/missing-2.md) — missing `effort`"));
     }
 
     #[test]
@@ -378,8 +376,8 @@ Hierarchical breakdown of `effort` summed up the `parent` chain.
   - **3** (43%) — [Alpha 2](../workdown-items/alpha-2.md)
 - **3** (30%) — [Beta](../workdown-items/beta.md)
 
-## Unplaced (missing `effort`)
-- [Orphan](../workdown-items/orphan.md)
+## Unplaced
+- [Orphan](../workdown-items/orphan.md) — missing `effort`
 ";
         assert_eq!(output, expected);
     }

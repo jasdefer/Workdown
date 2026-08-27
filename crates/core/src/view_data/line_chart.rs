@@ -31,7 +31,7 @@ use crate::model::WorkItemId;
 use crate::store::Store;
 
 use super::common::{
-    as_axis, as_size, build_card, resolve_title, sort_unplaced, AxisValue, ItemRef, SizeValue,
+    as_axis, as_size, build_card, resolve_title, sort_unplaced, ChartValue, ItemRef, SizeValue,
     UnplacedCard, UnplacedReason,
 };
 use super::filter::filtered_items;
@@ -68,7 +68,7 @@ pub struct LineSeries {
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct LinePoint {
     pub id: WorkItemId,
-    pub x: AxisValue,
+    pub x: ChartValue,
     pub y: SizeValue,
 }
 
@@ -163,19 +163,19 @@ fn build_series(collected: Vec<(Option<String>, LinePoint)>) -> Vec<LineSeries> 
     series
 }
 
-fn compare_axis(left: &AxisValue, right: &AxisValue) -> Ordering {
+fn compare_axis(left: &ChartValue, right: &ChartValue) -> Ordering {
     match (left, right) {
-        (AxisValue::Number(left), AxisValue::Number(right)) => {
+        (ChartValue::Number(left), ChartValue::Number(right)) => {
             left.partial_cmp(right).unwrap_or(Ordering::Equal)
         }
-        (AxisValue::Date(left), AxisValue::Date(right)) => left.cmp(right),
-        (AxisValue::Duration(left), AxisValue::Duration(right)) => left.cmp(right),
+        (ChartValue::Date(left), ChartValue::Date(right)) => left.cmp(right),
+        (ChartValue::Duration(left), ChartValue::Duration(right)) => left.cmp(right),
         // Same-field items are always the same variant; mixed types shouldn't
         // happen in practice but keep ordering total for determinism.
-        (AxisValue::Number(_), _) => Ordering::Less,
-        (_, AxisValue::Number(_)) => Ordering::Greater,
-        (AxisValue::Duration(_), AxisValue::Date(_)) => Ordering::Less,
-        (AxisValue::Date(_), AxisValue::Duration(_)) => Ordering::Greater,
+        (ChartValue::Number(_), _) => Ordering::Less,
+        (_, ChartValue::Number(_)) => Ordering::Greater,
+        (ChartValue::Duration(_), ChartValue::Date(_)) => Ordering::Less,
+        (ChartValue::Date(_), ChartValue::Duration(_)) => Ordering::Greater,
     }
 }
 
@@ -288,7 +288,7 @@ mod tests {
         let xs: Vec<f64> = all_points(&data)
             .into_iter()
             .map(|point| match point.x {
-                AxisValue::Number(number) => number,
+                ChartValue::Number(number) => number,
                 _ => panic!("expected numeric axis"),
             })
             .collect();
@@ -326,7 +326,7 @@ mod tests {
         let dates: Vec<NaiveDate> = all_points(&data)
             .into_iter()
             .map(|point| match point.x {
-                AxisValue::Date(date) => date,
+                ChartValue::Date(date) => date,
                 _ => panic!("expected date axis"),
             })
             .collect();

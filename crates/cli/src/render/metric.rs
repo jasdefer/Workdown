@@ -4,19 +4,17 @@
 //! description, then a GFM table with one row per [`MetricRowData`]:
 //! `| Label | Value |`. `None` values render as `—` (no data). When
 //! any row has unplaced items (filter-matched but missing the value
-//! field), a blockquote footer lists them per-row, grouped by row label
-//! and field name. An empty `rows` list emits the heading only.
+//! field), a blockquote footer lists them per-row, grouped by reason
+//! phrase. An empty `rows` list emits the heading only.
 
-use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use workdown_core::model::duration::format_duration_seconds;
-use workdown_core::view_data::{
-    AggregateValue, MetricData, MetricRowData, UnplacedCard, UnplacedReason,
-};
+use workdown_core::view_data::{ChartValue, MetricData, MetricRowData};
 
 use crate::render::markdown::{
-    emit_description, escape_blockquote_italic, escape_cell, format_number,
+    emit_description, escape_blockquote_italic, escape_cell, format_number, format_quoted_titles,
+    group_unplaced_by_phrase, pluralize,
 };
 
 /// Render a `MetricData` as a Markdown string.
@@ -50,69 +48,42 @@ pub fn render_metric(data: &MetricData, description: &str) -> String {
     out
 }
 
-fn format_value(value: &Option<AggregateValue>) -> String {
+fn format_value(value: &Option<ChartValue>) -> String {
     match value {
         None => "—".to_owned(),
-        Some(AggregateValue::Number(n)) => format_number(*n),
-        Some(AggregateValue::Date(d)) => d.format("%Y-%m-%d").to_string(),
-        Some(AggregateValue::Duration(seconds)) => format_duration_seconds(*seconds),
+        Some(ChartValue::Number(n)) => format_number(*n),
+        Some(ChartValue::Date(d)) => d.format("%Y-%m-%d").to_string(),
+        Some(ChartValue::Duration(seconds)) => format_duration_seconds(*seconds),
     }
 }
 
 /// Emit a blockquote footer summarizing items that filter-matched but
-/// were missing the value field for one or more rows. Skipped entirely
-/// when no row has unplaced items.
+/// couldn't feed one or more rows. Skipped entirely when no row has
+/// unplaced items.
 ///
-/// Rows without unplaced are silent. Rows with unplaced are grouped by
-/// row label, then by missing field, with item titles (or ids when
-/// titles are absent) listed in the order the extractor produced.
+/// Rows without unplaced are silent. Rows with unplaced are listed in
+/// row order, grouped by reason phrase within each row (see
+/// `markdown::group_unplaced_by_phrase`), with item titles (or ids when
+/// titles are absent) in the order the extractor produced.
 fn render_unplaced_footer(rows: &[MetricRowData], out: &mut String) {
-    let total: usize = rows.iter().map(|r| r.unplaced.len()).sum();
+    let total: usize = rows.iter().map(|row| row.unplaced.len()).sum();
     if total == 0 {
         return;
     }
 
     out.push('\n');
-    let _ = writeln!(out, "> _{total} items dropped:_");
+    let _ = writeln!(out, "> _{} dropped:_", pluralize(total, "item"));
     for row in rows {
-        if row.unplaced.is_empty() {
-            continue;
-        }
-        let missing = group_by_missing_field(&row.unplaced);
-        for (field, cards) in &missing {
+        for (phrase, cards) in group_unplaced_by_phrase(&row.unplaced) {
             let _ = writeln!(
                 out,
-                "> _- \"{label}\" missing '{field}': {titles}_",
+                "> _- \"{label}\" {phrase}: {titles}_",
                 label = escape_blockquote_italic(&row.label),
-                titles = format_titles(cards),
+                phrase = escape_blockquote_italic(&phrase),
+                titles = format_quoted_titles(&cards),
             );
         }
     }
-}
-
-fn group_by_missing_field(unplaced: &[UnplacedCard]) -> BTreeMap<&str, Vec<&UnplacedCard>> {
-    let mut grouped: BTreeMap<&str, Vec<&UnplacedCard>> = BTreeMap::new();
-    for card in unplaced {
-        if let UnplacedReason::MissingValue { field } = &card.reason {
-            grouped.entry(field.as_str()).or_default().push(card);
-        }
-    }
-    grouped
-}
-
-fn format_titles(cards: &[&UnplacedCard]) -> String {
-    cards
-        .iter()
-        .map(|c| {
-            let name = c
-                .card
-                .title
-                .as_deref()
-                .unwrap_or_else(|| c.card.id.as_str());
-            format!("\"{}\"", escape_blockquote_italic(name))
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -129,7 +100,7 @@ mod tests {
         NaiveDate::from_ymd_opt(year, month, day).unwrap()
     }
 
-    fn row(label: &str, aggregate: Aggregate, value: Option<AggregateValue>) -> MetricRowData {
+    fn row(label: &str, aggregate: Aggregate, value: Option<ChartValue>) -> MetricRowData {
         MetricRowData {
             label: label.to_owned(),
             aggregate,
@@ -161,7 +132,7 @@ mod tests {
             &data(vec![row(
                 "Open items",
                 Aggregate::Count,
-                Some(AggregateValue::Number(12.0)),
+                Some(ChartValue::Number(12.0)),
             )]),
             "",
         );
@@ -175,7 +146,7 @@ mod tests {
             &data(vec![row(
                 "Count",
                 Aggregate::Count,
-                Some(AggregateValue::Number(7.0)),
+                Some(ChartValue::Number(7.0)),
             )]),
             "",
         );
@@ -189,7 +160,7 @@ mod tests {
             &data(vec![row(
                 "Avg",
                 Aggregate::Avg,
-                Some(AggregateValue::Number(3.5)),
+                Some(ChartValue::Number(3.5)),
             )]),
             "",
         );
@@ -202,7 +173,7 @@ mod tests {
             &data(vec![row(
                 "Latest deadline",
                 Aggregate::Max,
-                Some(AggregateValue::Date(ymd(2026, 5, 15))),
+                Some(ChartValue::Date(ymd(2026, 5, 15))),
             )]),
             "",
         );
@@ -215,7 +186,7 @@ mod tests {
             &data(vec![row(
                 "Total estimate",
                 Aggregate::Sum,
-                Some(AggregateValue::Duration(86400 + 3600)), // 1d 1h
+                Some(ChartValue::Duration(86400 + 3600)), // 1d 1h
             )]),
             "",
         );
@@ -237,7 +208,7 @@ mod tests {
             &data(vec![row(
                 "Open",
                 Aggregate::Count,
-                Some(AggregateValue::Number(3.0)),
+                Some(ChartValue::Number(3.0)),
             )]),
             "Project stats.",
         );
@@ -250,7 +221,7 @@ mod tests {
             &data(vec![row(
                 "a | b",
                 Aggregate::Count,
-                Some(AggregateValue::Number(1.0)),
+                Some(ChartValue::Number(1.0)),
             )]),
             "",
         );
@@ -263,7 +234,7 @@ mod tests {
             &data(vec![row(
                 "line one\nline two",
                 Aggregate::Count,
-                Some(AggregateValue::Number(1.0)),
+                Some(ChartValue::Number(1.0)),
             )]),
             "",
         );
@@ -272,18 +243,14 @@ mod tests {
 
     #[test]
     fn unplaced_footer_lists_rows_with_missing_field() {
-        let mut total = row(
-            "Sum points",
-            Aggregate::Sum,
-            Some(AggregateValue::Number(3.0)),
-        );
+        let mut total = row("Sum points", Aggregate::Sum, Some(ChartValue::Number(3.0)));
         total.unplaced = vec![
             unplaced_missing("foo", Some("Foo task"), "points"),
             unplaced_missing("bar", None, "points"),
         ];
         let output = render_metric(&data(vec![total]), "");
         assert!(output.contains("> _2 items dropped:_"));
-        assert!(output.contains("> _- \"Sum points\" missing 'points': \"Foo task\", \"bar\"_"));
+        assert!(output.contains("> _- \"Sum points\" missing `points`: \"Foo task\", \"bar\"_"));
     }
 
     #[test]
@@ -292,7 +259,7 @@ mod tests {
             &data(vec![row(
                 "Open",
                 Aggregate::Count,
-                Some(AggregateValue::Number(3.0)),
+                Some(ChartValue::Number(3.0)),
             )]),
             "",
         );
@@ -303,21 +270,13 @@ mod tests {
     fn multiple_rows_render_in_order() {
         let output = render_metric(
             &data(vec![
-                row(
-                    "Total",
-                    Aggregate::Count,
-                    Some(AggregateValue::Number(10.0)),
-                ),
+                row("Total", Aggregate::Count, Some(ChartValue::Number(10.0))),
                 row(
                     "In progress",
                     Aggregate::Count,
-                    Some(AggregateValue::Number(4.0)),
+                    Some(ChartValue::Number(4.0)),
                 ),
-                row(
-                    "Sum points",
-                    Aggregate::Sum,
-                    Some(AggregateValue::Number(47.0)),
-                ),
+                row("Sum points", Aggregate::Sum, Some(ChartValue::Number(47.0))),
             ]),
             "",
         );
@@ -330,14 +289,10 @@ mod tests {
 
     #[test]
     fn full_output_snapshot_with_unplaced() {
-        let mut sum_row = row(
-            "Sum points",
-            Aggregate::Sum,
-            Some(AggregateValue::Number(7.0)),
-        );
+        let mut sum_row = row("Sum points", Aggregate::Sum, Some(ChartValue::Number(7.0)));
         sum_row.unplaced = vec![unplaced_missing("missing", Some("Missing item"), "points")];
         let rows = vec![
-            row("Total", Aggregate::Count, Some(AggregateValue::Number(3.0))),
+            row("Total", Aggregate::Count, Some(ChartValue::Number(3.0))),
             sum_row,
         ];
         let output = render_metric(&data(rows), "Project stats.");
@@ -351,8 +306,8 @@ Project stats.
 | Total | 3 |
 | Sum points | 7 |
 
-> _1 items dropped:_
-> _- \"Sum points\" missing 'points': \"Missing item\"_
+> _1 item dropped:_
+> _- \"Sum points\" missing `points`: \"Missing item\"_
 ";
         assert_eq!(output, expected);
     }

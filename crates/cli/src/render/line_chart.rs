@@ -11,24 +11,23 @@
 //! colors come from the Okabe-Ito palette (color-blind-safe), assigned
 //! in received order and recycled past 8 groups for determinism.
 //!
-//! Axis units: x and y are formatted per their underlying [`AxisValue`] /
-//! [`SizeValue`] variant. Numeric values use `format_number`; date values
+//! Axis units: x and y are formatted per their underlying [`ChartValue`]
+//! variant (the y-side [`workdown_core::view_data::SizeValue`] converts
+//! into it). Numeric values use `format_number`; date values
 //! use `YYYY-MM-DD`; duration values pick the largest fitting unit
 //! (`w`/`d`/`h`/`min`/`s`) so axis ticks render as plain numbers and the
 //! axis label names the unit (e.g. `estimate (hours)`). Mixed axes
 //! shouldn't happen in practice — every point on one axis comes from the
 //! same schema field — and the renderer panics if it sees one.
 
-use std::fmt::Write as _;
-
 use plotters::prelude::*;
 
-use workdown_core::view_data::{AxisValue, LineChartData, LinePoint, SizeValue, UnplacedReason};
+use workdown_core::view_data::{ChartValue, LineChartData, LinePoint};
 
-use crate::render::markdown::{card_link, emit_description, no_value_label};
+use crate::render::markdown::{emit_description, emit_unplaced_section, no_value_label};
 use crate::render::svg_chart::{
-    axis_label, date_to_f64, format_axis_tick, hex_to_rgb, numeric_extent, pad_extent,
-    pick_duration_unit, strip_svg_blank_lines, AxisKind, OKABE_ITO,
+    axis_kind_for, axis_label, format_axis_tick, hex_to_rgb, numeric_extent, pad_extent,
+    strip_svg_blank_lines, value_to_f64, AxisKind, OKABE_ITO,
 };
 
 const SVG_WIDTH: u32 = 800;
@@ -62,26 +61,7 @@ pub fn render_line_chart(data: &LineChartData, item_link_base: &str, description
         out.push('\n');
     }
 
-    if !data.unplaced.is_empty() {
-        out.push_str("## Unplaced\n");
-        for unplaced in &data.unplaced {
-            let link = card_link(&unplaced.card, item_link_base);
-            match &unplaced.reason {
-                UnplacedReason::MissingValue { field } => {
-                    let _ = writeln!(out, "- {link} — missing `{field}`");
-                }
-                // The line chart extractor only emits MissingValue today;
-                // listing the rest explicitly so adding a new variant
-                // fails compilation here and prompts an audit.
-                UnplacedReason::InvalidRange { .. }
-                | UnplacedReason::NoWorkingDays { .. }
-                | UnplacedReason::NonNumericValue { .. }
-                | UnplacedReason::NoAnchor
-                | UnplacedReason::PredecessorUnresolved { .. }
-                | UnplacedReason::Cycle { .. } => {}
-            }
-        }
-    }
+    emit_unplaced_section(&data.unplaced, item_link_base, &mut out);
 
     out
 }
@@ -104,8 +84,8 @@ fn render_svg(data: &LineChartData) -> String {
         .iter()
         .flat_map(|series| series.points.iter())
         .collect();
-    let x_kind = axis_kind_x(&points);
-    let y_kind = axis_kind_y(&points);
+    let x_kind = axis_kind_for(points.iter().map(|point| point.x));
+    let y_kind = axis_kind_for(points.iter().map(|point| ChartValue::from(point.y)));
 
     let series = build_series(data, x_kind, y_kind);
 
@@ -174,84 +154,6 @@ fn render_svg(data: &LineChartData) -> String {
     strip_svg_blank_lines(&buf)
 }
 
-/// Pick the f64 axis encoding from the first point's variant. Every
-/// other point on the same axis must agree — extractor invariant since
-/// each axis is bound to one schema field — and we panic on mismatch
-/// so a future regression doesn't silently mis-render.
-fn axis_kind_x(points: &[&LinePoint]) -> AxisKind {
-    match points
-        .first()
-        .map(|point| point.x)
-        .expect("axis_kind_x called with empty points")
-    {
-        AxisValue::Number(_) => AxisKind::Number,
-        AxisValue::Date(_) => AxisKind::Date,
-        AxisValue::Duration(_) => {
-            let max = points
-                .iter()
-                .filter_map(|point| match point.x {
-                    AxisValue::Duration(seconds) => Some(seconds.unsigned_abs() as i64),
-                    _ => None,
-                })
-                .max()
-                .unwrap_or(0);
-            let unit = pick_duration_unit(max);
-            AxisKind::Duration {
-                divisor: unit.divisor_seconds,
-                label: unit.label,
-            }
-        }
-    }
-}
-
-fn axis_kind_y(points: &[&LinePoint]) -> AxisKind {
-    match points
-        .first()
-        .map(|point| point.y)
-        .expect("axis_kind_y called with empty points")
-    {
-        SizeValue::Number(_) => AxisKind::Number,
-        SizeValue::Duration(_) => {
-            let max = points
-                .iter()
-                .filter_map(|point| match point.y {
-                    SizeValue::Duration(seconds) => Some(seconds.unsigned_abs() as i64),
-                    _ => None,
-                })
-                .max()
-                .unwrap_or(0);
-            let unit = pick_duration_unit(max);
-            AxisKind::Duration {
-                divisor: unit.divisor_seconds,
-                label: unit.label,
-            }
-        }
-    }
-}
-
-/// Convert an `AxisValue` to its plot-space f64 using the chosen axis kind.
-fn axis_to_f64(value: AxisValue, kind: AxisKind) -> f64 {
-    match (value, kind) {
-        (AxisValue::Number(n), AxisKind::Number) => n,
-        (AxisValue::Date(date), AxisKind::Date) => date_to_f64(date),
-        (AxisValue::Duration(seconds), AxisKind::Duration { divisor, .. }) => {
-            seconds as f64 / divisor as f64
-        }
-        (value, kind) => panic!("mixed axis types on x: value {value:?} with kind {kind:?}"),
-    }
-}
-
-/// Convert a `SizeValue` to its plot-space f64 using the chosen axis kind.
-fn size_to_f64(value: SizeValue, kind: AxisKind) -> f64 {
-    match (value, kind) {
-        (SizeValue::Number(n), AxisKind::Number) => n,
-        (SizeValue::Duration(seconds), AxisKind::Duration { divisor, .. }) => {
-            seconds as f64 / divisor as f64
-        }
-        (value, kind) => panic!("mixed axis types on y: value {value:?} with kind {kind:?}"),
-    }
-}
-
 /// Turn the extractor's series into drawable ones: label text, a palette
 /// color, and f64 plot coordinates.
 ///
@@ -277,7 +179,12 @@ fn build_series(data: &LineChartData, x_kind: AxisKind, y_kind: AxisKind) -> Vec
             points: series
                 .points
                 .iter()
-                .map(|point| (axis_to_f64(point.x, x_kind), size_to_f64(point.y, y_kind)))
+                .map(|point| {
+                    (
+                        value_to_f64(point.x, x_kind),
+                        value_to_f64(ChartValue::from(point.y), y_kind),
+                    )
+                })
                 .collect(),
         })
         .collect()
@@ -294,11 +201,11 @@ mod tests {
     use chrono::NaiveDate;
     use std::collections::HashMap;
     use workdown_core::model::WorkItemId;
-    use workdown_core::view_data::{LineChartData, LinePoint, LineSeries, UnplacedCard};
+    use workdown_core::view_data::{LineChartData, LinePoint, LineSeries, SizeValue, UnplacedCard};
 
     // ── Render fixtures ─────────────────────────────────────────────
 
-    fn point(id: &str, x: AxisValue, y: SizeValue) -> LinePoint {
+    fn point(id: &str, x: ChartValue, y: SizeValue) -> LinePoint {
         LinePoint {
             id: WorkItemId::from(id.to_owned()),
             x,
@@ -375,9 +282,9 @@ mod tests {
     #[test]
     fn single_series_emits_svg_with_first_palette_color() {
         let points = vec![
-            point("a", AxisValue::Number(1.0), SizeValue::Number(2.0)),
-            point("b", AxisValue::Number(2.0), SizeValue::Number(4.0)),
-            point("c", AxisValue::Number(3.0), SizeValue::Number(6.0)),
+            point("a", ChartValue::Number(1.0), SizeValue::Number(2.0)),
+            point("b", ChartValue::Number(2.0), SizeValue::Number(4.0)),
+            point("c", ChartValue::Number(3.0), SizeValue::Number(6.0)),
         ];
         let output = render_line_chart(
             &data("x", "y", None, single(points), vec![]),
@@ -395,8 +302,8 @@ mod tests {
     #[test]
     fn single_series_skips_legend() {
         let points = vec![
-            point("a", AxisValue::Number(1.0), SizeValue::Number(2.0)),
-            point("b", AxisValue::Number(2.0), SizeValue::Number(4.0)),
+            point("a", ChartValue::Number(1.0), SizeValue::Number(2.0)),
+            point("b", ChartValue::Number(2.0), SizeValue::Number(4.0)),
         ];
         let output = render_line_chart(
             &data("x", "y", None, single(points), vec![]),
@@ -428,13 +335,13 @@ mod tests {
                     series(
                         Some("eng"),
                         vec![
-                            point("a", AxisValue::Number(1.0), SizeValue::Number(2.0)),
-                            point("c", AxisValue::Number(3.0), SizeValue::Number(6.0)),
+                            point("a", ChartValue::Number(1.0), SizeValue::Number(2.0)),
+                            point("c", ChartValue::Number(3.0), SizeValue::Number(6.0)),
                         ],
                     ),
                     series(
                         Some("ops"),
-                        vec![point("b", AxisValue::Number(2.0), SizeValue::Number(4.0))],
+                        vec![point("b", ChartValue::Number(2.0), SizeValue::Number(4.0))],
                     ),
                 ],
                 vec![],
@@ -463,11 +370,11 @@ mod tests {
                 vec![
                     series(
                         Some("eng"),
-                        vec![point("a", AxisValue::Number(1.0), SizeValue::Number(2.0))],
+                        vec![point("a", ChartValue::Number(1.0), SizeValue::Number(2.0))],
                     ),
                     series(
                         Some("ops"),
-                        vec![point("b", AxisValue::Number(2.0), SizeValue::Number(4.0))],
+                        vec![point("b", ChartValue::Number(2.0), SizeValue::Number(4.0))],
                     ),
                 ],
                 vec![],
@@ -489,11 +396,11 @@ mod tests {
                 vec![
                     series(
                         Some("eng"),
-                        vec![point("a", AxisValue::Number(1.0), SizeValue::Number(2.0))],
+                        vec![point("a", ChartValue::Number(1.0), SizeValue::Number(2.0))],
                     ),
                     series(
                         None,
-                        vec![point("b", AxisValue::Number(2.0), SizeValue::Number(4.0))],
+                        vec![point("b", ChartValue::Number(2.0), SizeValue::Number(4.0))],
                     ),
                 ],
                 vec![],
@@ -521,7 +428,7 @@ mod tests {
                     Some(label),
                     vec![point(
                         label,
-                        AxisValue::Number(index as f64),
+                        ChartValue::Number(index as f64),
                         SizeValue::Number((index * 2) as f64),
                     )],
                 )
@@ -550,12 +457,12 @@ mod tests {
         let points = vec![
             point(
                 "a",
-                AxisValue::Date(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+                ChartValue::Date(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
                 SizeValue::Number(1.0),
             ),
             point(
                 "b",
-                AxisValue::Date(NaiveDate::from_ymd_opt(2026, 1, 10).unwrap()),
+                ChartValue::Date(NaiveDate::from_ymd_opt(2026, 1, 10).unwrap()),
                 SizeValue::Number(2.0),
             ),
         ];
@@ -576,12 +483,12 @@ mod tests {
         let points = vec![
             point(
                 "a",
-                AxisValue::Number(1.0),
+                ChartValue::Number(1.0),
                 SizeValue::Duration(2 * SECONDS_PER_DAY),
             ),
             point(
                 "b",
-                AxisValue::Number(2.0),
+                ChartValue::Number(2.0),
                 SizeValue::Duration(4 * SECONDS_PER_DAY),
             ),
         ];
@@ -602,12 +509,12 @@ mod tests {
         let points = vec![
             point(
                 "a",
-                AxisValue::Duration(2 * SECONDS_PER_HOUR),
+                ChartValue::Duration(2 * SECONDS_PER_HOUR),
                 SizeValue::Number(1.0),
             ),
             point(
                 "b",
-                AxisValue::Duration(4 * SECONDS_PER_HOUR),
+                ChartValue::Duration(4 * SECONDS_PER_HOUR),
                 SizeValue::Number(2.0),
             ),
         ];
@@ -626,7 +533,7 @@ mod tests {
 
     #[test]
     fn unplaced_footer_lists_missing_field_per_item() {
-        let points = vec![point("a", AxisValue::Number(1.0), SizeValue::Number(2.0))];
+        let points = vec![point("a", ChartValue::Number(1.0), SizeValue::Number(2.0))];
         let output = render_line_chart(
             &data(
                 "x",
@@ -649,8 +556,8 @@ mod tests {
     #[test]
     fn no_unplaced_section_when_clean() {
         let points = vec![
-            point("a", AxisValue::Number(1.0), SizeValue::Number(2.0)),
-            point("b", AxisValue::Number(2.0), SizeValue::Number(4.0)),
+            point("a", ChartValue::Number(1.0), SizeValue::Number(2.0)),
+            point("b", ChartValue::Number(2.0), SizeValue::Number(4.0)),
         ];
         let output = render_line_chart(
             &data("x", "y", None, single(points), vec![]),

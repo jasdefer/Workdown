@@ -6,7 +6,7 @@
 //! needing separate views.
 //!
 //! Each row reduces its filtered item set to a single
-//! [`AggregateValue`]. `Count` returns the item count directly;
+//! [`ChartValue`]. `Count` returns the item count directly;
 //! sum/avg/min/max read the row's `value` field and aggregate via the
 //! shared helper. `MetricRowData.value` is `None` when the aggregate
 //! drops (avg/min/max with zero valid inputs) — renderers treat that
@@ -25,7 +25,7 @@ use crate::model::FieldValue;
 use crate::store::Store;
 
 use super::aggregate::compute_aggregate;
-use super::common::{build_card, sort_unplaced, AggregateValue, UnplacedCard, UnplacedReason};
+use super::common::{build_card, sort_unplaced, ChartValue, UnplacedCard, UnplacedReason};
 use super::filter::filtered_items_with_extras;
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
@@ -38,7 +38,7 @@ pub struct MetricRowData {
     pub label: String,
     pub aggregate: Aggregate,
     pub value_field: Option<String>,
-    pub value: Option<AggregateValue>,
+    pub value: Option<ChartValue>,
     pub unplaced: Vec<UnplacedCard>,
 }
 
@@ -60,7 +60,7 @@ fn extract_row(view: &View, row: &MetricRow, store: &Store, schema: &Schema) -> 
     let mut unplaced: Vec<UnplacedCard> = Vec::new();
 
     let value = match row.aggregate {
-        Aggregate::Count => Some(AggregateValue::Number(items.len() as f64)),
+        Aggregate::Count => Some(ChartValue::Number(items.len() as f64)),
         _ => {
             let mut field_values: Vec<&FieldValue> = Vec::new();
             if let Some(value_field) = &row.value {
@@ -196,7 +196,7 @@ mod tests {
         assert_eq!(data.rows.len(), 1);
         assert!(matches!(
             data.rows[0].value,
-            Some(AggregateValue::Number(n)) if n == 3.0
+            Some(ChartValue::Number(n)) if n == 3.0
         ));
         assert!(data.rows[0].unplaced.is_empty());
     }
@@ -217,7 +217,7 @@ mod tests {
 
         assert!(matches!(
             data.rows[0].value,
-            Some(AggregateValue::Number(n)) if (n - 10.0).abs() < 1e-9
+            Some(ChartValue::Number(n)) if (n - 10.0).abs() < 1e-9
         ));
     }
 
@@ -243,10 +243,7 @@ mod tests {
 
         let data = extract_metric(&view, &store, &schema);
 
-        assert_eq!(
-            data.rows[0].value,
-            Some(AggregateValue::Date(ymd(2026, 1, 6)))
-        );
+        assert_eq!(data.rows[0].value, Some(ChartValue::Date(ymd(2026, 1, 6))));
     }
 
     #[test]
@@ -280,7 +277,7 @@ mod tests {
 
         assert!(matches!(
             data.rows[0].value,
-            Some(AggregateValue::Number(n)) if (n - 3.0).abs() < 1e-9
+            Some(ChartValue::Number(n)) if (n - 3.0).abs() < 1e-9
         ));
         assert_eq!(data.rows[0].unplaced.len(), 1);
         assert_eq!(data.rows[0].unplaced[0].card.id.as_str(), "b");
@@ -397,10 +394,10 @@ mod tests {
 
         let data = extract_metric(&view, &store, &schema);
 
-        assert!(matches!(data.rows[0].value, Some(AggregateValue::Number(n)) if n == 2.0));
-        assert!(matches!(data.rows[1].value, Some(AggregateValue::Number(n)) if n == 1.0));
+        assert!(matches!(data.rows[0].value, Some(ChartValue::Number(n)) if n == 2.0));
+        assert!(matches!(data.rows[1].value, Some(ChartValue::Number(n)) if n == 1.0));
         assert!(
-            matches!(data.rows[2].value, Some(AggregateValue::Number(n)) if (n - 7.0).abs() < 1e-9)
+            matches!(data.rows[2].value, Some(ChartValue::Number(n)) if (n - 7.0).abs() < 1e-9)
         );
     }
 
@@ -424,6 +421,6 @@ mod tests {
 
         let data = extract_metric(&view, &store, &schema);
 
-        assert_eq!(data.rows[0].value, Some(AggregateValue::Duration(10800)));
+        assert_eq!(data.rows[0].value, Some(ChartValue::Duration(10800)));
     }
 }

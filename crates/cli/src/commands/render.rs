@@ -208,7 +208,10 @@ fn render_view_data(view_data: &ViewData, link_base: &str, description: &str) ->
 /// The renderer already includes a footer in the rendered Markdown for
 /// users who open the file; this is the parallel terminal-side notice
 /// so it doesn't go unnoticed when running `workdown render` in CI or
-/// pre-commit. Pattern reused for chart views as their renderers land.
+/// pre-commit. Exhaustive over [`ViewData`] so a new view kind fails
+/// compilation here and decides deliberately whether it has unplaced
+/// items to warn about; board/table/tree/graph place every
+/// filter-matched item by construction.
 fn emit_unplaced_warnings(view: &View, view_data: &ViewData) {
     let count = match view_data {
         ViewData::Gantt(data) => data.unplaced.len(),
@@ -220,12 +223,13 @@ fn emit_unplaced_warnings(view: &View, view_data: &ViewData) {
         ViewData::BarChart(data) => data.unplaced.len(),
         ViewData::Heatmap(data) => data.unplaced.len(),
         ViewData::Workload(data) => data.unplaced.len(),
-        _ => 0,
+        ViewData::Board(_) | ViewData::Table(_) | ViewData::Tree(_) | ViewData::Graph(_) => 0,
     };
     if count > 0 {
         output::warning(&format!(
-            "view '{}': {count} items dropped — see footer",
+            "view '{}': {} dropped — see footer",
             view.id,
+            render::markdown::pluralize(count, "item"),
         ));
     }
 }

@@ -6,7 +6,6 @@ Directed graph of items connected through `depends_on`, nested by `parent`.
 flowchart TD
     subgraph maintenance-review-2026-08 ["Maintenance pass: findings from the 2026-08 codebase review"]
         assorted-small-fixes["Grab bag of small consistency fixes from the review"]
-        chart-renderer-sharing["Make the terminal chart renderers share what they each rebuilt"]
         message-style-consistency["One voice for validation messages"]
         render-flow-doc["One page that shows how a render flows through the system"]
         schema-property-table["Table-drive the 'is this property allowed on this field type?' check"]

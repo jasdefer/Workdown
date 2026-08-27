@@ -1,6 +1,6 @@
 ---
 id: chart-renderer-sharing
-status: to_do
+status: done
 title: Make the terminal chart renderers share what they each rebuilt
 parent: maintenance-review-2026-08
 depends_on:
@@ -89,3 +89,55 @@ dropped" pluralized correctly with tests updated.
 Depends on [[view-order-in-extractor]] because that item moves logic
 out of `treemap.rs` and `line_chart.rs` first — consolidating around
 code that is about to be relocated would be redone work.
+
+## Decisions taken
+
+Recorded 2026-08-27 after review. Green-field stance agreed: output
+may change where a convention decision changes it.
+
+1. **Two unplaced conventions survive, deliberately.** The chart
+   family keeps the detailed `## Unplaced` section (one linked line
+   per item, reason inline); the gantt family and metric keep the
+   compact blockquote summary (grouped by reason, titles only). Both
+   are fed by one shared reason-wording function so phrasing can
+   never diverge. Rejected: forcing one convention everywhere — the
+   two shapes serve different reading modes (detail list vs. summary).
+
+2. **Treemap joins the chart-family convention.** Its
+   `## Unplaced (missing \`field\`)` heading style is retired; the
+   reason renders inline per bullet like every other chart. One
+   convention fewer.
+
+3. **The blockquote summary groups by the generated phrase.** The
+   seven hand-written reason buckets in `mermaid_gantt.rs` are
+   replaced by a map keyed on the shared wording; groups appear
+   alphabetically by phrase. A new `UnplacedReason` variant then
+   needs zero edits in the blockquote path. Rejected: keeping the
+   hand-picked group order — not load-bearing.
+
+4. **The shared section helper matches exhaustively; renderers stop
+   wordsmithing.** Per-renderer "our extractor only emits X" matches
+   (with silently-skipped arms) are deleted; any reason renders
+   correctly in any view. Which reasons *occur* is the extractors'
+   knowledge, not the renderers'.
+
+5. **Core merges `AggregateValue` and `AxisValue` into `ChartValue`.**
+   The two enums are character-identical; the duration-unit logic is
+   written once. `SizeValue` stays separate — "a size can't be a
+   date" is a real invariant — with a `From<SizeValue> for ChartValue`
+   conversion. Wire shape is unchanged (same serde tagging); only
+   generated TypeScript type names change, a mechanical rename in the
+   web UI. Rejected: CLI-side-only consolidation (leaves two
+   identical types in core forever).
+
+6. **Helper placement:** text-shaped helpers (reason wording,
+   unplaced section, `format_titles`, aggregate-label phrase,
+   pluralization) live in `render/markdown.rs`; numeric/axis helpers
+   stay in `render/svg_chart.rs`.
+
+7. **No-decision fixes bundled in:** delete the two exact duplicates
+   (`compute_extent`, `format_titles`); build the aggregate label
+   ("count" / "sum of estimate") once; replace the `_ => 0` catch-all
+   in `emit_unplaced_warnings` with an exhaustive match; fix
+   "1 items dropped" with a pluralize helper mirroring the web UI's,
+   updating the tests that pin the typo.
