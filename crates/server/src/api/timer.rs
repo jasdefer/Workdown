@@ -7,7 +7,7 @@
 //! `defaults.effort_field` resolves to, in one of three states —
 //! *unconfigured*, *invalid*, *ready* — the only part of `config.yaml`
 //! the UI ever sees. Config is read once at server start, so the UI's
-//! hint tells the user to restart after setting the key.
+//! hint tells the user to restart after setting the key (ADR-013).
 //!
 //! Wrong moves get clean refusals: start while a timer runs is `409`
 //! (the no-takeover rule, enforced server-side too), as is stop when

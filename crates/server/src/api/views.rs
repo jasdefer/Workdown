@@ -5,7 +5,7 @@
 //! cache) via `core::load_project`; the authoring seed handlers
 //! (`/filter`, `/definition`) read `views.yaml` alone — see
 //! `load_one_view` below. Failure mapping follows the three tiers from
-//! the `first-view-end-to-end` decisions:
+//! ADR-013:
 //!
 //! - `Err(LoadError)` → 422 with the synthesized load diagnostic.
 //! - Project loaded, view id not in `views.yaml` → 404 with empty body.

@@ -22,6 +22,7 @@
 | [computed-fields](../workdown-items/computed-fields.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [project-constants](../workdown-items/project-constants.md) |
 | [conditional-field-value](../workdown-items/conditional-field-value.md) | done | [polish](../workdown-items/polish.md) | [expression-predicates](../workdown-items/expression-predicates.md), [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
 | [config-field-role-validation](../workdown-items/config-field-role-validation.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
+| [config-hot-reload](../workdown-items/config-hot-reload.md) | to_do |  |  |
 | [confirm-dialog](../workdown-items/confirm-dialog.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [cross-cutting-helpers](../workdown-items/cross-cutting-helpers.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [derived-field-single-predicate](../workdown-items/derived-field-single-predicate.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
@@ -51,7 +52,7 @@
 | [item-mutations](../workdown-items/item-mutations.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md) |
 | [live-updates](../workdown-items/live-updates.md) | done | [server](../workdown-items/server.md) | [walking-skeleton](../workdown-items/walking-skeleton.md) |
 | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | in_progress |  |  |
-| [message-style-consistency](../workdown-items/message-style-consistency.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) |
+| [message-style-consistency](../workdown-items/message-style-consistency.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) |
 | [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [misc-work](../workdown-items/misc-work.md) | to_do |  |  |
 | [multi-project-design](../workdown-items/multi-project-design.md) | to_do | [multi-project-support](../workdown-items/multi-project-support.md) |  |
@@ -89,7 +90,7 @@
 | [rules-current-date-reference](../workdown-items/rules-current-date-reference.md) | done | [polish](../workdown-items/polish.md) | [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
 | [schema-expressions](../workdown-items/schema-expressions.md) | to_do |  |  |
 | [schema-metadata-api](../workdown-items/schema-metadata-api.md) | done | [view-authoring](../workdown-items/view-authoring.md) |  |
-| [schema-property-table](../workdown-items/schema-property-table.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
+| [schema-property-table](../workdown-items/schema-property-table.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [server](../workdown-items/server.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md), [item-mutations](../workdown-items/item-mutations.md), [renderers](../workdown-items/renderers.md) |
 | [stale-docs-refresh](../workdown-items/stale-docs-refresh.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [stateful-test-gaps](../workdown-items/stateful-test-gaps.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
@@ -123,7 +124,7 @@
 | [virtual-id-in-structural-slots](../workdown-items/virtual-id-in-structural-slots.md) | done | [polish](../workdown-items/polish.md) |  |
 | [walker-primitives](../workdown-items/walker-primitives.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [walking-skeleton](../workdown-items/walking-skeleton.md) | done | [server](../workdown-items/server.md) |  |
-| [web-layer-adr](../workdown-items/web-layer-adr.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
+| [web-layer-adr](../workdown-items/web-layer-adr.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [when-map-shorthand](../workdown-items/when-map-shorthand.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [conditional-field-value](../workdown-items/conditional-field-value.md) |
 | [when-then-value-expressions](../workdown-items/when-then-value-expressions.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [conditional-field-value](../workdown-items/conditional-field-value.md) |
 | [where-clause-value-validation](../workdown-items/where-clause-value-validation.md) | done | [polish](../workdown-items/polish.md) | [explicit-in-operator](../workdown-items/explicit-in-operator.md) |

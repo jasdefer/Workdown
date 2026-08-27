@@ -26,6 +26,9 @@
 //! did this request fail?". `200` for success (warnings still possible),
 //! `422` for well-formed-but-rejected, `404` for unknown routes/IDs,
 //! `500` for I/O failures and panics.
+//!
+//! The three failure tiers and the two 404 shapes are recorded in
+//! ADR-013.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};

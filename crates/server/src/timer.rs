@@ -17,6 +17,8 @@
 //! measured time). For the same reason, start during a break is one
 //! transition under the lock: the break ends and the work interval
 //! begins with no moment in between.
+//!
+//! The lock's scope is a decision, not an oversight: see ADR-013.
 
 use std::sync::{Arc, Mutex};
 

@@ -1,7 +1,7 @@
 //! Server-side state — what every handler needs to find the workdown
 //! project on disk, plus the live-update channel.
 //!
-//! Per the cold-load decision in `first-view-end-to-end`, the server
+//! Per the cold-load decision in ADR-013, the server
 //! never caches the loaded project. Each request goes through
 //! `core::load_project()` against `project_root` and `config`. The
 //! state is therefore just the two pieces needed to re-load: where the

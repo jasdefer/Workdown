@@ -4,15 +4,13 @@ Directed graph of items connected through `depends_on`, nested by `parent`.
 
 ```mermaid
 flowchart TD
+    config-hot-reload["Read config.yaml per request so it hot-reloads like everything else"]
     subgraph maintenance-review-2026-08 ["Maintenance pass: findings from the 2026-08 codebase review"]
         assorted-small-fixes["Grab bag of small consistency fixes from the review"]
-        message-style-consistency["One voice for validation messages"]
         render-flow-doc["One page that shows how a render flows through the system"]
-        schema-property-table["Table-drive the 'is this property allowed on this field type?' check"]
         stale-docs-refresh["Fix the documentation that is actively wrong"]
         stateful-test-gaps["Test the two stateful areas that currently have no coverage"]
         view-kind-sync-guards["Make the non-Rust view-kind mirrors fail loudly when they drift"]
-        web-layer-adr["Write down the web layer's design decisions as an ADR"]
     end
     subgraph misc-work ["Miscellaneous improvements"]
         evaluation-date-single-read["One clock read per invocation, writes included"]

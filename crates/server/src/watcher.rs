@@ -13,6 +13,10 @@
 //! which by construction ignores every editor scratch file (`.swp`,
 //! trailing-`~`, vim's extension-less `4913` probe, `.tmp`) without our
 //! having to enumerate them.
+//!
+//! A `config.yaml` change pings like any other, but the server holds the
+//! config it read at startup — see ADR-013 for that asymmetry, and for
+//! why the timer gets a channel of its own rather than riding this one.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;

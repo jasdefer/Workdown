@@ -5,7 +5,7 @@
 //! [`AppState`]; this handler subscribes a fresh
 //! receiver per connection and forwards each as a contentless
 //! `data: changed` SSE event. The payload carries no detail on purpose:
-//! per the live-updates decisions the client simply re-fetches the
+//! per ADR-013 the client simply re-fetches the
 //! current page's data on any ping rather than acting on event specifics
 //! (a single item edit can ripple into other items' computed values, so
 //! whole-view refetch is both simpler and always correct).
