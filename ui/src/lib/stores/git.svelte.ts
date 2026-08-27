@@ -11,6 +11,7 @@
 
 import { api } from '$lib/api/client';
 import type { GitStatus } from '$lib/api/generated/GitStatus';
+import { pullMessage } from '$lib/git/gitPill';
 
 export interface GitMessage {
 	kind: 'ok' | 'error';
@@ -91,8 +92,8 @@ export const gitStore = {
 			show({ kind: 'error', text: result.error ?? 'Pull failed.' });
 			return;
 		}
-		status = result.data;
-		show({ kind: 'ok', text: 'Pulled' });
+		status = result.data.status;
+		show({ kind: 'ok', text: pullMessage(result.data.pulled_commits) });
 	},
 
 	async push(): Promise<void> {

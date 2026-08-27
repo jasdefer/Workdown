@@ -7,6 +7,15 @@
 
 use serde::Serialize;
 
+/// What a pull accomplished: how many commits came in (0 means the
+/// branch was already up to date — the toast says so instead of
+/// claiming a pull that changed nothing), plus the fresh status.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ts_rs::TS)]
+pub struct GitPullResult {
+    pub pulled_commits: u32,
+    pub status: GitStatus,
+}
+
 /// What the git controls should show — one tagged state per situation
 /// the widget must distinguish. `Disabled` (the default) keeps the
 /// widget entirely hidden; nothing else about the repository is

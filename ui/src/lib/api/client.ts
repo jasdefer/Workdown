@@ -16,6 +16,7 @@ import type { CreateItemResult } from './generated/CreateItemResult';
 import type { CreateView } from './generated/CreateView';
 import type { Diagnostic } from './generated/Diagnostic';
 import type { FieldMutation } from './generated/FieldMutation';
+import type { GitPullResult } from './generated/GitPullResult';
 import type { GitStatus } from './generated/GitStatus';
 import type { FieldMutationResult } from './generated/FieldMutationResult';
 import type { ItemDetail } from './generated/ItemDetail';
@@ -160,7 +161,7 @@ export const api = {
 	 */
 	getGitStatus: (fetch: boolean) =>
 		request<GitStatus>('GET', `/api/git${fetch ? '?fetch=true' : ''}`),
-	gitPull: () => request<GitStatus>('POST', '/api/git/pull'),
+	gitPull: () => request<GitPullResult>('POST', '/api/git/pull'),
 	gitPush: () => request<GitStatus>('POST', '/api/git/push'),
 	getTimer: () => request<TimerState>('GET', '/api/timer'),
 	/**

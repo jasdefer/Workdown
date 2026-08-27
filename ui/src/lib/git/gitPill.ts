@@ -29,6 +29,12 @@ const HIDDEN: GitPillModel = {
 	dirtyHint: null
 };
 
+/** The pull toast: whether anything actually came in, and how much. */
+export function pullMessage(pulledCommits: number): string {
+	if (pulledCommits === 0) return 'Already up to date';
+	return `Pulled ${String(pulledCommits)} ${pulledCommits === 1 ? 'commit' : 'commits'}`;
+}
+
 export function pillModel(status: GitStatus | null, busy: boolean): GitPillModel {
 	if (status?.state !== 'ready') {
 		return HIDDEN;

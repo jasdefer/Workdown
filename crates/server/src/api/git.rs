@@ -10,7 +10,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use serde::Deserialize;
 
-use workdown_core::git_data::GitStatus;
+use workdown_core::git_data::{GitPullResult, GitStatus};
 
 use crate::envelope::ApiResponse;
 use crate::git;
@@ -83,7 +83,10 @@ async fn git_status(
 /// cross-origin POSTs at localhost ports — a browser sends the page's
 /// `Origin` on such requests, so a foreign one is refused outright.
 /// Non-browser clients (curl, scripts) send no `Origin` and pass.
-fn refuse_mutation(state: &AppState, headers: &HeaderMap) -> Option<ApiResponse<GitStatus>> {
+fn refuse_mutation<T: serde::Serialize>(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Option<ApiResponse<T>> {
     if !git_controls_enabled(state) {
         return Some(ApiResponse::failed(
             StatusCode::NOT_FOUND,
@@ -138,11 +141,21 @@ async fn git_push(State(state): State<AppState>, headers: HeaderMap) -> ApiRespo
     }
 }
 
-async fn git_pull(State(state): State<AppState>, headers: HeaderMap) -> ApiResponse<GitStatus> {
+async fn git_pull(State(state): State<AppState>, headers: HeaderMap) -> ApiResponse<GitPullResult> {
     if let Some(refusal) = refuse_mutation(&state, &headers) {
         return refusal;
     }
     let _network = state.git_lock.lock().await;
+    // Where the upstream stood before — afterwards, what it gained is
+    // exactly what the pull brought in ("already up to date" when
+    // nothing). Measured on the tracking ref, not HEAD: a rebasing pull
+    // rewrites local commits, which are not "pulled".
+    let upstream_before = match git::upstream_commit(&state.project_root).await {
+        Ok(upstream) => upstream,
+        Err(error) => {
+            return ApiResponse::failed(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+        }
+    };
     let pulled = match git::pull(&state.project_root).await {
         Ok(output) => output,
         Err(error) => {
@@ -160,10 +173,20 @@ async fn git_pull(State(state): State<AppState>, headers: HeaderMap) -> ApiRespo
             format!("pull failed: {}", pulled.stderr.trim()),
         );
     }
+    let pulled_commits =
+        match git::upstream_commits_since(&state.project_root, upstream_before.as_deref()).await {
+            Ok(count) => count,
+            Err(error) => {
+                return ApiResponse::failed(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+            }
+        };
     // The changed files also wake the file watcher, whose ping makes
     // every open tab refetch its view — no manual event needed here.
     match git::collect_status(&state.project_root).await {
-        Ok(status) => ApiResponse::ok(status),
+        Ok(status) => ApiResponse::ok(GitPullResult {
+            pulled_commits,
+            status,
+        }),
         Err(error) => ApiResponse::failed(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
     }
 }

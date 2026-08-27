@@ -103,6 +103,34 @@ pub async fn push(root: &Path) -> Result<GitOutput, GitError> {
     run(root, &["push"], NETWORK_TIMEOUT).await
 }
 
+/// The commit the upstream tracking ref points at, or `None` when the
+/// branch has no upstream (or it doesn't resolve yet).
+pub async fn upstream_commit(root: &Path) -> Result<Option<String>, GitError> {
+    let output = run(root, &["rev-parse", "@{upstream}"], LOCAL_TIMEOUT).await?;
+    Ok(output
+        .success
+        .then(|| output.stdout.trim().to_owned())
+        .filter(|hash| !hash.is_empty()))
+}
+
+/// How many commits the upstream gained since `old_upstream` — what a
+/// pull actually brought in. Deliberately measured on the tracking ref,
+/// not on `HEAD`: a rebasing pull rewrites local commits, and an
+/// old-HEAD..HEAD count would include those rewrites as if they had
+/// been pulled. `None` for the old tip means the upstream is new, so
+/// everything reachable from it counts.
+pub async fn upstream_commits_since(
+    root: &Path,
+    old_upstream: Option<&str>,
+) -> Result<u32, GitError> {
+    let range = match old_upstream {
+        Some(old) => format!("{old}..@{{upstream}}"),
+        None => "@{upstream}".to_owned(),
+    };
+    let output = run(root, &["rev-list", "--count", &range], LOCAL_TIMEOUT).await?;
+    Ok(output.stdout.trim().parse().unwrap_or(0))
+}
+
 /// Back out of a failed rebase, restoring the pre-pull state. Callers
 /// treat this as best-effort: when the pull failed before the rebase
 /// even started (network down, no upstream) there is nothing to abort

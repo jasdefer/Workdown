@@ -260,8 +260,64 @@ async fn pull_fast_forwards_new_remote_commits() {
     assert_eq!(status, StatusCode::OK, "body: {body}");
     assert!(work.join("workdown-items/item-b.md").exists());
     let data = &body["data"];
-    assert_eq!(data["state"], "ready");
-    assert_eq!(data["behind"], 0);
+    assert_eq!(data["pulled_commits"], 1);
+    assert_eq!(data["status"]["state"], "ready");
+    assert_eq!(data["status"]["behind"], 0);
+}
+
+#[tokio::test]
+async fn pull_when_up_to_date_reports_zero_commits() {
+    let (_directory, work) = init_synced_repo();
+
+    let (status, body) = post_json(
+        state_for(work.clone(), CONFIG_WITH_GIT_CONTROLS),
+        "/api/git/pull",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["data"]["pulled_commits"], 0);
+    assert_eq!(body["data"]["status"]["state"], "ready");
+}
+
+#[tokio::test]
+async fn pull_counts_only_incoming_commits_not_rebased_local_ones() {
+    let (directory, work) = init_synced_repo();
+
+    // One remote commit to pull in…
+    let other = clone_remote(&directory, "other");
+    fs::write(
+        other.join("workdown-items/item-b.md"),
+        "---\ntitle: Item B\nstatus: open\n---\n",
+    )
+    .unwrap();
+    run_git(&other, &["add", "-A"]);
+    run_git(&other, &["commit", "-m", "remote: add item-b"]);
+    run_git(&other, &["push"]);
+
+    // …and one local commit that the pull rebases on top of it. The
+    // rebase rewrites the local commit (new hash), which a naive
+    // old-HEAD..HEAD count would wrongly include.
+    fs::write(
+        work.join("workdown-items/item-c.md"),
+        "---\ntitle: Item C\nstatus: open\n---\n",
+    )
+    .unwrap();
+    run_git(&work, &["add", "-A"]);
+    run_git(&work, &["commit", "-m", "local: add item-c"]);
+
+    let (status, body) = post_json(
+        state_for(work.clone(), CONFIG_WITH_GIT_CONTROLS),
+        "/api/git/pull",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["data"]["pulled_commits"], 1);
+    // The local commit survived the rebase and still waits to be pushed.
+    assert_eq!(body["data"]["status"]["ahead"], 1);
 }
 
 #[tokio::test]

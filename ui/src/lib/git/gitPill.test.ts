@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pillModel } from './gitPill';
+import { pillModel, pullMessage } from './gitPill';
 import type { GitStatus } from '$lib/api/generated/GitStatus';
 
 const ready = (overrides: Partial<Extract<GitStatus, { state: 'ready' }>> = {}): GitStatus => ({
@@ -55,6 +55,12 @@ describe('pillModel', () => {
 		);
 		expect(pillModel(ready({ ahead: 2 }), false).pushTitle).toBe('Push 2 commits');
 		expect(pillModel(ready({ ahead: 1 }), false).pushTitle).toBe('Push 1 commit');
+	});
+
+	it('tells whether the pull actually brought something in', () => {
+		expect(pullMessage(0)).toBe('Already up to date');
+		expect(pullMessage(1)).toBe('Pulled 1 commit');
+		expect(pullMessage(3)).toBe('Pulled 3 commits');
 	});
 
 	it('reminds about uncommitted changes without blocking push', () => {

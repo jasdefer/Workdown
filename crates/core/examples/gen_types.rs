@@ -26,7 +26,7 @@ use std::path::Path;
 use ts_rs::TS;
 
 use strum::VariantArray;
-use workdown_core::git_data::GitStatus;
+use workdown_core::git_data::{GitPullResult, GitStatus};
 use workdown_core::item_data::ItemDetail;
 use workdown_core::model::diagnostic::{
     CollectionDiagnostic, CollectionDiagnosticKind, ConfigDiagnostic, ConfigDiagnosticKind,
@@ -195,6 +195,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Git sync contracts (GET /api/git, POST /api/git/pull, POST /api/git/push).
     exports.add::<GitStatus>();
+    exports.add::<GitPullResult>();
 
     // Single-item read projection (GET /api/items/:id).
     exports.add::<ItemDetail>();
