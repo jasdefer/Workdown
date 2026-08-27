@@ -8,6 +8,7 @@ use std::path::Path;
 use indexmap::IndexMap;
 
 use crate::expression::parse_expression;
+use crate::model::message::one_of;
 use crate::model::schema::{
     allowed_aggregate_functions, field_property_allowed, is_defined_inverse, is_relation_anchor,
     Assertion, ComputeConfig, Condition, ConditionValue, CountConstraint, DefaultValue,
@@ -363,8 +364,12 @@ fn interpret_when_branch(
             }
             Some("then") => then_value = Some(value.clone()),
             _ => {
+                let named = match key.as_str() {
+                    Some(name) => format!("'{name}'"),
+                    None => "a non-string key".to_owned(),
+                };
                 return Err(branch_error(format!(
-                    "unknown key {key:?} (a branch has exactly 'if' and 'then')"
+                    "unknown key {named} (a branch has exactly 'if' and 'then')"
                 )));
             }
         }
@@ -453,9 +458,10 @@ fn interpret_compute(value: &serde_yaml::Value) -> Result<ComputeParts, String> 
                     Some("floor") => RoundMode::Floor,
                     Some("ceil") => RoundMode::Ceil,
                     _ => {
-                        return Err(
-                            "compute 'round' must be one of: nearest, floor, ceil".to_owned()
-                        )
+                        return Err(format!(
+                            "compute 'round' must be {}",
+                            one_of(&["nearest", "floor", "ceil"])
+                        ))
                     }
                 });
             }
@@ -1010,7 +1016,7 @@ fn validate_default_compatibility(
                     if !values.contains(s) {
                         errors.push(field_error(
                             name,
-                            format!("default '{s}' is not in the allowed values"),
+                            format!("default '{s}' is not {}", one_of(values)),
                         ));
                     }
                 }
@@ -2375,7 +2381,7 @@ fields:
         then: green
         els: red
 ";
-        assert_validation_error_contains(unknown_key, "'when' branch 1: unknown key");
+        assert_validation_error_contains(unknown_key, "'when' branch 1: unknown key 'els'");
 
         let not_a_list = "\
 fields:
@@ -2592,9 +2598,12 @@ fields:
             SchemaLoadError::Validation(e) => e,
             other => panic!("expected Validation error, got: {other}"),
         };
-        assert!(errors
-            .iter()
-            .any(|e| e.message.contains("not in the allowed values")));
+        assert!(
+            errors.iter().any(|e| e
+                .message
+                .contains("default 'pending' is not one of: open, closed")),
+            "{errors:?}"
+        );
     }
 
     // ── Rule validation errors ────────────────────────────────────
