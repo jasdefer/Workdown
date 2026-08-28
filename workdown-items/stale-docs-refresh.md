@@ -33,9 +33,18 @@ you *less* correct about the code.
   `parse_value_for_field` (line 114) is undocumented. (Its collection
   arm also re-implements `parse_collection_values`' comma-split
   inline — fold that while there.)
-- **`crates/core/src/parser/schema.rs:152,162,172`** — doc comments
+- **`crates/core/src/parser/schema.rs:147,158,168`** — doc comments
   say "Regex for valid field names" over what are hand-rolled
-  character loops, not regexes.
+  character loops, not regexes. (Lines shifted from the 152/162/172
+  the review recorded when [[assorted-small-fixes]] removed a
+  duplicate helper above them.)
+- **`crates/server/src/api/views.rs:12-14`** — the module's tier list
+  says a view is withheld when it "has a `views_check` diagnostic
+  pinned to it". Only an *error* withholds it; a warning pinned to the
+  view rides along in the tier-3 response, which the same file's
+  tier-2 comment states correctly. Found while
+  [[assorted-small-fixes]] moved that rule into `CheckedView` — the
+  header just needs the word "error".
 
 (The stale doc table inside `views_check.rs` was handled by
 [[metric-row-check-unification]], which rewrote those functions;
