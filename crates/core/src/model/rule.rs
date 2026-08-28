@@ -15,17 +15,17 @@ use super::condition::Condition;
 #[derive(Debug, Clone)]
 pub struct Rule {
     /// Unique identifier (kebab-case).
-    pub name: std::string::String,
+    pub name: String,
     /// Human-readable explanation, shown in validation output.
-    pub description: Option<std::string::String>,
+    pub description: Option<String>,
     /// Whether a violation is an error or warning.
     pub severity: Severity,
     /// Conditions that select which work items this rule applies to.
     /// Keys are field references (possibly dot-notation). All must match (AND).
-    pub match_conditions: IndexMap<std::string::String, Condition>,
+    pub match_conditions: IndexMap<String, Condition>,
     /// Assertions that must hold for each matching item.
     /// Keys are field references. All must hold (AND).
-    pub require: IndexMap<std::string::String, Assertion>,
+    pub require: IndexMap<String, Assertion>,
     /// Collection-wide count constraint on matching items.
     pub count: Option<CountConstraint>,
 }
@@ -34,15 +34,15 @@ pub struct Rule {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RawRule {
-    pub name: std::string::String,
+    pub name: String,
     #[serde(default)]
-    pub description: Option<std::string::String>,
+    pub description: Option<String>,
     #[serde(default)]
     pub severity: Severity,
     #[serde(default, rename = "match")]
-    pub match_conditions: IndexMap<std::string::String, Condition>,
+    pub match_conditions: IndexMap<String, Condition>,
     #[serde(default)]
-    pub require: IndexMap<std::string::String, Assertion>,
+    pub require: IndexMap<String, Assertion>,
     #[serde(default)]
     pub count: Option<CountConstraint>,
 }

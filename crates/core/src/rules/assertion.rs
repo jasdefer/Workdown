@@ -150,9 +150,7 @@ fn check_operator(
 
     // Field-to-field comparisons — skip when either operand is null.
     if let Some(ref other_ref) = operator.eq_field {
-        if let Some(detail) =
-            check_field_comparison(item, field_ref, other_ref, Ordering::Equal, "==", ctx)
-        {
+        if let Some(detail) = check_field_comparison(item, field_ref, other_ref, "==", ctx) {
             return Some(detail);
         }
     }
@@ -216,7 +214,6 @@ fn check_field_comparison(
     item: &WorkItem,
     field_ref: &str,
     other_ref: &str,
-    _expected: Ordering,
     operator_str: &str,
     ctx: &EvalContext,
 ) -> Option<String> {
