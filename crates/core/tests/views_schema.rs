@@ -311,6 +311,7 @@ views:
 ",
     );
 }
+
 #[test]
 fn metric_sum_with_value_validates() {
     let schema = guard();

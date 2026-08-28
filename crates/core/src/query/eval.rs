@@ -198,18 +198,9 @@ fn eval_string(field_value: &FieldValue, comparison: &Comparison) -> bool {
     let expected = comparison.operand.text();
 
     match comparison.operator {
-        Operator::Equal => actual == expected,
-        Operator::NotEqual => actual != expected,
-        Operator::GreaterThan => actual.as_str() > expected,
-        Operator::LessThan => actual.as_str() < expected,
-        Operator::GreaterOrEqual => actual.as_str() >= expected,
-        Operator::LessOrEqual => actual.as_str() <= expected,
         Operator::Contains => actual.contains(expected),
         Operator::Matches => eval_regex(comparison, &actual),
-        Operator::IsSet | Operator::IsNotSet => unreachable!("handled above"),
-        Operator::In | Operator::NotIn => {
-            unreachable!("desugared into Or/And by query::parse")
-        }
+        operator => eval_ordered(Some(actual.as_str()), Some(expected), operator),
     }
 }
 
@@ -468,26 +459,22 @@ mod tests {
         }
     }
 
-    /// Build the operand a parsed clause would carry: `Matches` values are
-    /// given in the `/pattern/flags` form and become compiled regexes.
-    fn operand_for(operator: Operator, value: &str) -> Operand {
-        if operator != Operator::Matches {
-            return Operand::Value(value.to_owned());
-        }
-        let inner = value
-            .strip_prefix('/')
-            .expect("test regex value uses the /pattern/flags form");
-        let closing = inner
-            .rfind('/')
-            .expect("test regex value uses the /pattern/flags form");
-        Operand::Regex(QueryRegex::new(&inner[..closing], &inner[closing + 1..]).unwrap())
-    }
-
     fn comparison(field: &str, operator: Operator, value: &str) -> Predicate {
         Predicate::Comparison(Comparison {
             field: FieldReference::Local(field.to_owned()),
             operator,
-            operand: operand_for(operator, value),
+            operand: Operand::Value(value.to_owned()),
+        })
+    }
+
+    /// A `Matches` clause carrying the compiled regex the parser would
+    /// hand the evaluator, built from its parts — splitting the
+    /// `/pattern/flags` clause form stays the parser's job alone.
+    fn regex_comparison(field: &str, pattern: &str, flags: &str) -> Predicate {
+        Predicate::Comparison(Comparison {
+            field: FieldReference::Local(field.to_owned()),
+            operator: Operator::Matches,
+            operand: Operand::Regex(QueryRegex::new(pattern, flags).unwrap()),
         })
     }
 
@@ -668,7 +655,7 @@ mod tests {
             "t1",
             vec![("title", FieldValue::String("Fix-login-bug".into()))],
         );
-        let predicate = comparison("title", Operator::Matches, "/^Fix-.*/");
+        let predicate = regex_comparison("title", "^Fix-.*", "");
         assert!(check(&item, &predicate, &schema).unwrap());
     }
 
@@ -679,7 +666,7 @@ mod tests {
             "t1",
             vec![("title", FieldValue::String("fix-login-bug".into()))],
         );
-        let predicate = comparison("title", Operator::Matches, "/^Fix-.*/i");
+        let predicate = regex_comparison("title", "^Fix-.*", "i");
         assert!(check(&item, &predicate, &schema).unwrap());
     }
 
@@ -1019,8 +1006,6 @@ mod tests {
             (Operator::NotEqual, "other", true),
             (Operator::Contains, "login", true),
             (Operator::Contains, "logout", false),
-            (Operator::Matches, "/^auth-/", true),
-            (Operator::Matches, "/^billing-/", false),
             (Operator::IsSet, "", true),
             (Operator::IsNotSet, "", false),
         ] {
@@ -1028,6 +1013,13 @@ mod tests {
                 check(&item, &comparison("id", operator, value), &schema).unwrap(),
                 expected,
                 "id {operator:?} {value}"
+            );
+        }
+        for (pattern, expected) in [("^auth-", true), ("^billing-", false)] {
+            assert_eq!(
+                check(&item, &regex_comparison("id", pattern, ""), &schema).unwrap(),
+                expected,
+                "id Matches /{pattern}/"
             );
         }
     }
@@ -1064,7 +1056,7 @@ mod tests {
                 field: field.to_owned(),
             },
             operator,
-            operand: operand_for(operator, value),
+            operand: Operand::Value(value.to_owned()),
         })
     }
 

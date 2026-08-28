@@ -832,7 +832,7 @@ mod tests {
         // that has none.
         let members: HashSet<String> = ["open", "done", "in_progress"]
             .iter()
-            .map(|v| (*v).to_owned())
+            .map(|value| (*value).to_owned())
             .collect();
         assert_eq!(
             describe_unordered_set(&members),

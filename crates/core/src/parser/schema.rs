@@ -1753,7 +1753,7 @@ fields:
         };
         let matching: Vec<_> = errors
             .iter()
-            .filter(|e| e.message.contains("'pattern' is not a valid regex"))
+            .filter(|error| error.message.contains("'pattern' is not a valid regex"))
             .collect();
         assert_eq!(
             matching.len(),
@@ -2647,7 +2647,7 @@ fields:
             other => panic!("expected Validation error, got: {other}"),
         };
         assert!(
-            errors.iter().any(|e| e
+            errors.iter().any(|error| error
                 .message
                 .contains("default 'pending' is not one of: open, closed")),
             "{errors:?}"

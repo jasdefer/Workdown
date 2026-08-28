@@ -222,13 +222,8 @@ fn run_templates_command(
         }
         cli::TemplatesAction::Show { name } => {
             tracing::info!("showing template");
-            match commands::templates::run_templates_show(config, project_root, name) {
-                Ok(()) => Ok(ExitCode::SUCCESS),
-                Err(err) => {
-                    cli::output::error(&err.to_string());
-                    Ok(ExitCode::FAILURE)
-                }
-            }
+            commands::templates::run_templates_show(config, project_root, name)?;
+            Ok(ExitCode::SUCCESS)
         }
     }
 }
@@ -314,10 +309,6 @@ fn run_add_command(
                 cli::output::warning(&warning.to_string());
             }
             Ok(exit_code(!outcome.mutation_caused_warning))
-        }
-        Err(error @ workdown_core::operations::add::AddError::Template(_)) => {
-            cli::output::error(&error.to_string());
-            Ok(ExitCode::FAILURE)
         }
         Err(error) => Err(error.into()),
     }

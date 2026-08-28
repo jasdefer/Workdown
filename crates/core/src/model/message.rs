@@ -117,7 +117,9 @@ mod tests {
 
     #[test]
     fn a_set_at_the_cap_is_not_truncated() {
-        let values: Vec<String> = (1..=MAX_LISTED_VALUES).map(|i| i.to_string()).collect();
+        let values: Vec<String> = (1..=MAX_LISTED_VALUES)
+            .map(|number| number.to_string())
+            .collect();
         assert!(!one_of(&values).contains("more)"));
     }
 
