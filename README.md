@@ -167,6 +167,8 @@ The workspace is one Cargo workspace plus a separate SvelteKit project for the w
 | `crates/xtask`  | Build orchestrator — runs `npm` then `cargo` for release builds |
 | `ui/`           | SvelteKit project (TypeScript, `adapter-static` in SPA mode) |
 
+[docs/architecture.md](docs/architecture.md) walks the pipeline those crates form — config, schema, item load, derivation, checks, and the four exits (render, validate, serve, mutations) — and carries the checklist for adding a view kind. Start there before a first change that crosses crate boundaries.
+
 A devcontainer is provided with Rust and Node 20 preinstalled — open the repo in VS Code and "Reopen in Container".
 
 **UI iteration loop** (fast feedback with HMR):

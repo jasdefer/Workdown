@@ -14,9 +14,10 @@ place that must be updated. Three mirrors of that knowledge live
 outside its reach: a hand-maintained table in the web UI, the JSON
 editor-autocomplete schema, and the docs. The JSON schema turned out
 to be guarded already — the gap there is narrower than the review
-thought. The web UI table has nothing, and both existing guards check
-*shapes* rather than the *list of kinds*, so a fourteenth kind missing
-from a mirror still ships silently. Close that.
+thought. The web UI table is half-guarded — the type checker catches
+one of its three lists — and every existing guard checks *shapes*
+rather than the *list of kinds*, so a fourteenth kind missing from a
+mirror still ships silently. Close that.
 
 A fourth mirror with the same shape — `schema.schema.json`'s copy of
 the field-type property matrix — was folded in from
@@ -32,18 +33,37 @@ The three mirrors, and what guards each today:
   of the thirteen view kinds with their slot and accepted-type lists,
   duplicating `views_check.rs` validation by convention. The blast
   radius is honestly bounded (the server re-validates, so drift is a
-  UX gap, not corruption) and the file says so — but it is the one
-  place the generated-types discipline is deliberately broken. Either
-  add a sync test or serve the table from the backend, which already
-  knows it.
+  UX gap, not corruption) and the file says so.
+
+  Sharper than the review recorded: the file holds *three* lists, and
+  they are not equally exposed. `VIEW_KIND_CONTROLS` is typed
+  `Record<ViewType, Control[]>`, so TypeScript already refuses a
+  missing kind once `ViewType` is regenerated — that one is guarded.
+  `VIEW_KINDS`, the ordered picker list, is a plain `ViewType[]` and
+  is not; nor are the per-slot accepted-type lists that mirror
+  `views_check`. The existing `viewKinds.test.ts` does not close the
+  gap either: its assertion is `toHaveLength(13)`, which still passes
+  when a fourteenth kind is missing from the list. So the work here is
+  narrower and more precise than "add a sync test" — it is the picker
+  list and the accepted-type lists, not the controls record.
+
+  It remains the one place the generated-types discipline is
+  deliberately broken. Either guard those two lists, or serve the
+  table from the backend, which already knows it.
 - **`crates/core/defaults/views.schema.json`** — **already guarded**,
   contrary to the original review finding.
   `crates/core/tests/views_schema.rs` compiles the schema and runs it
   against the default `views.yaml`, a multi-view example, and a battery
   of bad shapes (29 tests). The remaining gap is narrower than "add a
   drift test":
-  - the guard's example covers 11 of the 13 kinds, so two kinds are
-    unexercised;
+  - the guard has *two* "all view types" fixtures
+    (`full_example_with_all_view_types_validates` and
+    `display_block_on_every_view_type_validates`) and both cover 12 of
+    the 13 kinds — `gantt_by_depth` is missing from each. Corrected
+    while writing [[render-flow-doc]]'s checklist; the review had
+    recorded 11 of 13. Two hand-maintained copies of the same kind
+    list is the milestone's own theme, so extending them means
+    deriving both from one fixture, not editing two;
   - it validates *shapes*, never asserting that the set of `type:`
     values the schema accepts equals the `ViewKind` variants — a
     fourteenth kind absent from the schema passes every test.
@@ -71,6 +91,22 @@ The three mirrors, and what guards each today:
   the `views.schema.json` assertion means writing the
   compare-a-JSON-schema-against-a-Rust-enum helper once. Neither is
   worth the helper alone; together they are.
+
+### A fifth mirror, already removed — not in this item's scope
+
+`crates/core/examples/gen_types.rs` used to hold two hand-maintained
+lists that had to agree: the `write_type::<T>()` calls, and an
+`ALL_TYPES` name array the import resolver scanned. A comment asked
+the next contributor to keep them in sync. Forgetting the call omitted
+a `.ts` file; forgetting the array entry emitted the file but silently
+dropped the `import type` line from every type referencing it — the
+quieter and nastier of the two.
+
+Found while writing [[render-flow-doc]]'s checklist and fixed there,
+because it needed no helper: collecting the exports before writing any
+file lets imports resolve against what was actually exported, so the
+array is gone rather than guarded. Generated output is byte-identical.
+Noted here only so this item's scope stays four mirrors, not five.
 
 ## Evidence this is worth doing
 
