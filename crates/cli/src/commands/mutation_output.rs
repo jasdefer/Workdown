@@ -45,6 +45,18 @@ pub enum MutationMode {
 /// warnings. Info messages describe what the operation did (e.g. a
 /// duplicate append) and never affect the exit code; warnings come from
 /// the post-write store reload and do.
+///
+/// The policy across every mutating command: **a warning this mutation
+/// caused fails the command; a warning that was already there does
+/// not.** The post-write reload sees the whole project, so it surfaces
+/// both — only the first kind is this invocation's doing, and only the
+/// first kind should stop a script.
+///
+/// `workdown body` looks like an exception and is not. It prints the
+/// same warnings but always exits successfully, because body text goes
+/// through no schema validation and so cannot cause one: every warning
+/// it prints is pre-existing by construction. Same rule, no branch to
+/// write.
 pub fn render_outcome(id: &str, field: &str, mode: MutationMode, outcome: &SetOutcome) -> ExitCode {
     let headline = match &mode {
         MutationMode::Replace => format_replace(field, outcome),

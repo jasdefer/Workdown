@@ -4,6 +4,12 @@
 //! Bodies don't go through schema validation, so the output line is a
 //! simple line-count summary rather than the field-mutation rendering in
 //! [`super::mutation_output`].
+//!
+//! That same fact is why a successful replace always exits successfully
+//! while `set` and friends can exit with failure: they share the policy
+//! that a mutation which *causes* a warning fails the command, and body
+//! text can cause none. Any warning printed below was already there.
+//! See the policy note on [`super::mutation_output::render_outcome`].
 
 use std::path::Path;
 use std::process::ExitCode;
