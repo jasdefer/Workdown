@@ -1,20 +1,23 @@
 <!--
   Single kanban column. Sticky header at the top, vertically
   scrollable card list below. The synthetic "no value" column renders
-  with a muted `(none)` header.
+  with a muted header named by `noValueLabel`.
 -->
 <script lang="ts">
 	import type { BoardColumn } from '$lib/api/generated/BoardColumn';
 	import { dropTarget } from '$lib/dnd/dnd';
+	import { noValueLabel } from '$lib/views/prettify';
 	import Card from './Card.svelte';
 
 	interface Props {
 		column: BoardColumn;
+		/** Board field name, used to name the synthetic no-value column. */
+		field: string;
 		/** Move a dropped card to this column's value (the board field). */
 		onmove: (cardId: string, toValue: string | null) => void;
 	}
 
-	let { column, onmove }: Props = $props();
+	let { column, field, onmove }: Props = $props();
 </script>
 
 <section
@@ -25,7 +28,7 @@
 	}}
 >
 	<header class="header">
-		<span class="value">{column.value ?? '(none)'}</span>
+		<span class="value">{column.value ?? noValueLabel(field)}</span>
 		<span class="count" aria-label="Card count">{column.cards.length}</span>
 	</header>
 	<div class="cards">

@@ -33,12 +33,7 @@ pub(crate) fn make_schema(fields: Vec<(&str, FieldTypeConfig)>) -> Schema {
     for (name, config) in fields {
         map.insert(name.to_owned(), FieldDefinition::new(config));
     }
-    let inverse_table = Schema::build_inverse_table(&map);
-    Schema {
-        fields: map,
-        rules: vec![],
-        inverse_table,
-    }
+    Schema::new(map, vec![])
 }
 
 pub(super) fn make_store(schema: &Schema, items: Vec<WorkItem>) -> Store {

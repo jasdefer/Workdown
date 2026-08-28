@@ -28,6 +28,7 @@ import {
 	type CountdownObservation
 } from '$lib/timer/announcements';
 import { announceCrossing, requestNotificationPermission } from '$lib/timer/announcer';
+import { stopFailure, undoMutation } from '$lib/timer/stopOutcome';
 import { anchoredElapsedSeconds } from '$lib/timer/timerMath';
 import { prettifyId } from '$lib/views/prettify';
 
@@ -260,14 +261,15 @@ export const timerStore = {
 			// A failed write (or no response at all) leaves the interval
 			// running server-side. A `409` is the other family: there was
 			// no work interval to stop — this tab's state is stale, so
-			// resync it alongside the toast.
-			const nothingToStop = result.status === 409;
+			// resync it alongside the toast. Which of the two this is, and
+			// what the toast says about it, is `stopFailure`'s call.
+			const failure = stopFailure(result.status, result.error);
 			toast = {
 				kind: 'stop_failed',
-				message: result.error ?? 'Stopping the timer failed.',
-				timerStillRunning: !nothingToStop
+				message: failure.message,
+				timerStillRunning: !failure.nothingToStop
 			};
-			if (nothingToStop) {
+			if (failure.nothingToStop) {
 				await this.reload();
 			}
 			return;
@@ -303,15 +305,8 @@ export const timerStore = {
 		if (toast === null || (toast.kind !== 'stopped' && toast.kind !== 'undo_failed')) return;
 		const stopped = toast.result;
 		if (stopped.write === null) return;
-		const previous = stopped.write.previous_value;
 		busy = true;
-		const result = await api.setField(
-			stopped.item_id,
-			stopped.field,
-			previous !== null && previous !== undefined
-				? { op: 'replace', value: previous }
-				: { op: 'unset' }
-		);
+		const result = await api.setField(stopped.item_id, stopped.field, undoMutation(stopped.write));
 		busy = false;
 		if (result.error !== undefined) {
 			toast = { kind: 'undo_failed', result: stopped, message: result.error };

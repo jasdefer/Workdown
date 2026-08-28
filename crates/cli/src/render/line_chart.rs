@@ -5,31 +5,29 @@
 //! a single `<svg>` block (or `_(no items)_` when there are no points), and
 //! a `## Unplaced` footer when the extractor dropped any items.
 //!
-//! Multi-series: when the view has `group:` set, points partition into one
-//! series per distinct group value. Items missing the group value land in
-//! a synthetic `(no <field>)` series. Series colors come from the
-//! Okabe-Ito palette (color-blind-safe), assigned in series-sort order
-//! and recycled past 8 groups for determinism.
+//! Multi-series: the extractor partitions points into series and fixes
+//! their order; this renderer draws them as received. It supplies only
+//! presentation — the no-value series is named by `no_value_label`, and
+//! colors come from the Okabe-Ito palette (color-blind-safe), assigned
+//! in received order and recycled past 8 groups for determinism.
 //!
-//! Axis units: x and y are formatted per their underlying [`AxisValue`] /
-//! [`SizeValue`] variant. Numeric values use `format_number`; date values
+//! Axis units: x and y are formatted per their underlying [`ChartValue`]
+//! variant (the y-side [`workdown_core::view_data::SizeValue`] converts
+//! into it). Numeric values use `format_number`; date values
 //! use `YYYY-MM-DD`; duration values pick the largest fitting unit
 //! (`w`/`d`/`h`/`min`/`s`) so axis ticks render as plain numbers and the
 //! axis label names the unit (e.g. `estimate (hours)`). Mixed axes
 //! shouldn't happen in practice — every point on one axis comes from the
 //! same schema field — and the renderer panics if it sees one.
 
-use std::collections::BTreeMap;
-use std::fmt::Write as _;
-
 use plotters::prelude::*;
 
-use workdown_core::view_data::{AxisValue, LineChartData, LinePoint, SizeValue, UnplacedReason};
+use workdown_core::view_data::{ChartValue, LineChartData, LinePoint};
 
-use crate::render::markdown::{card_link, emit_description};
+use crate::render::markdown::{emit_description, emit_unplaced_section, no_value_label};
 use crate::render::svg_chart::{
-    axis_label, date_to_f64, format_axis_tick, hex_to_rgb, numeric_extent, pad_extent,
-    pick_duration_unit, strip_svg_blank_lines, AxisKind, OKABE_ITO,
+    axis_kind_for, axis_label, format_axis_tick, hex_to_rgb, numeric_extent, pad_extent,
+    strip_svg_blank_lines, value_to_f64, AxisKind, OKABE_ITO,
 };
 
 const SVG_WIDTH: u32 = 800;
@@ -49,12 +47,12 @@ pub fn render_line_chart(data: &LineChartData, item_link_base: &str, description
     ));
     emit_description(description, &mut out);
 
-    if data.points.is_empty() && data.unplaced.is_empty() {
+    if data.series.is_empty() && data.unplaced.is_empty() {
         out.push_str("_(no items)_\n");
         return out;
     }
 
-    if !data.points.is_empty() {
+    if !data.series.is_empty() {
         let svg = render_svg(data);
         out.push_str(&svg);
         if !out.ends_with('\n') {
@@ -63,26 +61,7 @@ pub fn render_line_chart(data: &LineChartData, item_link_base: &str, description
         out.push('\n');
     }
 
-    if !data.unplaced.is_empty() {
-        out.push_str("## Unplaced\n");
-        for unplaced in &data.unplaced {
-            let link = card_link(&unplaced.card, item_link_base);
-            match &unplaced.reason {
-                UnplacedReason::MissingValue { field } => {
-                    let _ = writeln!(out, "- {link} — missing `{field}`");
-                }
-                // The line chart extractor only emits MissingValue today;
-                // listing the rest explicitly so adding a new variant
-                // fails compilation here and prompts an audit.
-                UnplacedReason::InvalidRange { .. }
-                | UnplacedReason::NoWorkingDays { .. }
-                | UnplacedReason::NonNumericValue { .. }
-                | UnplacedReason::NoAnchor
-                | UnplacedReason::PredecessorUnresolved { .. }
-                | UnplacedReason::Cycle { .. } => {}
-            }
-        }
-    }
+    emit_unplaced_section(&data.unplaced, item_link_base, &mut out);
 
     out
 }
@@ -98,10 +77,17 @@ struct Series {
 }
 
 fn render_svg(data: &LineChartData) -> String {
-    let x_kind = axis_kind_x(&data.points);
-    let y_kind = axis_kind_y(&data.points);
+    // Axis units are chosen across every point, so flatten the series
+    // back out for that decision only.
+    let points: Vec<&LinePoint> = data
+        .series
+        .iter()
+        .flat_map(|series| series.points.iter())
+        .collect();
+    let x_kind = axis_kind_for(points.iter().map(|point| point.x));
+    let y_kind = axis_kind_for(points.iter().map(|point| ChartValue::from(point.y)));
 
-    let series = build_series(&data.points, data.group_field.as_deref(), x_kind, y_kind);
+    let series = build_series(data, x_kind, y_kind);
 
     let (x_min, x_max) = numeric_extent(series.iter().flat_map(|s| s.points.iter().map(|p| p.0)));
     let (y_min, y_max) = numeric_extent(series.iter().flat_map(|s| s.points.iter().map(|p| p.1)));
@@ -168,145 +154,40 @@ fn render_svg(data: &LineChartData) -> String {
     strip_svg_blank_lines(&buf)
 }
 
-/// Pick the f64 axis encoding from the first point's variant. Every
-/// other point on the same axis must agree — extractor invariant since
-/// each axis is bound to one schema field — and we panic on mismatch
-/// so a future regression doesn't silently mis-render.
-fn axis_kind_x(points: &[LinePoint]) -> AxisKind {
-    match points
-        .first()
-        .map(|p| p.x)
-        .expect("axis_kind_x called with empty points")
-    {
-        AxisValue::Number(_) => AxisKind::Number,
-        AxisValue::Date(_) => AxisKind::Date,
-        AxisValue::Duration(_) => {
-            let max = points
-                .iter()
-                .filter_map(|p| match p.x {
-                    AxisValue::Duration(seconds) => Some(seconds.unsigned_abs() as i64),
-                    _ => None,
-                })
-                .max()
-                .unwrap_or(0);
-            let unit = pick_duration_unit(max);
-            AxisKind::Duration {
-                divisor: unit.divisor_seconds,
-                label: unit.label,
-            }
-        }
-    }
-}
-
-fn axis_kind_y(points: &[LinePoint]) -> AxisKind {
-    match points
-        .first()
-        .map(|p| p.y)
-        .expect("axis_kind_y called with empty points")
-    {
-        SizeValue::Number(_) => AxisKind::Number,
-        SizeValue::Duration(_) => {
-            let max = points
-                .iter()
-                .filter_map(|p| match p.y {
-                    SizeValue::Duration(seconds) => Some(seconds.unsigned_abs() as i64),
-                    _ => None,
-                })
-                .max()
-                .unwrap_or(0);
-            let unit = pick_duration_unit(max);
-            AxisKind::Duration {
-                divisor: unit.divisor_seconds,
-                label: unit.label,
-            }
-        }
-    }
-}
-
-/// Convert an `AxisValue` to its plot-space f64 using the chosen axis kind.
-fn axis_to_f64(value: AxisValue, kind: AxisKind) -> f64 {
-    match (value, kind) {
-        (AxisValue::Number(n), AxisKind::Number) => n,
-        (AxisValue::Date(date), AxisKind::Date) => date_to_f64(date),
-        (AxisValue::Duration(seconds), AxisKind::Duration { divisor, .. }) => {
-            seconds as f64 / divisor as f64
-        }
-        (value, kind) => panic!("mixed axis types on x: value {value:?} with kind {kind:?}"),
-    }
-}
-
-/// Convert a `SizeValue` to its plot-space f64 using the chosen axis kind.
-fn size_to_f64(value: SizeValue, kind: AxisKind) -> f64 {
-    match (value, kind) {
-        (SizeValue::Number(n), AxisKind::Number) => n,
-        (SizeValue::Duration(seconds), AxisKind::Duration { divisor, .. }) => {
-            seconds as f64 / divisor as f64
-        }
-        (value, kind) => panic!("mixed axis types on y: value {value:?} with kind {kind:?}"),
-    }
-}
-
-/// Group points into series, assign palette colors, and convert values
-/// to f64 plot coordinates.
+/// Turn the extractor's series into drawable ones: label text, a palette
+/// color, and f64 plot coordinates.
 ///
-/// Single-series case (no group field): one series labelled empty. The
-/// renderer skips the legend in that case so an empty label doesn't show.
+/// The partition and its order are the extractor's (see
+/// `view_data::line_chart`); this only dresses them. Color is
+/// `OKABE_ITO[i % 8]` over the received order, so the same view always
+/// picks the same colors, and recycles past 8 groups.
 ///
-/// Multi-series case: one series per distinct group, plus a synthetic
-/// `(no <field>)` series for points whose group value is missing. Series
-/// sort by group label ascending; the synthetic series sorts last
-/// regardless. Color is `OKABE_ITO[i % 8]` over that sort order — order-
-/// stable so the same view always picks the same colors.
-fn build_series(
-    points: &[LinePoint],
-    group_field: Option<&str>,
-    x_kind: AxisKind,
-    y_kind: AxisKind,
-) -> Vec<Series> {
-    if group_field.is_none() {
-        let series_points: Vec<(f64, f64)> = points
-            .iter()
-            .map(|p| (axis_to_f64(p.x, x_kind), size_to_f64(p.y, y_kind)))
-            .collect();
-        return vec![Series {
-            label: String::new(),
-            color: hex_to_rgb(OKABE_ITO[0]),
-            points: series_points,
-        }];
-    }
-
-    let group_field = group_field.unwrap();
-    let synthetic = format!("(no {group_field})");
-
-    let mut grouped: BTreeMap<String, Vec<(f64, f64)>> = BTreeMap::new();
-    let mut synthetic_points: Vec<(f64, f64)> = Vec::new();
-
-    for point in points {
-        let xy = (axis_to_f64(point.x, x_kind), size_to_f64(point.y, y_kind));
-        match &point.group {
-            Some(label) => grouped.entry(label.clone()).or_default().push(xy),
-            None => synthetic_points.push(xy),
-        }
-    }
-
-    let mut series: Vec<Series> = Vec::with_capacity(grouped.len() + 1);
-    let mut color_index = 0usize;
-    for (label, pts) in grouped {
-        series.push(Series {
-            label,
-            color: hex_to_rgb(OKABE_ITO[color_index % OKABE_ITO.len()]),
-            points: pts,
-        });
-        color_index += 1;
-    }
-    if !synthetic_points.is_empty() {
-        series.push(Series {
-            label: synthetic,
-            color: hex_to_rgb(OKABE_ITO[color_index % OKABE_ITO.len()]),
-            points: synthetic_points,
-        });
-    }
-    series
+/// Labels: a grouped series shows its value; the no-value series is
+/// named by `no_value_label`. An ungrouped chart's single series gets an
+/// empty label, and `render_svg` skips the legend so it doesn't show.
+fn build_series(data: &LineChartData, x_kind: AxisKind, y_kind: AxisKind) -> Vec<Series> {
+    data.series
+        .iter()
+        .enumerate()
+        .map(|(index, series)| Series {
+            label: match (&series.group, &data.group_field) {
+                (Some(value), _) => value.clone(),
+                (None, Some(field)) => no_value_label(field),
+                (None, None) => String::new(),
+            },
+            color: hex_to_rgb(OKABE_ITO[index % OKABE_ITO.len()]),
+            points: series
+                .points
+                .iter()
+                .map(|point| {
+                    (
+                        value_to_f64(point.x, x_kind),
+                        value_to_f64(ChartValue::from(point.y), y_kind),
+                    )
+                })
+                .collect(),
+        })
+        .collect()
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -320,31 +201,42 @@ mod tests {
     use chrono::NaiveDate;
     use std::collections::HashMap;
     use workdown_core::model::WorkItemId;
-    use workdown_core::view_data::{LineChartData, LinePoint, UnplacedCard};
+    use workdown_core::view_data::{LineChartData, LinePoint, LineSeries, SizeValue, UnplacedCard};
 
     // ── Render fixtures ─────────────────────────────────────────────
 
-    fn point(id: &str, x: AxisValue, y: SizeValue, group: Option<&str>) -> LinePoint {
+    fn point(id: &str, x: ChartValue, y: SizeValue) -> LinePoint {
         LinePoint {
             id: WorkItemId::from(id.to_owned()),
             x,
             y,
-            group: group.map(str::to_owned),
         }
+    }
+
+    fn series(group: Option<&str>, points: Vec<LinePoint>) -> LineSeries {
+        LineSeries {
+            group: group.map(str::to_owned),
+            points,
+        }
+    }
+
+    /// The one no-group series an ungrouped chart receives.
+    fn single(points: Vec<LinePoint>) -> Vec<LineSeries> {
+        vec![series(None, points)]
     }
 
     fn data(
         x_field: &str,
         y_field: &str,
         group_field: Option<&str>,
-        points: Vec<LinePoint>,
+        series: Vec<LineSeries>,
         unplaced: Vec<UnplacedCard>,
     ) -> LineChartData {
         LineChartData {
             x_field: x_field.to_owned(),
             y_field: y_field.to_owned(),
             group_field: group_field.map(str::to_owned),
-            points,
+            series,
             items: HashMap::new(),
             unplaced,
         }
@@ -390,12 +282,12 @@ mod tests {
     #[test]
     fn single_series_emits_svg_with_first_palette_color() {
         let points = vec![
-            point("a", AxisValue::Number(1.0), SizeValue::Number(2.0), None),
-            point("b", AxisValue::Number(2.0), SizeValue::Number(4.0), None),
-            point("c", AxisValue::Number(3.0), SizeValue::Number(6.0), None),
+            point("a", ChartValue::Number(1.0), SizeValue::Number(2.0)),
+            point("b", ChartValue::Number(2.0), SizeValue::Number(4.0)),
+            point("c", ChartValue::Number(3.0), SizeValue::Number(6.0)),
         ];
         let output = render_line_chart(
-            &data("x", "y", None, points, vec![]),
+            &data("x", "y", None, single(points), vec![]),
             "../workdown-items",
             "",
         );
@@ -410,11 +302,11 @@ mod tests {
     #[test]
     fn single_series_skips_legend() {
         let points = vec![
-            point("a", AxisValue::Number(1.0), SizeValue::Number(2.0), None),
-            point("b", AxisValue::Number(2.0), SizeValue::Number(4.0), None),
+            point("a", ChartValue::Number(1.0), SizeValue::Number(2.0)),
+            point("b", ChartValue::Number(2.0), SizeValue::Number(4.0)),
         ];
         let output = render_line_chart(
-            &data("x", "y", None, points, vec![]),
+            &data("x", "y", None, single(points), vec![]),
             "../workdown-items",
             "",
         );
@@ -427,35 +319,37 @@ mod tests {
     }
 
     // ── Multi-series ────────────────────────────────────────────────
+    //
+    // The extractor decides the partition and its order; these fixtures
+    // hand the renderer series already in draw order and check only what
+    // the renderer adds — color, label, legend.
 
     #[test]
-    fn multi_series_uses_distinct_palette_colors_per_group() {
-        let points = vec![
-            point(
-                "a",
-                AxisValue::Number(1.0),
-                SizeValue::Number(2.0),
-                Some("eng"),
-            ),
-            point(
-                "b",
-                AxisValue::Number(2.0),
-                SizeValue::Number(4.0),
-                Some("ops"),
-            ),
-            point(
-                "c",
-                AxisValue::Number(3.0),
-                SizeValue::Number(6.0),
-                Some("eng"),
-            ),
-        ];
+    fn palette_walks_the_received_series_order() {
         let output = render_line_chart(
-            &data("x", "y", Some("team"), points, vec![]),
+            &data(
+                "x",
+                "y",
+                Some("team"),
+                vec![
+                    series(
+                        Some("eng"),
+                        vec![
+                            point("a", ChartValue::Number(1.0), SizeValue::Number(2.0)),
+                            point("c", ChartValue::Number(3.0), SizeValue::Number(6.0)),
+                        ],
+                    ),
+                    series(
+                        Some("ops"),
+                        vec![point("b", ChartValue::Number(2.0), SizeValue::Number(4.0))],
+                    ),
+                ],
+                vec![],
+            ),
             "../workdown-items",
             "",
         );
-        // BTreeMap orders eng before ops → eng gets OKABE_ITO[0], ops [1].
+        // First series received gets OKABE_ITO[0], second [1].
         assert!(
             output.contains("stroke=\"#E69F00\""),
             "expected first palette color (eng), got: {output}"
@@ -468,22 +362,23 @@ mod tests {
 
     #[test]
     fn multi_series_includes_group_labels() {
-        let points = vec![
-            point(
-                "a",
-                AxisValue::Number(1.0),
-                SizeValue::Number(2.0),
-                Some("eng"),
-            ),
-            point(
-                "b",
-                AxisValue::Number(2.0),
-                SizeValue::Number(4.0),
-                Some("ops"),
-            ),
-        ];
         let output = render_line_chart(
-            &data("x", "y", Some("team"), points, vec![]),
+            &data(
+                "x",
+                "y",
+                Some("team"),
+                vec![
+                    series(
+                        Some("eng"),
+                        vec![point("a", ChartValue::Number(1.0), SizeValue::Number(2.0))],
+                    ),
+                    series(
+                        Some("ops"),
+                        vec![point("b", ChartValue::Number(2.0), SizeValue::Number(4.0))],
+                    ),
+                ],
+                vec![],
+            ),
             "../workdown-items",
             "",
         );
@@ -492,43 +387,55 @@ mod tests {
     }
 
     #[test]
-    fn missing_group_value_lands_in_synthetic_series() {
-        let points = vec![
-            point(
-                "a",
-                AxisValue::Number(1.0),
-                SizeValue::Number(2.0),
-                Some("eng"),
-            ),
-            point("b", AxisValue::Number(2.0), SizeValue::Number(4.0), None),
-        ];
+    fn no_group_series_is_named_from_the_group_field() {
         let output = render_line_chart(
-            &data("x", "y", Some("team"), points, vec![]),
+            &data(
+                "x",
+                "y",
+                Some("team"),
+                vec![
+                    series(
+                        Some("eng"),
+                        vec![point("a", ChartValue::Number(1.0), SizeValue::Number(2.0))],
+                    ),
+                    series(
+                        None,
+                        vec![point("b", ChartValue::Number(2.0), SizeValue::Number(4.0))],
+                    ),
+                ],
+                vec![],
+            ),
             "../workdown-items",
             "",
         );
-        // Synthetic series labelled "(no team)".
+        // Core ships a structural `None`; the wording is this renderer's,
+        // via `no_value_label`.
         assert!(
             output.contains("(no team)"),
-            "expected '(no team)' synthetic series"
+            "expected '(no team)' label for the no-group series"
         );
     }
 
     #[test]
     fn nine_groups_recycle_first_color() {
-        // 9 groups → group #9 gets OKABE_ITO[0] again.
-        let groups = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
-        let mut points = Vec::new();
-        for (i, g) in groups.iter().enumerate() {
-            points.push(point(
-                g,
-                AxisValue::Number(i as f64),
-                SizeValue::Number((i * 2) as f64),
-                Some(g),
-            ));
-        }
+        // 9 series → the 9th gets OKABE_ITO[0] again.
+        let labels = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
+        let all_series: Vec<LineSeries> = labels
+            .iter()
+            .enumerate()
+            .map(|(index, label)| {
+                series(
+                    Some(label),
+                    vec![point(
+                        label,
+                        ChartValue::Number(index as f64),
+                        SizeValue::Number((index * 2) as f64),
+                    )],
+                )
+            })
+            .collect();
         let output = render_line_chart(
-            &data("x", "y", Some("team"), points, vec![]),
+            &data("x", "y", Some("team"), all_series, vec![]),
             "../workdown-items",
             "",
         );
@@ -550,19 +457,17 @@ mod tests {
         let points = vec![
             point(
                 "a",
-                AxisValue::Date(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+                ChartValue::Date(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
                 SizeValue::Number(1.0),
-                None,
             ),
             point(
                 "b",
-                AxisValue::Date(NaiveDate::from_ymd_opt(2026, 1, 10).unwrap()),
+                ChartValue::Date(NaiveDate::from_ymd_opt(2026, 1, 10).unwrap()),
                 SizeValue::Number(2.0),
-                None,
             ),
         ];
         let output = render_line_chart(
-            &data("day", "score", None, points, vec![]),
+            &data("day", "score", None, single(points), vec![]),
             "../workdown-items",
             "",
         );
@@ -578,19 +483,17 @@ mod tests {
         let points = vec![
             point(
                 "a",
-                AxisValue::Number(1.0),
+                ChartValue::Number(1.0),
                 SizeValue::Duration(2 * SECONDS_PER_DAY),
-                None,
             ),
             point(
                 "b",
-                AxisValue::Number(2.0),
+                ChartValue::Number(2.0),
                 SizeValue::Duration(4 * SECONDS_PER_DAY),
-                None,
             ),
         ];
         let output = render_line_chart(
-            &data("x", "estimate", None, points, vec![]),
+            &data("x", "estimate", None, single(points), vec![]),
             "../workdown-items",
             "",
         );
@@ -606,19 +509,17 @@ mod tests {
         let points = vec![
             point(
                 "a",
-                AxisValue::Duration(2 * SECONDS_PER_HOUR),
+                ChartValue::Duration(2 * SECONDS_PER_HOUR),
                 SizeValue::Number(1.0),
-                None,
             ),
             point(
                 "b",
-                AxisValue::Duration(4 * SECONDS_PER_HOUR),
+                ChartValue::Duration(4 * SECONDS_PER_HOUR),
                 SizeValue::Number(2.0),
-                None,
             ),
         ];
         let output = render_line_chart(
-            &data("estimate", "y", None, points, vec![]),
+            &data("estimate", "y", None, single(points), vec![]),
             "../workdown-items",
             "",
         );
@@ -632,18 +533,13 @@ mod tests {
 
     #[test]
     fn unplaced_footer_lists_missing_field_per_item() {
-        let points = vec![point(
-            "a",
-            AxisValue::Number(1.0),
-            SizeValue::Number(2.0),
-            None,
-        )];
+        let points = vec![point("a", ChartValue::Number(1.0), SizeValue::Number(2.0))];
         let output = render_line_chart(
             &data(
                 "x",
                 "y",
                 None,
-                points,
+                single(points),
                 vec![
                     unplaced_missing("missing-x", Some("Missing X"), "x"),
                     unplaced_missing("missing-y", Some("Missing Y"), "y"),
@@ -660,11 +556,11 @@ mod tests {
     #[test]
     fn no_unplaced_section_when_clean() {
         let points = vec![
-            point("a", AxisValue::Number(1.0), SizeValue::Number(2.0), None),
-            point("b", AxisValue::Number(2.0), SizeValue::Number(4.0), None),
+            point("a", ChartValue::Number(1.0), SizeValue::Number(2.0)),
+            point("b", ChartValue::Number(2.0), SizeValue::Number(4.0)),
         ];
         let output = render_line_chart(
-            &data("x", "y", None, points, vec![]),
+            &data("x", "y", None, single(points), vec![]),
             "../workdown-items",
             "",
         );

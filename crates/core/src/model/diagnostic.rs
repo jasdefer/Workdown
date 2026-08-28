@@ -14,11 +14,16 @@
 //! Adding a new diagnostic is a two-step structural decision: pick a
 //! scope category (which wrapper), then add a variant to that wrapper's
 //! inner kind enum.
+//!
+//! How the resulting message is *worded* is not a decision per variant:
+//! [`super::message`] holds the house style and the helpers every
+//! `Display` arm here builds its lists and chains from.
 
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use super::message::{chain, one_of, quoted_list};
 use super::schema::{FieldType, Severity};
 use super::views::ViewType;
 use super::WorkItemId;
@@ -244,6 +249,67 @@ pub struct ConfigDiagnostic {
     pub kind: ConfigDiagnosticKind,
 }
 
+/// Where in `views.yaml` a field-reference finding sits: which view,
+/// which metric row when the slot lives inside `metrics[i]`, and which
+/// slot within that.
+///
+/// Every finding about a field reference in a view carries one of these
+/// instead of a bare `view_id` plus slot name, so a check written once
+/// serves both a view-level slot and the same slot inside a metric row.
+/// Adding a further nesting level (a per-series or per-column config,
+/// say) means another field here, not a parallel family of variants.
+///
+/// Flattened into its variant, so the wire shape stays `view_id` and
+/// `slot` at the top level, with `metric_index` present only for a
+/// finding inside a metric row.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct ViewLocation {
+    pub view_id: String,
+    /// The metric row this slot belongs to. `None` for a view-level slot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub metric_index: Option<usize>,
+    /// Slot name as written in `views.yaml` (`field`, `value`, `where`,
+    /// a display role, …).
+    pub slot: &'static str,
+}
+
+impl ViewLocation {
+    /// A slot on the view itself.
+    pub fn view(view_id: &str, slot: &'static str) -> Self {
+        Self {
+            view_id: view_id.to_owned(),
+            metric_index: None,
+            slot,
+        }
+    }
+
+    /// The same slot inside a metric view's row.
+    pub fn metric_row(view_id: &str, metric_index: usize, slot: &'static str) -> Self {
+        Self {
+            view_id: view_id.to_owned(),
+            metric_index: Some(metric_index),
+            slot,
+        }
+    }
+}
+
+/// Renders the message prefix every located finding shares:
+/// `view 'burndown', slot 'metrics[3].value'`. The slot path is dotted
+/// so it reads as a path into the YAML.
+impl std::fmt::Display for ViewLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.metric_index {
+            Some(index) => write!(
+                f,
+                "view '{}', slot 'metrics[{}].{}'",
+                self.view_id, index, self.slot
+            ),
+            None => write!(f, "view '{}', slot '{}'", self.view_id, self.slot),
+        }
+    }
+}
+
 /// Cross-file failures against a config file — `views.yaml` for the
 /// `View*` variants, `config.yaml` for the `Config*` variants.
 ///
@@ -254,8 +320,8 @@ pub struct ConfigDiagnostic {
 ///
 /// A pinned `View*` variant does not by itself mean the view is
 /// unrenderable — severity decides that. Errors describe a view that
-/// cannot produce output and callers skip it; warnings (today, the
-/// `*WhereUnknownValue` pair) describe a view that renders fine but
+/// cannot produce output and callers skip it; warnings (today, only
+/// `ViewWhereUnknownValue`) describe a view that renders fine but
 /// probably isn't what its author meant, and must not suppress it.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -280,8 +346,8 @@ pub enum ConfigDiagnosticKind {
 
     /// A view references a field name that isn't defined in `schema.yaml`.
     ViewUnknownField {
-        view_id: String,
-        slot: &'static str,
+        #[serde(flatten)]
+        location: ViewLocation,
         field_name: String,
     },
 
@@ -292,20 +358,15 @@ pub enum ConfigDiagnosticKind {
     /// misconfiguration, not an impossibility: the id *is* projected
     /// into the field map at load. Text display roles resolve `id`
     /// specially and keep accepting it.
-    ViewVirtualIdNotAllowed { view_id: String, slot: &'static str },
-
-    /// A metric row's `value` slot references the virtual `id` — the
-    /// same degenerate configuration as
-    /// [`Self::ViewVirtualIdNotAllowed`], pinned to the row.
-    ViewMetricRowVirtualIdNotAllowed {
-        view_id: String,
-        metric_index: usize,
+    ViewVirtualIdNotAllowed {
+        #[serde(flatten)]
+        location: ViewLocation,
     },
 
     /// A view references a field whose schema type is incompatible with the slot.
     ViewFieldTypeMismatch {
-        view_id: String,
-        slot: &'static str,
+        #[serde(flatten)]
+        location: ViewLocation,
         field_name: String,
         actual_type: FieldType,
         /// Human-readable list of allowed types, e.g. `"choice, multichoice, or string"`.
@@ -314,7 +375,8 @@ pub enum ConfigDiagnosticKind {
 
     /// A `where:` expression string failed to parse.
     ViewWhereParseError {
-        view_id: String,
+        #[serde(flatten)]
+        location: ViewLocation,
         raw: String,
         detail: String,
     },
@@ -325,7 +387,8 @@ pub enum ConfigDiagnosticKind {
     /// view still renders, so this is the one `View*` variant carrying
     /// [`Severity::Warning`]; see [`crate::where_check`].
     ViewWhereUnknownValue {
-        view_id: String,
+        #[serde(flatten)]
+        location: ViewLocation,
         raw: String,
         field_name: String,
         /// The rendered explanation from
@@ -337,15 +400,20 @@ pub enum ConfigDiagnosticKind {
     /// to a `date` field.
     ViewBucketWithoutDateAxis { view_id: String },
 
-    /// A metric view with `aggregate: count` also sets `value`, which is
-    /// meaningless (count takes no value field).
-    ViewCountAggregateWithValue { view_id: String },
+    /// An aggregate slot combines `aggregate: count` with a `value`
+    /// field, which is meaningless — count takes no value field. Applies
+    /// wherever an aggregate lives: a bar chart, a heatmap, or one row
+    /// of a metric view.
+    ViewCountAggregateWithValue {
+        #[serde(flatten)]
+        location: ViewLocation,
+    },
 
     /// An aggregate view's `value` slot points at a field whose type is
     /// incompatible with the chosen aggregate.
     ViewAggregateTypeMismatch {
-        view_id: String,
-        slot: &'static str,
+        #[serde(flatten)]
+        location: ViewLocation,
         aggregate: super::views::Aggregate,
         actual_type: FieldType,
     },
@@ -354,16 +422,16 @@ pub enum ConfigDiagnosticKind {
     /// (`group_by`, `after`, `root_link`, `depth_link`) points at a field
     /// whose `allow_cycles` isn't explicitly `false`.
     ViewSlotCyclic {
-        view_id: String,
-        slot: &'static str,
+        #[serde(flatten)]
+        location: ViewLocation,
         field_name: String,
     },
 
     /// A view slot that requires a link/links field references an inverse
     /// relation name instead.
     ViewSlotInverseNotAllowed {
-        view_id: String,
-        slot: &'static str,
+        #[serde(flatten)]
+        location: ViewLocation,
         field_name: String,
     },
 
@@ -378,50 +446,6 @@ pub enum ConfigDiagnosticKind {
 
     /// A gantt view sets both `after` and `end`.
     ViewGanttAfterWithEndConflict { view_id: String },
-
-    /// A metric row references a schema field that doesn't exist.
-    /// `slot` is `"value"` or `"where"`.
-    ViewMetricRowUnknownField {
-        view_id: String,
-        metric_index: usize,
-        slot: &'static str,
-        field_name: String,
-    },
-
-    /// A metric row's `value` field's type isn't compatible with the
-    /// chosen aggregate.
-    ViewMetricRowAggregateTypeMismatch {
-        view_id: String,
-        metric_index: usize,
-        aggregate: super::views::Aggregate,
-        actual_type: FieldType,
-    },
-
-    /// A metric row uses `aggregate: count` together with `value`.
-    ViewMetricRowCountWithValue {
-        view_id: String,
-        metric_index: usize,
-    },
-
-    /// A metric row's per-row `where:` expression failed to parse.
-    ViewMetricRowWhereParseError {
-        view_id: String,
-        metric_index: usize,
-        raw: String,
-        detail: String,
-    },
-
-    /// A metric row's per-row `where:` compares a field against an
-    /// operand that could never match. The metric-row twin of
-    /// [`ConfigDiagnosticKind::ViewWhereUnknownValue`], and a warning for
-    /// the same reason.
-    ViewMetricRowWhereUnknownValue {
-        view_id: String,
-        metric_index: usize,
-        raw: String,
-        field_name: String,
-        detail: String,
-    },
 
     /// A slot in `config.yaml` names a field that isn't defined in
     /// `schema.yaml` — a `defaults.display` role (where the virtual
@@ -538,6 +562,30 @@ pub enum ConfigDiagnosticKind {
 
 // ── Field value errors ───────────────────────────────────────────────
 
+/// Which side of a declared range a value fell off.
+///
+/// A parameter rather than a variant per side: the two cases differ by
+/// one word of message and nothing else, and naming the side lets the
+/// message say which limit was broken instead of restating both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+pub enum RangeBound {
+    /// The value was below the field's declared `min`.
+    Minimum,
+    /// The value was above the field's declared `max`.
+    Maximum,
+}
+
+impl RangeBound {
+    /// How a message names this side.
+    fn describe(self) -> &'static str {
+        match self {
+            Self::Minimum => "below the minimum",
+            Self::Maximum => "above the maximum",
+        }
+    }
+}
+
 /// Specific reason a field value is invalid.
 ///
 /// Produced by the coercion layer when converting raw YAML values to
@@ -557,18 +605,21 @@ pub enum FieldValueError {
         allowed: Vec<String>,
     },
 
-    /// Numeric value is outside the allowed range.
+    /// Numeric value is outside the allowed range. `bound` names the
+    /// side it fell off and `limit` the declared value it broke.
     OutOfRange {
         value: f64,
-        min: Option<f64>,
-        max: Option<f64>,
+        bound: RangeBound,
+        limit: f64,
     },
 
-    /// Duration value is outside the allowed range.
+    /// Duration value is outside the allowed range. Same shape as
+    /// [`Self::OutOfRange`], with value and limit already formatted as
+    /// duration strings.
     OutOfRangeDuration {
         value: String,
-        min: Option<String>,
-        max: Option<String>,
+        bound: RangeBound,
+        limit: String,
     },
 
     /// Duration string failed to parse.
@@ -583,9 +634,6 @@ pub enum FieldValueError {
 
     /// String doesn't match the required regex pattern.
     PatternMismatch { value: String, pattern: String },
-
-    /// The regex pattern itself is invalid.
-    InvalidPattern { pattern: String, error: String },
 }
 
 // ── Constructors ─────────────────────────────────────────────────────
@@ -685,29 +733,26 @@ impl Diagnostic {
 /// The single place in the codebase where every view-variant is enumerated.
 fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
     match kind {
+        ConfigDiagnosticKind::ViewUnknownField { location, .. }
+        | ConfigDiagnosticKind::ViewVirtualIdNotAllowed { location }
+        | ConfigDiagnosticKind::ViewFieldTypeMismatch { location, .. }
+        | ConfigDiagnosticKind::ViewWhereParseError { location, .. }
+        | ConfigDiagnosticKind::ViewWhereUnknownValue { location, .. }
+        | ConfigDiagnosticKind::ViewCountAggregateWithValue { location }
+        | ConfigDiagnosticKind::ViewAggregateTypeMismatch { location, .. }
+        | ConfigDiagnosticKind::ViewSlotCyclic { location, .. }
+        | ConfigDiagnosticKind::ViewSlotInverseNotAllowed { location, .. } => {
+            Some(&location.view_id)
+        }
+
         ConfigDiagnosticKind::ViewDuplicateId { view_id }
         | ConfigDiagnosticKind::ViewMissingSlot { view_id, .. }
         | ConfigDiagnosticKind::ViewLegacyDisplaySlot { view_id, .. }
-        | ConfigDiagnosticKind::ViewUnknownField { view_id, .. }
-        | ConfigDiagnosticKind::ViewFieldTypeMismatch { view_id, .. }
-        | ConfigDiagnosticKind::ViewWhereParseError { view_id, .. }
-        | ConfigDiagnosticKind::ViewWhereUnknownValue { view_id, .. }
-        | ConfigDiagnosticKind::ViewMetricRowWhereUnknownValue { view_id, .. }
         | ConfigDiagnosticKind::ViewBucketWithoutDateAxis { view_id }
-        | ConfigDiagnosticKind::ViewCountAggregateWithValue { view_id }
-        | ConfigDiagnosticKind::ViewAggregateTypeMismatch { view_id, .. }
-        | ConfigDiagnosticKind::ViewSlotCyclic { view_id, .. }
-        | ConfigDiagnosticKind::ViewSlotInverseNotAllowed { view_id, .. }
         | ConfigDiagnosticKind::ViewGanttEndOrDurationRequired { view_id }
         | ConfigDiagnosticKind::ViewGanttEndAndDurationConflict { view_id }
         | ConfigDiagnosticKind::ViewGanttAfterRequiresDuration { view_id }
-        | ConfigDiagnosticKind::ViewGanttAfterWithEndConflict { view_id }
-        | ConfigDiagnosticKind::ViewMetricRowUnknownField { view_id, .. }
-        | ConfigDiagnosticKind::ViewMetricRowAggregateTypeMismatch { view_id, .. }
-        | ConfigDiagnosticKind::ViewMetricRowCountWithValue { view_id, .. }
-        | ConfigDiagnosticKind::ViewMetricRowWhereParseError { view_id, .. }
-        | ConfigDiagnosticKind::ViewVirtualIdNotAllowed { view_id, .. }
-        | ConfigDiagnosticKind::ViewMetricRowVirtualIdNotAllowed { view_id, .. } => Some(view_id),
+        | ConfigDiagnosticKind::ViewGanttAfterWithEndConflict { view_id } => Some(view_id),
 
         // Config-defaults and schema-compute diagnostics are
         // project-wide, not pinned to a view. Returning `None` keeps
@@ -835,11 +880,7 @@ impl std::fmt::Display for ItemDiagnosticKind {
                 write!(
                     f,
                     "computed field '{field}' could not be evaluated: missing {}",
-                    missing_inputs
-                        .iter()
-                        .map(|input| format!("'{input}'"))
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                    quoted_list(missing_inputs)
                 )
             }
             ItemDiagnosticKind::ComputeFailed { field, detail } => {
@@ -857,11 +898,7 @@ impl std::fmt::Display for ItemDiagnosticKind {
                     write!(
                         f,
                         " (absent condition inputs: {})",
-                        missing_inputs
-                            .iter()
-                            .map(|input| format!("'{input}'"))
-                            .collect::<Vec<_>>()
-                            .join(", ")
+                        quoted_list(missing_inputs)
                     )?;
                 }
                 Ok(())
@@ -883,18 +920,14 @@ impl std::fmt::Display for ItemDiagnosticKind {
                 write!(
                     f,
                     "pull field '{field}' could not be evaluated: missing {}",
-                    missing_inputs
-                        .iter()
-                        .map(|input| format!("'{input}'"))
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                    quoted_list(missing_inputs)
                 )
             }
-            ItemDiagnosticKind::DeriveCycle { chain } => {
+            ItemDiagnosticKind::DeriveCycle { chain: chain_ids } => {
                 write!(
                     f,
                     "derived values form a cross-item cycle: {}",
-                    chain.join(" -> ")
+                    chain(chain_ids)
                 )
             }
         }
@@ -912,9 +945,11 @@ impl std::fmt::Display for FilesDiagnosticKind {
 impl std::fmt::Display for CollectionDiagnosticKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CollectionDiagnosticKind::Cycle { field, chain } => {
-                let ids: Vec<&str> = chain.iter().map(|id| id.as_str()).collect();
-                write!(f, "cycle in '{field}': {}", ids.join(" \u{2192} "))
+            CollectionDiagnosticKind::Cycle {
+                field,
+                chain: chain_ids,
+            } => {
+                write!(f, "cycle in '{field}': {}", chain(chain_ids))
             }
             CollectionDiagnosticKind::CountViolation {
                 rule,
@@ -962,51 +997,39 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                 )
             }
             ConfigDiagnosticKind::ViewUnknownField {
-                view_id,
-                slot,
+                location,
                 field_name,
             } => {
-                write!(
-                    f,
-                    "view '{view_id}', slot '{slot}': unknown field '{field_name}'"
-                )
+                write!(f, "{location}: unknown field '{field_name}'")
             }
-            ConfigDiagnosticKind::ViewVirtualIdNotAllowed { view_id, slot } => write!(
+            ConfigDiagnosticKind::ViewVirtualIdNotAllowed { location } => write!(
                 f,
-                "view '{view_id}', slot '{slot}': the virtual 'id' cannot drive this slot (grouping or plotting by a unique key is meaningless) — use a schema field"
-            ),
-            ConfigDiagnosticKind::ViewMetricRowVirtualIdNotAllowed {
-                view_id,
-                metric_index,
-            } => write!(
-                f,
-                "view '{view_id}', metrics[{metric_index}].value: the virtual 'id' cannot drive this slot (grouping or plotting by a unique key is meaningless) — use a schema field"
+                "{location}: the virtual 'id' cannot drive this slot (grouping or plotting by a unique key is meaningless) — use a schema field"
             ),
             ConfigDiagnosticKind::ViewFieldTypeMismatch {
-                view_id,
-                slot,
+                location,
                 field_name,
                 actual_type,
                 expected,
             } => write!(
                 f,
-                "view '{view_id}', slot '{slot}': field '{field_name}' has type {actual_type}, expected {expected}"
+                "{location}: field '{field_name}' has type {actual_type}, expected {expected}"
             ),
             ConfigDiagnosticKind::ViewWhereParseError {
-                view_id,
+                location,
                 raw,
                 detail,
             } => {
-                write!(f, "view '{view_id}', where clause '{raw}': {detail}")
+                write!(f, "{location}, clause '{raw}': {detail}")
             }
             ConfigDiagnosticKind::ViewWhereUnknownValue {
-                view_id,
+                location,
                 raw,
                 field_name,
                 detail,
             } => write!(
                 f,
-                "view '{view_id}', where clause '{raw}': field '{field_name}' — {detail}"
+                "{location}, clause '{raw}': field '{field_name}' — {detail}"
             ),
             ConfigDiagnosticKind::ViewBucketWithoutDateAxis { view_id } => {
                 write!(
@@ -1014,36 +1037,30 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                     "view '{view_id}': bucket set but neither x nor y is a date field"
                 )
             }
-            ConfigDiagnosticKind::ViewCountAggregateWithValue { view_id } => {
-                write!(
-                    f,
-                    "view '{view_id}': aggregate 'count' takes no 'value' slot"
-                )
+            ConfigDiagnosticKind::ViewCountAggregateWithValue { location } => {
+                write!(f, "{location}: aggregate 'count' takes no 'value' slot")
             }
             ConfigDiagnosticKind::ViewAggregateTypeMismatch {
-                view_id,
-                slot,
+                location,
                 aggregate,
                 actual_type,
             } => write!(
                 f,
-                "view '{view_id}', slot '{slot}': aggregate '{aggregate}' not allowed on {actual_type} field"
+                "{location}: aggregate '{aggregate}' not allowed on {actual_type} field"
             ),
             ConfigDiagnosticKind::ViewSlotCyclic {
-                view_id,
-                slot,
+                location,
                 field_name,
             } => write!(
                 f,
-                "view '{view_id}', slot '{slot}': field '{field_name}' must set `allow_cycles: false`"
+                "{location}: field '{field_name}' must set 'allow_cycles: false'"
             ),
             ConfigDiagnosticKind::ViewSlotInverseNotAllowed {
-                view_id,
-                slot,
+                location,
                 field_name,
             } => write!(
                 f,
-                "view '{view_id}', slot '{slot}': inverse relation '{field_name}' cannot be used (point at the original link field instead)"
+                "{location}: inverse relation '{field_name}' cannot be used (point at the original link field instead)"
             ),
             ConfigDiagnosticKind::ViewGanttEndOrDurationRequired { view_id } => {
                 write!(
@@ -1064,50 +1081,6 @@ impl std::fmt::Display for ConfigDiagnosticKind {
             ConfigDiagnosticKind::ViewGanttAfterWithEndConflict { view_id } => write!(
                 f,
                 "view '{view_id}': gantt 'after' is incompatible with 'end' (use 'duration' instead)"
-            ),
-            ConfigDiagnosticKind::ViewMetricRowUnknownField {
-                view_id,
-                metric_index,
-                slot,
-                field_name,
-            } => write!(
-                f,
-                "view '{view_id}', metrics[{metric_index}].{slot}: unknown field '{field_name}'"
-            ),
-            ConfigDiagnosticKind::ViewMetricRowAggregateTypeMismatch {
-                view_id,
-                metric_index,
-                aggregate,
-                actual_type,
-            } => write!(
-                f,
-                "view '{view_id}', metrics[{metric_index}].value: aggregate '{aggregate}' not allowed on {actual_type} field"
-            ),
-            ConfigDiagnosticKind::ViewMetricRowCountWithValue {
-                view_id,
-                metric_index,
-            } => write!(
-                f,
-                "view '{view_id}', metrics[{metric_index}]: aggregate 'count' takes no 'value' slot"
-            ),
-            ConfigDiagnosticKind::ViewMetricRowWhereParseError {
-                view_id,
-                metric_index,
-                raw,
-                detail,
-            } => write!(
-                f,
-                "view '{view_id}', metrics[{metric_index}].where clause '{raw}': {detail}"
-            ),
-            ConfigDiagnosticKind::ViewMetricRowWhereUnknownValue {
-                view_id,
-                metric_index,
-                raw,
-                field_name,
-                detail,
-            } => write!(
-                f,
-                "view '{view_id}', metrics[{metric_index}].where clause '{raw}': field '{field_name}' — {detail}"
             ),
             ConfigDiagnosticKind::ConfigUnknownField { slot, field_name } => {
                 write!(f, "config default '{slot}': unknown field '{field_name}'")
@@ -1142,11 +1115,11 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                 f,
                 "field '{field}', compute expression '{expression}': result type is {result_type}, but the field is declared {declared_type}"
             ),
-            ConfigDiagnosticKind::ComputeCycle { chain } => {
+            ConfigDiagnosticKind::ComputeCycle { chain: chain_ids } => {
                 write!(
                     f,
                     "derived fields form a reference cycle: {}",
-                    chain.join(" -> ")
+                    chain(chain_ids)
                 )
             }
             ConfigDiagnosticKind::PullInvalidConfig { field, detail } => {
@@ -1196,19 +1169,29 @@ impl std::fmt::Display for FieldValueError {
                 write!(f, "expected {expected}, got {got}")
             }
             Self::InvalidChoice { value, allowed } => {
-                write!(f, "'{value}' is not one of the allowed values: {allowed:?}")
+                write!(f, "'{value}' is not {}", one_of(allowed))
             }
             Self::InvalidMultichoice { values, allowed } => {
-                write!(f, "invalid values {values:?}, allowed: {allowed:?}")
-            }
-            Self::OutOfRange { value, min, max } => {
-                write!(f, "{value} is out of range (min: {min:?}, max: {max:?})")
-            }
-            Self::OutOfRangeDuration { value, min, max } => {
                 write!(
                     f,
-                    "duration '{value}' is out of range (min: {min:?}, max: {max:?})"
+                    "invalid values {} — expected {}",
+                    quoted_list(values),
+                    one_of(allowed)
                 )
+            }
+            Self::OutOfRange {
+                value,
+                bound,
+                limit,
+            } => {
+                write!(f, "{value} is {} of {limit}", bound.describe())
+            }
+            Self::OutOfRangeDuration {
+                value,
+                bound,
+                limit,
+            } => {
+                write!(f, "duration '{value}' is {} of {limit}", bound.describe())
             }
             Self::InvalidDuration { value, reason } => {
                 write!(f, "'{value}' is not a valid duration: {reason}")
@@ -1219,16 +1202,181 @@ impl std::fmt::Display for FieldValueError {
             Self::InvalidColor { value, allowed } => {
                 write!(
                     f,
-                    "'{value}' is not a valid color (expected #rgb / #rrggbb or one of: {})",
-                    allowed.join(", ")
+                    "'{value}' is not a valid color (expected #rgb / #rrggbb or {})",
+                    one_of(allowed)
                 )
             }
             Self::PatternMismatch { value, pattern } => {
                 write!(f, "'{value}' does not match pattern '{pattern}'")
             }
-            Self::InvalidPattern { pattern, error } => {
-                write!(f, "invalid regex pattern '{pattern}': {error}")
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Render a config diagnostic kind against a throwaway view slot.
+    fn view_slot() -> ViewLocation {
+        ViewLocation {
+            view_id: "board".to_owned(),
+            metric_index: None,
+            slot: "group_by",
+        }
+    }
+
+    fn ids(ids: &[&str]) -> Vec<WorkItemId> {
+        ids.iter()
+            .map(|id| WorkItemId::from((*id).to_owned()))
+            .collect()
+    }
+
+    fn strings(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn an_invalid_choice_lists_the_values_in_the_order_they_were_declared() {
+        let error = FieldValueError::InvalidChoice {
+            value: "blocked".to_owned(),
+            allowed: strings(&["open", "in_progress", "done"]),
+        };
+        assert_eq!(
+            error.to_string(),
+            "'blocked' is not one of: open, in_progress, done"
+        );
+    }
+
+    #[test]
+    fn invalid_multichoice_quotes_what_was_given_and_lists_what_was_allowed() {
+        let error = FieldValueError::InvalidMultichoice {
+            values: strings(&["urgent", "sideways"]),
+            allowed: strings(&["backend", "frontend"]),
+        };
+        assert_eq!(
+            error.to_string(),
+            "invalid values 'urgent', 'sideways' — expected one of: backend, frontend"
+        );
+    }
+
+    #[test]
+    fn an_out_of_range_number_names_only_the_limit_it_broke() {
+        let above = FieldValueError::OutOfRange {
+            value: 11.0,
+            bound: RangeBound::Maximum,
+            limit: 10.0,
+        };
+        assert_eq!(above.to_string(), "11 is above the maximum of 10");
+
+        let below = FieldValueError::OutOfRange {
+            value: 0.0,
+            bound: RangeBound::Minimum,
+            limit: 1.0,
+        };
+        assert_eq!(below.to_string(), "0 is below the minimum of 1");
+    }
+
+    #[test]
+    fn an_out_of_range_duration_reads_the_same_way() {
+        let error = FieldValueError::OutOfRangeDuration {
+            value: "3d".to_owned(),
+            bound: RangeBound::Maximum,
+            limit: "2d".to_owned(),
+        };
+        assert_eq!(
+            error.to_string(),
+            "duration '3d' is above the maximum of 2d"
+        );
+    }
+
+    #[test]
+    fn an_invalid_color_keeps_the_palette_in_spectrum_order() {
+        let error = FieldValueError::InvalidColor {
+            value: "teal".to_owned(),
+            allowed: strings(&["red", "orange", "yellow", "green"]),
+        };
+        assert_eq!(
+            error.to_string(),
+            "'teal' is not a valid color (expected #rgb / #rrggbb or one of: red, orange, yellow, green)"
+        );
+    }
+
+    #[test]
+    fn no_field_value_message_prints_rust_syntax() {
+        // The mistake this guards is easier to reintroduce than to spot
+        // in review: `{allowed:?}` on a `Vec` renders `["open", "done"]`
+        // and `{min:?}` on an `Option` renders `Some(1.0)`. Neither is
+        // anything a reader wrote or can act on.
+        let rendered = [
+            FieldValueError::InvalidChoice {
+                value: "blocked".to_owned(),
+                allowed: strings(&["open", "done"]),
+            },
+            FieldValueError::InvalidMultichoice {
+                values: strings(&["urgent"]),
+                allowed: strings(&["backend"]),
+            },
+            FieldValueError::OutOfRange {
+                value: 11.0,
+                bound: RangeBound::Maximum,
+                limit: 10.0,
+            },
+            FieldValueError::OutOfRangeDuration {
+                value: "3d".to_owned(),
+                bound: RangeBound::Minimum,
+                limit: "1h".to_owned(),
+            },
+            FieldValueError::InvalidColor {
+                value: "teal".to_owned(),
+                allowed: strings(&["red"]),
+            },
+        ];
+
+        for error in rendered {
+            let message = error.to_string();
+            for leak in ['[', ']', '"'] {
+                assert!(!message.contains(leak), "debug syntax in: {message}");
             }
+            assert!(!message.contains("Some("), "debug syntax in: {message}");
+            assert!(!message.contains("None"), "debug syntax in: {message}");
+        }
+    }
+
+    #[test]
+    fn a_cyclic_view_slot_quotes_the_config_key_rather_than_fencing_it() {
+        let kind = ConfigDiagnosticKind::ViewSlotCyclic {
+            location: view_slot(),
+            field_name: "parent".to_owned(),
+        };
+        let message = kind.to_string();
+        assert!(
+            message.ends_with("field 'parent' must set 'allow_cycles: false'"),
+            "{message}"
+        );
+        assert!(!message.contains('`'), "backtick in: {message}");
+    }
+
+    #[test]
+    fn every_kind_of_cycle_chain_uses_the_same_arrow() {
+        let item_cycle = CollectionDiagnosticKind::Cycle {
+            field: "parent".to_owned(),
+            chain: ids(&["a", "b", "a"]),
+        };
+        let derive_cycle = ItemDiagnosticKind::DeriveCycle {
+            chain: strings(&["a.total", "b.total", "a.total"]),
+        };
+        let compute_cycle = ConfigDiagnosticKind::ComputeCycle {
+            chain: strings(&["cost", "days", "cost"]),
+        };
+
+        for message in [
+            item_cycle.to_string(),
+            derive_cycle.to_string(),
+            compute_cycle.to_string(),
+        ] {
+            assert!(message.contains(" → "), "wrong arrow in: {message}");
+            assert!(!message.contains("->"), "wrong arrow in: {message}");
         }
     }
 }

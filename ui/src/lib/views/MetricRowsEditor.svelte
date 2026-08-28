@@ -13,6 +13,7 @@
 	import type { Clause } from '$lib/api/generated/Clause';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import FilterBuilder from '$lib/filters/FilterBuilder.svelte';
+	import { VIEW_SLOT_TYPES } from '$lib/api/generated/viewSlotTypes';
 	import { AGGREGATES, fieldFits } from './viewKinds';
 
 	interface Props {
@@ -104,7 +105,7 @@
 
 	function valueFieldOptions() {
 		return schemaStore.fields.filter((field) =>
-			fieldFits(field.field_type, ['integer', 'float', 'duration', 'date'])
+			fieldFits(field.field_type, VIEW_SLOT_TYPES.metric.value)
 		);
 	}
 </script>

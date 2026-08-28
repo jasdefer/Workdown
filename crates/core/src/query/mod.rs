@@ -1,8 +1,8 @@
 //! Query engine: filtering, sorting, and listing work items.
 //!
 //! This module is the shared library layer for querying work items.
-//! The CLI `query` command is one consumer; future commands (board, tree,
-//! graph) reuse the engine programmatically.
+//! The CLI `query` command is one consumer; every view's `where:` filter
+//! is the other, so a view and a query share one filter semantics.
 
 pub mod clause;
 pub mod engine;

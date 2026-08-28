@@ -82,6 +82,11 @@ mod duration_seconds {
 /// Multi-valued variants (Multichoice, List, Links) join with `", "`.
 /// For embedding inside diagnostic message prose where the value needs
 /// visual delimiters, see [`format_field_value_bracketed`].
+///
+/// This output also defines the query engine's text semantics: the filter
+/// evaluator's string coercion, the sorter's text fallback, and the scalar
+/// cells of delimited output all delegate here. Changing a variant's format
+/// changes what filters match and how string-like fields sort.
 pub fn format_field_value(value: &FieldValue) -> String {
     format_with(value, false)
 }

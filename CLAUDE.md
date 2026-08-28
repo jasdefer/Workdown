@@ -85,8 +85,13 @@ crates/
   cli/                 # CLI binary (clap)
   server/              # Local web server (`workdown serve`)
 docs/
+  architecture.md      # How work flows through the system, and the add-a-view-kind checklist
   adr/                 # Architecture Decision Records
 ```
+
+## Architecture
+
+`docs/architecture.md` is the map between the stages: the shared load spine (config → schema → store load → derive → checks) and the four exits (render, validate, serve, mutations). It owns the ordering and hand-off contracts *between* stages — what happens inside a stage stays in that module's header, which the page links. Its second half is the checklist of everything adding a view kind touches, with what enforces each entry.
 
 ## Architecture Decision Records
 

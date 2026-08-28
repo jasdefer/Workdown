@@ -9,13 +9,14 @@
 //! document bottom, same shape as basic Gantt.
 //!
 //! No per-level section grouping: each chart is already scoped to one
-//! depth, so the inner block is flat. Block formatting, sanitization,
-//! and footer reuse [`super::mermaid_gantt`].
+//! depth, so the inner block is flat. Block formatting and sanitization
+//! reuse [`super::mermaid_gantt`]; the unplaced blockquote summary
+//! comes from [`super::markdown`].
 
 use workdown_core::view_data::GanttByDepthData;
 
-use super::mermaid_gantt::{render_gantt_block, render_unplaced_footer};
-use crate::render::markdown::emit_description;
+use super::markdown::{emit_description, emit_unplaced_blockquote};
+use super::mermaid_gantt::render_gantt_block;
 
 /// Render a `GanttByDepthData` as a Markdown string.
 ///
@@ -38,7 +39,7 @@ pub fn render_gantt_by_depth(data: &GanttByDepthData, description: &str) -> Stri
         out.push_str(&render_gantt_block(&level.bars, None));
     }
 
-    render_unplaced_footer(&data.unplaced, &mut out);
+    emit_unplaced_blockquote(&data.unplaced, &mut out);
     out
 }
 
@@ -148,9 +149,9 @@ mod tests {
         }];
         let output = render_gantt_by_depth(&data(vec![level], unplaced), "");
         let block_at = output.find("```mermaid").unwrap();
-        let footer_at = output.find("> _1 items dropped:_").unwrap();
+        let footer_at = output.find("> _1 item dropped:_").unwrap();
         assert!(block_at < footer_at);
-        assert!(output.contains("> _- missing 'start': \"Zeta\"_\n"));
+        assert!(output.contains("> _- missing `start`: \"Zeta\"_\n"));
     }
 
     #[test]
@@ -189,8 +190,8 @@ mod tests {
             dateFormat YYYY-MM-DD\n    \
             Child :child, 2026-01-06, 2026-01-09\n\
             ```\n\n\
-            > _1 items dropped:_\n\
-            > _- invalid range: \"Zeta\"_\n";
+            > _1 item dropped:_\n\
+            > _- start `start` after end `end`: \"Zeta\"_\n";
         assert_eq!(output, expected);
     }
 
@@ -205,6 +206,6 @@ mod tests {
         let output = render_gantt_by_depth(&data(vec![], unplaced), "");
         assert!(output.starts_with("# Gantt by depth\n\n"));
         assert!(!output.contains("```mermaid"));
-        assert!(output.contains("> _1 items dropped:_\n"));
+        assert!(output.contains("> _1 item dropped:_\n"));
     }
 }

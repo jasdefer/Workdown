@@ -1,6 +1,6 @@
 ---
 id: schema-property-table
-status: to_do
+status: done
 title: Table-drive the "is this property allowed on this field type?" check
 parent: maintenance-review-2026-08
 ---

@@ -189,7 +189,7 @@ pub enum Command {
     ///
     /// Pass an empty string to clear the body. For interactive editing,
     /// open the `.md` file in your editor — this command exists for
-    /// non-interactive callers (UI, scripts, the future server).
+    /// non-interactive callers (the web UI, scripts).
     ///
     /// Frontmatter bytes are preserved verbatim. The body is normalised
     /// to end with exactly one trailing newline (or none if empty).

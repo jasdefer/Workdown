@@ -1,10 +1,18 @@
 # Workdown web UI
 
 The frontend for the Workdown web app — a [SvelteKit](https://svelte.dev/docs/kit)
-(Svelte 5 + TypeScript) single-page app that renders a project's views **read-only**.
-It is served by the `workdown serve` subcommand, which embeds this app's built bundle
-directly into the Rust binary (via `rust-embed`) and exposes project data over a small
-JSON API under `/api`.
+(Svelte 5 + TypeScript) single-page app, served by the `workdown serve` subcommand.
+It is how a project is worked on in a browser rather than in an editor: it renders
+every view kind declared in `views.yaml`, edits an item's fields in a detail panel,
+creates items and views, builds `where:` filters interactively, runs the effort
+timer, and refetches on a live-update ping when files change on disk. `workdown serve`
+embeds this app's built bundle directly into the Rust binary (via `rust-embed`) and
+exposes project data over a small JSON API under `/api`.
+
+The _why_ behind that API — the response envelope, cold-load-per-request, the two
+live-update channels — is [ADR-013](../docs/adr/013-web-layer-contract.md);
+[docs/architecture.md](../docs/architecture.md) traces how a view gets from files on
+disk to this app.
 
 You normally don't build this directory by hand — the workspace `xtask` orchestrator
 does it as part of a release build (see [Building](#building)). Work here when developing
@@ -17,8 +25,6 @@ the frontend itself.
   Regenerate with `cargo xtask gen-types`.
 - **One module per view kind.** `src/lib/views/<kind>/` mirrors the Rust `view_data` and
   CLI `render` splits (board, table, tree, graph, gantt, charts, …).
-- **Read-only.** Mutations, item detail pages, and live file-watching are tracked as
-  follow-up work and not implemented yet.
 
 ## Developing
 
@@ -60,7 +66,7 @@ The production bundle is built and embedded into the `workdown` binary by the wo
 `xtask`:
 
 ```sh
-cargo xtask build-ui      # gen-types + npm ci + npm run check + npm run build
+cargo xtask build-ui      # gen-types + npm ci + check + lint + test + build
 cargo xtask build         # build-ui, then `cargo build --release`
 ```
 

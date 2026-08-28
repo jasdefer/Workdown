@@ -7,6 +7,47 @@ its source — internal refactors are deliberately absent.
 
 ## Unreleased
 
+### Changed
+
+- **Breaking:** a rollup field must now name the relation it climbs. `over` is
+  a required key under `aggregate:`, as it already was under `pull:` — it no
+  longer falls back to a field named `parent`. A schema whose rollup omits
+  `over` stops loading; add `over: parent` to keep the previous behaviour. A
+  rollup is now readable on its own, and no field name except `id` carries
+  behavior.
+
+- Missing-required-field errors are now reported item by item (ascending item
+  id, schema order within an item) instead of partly per file and partly per
+  field. Every complaint about one file now sits together in the output. Only
+  the order changed — projects that loaded cleanly before still do.
+
+### Fixed
+
+- Editor autocomplete for `schema.yaml` no longer accepts properties the CLI
+  rejects: `pattern:` and `allow_cycles:` on a `date`, `boolean` or `list`
+  field passed the shipped JSON schema but failed validation. Editors now
+  flag them where they are written.
+
+- The web UI's view create form offers the fields a slot actually accepts.
+  Two slots were narrower than the rule the CLI enforces — a `min`/`max`
+  aggregate's `value:` takes a date field, and the field pickers now say so —
+  and the form's type lists are generated from the same table the validator
+  reads, so they cannot drift again.
+
+- A required field whose written value is invalid gets exactly one error —
+  about the value. Previously, a derivable required field with an invalid
+  value could earn a second, false, "missing" complaint on top, or have the
+  broken hand-written value silently replaced by a computed, conditional,
+  pulled or rolled-up one. An invalid value now always stays an error until
+  the file is fixed; an aggregating ancestor's children still roll up past it.
+
+- A required field filled by `pull` is no longer accused of being empty
+  before the pull has had its chance to run — previously a false error
+  when the pull succeeded, and a doubled or contradictory pair of errors
+  when it could not. The check now waits for a pull the way it already
+  waited for computed, rolled-up and conditional values, and an
+  incomplete pull is reported exactly once.
+
 ## 0.2.3 - 2026-08-22
 
 ### Fixed

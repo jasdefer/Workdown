@@ -41,6 +41,23 @@ pub struct Schema {
 }
 
 impl Schema {
+    /// Assemble a schema from its fields and rules, deriving the
+    /// inverse table.
+    ///
+    /// The only way to build a `Schema`: `inverse_table` is not
+    /// independent data but a projection of `fields`, and every caller
+    /// that assembled the struct by hand had to remember to derive it.
+    /// A future invariant field is added here once rather than at every
+    /// construction site.
+    pub fn new(fields: IndexMap<String, FieldDefinition>, rules: Vec<Rule>) -> Self {
+        let inverse_table = Self::build_inverse_table(&fields);
+        Self {
+            fields,
+            rules,
+            inverse_table,
+        }
+    }
+
     /// Build the inverse name table from the schema's link/links field definitions.
     pub fn build_inverse_table(
         fields: &IndexMap<String, FieldDefinition>,
@@ -106,6 +123,30 @@ pub struct FieldDefinition {
     pub when: Option<WhenConfig>,
 }
 
+/// The closed set of mechanisms that can fill a field's value during
+/// the load pipeline's fill-in phase when the file itself carries none.
+///
+/// This enumeration is *the* definition of "fillable". Every piece of
+/// code that behaves differently per mechanism matches on it
+/// exhaustively, so adding a mechanism is a compile error at every
+/// site that has not been taught about it — the guarantee that
+/// replaced the two hand-mirrored mechanism lists the required check
+/// once kept (see ADR-012).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FillMechanism {
+    /// `aggregate:` — rolled up cross-item from the bearers below,
+    /// along the aggregate's `over` link (same field).
+    Aggregate,
+    /// `compute:` — evaluated from the same item's other fields and
+    /// project constants.
+    Compute,
+    /// `pull:` — read from a forward link target's field and reduced
+    /// (cross-item, cross-field).
+    Pull,
+    /// `when:` — the first matching condition's value (same item).
+    When,
+}
+
 impl FieldDefinition {
     /// Create a new field definition with only type-specific config.
     /// All shared fields default to `None`/`false`.
@@ -151,11 +192,45 @@ impl FieldDefinition {
         }
     }
 
+    /// The fill mechanisms this field declares, in canonical order.
+    /// Empty means the file's own frontmatter is the only source of a
+    /// value. This is the single place that maps configuration to
+    /// mechanism — nothing else may probe the config fields to answer
+    /// "can something fill this field at load time?".
+    pub fn fill_mechanisms(&self) -> Vec<FillMechanism> {
+        let mut mechanisms = Vec::new();
+        if self.aggregate.is_some() {
+            mechanisms.push(FillMechanism::Aggregate);
+        }
+        if self.compute.is_some() {
+            mechanisms.push(FillMechanism::Compute);
+        }
+        if self.pull.is_some() {
+            mechanisms.push(FillMechanism::Pull);
+        }
+        if self.when.is_some() {
+            mechanisms.push(FillMechanism::When);
+        }
+        mechanisms
+    }
+
+    /// Whether any fill mechanism can supply this field's value at
+    /// load time.
+    pub fn has_fill_mechanism(&self) -> bool {
+        !self.fill_mechanisms().is_empty()
+    }
+
     /// Whether this field's value is derived same-item — by a `compute:`
-    /// expression or a `when:` config. (`aggregate` is cross-item and
-    /// deliberately not included.)
+    /// expression or a `when:` config. (`aggregate` and `pull` are
+    /// cross-item and deliberately not included.) Matches exhaustively
+    /// so a new mechanism must declare which side it falls on.
     pub fn is_derived(&self) -> bool {
-        self.compute.is_some() || self.when.is_some()
+        self.fill_mechanisms()
+            .iter()
+            .any(|mechanism| match mechanism {
+                FillMechanism::Compute | FillMechanism::When => true,
+                FillMechanism::Aggregate | FillMechanism::Pull => false,
+            })
     }
 
     /// Names of the fields this field's derivation reads — the compute
@@ -178,6 +253,41 @@ impl FieldDefinition {
     }
 }
 
+/// A `pattern:` constraint that has already been compiled.
+///
+/// Compiling belongs to schema parsing, not to coercion: an
+/// uncompilable pattern is a defect in `schema.yaml`, so it is reported
+/// once against the schema rather than once per item that happens to
+/// use the field. Holding the compiled form here also means the regex
+/// is built once per load instead of once per value.
+///
+/// The source text is kept for diagnostics and for reporting the schema
+/// back out (the web UI's field descriptions).
+#[derive(Debug, Clone)]
+pub struct CompiledPattern {
+    source: String,
+    regex: regex::Regex,
+}
+
+impl CompiledPattern {
+    /// Compile `source`, or report why it is not a valid regex.
+    pub fn new(source: impl Into<String>) -> Result<Self, regex::Error> {
+        let source = source.into();
+        let regex = regex::Regex::new(&source)?;
+        Ok(Self { source, regex })
+    }
+
+    /// The pattern as written in `schema.yaml`.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    /// True if `value` satisfies the pattern.
+    pub fn is_match(&self, value: &str) -> bool {
+        self.regex.is_match(value)
+    }
+}
+
 /// Per-type configuration for a field definition.
 ///
 /// Each variant carries only the fields that are valid for that type,
@@ -185,7 +295,7 @@ impl FieldDefinition {
 #[derive(Debug, Clone)]
 pub enum FieldTypeConfig {
     String {
-        pattern: Option<String>,
+        pattern: Option<CompiledPattern>,
     },
     Choice {
         values: Vec<String>,
@@ -304,7 +414,13 @@ pub(crate) struct RawFieldDefinition {
 }
 
 /// The 12 built-in field types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
+///
+/// `VariantArray` supplies `FieldType::VARIANTS`, the list the JSON
+/// schema drift guards compare against. Derived rather than written out
+/// so a new type reaches every guard without being added anywhere.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS, strum::VariantArray,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum FieldType {
     String,
@@ -434,12 +550,11 @@ pub struct AggregateConfig {
     #[serde(default)]
     pub error_on_missing: bool,
 
-    /// Name of the link field to walk upward for the rollup. Must reference
-    /// a `link` (single-valued) field in the schema. `None` defaults to
-    /// `"parent"` at use sites; the parser still requires that target field
-    /// to exist.
-    #[serde(default)]
-    pub over: Option<String>,
+    /// Name of the link field to walk upward for the rollup. Must
+    /// reference a `link` (single-valued) field in the schema that
+    /// declares `allow_cycles: false`. Mandatory, like `pull`'s `over`:
+    /// a rollup names the relation it climbs, so no use site defaults.
+    pub over: String,
 }
 
 /// Available aggregation functions.
@@ -527,6 +642,84 @@ pub(crate) fn aggregate_result_type(
         AggregateFunction::All | AggregateFunction::Any | AggregateFunction::None => {
             Some(FieldType::Boolean)
         }
+    }
+}
+
+// ── Type-restricted field properties ─────────────────────────────────
+
+/// A property in `schema.yaml` whose validity depends on the field's
+/// type. Type-agnostic properties (`description`, `required`,
+/// `default`) and the ones policed by their own checks (`compute`,
+/// `pull`, `when`) are deliberately absent.
+///
+/// `VariantArray` supplies `FieldProperty::VARIANTS`; declaration order
+/// here is the order violations are reported in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::VariantArray)]
+pub enum FieldProperty {
+    Values,
+    Pattern,
+    Min,
+    Max,
+    AllowCycles,
+    Resource,
+    Aggregate,
+    Inverse,
+}
+
+impl std::fmt::Display for FieldProperty {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Values => "values",
+            Self::Pattern => "pattern",
+            Self::Min => "min",
+            Self::Max => "max",
+            Self::AllowCycles => "allow_cycles",
+            Self::Resource => "resource",
+            Self::Aggregate => "aggregate",
+            Self::Inverse => "inverse",
+        };
+        f.write_str(s)
+    }
+}
+
+/// The type → allowed-properties table. Anything a row omits is
+/// rejected on that type, so a property added to
+/// `RawFieldDefinition` is invalid everywhere until a row opts in.
+///
+/// `Aggregate` is absent from every row on purpose: whether a type can
+/// be aggregated is already recorded by
+/// [`allowed_aggregate_functions`], and [`field_property_allowed`]
+/// reads it from there rather than restating it here.
+///
+/// The exhaustive `match` is the point of the table — a thirteenth
+/// [`FieldType`] fails to compile until it gets a row.
+fn allowed_field_properties(field_type: FieldType) -> &'static [FieldProperty] {
+    use FieldProperty as P;
+    match field_type {
+        FieldType::String => &[P::Pattern, P::Resource],
+        FieldType::Choice | FieldType::Multichoice => &[P::Values],
+        FieldType::Integer | FieldType::Float => &[P::Min, P::Max],
+        FieldType::Date => &[],
+        FieldType::Duration => &[P::Min, P::Max],
+        FieldType::Color => &[],
+        FieldType::Boolean => &[],
+        FieldType::List => &[P::Resource],
+        FieldType::Link | FieldType::Links => &[P::AllowCycles, P::Inverse],
+    }
+}
+
+/// Whether `property` may be set on a field of `field_type`.
+///
+/// Public because it is the answer `crates/core/defaults/schema.schema.json`
+/// mirrors for editor autocomplete, and `tests/schema_schema.rs` probes the
+/// two against each other — the matrix is a fact about the model, not an
+/// implementation detail of the schema parser.
+pub fn field_property_allowed(field_type: FieldType, property: FieldProperty) -> bool {
+    match property {
+        // Single source of truth: a type accepts `aggregate:` exactly
+        // when it has aggregate functions defined.
+        FieldProperty::Aggregate => allowed_aggregate_functions(field_type).is_some(),
+        other => allowed_field_properties(field_type).contains(&other),
     }
 }
 
@@ -653,4 +846,27 @@ pub(crate) fn is_relation_anchor(name: &str, fields: &IndexMap<String, FieldDefi
 /// True iff `name` is declared as an inverse on any link/links field.
 pub(crate) fn is_defined_inverse(name: &str, fields: &IndexMap<String, FieldDefinition>) -> bool {
     fields.values().any(|f| f.inverse() == Some(name))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use strum::VariantArray;
+
+    #[test]
+    fn field_type_display_matches_its_serde_name() {
+        // `#[serde(rename_all)]` reads `schema.yaml`, the `Display` impl
+        // names the type in diagnostics, and the drift guard for
+        // `schema.schema.json` reads the names through `Display`. Three
+        // consumers, one pair of hand-written lists to keep aligned.
+        for &field_type in FieldType::VARIANTS {
+            let written = field_type.to_string();
+            let parsed = serde_json::to_value(field_type).expect("a field type serializes");
+            assert_eq!(
+                parsed.as_str(),
+                Some(written.as_str()),
+                "FieldType::{field_type:?} serializes as {parsed} but displays as `{written}`"
+            );
+        }
+    }
 }

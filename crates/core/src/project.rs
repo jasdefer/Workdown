@@ -9,9 +9,9 @@
 //!
 //! The server calls this per HTTP request (cold-load — no caching).
 //! Parsing is in the millisecond range for projects with a few hundred
-//! items, well below human-perceptible latency. A future watcher
-//! (`live-updates`) handles SSE push, not cache invalidation, because
-//! there is no cache to invalidate.
+//! items, well below human-perceptible latency. The server's file
+//! watcher handles SSE push, not cache invalidation, because there is
+//! no cache to invalidate.
 
 use std::path::{Path, PathBuf};
 

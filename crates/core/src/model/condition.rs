@@ -26,7 +26,7 @@ pub enum Condition {
 /// A primitive value used in conditions and assertions.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConditionValue {
-    String(std::string::String),
+    String(String),
     Number(f64),
     Bool(bool),
     /// Set by the schema validator after parsing, when a condition targets a

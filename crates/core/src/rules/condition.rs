@@ -1,8 +1,9 @@
 //! Condition evaluation: check whether a field value satisfies a condition.
 //!
-//! This module is designed to be reusable by the query command (issue #15).
-//! The core function [`eval_condition`] takes a value and a condition and
-//! returns a boolean — no store or schema context needed.
+//! Deliberately context-free: the core function [`eval_condition`] takes
+//! a value and a condition and returns a boolean — no store or schema
+//! context needed. It serves the rule engine; the `query` command's
+//! filters have their own evaluator in [`crate::query::eval`].
 
 use crate::model::schema::{Condition, ConditionOperator, ConditionValue, NegationValue};
 use crate::model::FieldValue;

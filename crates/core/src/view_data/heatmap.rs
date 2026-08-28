@@ -24,7 +24,7 @@ use crate::store::Store;
 
 use super::aggregate::aggregate_bucket;
 use super::common::{
-    build_card, group_keys, sort_unplaced, AggregateValue, UnplacedCard, UnplacedReason,
+    build_card, group_keys, sort_unplaced, ChartValue, UnplacedCard, UnplacedReason,
 };
 use super::filter::filtered_items;
 
@@ -45,7 +45,7 @@ pub struct HeatmapData {
 pub struct HeatmapCell {
     pub x: String,
     pub y: String,
-    pub value: AggregateValue,
+    pub value: ChartValue,
 }
 
 pub fn extract_heatmap(view: &View, store: &Store, schema: &Schema) -> HeatmapData {
@@ -234,13 +234,13 @@ mod tests {
             .iter()
             .find(|c| c.x == "open" && c.y == "eng")
             .unwrap();
-        assert!(matches!(open_eng.value, AggregateValue::Number(n) if n == 2.0));
+        assert!(matches!(open_eng.value, ChartValue::Number(n) if n == 2.0));
         let done_ops = data
             .cells
             .iter()
             .find(|c| c.x == "done" && c.y == "ops")
             .unwrap();
-        assert!(matches!(done_ops.value, AggregateValue::Number(n) if n == 1.0));
+        assert!(matches!(done_ops.value, ChartValue::Number(n) if n == 1.0));
     }
 
     #[test]
@@ -282,7 +282,7 @@ mod tests {
         // 2026-01-05 is Monday of ISO week 02; 2026-01-07 is Wednesday of same week.
         assert_eq!(data.x_labels, vec!["2026-W02"]);
         assert_eq!(data.cells.len(), 1);
-        assert!(matches!(data.cells[0].value, AggregateValue::Number(n) if n == 2.0));
+        assert!(matches!(data.cells[0].value, ChartValue::Number(n) if n == 2.0));
     }
 
     #[test]
@@ -360,7 +360,7 @@ mod tests {
 
         assert_eq!(data.cells.len(), 2);
         for cell in &data.cells {
-            assert!(matches!(cell.value, AggregateValue::Number(n) if n == 1.0));
+            assert!(matches!(cell.value, ChartValue::Number(n) if n == 1.0));
         }
     }
 
@@ -415,7 +415,7 @@ mod tests {
         let data = extract_heatmap(&view, &store, &schema);
 
         assert_eq!(data.cells.len(), 1);
-        assert!(matches!(data.cells[0].value, AggregateValue::Number(n) if (n - 8.0).abs() < 1e-9));
+        assert!(matches!(data.cells[0].value, ChartValue::Number(n) if (n - 8.0).abs() < 1e-9));
     }
 
     #[test]

@@ -7,7 +7,7 @@
 //! `defaults.effort_field` resolves to, in one of three states —
 //! *unconfigured*, *invalid*, *ready* — the only part of `config.yaml`
 //! the UI ever sees. Config is read once at server start, so the UI's
-//! hint tells the user to restart after setting the key.
+//! hint tells the user to restart after setting the key (ADR-013).
 //!
 //! Wrong moves get clean refusals: start while a timer runs is `409`
 //! (the no-takeover rule, enforced server-side too), as is stop when
@@ -36,7 +36,7 @@ use axum::{Json, Router};
 
 use workdown_core::model::WorkItemId;
 use workdown_core::operations::set::{run_set, DurationMode, SetOperation};
-use workdown_core::project::{load_project, Project};
+use workdown_core::project::Project;
 use workdown_core::timer_data::{
     hand_written_duration_seconds, rounded_write_seconds, EffortFieldState, StartTimer, TimerMode,
     TimerPhase, TimerStartOutcome, TimerState, TimerStopResult, TimerWrite, POMODORO_BREAK_SECONDS,
@@ -45,7 +45,7 @@ use workdown_core::timer_data::{
 
 use super::items::set_error_status;
 use crate::envelope::ApiResponse;
-use crate::state::AppState;
+use crate::state::{load_state_project, AppState};
 use crate::timer::{BreakEndError, PhaseSnapshot, StopError, WorkSnapshot};
 
 /// Router for the timer endpoints under `/api`.
@@ -244,18 +244,6 @@ async fn end_break(State(state): State<AppState>) -> ApiResponse<TimerState> {
 
 // ── Projection helpers ─────────────────────────────────────────────────
 
-/// Cold-load the project, mapping a load failure to the envelope's
-/// rejected tier (as every project-reading handler does).
-fn load_state_project<T: serde::Serialize>(state: &AppState) -> Result<Project, ApiResponse<T>> {
-    load_project(
-        &state.config,
-        &state.project_root,
-        &state.config_path,
-        state.evaluation_date_override,
-    )
-    .map_err(|error| ApiResponse::rejected(vec![error.to_diagnostic()]))
-}
-
 /// The timer's whole client-visible state, projected from the running
 /// session (if any) and the freshly loaded project.
 fn timer_state(state: &AppState, project: &Project) -> TimerState {
@@ -324,6 +312,6 @@ fn rollup_confirmation_needed(project: &Project, effort_field: &str, item_id: &s
     let Some(aggregate) = definition.aggregate.as_ref() else {
         return false;
     };
-    let over = aggregate.over.as_deref().unwrap_or("parent");
+    let over = aggregate.over.as_str();
     !project.store.referring_items(item_id, over).is_empty()
 }

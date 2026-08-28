@@ -9,6 +9,11 @@
 //! Leaves without a numeric `size` field are routed to `unplaced` and
 //! dropped from the tree. An internal node whose children all drop for
 //! this reason cascades: it too disappears (no data to display).
+//!
+//! Children are ordered here — size descending, ties broken by id
+//! ascending — so every renderer draws them in the same sequence.
+
+use std::cmp::Ordering;
 
 use serde::Serialize;
 
@@ -17,7 +22,8 @@ use crate::model::views::{View, ViewKind};
 use crate::store::Store;
 
 use super::common::{
-    as_size, build_card, zero_for_size_field, Card, SizeValue, UnplacedCard, UnplacedReason,
+    as_size, build_card, sort_unplaced, zero_for_size_field, Card, SizeValue, UnplacedCard,
+    UnplacedReason,
 };
 use super::filter::filtered_items;
 use super::traverse::{walk_forest, Traversal};
@@ -47,10 +53,11 @@ pub fn extract_treemap(view: &View, store: &Store, schema: &Schema) -> TreemapDa
 
     let mut unplaced: Vec<UnplacedCard> = Vec::new();
 
-    let root_nodes: Vec<TreemapNode> = forest
+    let mut root_nodes: Vec<TreemapNode> = forest
         .into_iter()
         .filter_map(|traversal| to_treemap_node(traversal, size, schema, view, &mut unplaced))
         .collect();
+    sort_children(&mut root_nodes);
 
     let zero = zero_for_size_field(size, schema);
     let total_size = root_nodes
@@ -58,7 +65,7 @@ pub fn extract_treemap(view: &View, store: &Store, schema: &Schema) -> TreemapDa
         .map(|node| node.size)
         .fold(zero, |left, right| left + right);
 
-    unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
+    sort_unplaced(&mut unplaced);
 
     TreemapData {
         group_field: group.clone(),
@@ -72,6 +79,37 @@ pub fn extract_treemap(view: &View, store: &Store, schema: &Schema) -> TreemapDa
     }
 }
 
+/// Order a node's children the way every renderer draws them: size
+/// descending, ties broken by id ascending.
+///
+/// Ordering lives here rather than in each renderer so the terminal and
+/// the web draw equal-sized items in the same sequence. Sizes come from
+/// one field, so `partial_cmp` only returns `None` on a NaN a float
+/// field could carry; treat that as equal and let the id tiebreak
+/// settle it, keeping the order total and deterministic.
+fn sort_children(children: &mut [TreemapNode]) {
+    children.sort_by(|left, right| {
+        right
+            .size
+            .as_f64()
+            .partial_cmp(&left.size.as_f64())
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| {
+                let left_id = left
+                    .card
+                    .as_ref()
+                    .map(|card| card.id.as_str())
+                    .unwrap_or("");
+                let right_id = right
+                    .card
+                    .as_ref()
+                    .map(|card| card.id.as_str())
+                    .unwrap_or("");
+                left_id.cmp(right_id)
+            })
+    });
+}
+
 fn to_treemap_node(
     traversal: Traversal,
     size_field: &str,
@@ -83,11 +121,12 @@ fn to_treemap_node(
     let card = build_card(item, schema, view);
     let had_traversal_children = !traversal.children.is_empty();
 
-    let children: Vec<TreemapNode> = traversal
+    let mut children: Vec<TreemapNode> = traversal
         .children
         .into_iter()
         .filter_map(|child| to_treemap_node(child, size_field, schema, view, unplaced))
         .collect();
+    sort_children(&mut children);
 
     let size = if had_traversal_children {
         if children.is_empty() {
@@ -302,7 +341,8 @@ mod tests {
             .iter()
             .map(|node| node.card.as_ref().unwrap().id.as_str())
             .collect();
-        assert_eq!(ids, vec!["a", "b", "c"]);
+        // Ordered by the extractor: size descending, not filename order.
+        assert_eq!(ids, vec!["c", "b", "a"]);
     }
 
     #[test]
@@ -353,6 +393,31 @@ mod tests {
 
         // No children → variant defaults to schema's field type.
         assert_eq!(data.root.size, SizeValue::Duration(0));
+    }
+
+    #[test]
+    fn equal_sizes_break_ties_by_id_at_every_level() {
+        let schema = parent_schema();
+        let (_tmp, store) = make_store_with_files(
+            &schema,
+            vec![
+                ("root.md", "---\n---\n"),
+                ("zulu.md", "---\nparent: root\neffort: 4\n---\n"),
+                ("alpha.md", "---\nparent: root\neffort: 4\n---\n"),
+                ("mike.md", "---\nparent: root\neffort: 9\n---\n"),
+            ],
+        );
+        let view = treemap_view("parent", "effort");
+
+        let data = extract_treemap(&view, &store, &schema);
+
+        let child_ids: Vec<&str> = data.root.children[0]
+            .children
+            .iter()
+            .map(|node| node.card.as_ref().unwrap().id.as_str())
+            .collect();
+        // Size descending first, then id ascending among the equal pair.
+        assert_eq!(child_ids, vec!["mike", "alpha", "zulu"]);
     }
 
     fn close_enough(left: SizeValue, right: f64) -> bool {

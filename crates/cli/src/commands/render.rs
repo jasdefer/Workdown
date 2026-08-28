@@ -11,18 +11,17 @@
 //!   warning-severity finding is reported but the view still renders.
 //! - Unknown view id (single-view mode) → hard error.
 
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use workdown_core::model::calendar::WorkingCalendar;
 use workdown_core::model::config::Config;
 use workdown_core::model::diagnostic::Diagnostic;
-use workdown_core::model::schema::{Schema, Severity};
+use workdown_core::model::schema::Schema;
 use workdown_core::model::views::{rendered_view_path, View, Views};
 use workdown_core::project::load_project;
 use workdown_core::store::Store;
-use workdown_core::view_data::{self, ViewData};
+use workdown_core::view_data::{self, CheckedView, ViewData};
 
 use crate::cli::output;
 use crate::render;
@@ -57,8 +56,6 @@ pub fn run_render(
         return Ok(ExitCode::SUCCESS);
     };
 
-    let unrenderable_view_ids = unrenderable_view_ids(&project.diagnostics);
-
     // Fill unset display roles from `defaults.display` in config.yaml.
     // Applied after validation so diagnostics keep pointing at what the
     // user actually wrote in views.yaml.
@@ -83,7 +80,7 @@ pub fn run_render(
         Some(id) => render_single(
             views,
             id,
-            &unrenderable_view_ids,
+            &project.diagnostics,
             &project.store,
             &project.schema,
             &project.calendar,
@@ -92,7 +89,7 @@ pub fn run_render(
         ),
         None => render_all(
             views,
-            &unrenderable_view_ids,
+            &project.diagnostics,
             &project.store,
             &project.schema,
             &project.calendar,
@@ -106,7 +103,7 @@ pub fn run_render(
 fn render_single(
     views: &Views,
     view_id: &str,
-    unrenderable_view_ids: &HashSet<String>,
+    diagnostics: &[Diagnostic],
     store: &Store,
     schema: &workdown_core::model::schema::Schema,
     calendar: &WorkingCalendar,
@@ -119,11 +116,11 @@ fn render_single(
         .find(|view| view.id == view_id)
         .ok_or_else(|| anyhow::anyhow!("no view with id '{view_id}' in views.yaml"))?;
 
-    if unrenderable_view_ids.contains(&view.id) {
+    let Some(checked) = CheckedView::new(view, diagnostics) else {
         anyhow::bail!("view '{}' failed validation — see warnings above", view.id);
-    }
+    };
 
-    let view_data = view_data::extract(view, store, schema, calendar);
+    let view_data = view_data::extract(checked, store, schema, calendar);
     emit_unplaced_warnings(view, &view_data);
     let description = render::description::description_for(view);
     let markdown = render_view_data(&view_data, link_base, &description);
@@ -136,7 +133,7 @@ fn render_single(
 
 fn render_all(
     views: &Views,
-    unrenderable_view_ids: &HashSet<String>,
+    diagnostics: &[Diagnostic],
     store: &Store,
     schema: &workdown_core::model::schema::Schema,
     calendar: &WorkingCalendar,
@@ -148,10 +145,10 @@ fn render_all(
         return Ok(ExitCode::SUCCESS);
     }
 
-    let renderable: Vec<&View> = views
+    let renderable: Vec<CheckedView<'_>> = views
         .views
         .iter()
-        .filter(|view| !unrenderable_view_ids.contains(&view.id))
+        .filter_map(|view| CheckedView::new(view, diagnostics))
         .collect();
 
     if renderable.is_empty() {
@@ -160,8 +157,9 @@ fn render_all(
 
     ensure_output_dir(output_dir)?;
 
-    for view in renderable {
-        let view_data = view_data::extract(view, store, schema, calendar);
+    for checked in renderable {
+        let view = checked.view();
+        let view_data = view_data::extract(checked, store, schema, calendar);
         emit_unplaced_warnings(view, &view_data);
         let description = render::description::description_for(view);
         let markdown = render_view_data(&view_data, link_base, &description);
@@ -208,7 +206,10 @@ fn render_view_data(view_data: &ViewData, link_base: &str, description: &str) ->
 /// The renderer already includes a footer in the rendered Markdown for
 /// users who open the file; this is the parallel terminal-side notice
 /// so it doesn't go unnoticed when running `workdown render` in CI or
-/// pre-commit. Pattern reused for chart views as their renderers land.
+/// pre-commit. Exhaustive over [`ViewData`] so a new view kind fails
+/// compilation here and decides deliberately whether it has unplaced
+/// items to warn about; board/table/tree/graph place every
+/// filter-matched item by construction.
 fn emit_unplaced_warnings(view: &View, view_data: &ViewData) {
     let count = match view_data {
         ViewData::Gantt(data) => data.unplaced.len(),
@@ -220,12 +221,13 @@ fn emit_unplaced_warnings(view: &View, view_data: &ViewData) {
         ViewData::BarChart(data) => data.unplaced.len(),
         ViewData::Heatmap(data) => data.unplaced.len(),
         ViewData::Workload(data) => data.unplaced.len(),
-        _ => 0,
+        ViewData::Board(_) | ViewData::Table(_) | ViewData::Tree(_) | ViewData::Graph(_) => 0,
     };
     if count > 0 {
         output::warning(&format!(
-            "view '{}': {count} items dropped — see footer",
+            "view '{}': {} dropped — see footer",
             view.id,
+            render::markdown::pluralize(count, "item"),
         ));
     }
 }
@@ -238,22 +240,6 @@ fn schema_references_today(schema: &Schema) -> bool {
         .values()
         .filter_map(|field_definition| field_definition.compute.as_ref())
         .any(|config| config.expression.references_today())
-}
-
-/// Extract the set of view ids that cannot be rendered.
-///
-/// `Diagnostic::view_id()` returns `Some(_)` for every Config-scope
-/// diagnostic that names a view, but only the *errors* among them
-/// describe a view that can't produce output — a warning (a `where:`
-/// operand that matches nothing, say) is advice about a view that still
-/// renders fine. Filtering on severity is what lets a warning be
-/// reported without making the view it describes disappear.
-fn unrenderable_view_ids(diagnostics: &[Diagnostic]) -> HashSet<String> {
-    diagnostics
-        .iter()
-        .filter(|diagnostic| diagnostic.severity == Severity::Error)
-        .filter_map(|diagnostic| diagnostic.view_id().map(str::to_owned))
-        .collect()
 }
 
 fn ensure_output_dir(output_dir: &Path) -> anyhow::Result<()> {
@@ -273,72 +259,4 @@ fn write_view_file(output_dir: &Path, view_id: &str, markdown: &str) -> anyhow::
     std::fs::write(&path, markdown)
         .map_err(|e| anyhow::anyhow!("failed to write '{}': {e}", path.display()))?;
     Ok(path)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use std::path::PathBuf;
-    use workdown_core::model::diagnostic::ConfigDiagnosticKind;
-
-    fn view_diagnostic(severity: Severity, kind: ConfigDiagnosticKind) -> Diagnostic {
-        Diagnostic::config(severity, PathBuf::from("views.yaml"), kind)
-    }
-
-    /// A view whose config cannot produce output is skipped.
-    #[test]
-    fn an_error_marks_a_view_unrenderable() {
-        let diagnostics = [view_diagnostic(
-            Severity::Error,
-            ConfigDiagnosticKind::ViewUnknownField {
-                view_id: "board".to_owned(),
-                slot: "field",
-                field_name: "nonexistent".to_owned(),
-            },
-        )];
-        assert!(unrenderable_view_ids(&diagnostics).contains("board"));
-    }
-
-    /// …but a warning must not. A `where:` operand that can never match
-    /// is worth reporting and no reason to withhold the view — hiding it
-    /// would be a worse version of the silent empty view the warning
-    /// exists to explain.
-    #[test]
-    fn a_warning_leaves_the_view_renderable() {
-        let diagnostics = [view_diagnostic(
-            Severity::Warning,
-            ConfigDiagnosticKind::ViewWhereUnknownValue {
-                view_id: "board".to_owned(),
-                raw: "status=nonsense".to_owned(),
-                field_name: "status".to_owned(),
-                detail: "'nonsense' is not one of: done, open".to_owned(),
-            },
-        )];
-        assert!(unrenderable_view_ids(&diagnostics).is_empty());
-    }
-
-    /// A view carrying both is skipped on the error's account; the
-    /// warning neither rescues it nor is lost from the report.
-    #[test]
-    fn an_error_wins_over_a_warning_on_the_same_view() {
-        let diagnostics = [
-            view_diagnostic(
-                Severity::Warning,
-                ConfigDiagnosticKind::ViewWhereUnknownValue {
-                    view_id: "board".to_owned(),
-                    raw: "status=nonsense".to_owned(),
-                    field_name: "status".to_owned(),
-                    detail: "…".to_owned(),
-                },
-            ),
-            view_diagnostic(
-                Severity::Error,
-                ConfigDiagnosticKind::ViewGanttEndOrDurationRequired {
-                    view_id: "board".to_owned(),
-                },
-            ),
-        ];
-        assert!(unrenderable_view_ids(&diagnostics).contains("board"));
-    }
 }

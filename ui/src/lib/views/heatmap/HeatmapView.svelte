@@ -1,7 +1,7 @@
 <!--
   Heatmap view. A 2D grid: x and y are pre-stringified categorical axes
   (the server has already bucketed dates and formatted other types into
-  display strings), each populated cell carries a tagged AggregateValue.
+  display strings), each populated cell carries a tagged ChartValue.
   `x_labels` / `y_labels` give the full axis ordering — empty cells are
   honest gaps, never imaginary zeros.
 
@@ -21,9 +21,9 @@
 <script lang="ts">
 	import type { HeatmapData } from '$lib/api/generated/HeatmapData';
 	import type { HeatmapCell } from '$lib/api/generated/HeatmapCell';
-	import type { AggregateValue } from '$lib/api/generated/AggregateValue';
+	import type { ChartValue } from '$lib/api/generated/ChartValue';
 	import {
-		formatAggregateValue,
+		formatChartValue,
 		formatIsoDate,
 		formatNumber,
 		pickDurationUnit
@@ -78,7 +78,7 @@
 		const host = container;
 		if (host === undefined || data.cells.length === 0 || chartSize.width === 0) return;
 
-		const valueType: AggregateValue['type'] | undefined = data.cells[0]?.value.type;
+		const valueType: ChartValue['type'] | undefined = data.cells[0]?.value.type;
 		const maxDurationSeconds =
 			valueType === 'duration'
 				? data.cells.reduce(
@@ -141,7 +141,7 @@
 							fill: valueAsNumber,
 							channels: {
 								formatted: {
-									value: (cell: HeatmapCell): string => formatAggregateValue(cell.value)
+									value: (cell: HeatmapCell): string => formatChartValue(cell.value)
 								}
 							},
 							tip: {

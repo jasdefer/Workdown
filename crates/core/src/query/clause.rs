@@ -251,7 +251,7 @@ fn condition_from_membership(branches: &[Predicate], operator: Operator) -> Opti
             Some(existing) if *existing == name => {}
             Some(_) => return None, // mixed fields → raw
         }
-        values.push(comparison.value.clone());
+        values.push(comparison.operand.text().to_owned());
     }
     Some(Condition {
         field: field?,
@@ -265,7 +265,9 @@ fn condition_from_comparison(comparison: &Comparison) -> Option<Condition> {
     let field = local_field(&comparison.field)?;
     let value = match comparison.operator {
         Operator::IsSet | Operator::IsNotSet => None,
-        _ => Some(comparison.value.clone()),
+        // `operand.text()` is the clause form — for `Matches` that is the
+        // regex's `/pattern/flags`, which is what the wire type carries.
+        _ => Some(comparison.operand.text().to_owned()),
     };
     Some(Condition {
         field,
@@ -289,6 +291,7 @@ fn local_field(field: &FieldReference) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::query::types::Operand;
 
     fn comparison(field: &str, operator: Operator, value: Option<&str>) -> Condition {
         Condition {
@@ -476,12 +479,12 @@ mod tests {
             Predicate::Comparison(Comparison {
                 field: FieldReference::Local("status".to_owned()),
                 operator: Operator::NotEqual,
-                value: "done".to_owned(),
+                operand: Operand::Value("done".to_owned()),
             }),
             Predicate::Comparison(Comparison {
                 field: FieldReference::Local("status".to_owned()),
                 operator: Operator::Equal,
-                value: "open".to_owned(),
+                operand: Operand::Value("open".to_owned()),
             }),
         ]);
         assert_eq!(condition_from_predicate(&mixed), None);
@@ -494,6 +497,18 @@ mod tests {
             decompose_clause("parent.status=open"),
             Clause::Raw {
                 raw: "parent.status=open".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn decompose_regex_on_related_falls_back_to_raw() {
+        // Parses fine (regex on a related field is supported), but the
+        // guided builder is local-field only, so it stays raw.
+        assert_eq!(
+            decompose_clause("parent.title/^fix-/"),
+            Clause::Raw {
+                raw: "parent.title/^fix-/".to_owned()
             }
         );
     }

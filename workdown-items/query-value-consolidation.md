@@ -1,6 +1,6 @@
 ---
 id: query-value-consolidation
-status: to_do
+status: done
 title: Deduplicate the filter engine's comparison and formatting logic
 parent: maintenance-review-2026-08
 ---
@@ -71,3 +71,33 @@ existing round-trip and operator tests pin behavior.
   and rejected: they share nothing at the language layer and should
   not (typed per-item arithmetic vs store-wide clause matching); the
   worthwhile sharing is the value layer above.
+
+## Decisions taken (2026-08-27)
+
+1. **Regex operand goes typed, not cached.** `Comparison` carries the
+   pattern parsed and compiled once at parse time, keeping the original
+   `/pattern/flags` text for serialization. The encode/decode/re-append
+   convention split across `parse.rs`, `eval.rs`, and `clause.rs` is
+   removed entirely rather than papered over with a cache.
+2. **Merge only the verbatim copies.** One ordered-comparison helper
+   collapses the integer/float/duration evaluators; one collection
+   helper collapses list/links. String, boolean, and color evaluators
+   stay separate — their differences are real (string's contains/regex
+   do work; color resolves names and hex to one value), not accidental
+   duplication. Rule applied: merge what is accidentally identical,
+   keep what is genuinely different.
+3. **Dates keep riding the string path.** `due_date > 2026-03-01`
+   compares text (correct for ISO dates); a typed date comparison would
+   change behavior for malformed inputs and is out of scope here —
+   tracked as the follow-up item [[typed-date-filter-comparison]].
+4. **The sort fallback sorts by display text — stated as the rule.**
+   Typed fields keep native comparison; only the text fallback delegates
+   to `format_field_value`. The coupling is documented at both ends: a
+   doc comment on the sort fallback (delegates on purpose) and one on
+   `format_field_value` (its output also defines fallback sort order and
+   filter text comparison).
+5. **Regex on related fields is intended behavior.** The parser comment
+   claiming rejection is wrong, not the code: fix the comment and pin
+   the behavior with tests (including a collection-valued target). If a
+   corner turns out broken, record it as a finding rather than silently
+   changing semantics under this item.

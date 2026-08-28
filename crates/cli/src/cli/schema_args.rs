@@ -235,12 +235,7 @@ mod tests {
             .into_iter()
             .map(|(name, definition)| (name.to_owned(), definition))
             .collect();
-        let inverse_table = Schema::build_inverse_table(&fields);
-        Schema {
-            fields,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(fields, vec![])
     }
 
     fn parse(schema: &Schema, args: &[&str]) -> clap::ArgMatches {

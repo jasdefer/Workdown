@@ -28,9 +28,6 @@ use crate::model::schema::{AggregateFunction, Severity};
 use crate::model::{FieldValue, WorkItem, WorkItemId};
 use crate::walker::walk_up_in;
 
-/// Link field walked when an aggregate config doesn't set `over`.
-pub(super) const DEFAULT_OVER_FIELD: &str = "parent";
-
 // ── Aggregate checks ────────────────────────────────────────────────
 
 /// Report every bearer whose `over` chain reaches another bearer: the
@@ -79,7 +76,7 @@ pub(super) fn coverage_diagnostics(
 ) -> Vec<Diagnostic> {
     let mut leaves: Vec<(&WorkItemId, &WorkItem)> = items
         .iter()
-        .filter(|(id, _)| is_tree_leaf(reverse_links, id, over))
+        .filter(|(id, _)| super::is_leaf(reverse_links, id, over))
         .collect();
     leaves.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
 
@@ -100,19 +97,6 @@ pub(super) fn coverage_diagnostics(
 }
 
 // ── Helpers: tree navigation ────────────────────────────────────────
-
-/// True if no item references `item_id` as its `over_field` target —
-/// nothing has it as their parent in the rollup hierarchy.
-fn is_tree_leaf(
-    reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
-    item_id: &WorkItemId,
-    over_field: &str,
-) -> bool {
-    reverse_links
-        .get(over_field)
-        .and_then(|by_target| by_target.get(item_id))
-        .is_none_or(|sources| sources.is_empty())
-}
 
 /// True if `start` itself or any ancestor on its `over_field` chain is in
 /// `manual_set`. Cycle-safe via the walker's visited tracking.
@@ -347,20 +331,33 @@ mod tests {
 
     /// The all-fields entry point these scenarios were written against
     /// now lives in the derive orchestrator; this shim keeps them
-    /// reading naturally while exercising the real pipeline.
+    /// reading naturally while exercising the real pipeline — the
+    /// derive passes followed by the required check, as in
+    /// `Store::load`. In-memory items never went through coercion, so
+    /// there are no conversion failures to carry.
     fn run(
         items: &mut HashMap<WorkItemId, WorkItem>,
         reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
         schema: &Schema,
     ) -> Vec<Diagnostic> {
-        crate::store::derive::run(
+        let conversion_failures = HashMap::new();
+        let mut diagnostics = crate::store::derive::run(
             items,
             reverse_links,
             schema,
             &IndexMap::new(),
             chrono::NaiveDate::from_ymd_opt(2026, 1, 8).expect("valid date"),
             &HashSet::new(),
-        )
+            &conversion_failures,
+        );
+        diagnostics.extend(crate::store::required::check(
+            items,
+            reverse_links,
+            schema,
+            &HashSet::new(),
+            &conversion_failures,
+        ));
+        diagnostics
     }
 
     // ── apply_aggregate (table-driven) ──────────────────────────────
@@ -623,7 +620,7 @@ mod tests {
         field_name: &str,
         type_config: FieldTypeConfig,
         function: AggregateFunction,
-        over: Option<&str>,
+        over: &str,
         error_on_missing: bool,
     ) -> Schema {
         let mut fields = IndexMap::new();
@@ -646,16 +643,11 @@ mod tests {
         def.aggregate = Some(AggregateConfig {
             function,
             error_on_missing,
-            over: over.map(str::to_owned),
+            over: over.to_owned(),
         });
         fields.insert(field_name.to_owned(), def);
 
-        let inverse_table = Schema::build_inverse_table(&fields);
-        Schema {
-            fields,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(fields, vec![])
     }
 
     /// Build a WorkItem with the given fields. `parent` and `epic` are
@@ -730,7 +722,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             false,
         );
         let mut items = map_of(vec![
@@ -761,7 +753,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             false,
         );
         let mut items = map_of(vec![
@@ -789,7 +781,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             false,
         );
         let mut items = map_of(vec![
@@ -830,7 +822,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             false,
         );
         let mut items = map_of(vec![
@@ -852,7 +844,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             true,
         );
         let mut items = map_of(vec![
@@ -888,7 +880,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             true,
         );
         let mut items = map_of(vec![
@@ -915,7 +907,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            Some("epic"),
+            "epic",
             false,
         );
         let mut items = map_of(vec![
@@ -941,7 +933,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             false,
         );
         schema.fields.get_mut("effort").unwrap().required = true;
@@ -978,7 +970,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             false,
         );
         schema.fields.get_mut("effort").unwrap().required = true;
@@ -1015,7 +1007,7 @@ mod tests {
                 max: None,
             },
             AggregateFunction::Sum,
-            None,
+            "parent",
             false,
         );
         let mut items = map_of(vec![

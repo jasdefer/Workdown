@@ -2,8 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { VIEW_KIND_CONTROLS, VIEW_KINDS, fieldFits, isDefinitionComplete } from './viewKinds';
 
 describe('VIEW_KINDS', () => {
-	it('lists all 13 kinds, each with a control spec', () => {
-		expect(VIEW_KINDS).toHaveLength(13);
+	// Completeness is a compile-time matter now: the picker list is derived
+	// from a `Record<ViewType, string>`, so a missing kind cannot get past
+	// `npm run check`. What a test can still add is that every listed kind
+	// actually has inputs to offer, which no type expresses.
+	it('gives every kind at least one control', () => {
 		for (const kind of VIEW_KINDS) {
 			expect(VIEW_KIND_CONTROLS[kind].length).toBeGreaterThan(0);
 		}

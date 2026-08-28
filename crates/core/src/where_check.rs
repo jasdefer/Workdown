@@ -47,17 +47,13 @@
 
 use std::collections::HashSet;
 
+use crate::model::message::one_of;
 use crate::model::resources::Resources;
 use crate::model::schema::{FieldTypeConfig, Schema};
 use crate::model::FieldValue;
 use crate::query::types::{Comparison, FieldReference, Operator, Predicate};
 use crate::resources_check::validatable_fields;
 use crate::store::Store;
-
-/// How many option-set members a message lists before it gives up and
-/// counts the rest. Long enough for a realistic `status` or `type`, short
-/// enough that a 40-entry `people` section doesn't bury the message.
-const MAX_LISTED_OPTIONS: usize = 8;
 
 // ── Finding ──────────────────────────────────────────────────────────
 
@@ -180,7 +176,7 @@ fn check_comparison(
     };
 
     let is_equality = matches!(comparison.operator, Operator::Equal | Operator::NotEqual);
-    let value = comparison.value.as_str();
+    let value = comparison.operand.text();
 
     let violation = match check {
         // An option set answers "is this a member", a question the
@@ -262,7 +258,7 @@ fn resolve_check(field_name: &str, context: &CheckContext) -> Option<ValueCheck>
             entries.iter().map(|entry| (*entry).to_owned()).collect();
         members.extend(held_values(field_name, context.store));
         return Some(ValueCheck::OptionSet {
-            expected: describe_option_set(&members),
+            expected: describe_unordered_set(&members),
             members,
         });
     }
@@ -272,10 +268,9 @@ fn resolve_check(field_name: &str, context: &CheckContext) -> Option<ValueCheck>
 
     Some(match &definition.type_config {
         FieldTypeConfig::Choice { values } | FieldTypeConfig::Multichoice { values } => {
-            let members: HashSet<String> = values.iter().cloned().collect();
             ValueCheck::OptionSet {
-                expected: describe_option_set(&members),
-                members,
+                expected: one_of(values),
+                members: values.iter().cloned().collect(),
             }
         }
         // Item ids plus whatever the field actually holds: a broken
@@ -359,23 +354,16 @@ fn held_values(field_name: &str, store: &Store) -> Vec<String> {
 
 // ── Message shaping ──────────────────────────────────────────────────
 
-/// Phrase an option set for the message, listing members in sorted order
-/// and counting the tail once the list gets long. Sorted rather than
-/// declaration-ordered because a `HashSet` has no order to preserve and
-/// an alphabetical list is the one a reader can scan.
-fn describe_option_set(members: &HashSet<String>) -> String {
-    if members.is_empty() {
-        return "one of this field's values (it declares none)".to_owned();
-    }
+/// Phrase an option set that has no authored order of its own — a
+/// resource section widened by the values items hold, or the ids that
+/// exist. Sorted, because a `HashSet` has nothing to preserve and an
+/// unstable order would make the message differ run to run. Sets that
+/// *do* carry an order (a field's declared `values`) go straight to
+/// [`one_of`].
+fn describe_unordered_set(members: &HashSet<String>) -> String {
     let mut sorted: Vec<&str> = members.iter().map(String::as_str).collect();
     sorted.sort_unstable();
-
-    if sorted.len() <= MAX_LISTED_OPTIONS {
-        return format!("one of: {}", sorted.join(", "));
-    }
-    let shown = sorted[..MAX_LISTED_OPTIONS].join(", ");
-    let rest = sorted.len() - MAX_LISTED_OPTIONS;
-    format!("one of: {shown}, … ({rest} more)")
+    one_of(&sorted)
 }
 
 /// Recognize the one mistake worth naming: a comma-joined operand whose
@@ -483,12 +471,7 @@ mod tests {
         reviewers.resource = Some("nobody".to_owned());
         fields.insert("reviewers".to_owned(), reviewers);
 
-        let inverse_table = Schema::build_inverse_table(&fields);
-        Schema {
-            fields,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(fields, vec![])
     }
 
     /// A `people` section with two entries, and an empty `nobody`
@@ -572,10 +555,10 @@ mod tests {
         let violation = assert_one("status=nonsense");
         assert_eq!(violation.field, "status");
         assert_eq!(violation.value, "nonsense");
-        assert_eq!(violation.expected, "one of: done, in_progress, open");
+        assert_eq!(violation.expected, "one of: open, in_progress, done");
         assert_eq!(
             violation.detail(),
-            "'nonsense' is not one of: done, in_progress, open"
+            "'nonsense' is not one of: open, in_progress, done"
         );
     }
 
@@ -837,16 +820,31 @@ mod tests {
         // The message quotes the clause's own spelling…
         assert_eq!(violation.field, "parent.status");
         // …while the option set comes from the target field.
-        assert_eq!(violation.expected, "one of: done, in_progress, open");
+        assert_eq!(violation.expected, "one of: open, in_progress, done");
     }
 
     // ── Message shaping ─────────────────────────────────────────
 
     #[test]
-    fn long_option_sets_are_truncated_with_a_count() {
-        let members: HashSet<String> = (1..=12).map(|index| format!("value-{index:02}")).collect();
-        let described = describe_option_set(&members);
-        assert!(described.starts_with("one of: value-01, "), "{described}");
-        assert!(described.ends_with("… (4 more)"), "{described}");
+    fn an_unordered_set_is_described_in_sorted_order() {
+        // Phrasing and truncation are `model::message`'s tests; this one
+        // pins the only thing this module adds — a stable order for a set
+        // that has none.
+        let members: HashSet<String> = ["open", "done", "in_progress"]
+            .iter()
+            .map(|value| (*value).to_owned())
+            .collect();
+        assert_eq!(
+            describe_unordered_set(&members),
+            "one of: done, in_progress, open"
+        );
+    }
+
+    #[test]
+    fn an_empty_unordered_set_still_reads_as_prose() {
+        assert_eq!(
+            describe_unordered_set(&HashSet::new()),
+            "one of this field's values (it declares none)"
+        );
     }
 }

@@ -2,16 +2,16 @@
 //!
 //! `render_gantt`, `render_gantt_by_initiative`, `render_gantt_by_depth`
 //! (and any future Gantt variants) build the same Mermaid `gantt` block
-//! shape and the same unplaced footer. The block builder lives here so
-//! each variant only owns its outer document structure (heading,
-//! sub-headings, partition logic).
+//! shape. The block builder lives here so each variant only owns its
+//! outer document structure (heading, sub-headings, partition logic);
+//! their unplaced blockquote summary comes from
+//! `markdown::emit_unplaced_blockquote`.
 
-use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use workdown_core::view_data::{Card, GanttBar, UnplacedCard, UnplacedReason};
+use workdown_core::view_data::{Card, GanttBar};
 
-use super::markdown::escape_blockquote_italic;
+use super::markdown::no_value_label;
 
 /// Render a Mermaid `gantt` block (fenced code block included) for a list
 /// of bars, optionally split into `section <value>` blocks.
@@ -57,7 +57,7 @@ pub(crate) fn render_gantt_block(bars: &[GanttBar], group_field: Option<&str>) -
 fn section_heading(group_value: &Option<String>, group_field: Option<&str>) -> String {
     match group_value {
         Some(value) => sanitize_label(value),
-        None => format!("(no {})", group_field.unwrap_or("group")),
+        None => no_value_label(group_field.unwrap_or("group")),
     }
 }
 
@@ -98,116 +98,4 @@ pub(crate) fn sanitize_label(text: &str) -> String {
         out.pop();
     }
     out
-}
-
-/// Emit the bulleted blockquote summary of items that filter-matched but
-/// couldn't be rendered as bars.
-///
-/// Reasons are grouped by discriminant; `MissingValue` groups appear
-/// alphabetically by field name, then `InvalidRange`, then any
-/// `NonNumericValue` (theoretically possible but never produced by gantt
-/// extractors today). Within each group, items follow the extractor's
-/// id-sorted order.
-pub(crate) fn render_unplaced_footer(unplaced: &[UnplacedCard], out: &mut String) {
-    if unplaced.is_empty() {
-        return;
-    }
-
-    let mut missing: BTreeMap<&str, Vec<&UnplacedCard>> = BTreeMap::new();
-    let mut invalid_range: Vec<&UnplacedCard> = Vec::new();
-    let mut no_working_days: Vec<&UnplacedCard> = Vec::new();
-    let mut non_numeric: BTreeMap<&str, Vec<&UnplacedCard>> = BTreeMap::new();
-    let mut no_anchor: Vec<&UnplacedCard> = Vec::new();
-    let mut predecessor_unresolved: BTreeMap<&str, Vec<&UnplacedCard>> = BTreeMap::new();
-    let mut cycle: BTreeMap<&str, Vec<&UnplacedCard>> = BTreeMap::new();
-
-    for unplaced_card in unplaced {
-        match &unplaced_card.reason {
-            UnplacedReason::MissingValue { field } => {
-                missing
-                    .entry(field.as_str())
-                    .or_default()
-                    .push(unplaced_card);
-            }
-            UnplacedReason::InvalidRange { .. } => {
-                invalid_range.push(unplaced_card);
-            }
-            // Defense in depth: gantt extractors don't emit this today —
-            // it's a workload-only reason. Bucket and surface it anyway
-            // so the footer stays exhaustive if a future gantt extractor
-            // ever needs to drop items by working-calendar.
-            UnplacedReason::NoWorkingDays { .. } => {
-                no_working_days.push(unplaced_card);
-            }
-            UnplacedReason::NonNumericValue { field, .. } => {
-                non_numeric
-                    .entry(field.as_str())
-                    .or_default()
-                    .push(unplaced_card);
-            }
-            UnplacedReason::NoAnchor => {
-                no_anchor.push(unplaced_card);
-            }
-            UnplacedReason::PredecessorUnresolved { id } => {
-                predecessor_unresolved
-                    .entry(id.as_str())
-                    .or_default()
-                    .push(unplaced_card);
-            }
-            UnplacedReason::Cycle { via } => {
-                cycle.entry(via.as_str()).or_default().push(unplaced_card);
-            }
-        }
-    }
-
-    out.push('\n');
-    let _ = writeln!(out, "> _{} items dropped:_", unplaced.len());
-    for (field, cards) in &missing {
-        let _ = writeln!(out, "> _- missing '{field}': {}_", format_titles(cards));
-    }
-    if !invalid_range.is_empty() {
-        let _ = writeln!(
-            out,
-            "> _- invalid range: {}_",
-            format_titles(&invalid_range)
-        );
-    }
-    if !no_working_days.is_empty() {
-        let _ = writeln!(
-            out,
-            "> _- no working days: {}_",
-            format_titles(&no_working_days)
-        );
-    }
-    for (field, cards) in &non_numeric {
-        let _ = writeln!(out, "> _- non-numeric '{field}': {}_", format_titles(cards));
-    }
-    if !no_anchor.is_empty() {
-        let _ = writeln!(out, "> _- no anchor: {}_", format_titles(&no_anchor));
-    }
-    for (id, cards) in &predecessor_unresolved {
-        let _ = writeln!(
-            out,
-            "> _- predecessor '{id}' unresolved: {}_",
-            format_titles(cards)
-        );
-    }
-    for (via, cards) in &cycle {
-        let _ = writeln!(out, "> _- cycle in '{via}': {}_", format_titles(cards));
-    }
-}
-
-fn format_titles(cards: &[&UnplacedCard]) -> String {
-    cards
-        .iter()
-        .map(|c| {
-            let name = c
-                .card
-                .title
-                .as_deref()
-                .unwrap_or_else(|| c.card.id.as_str());
-            format!("\"{}\"", escape_blockquote_italic(name))
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
 }

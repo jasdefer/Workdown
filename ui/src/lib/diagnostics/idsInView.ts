@@ -70,8 +70,10 @@ export function idsInView(view: ViewData): Set<WorkItemId> {
 			break;
 
 		case 'line_chart':
-			for (const point of view.points) {
-				ids.add(point.id);
+			for (const series of view.series) {
+				for (const point of series.points) {
+					ids.add(point.id);
+				}
 			}
 			break;
 

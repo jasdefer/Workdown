@@ -1,19 +1,19 @@
 // Shared value formatters for chart-family views.
 //
-// AggregateValue / AxisValue / SizeValue all share the same tagged
-// shape on the wire (`{type, value}`); these helpers cover the three
-// variant types the Rust enums can produce. Lifted out of MetricView
-// when BarChartView became the second consumer.
+// ChartValue / SizeValue share the same tagged shape on the wire
+// (`{type, value}`); these helpers cover the three variant types the
+// Rust enums can produce. Lifted out of MetricView when BarChartView
+// became the second consumer.
 
-import type { AggregateValue } from '$lib/api/generated/AggregateValue';
+import type { ChartValue } from '$lib/api/generated/ChartValue';
 
 /**
- * Format an aggregate value (or null) for display in a KPI tile,
- * tooltip, or axis tick label. Null renders as the em-dash "no data"
+ * Format a chart value (or null) for display in a KPI tile, tooltip,
+ * or axis tick label. Null renders as the em-dash "no data"
  * placeholder used by the markdown renderer in
  * crates/cli/src/render/metric.rs.
  */
-export function formatAggregateValue(value: AggregateValue | null): string {
+export function formatChartValue(value: ChartValue | null): string {
 	if (value === null) return '—';
 	if (value.type === 'duration') return formatDurationSeconds(value.value);
 	if (value.type === 'date') return value.value;
@@ -98,7 +98,7 @@ export function pickDurationUnit(maxSeconds: number): { seconds: number; label: 
  * seconds, rendered as suffix shorthand like `2d 13h`) or a plain
  * number. The duration-vs-number branch shared by workload totals and
  * treemap sizes — the untagged-value counterpart of
- * [`formatAggregateValue`].
+ * [`formatChartValue`].
  */
 export function formatScalar(value: number, isDuration: boolean): string {
 	return isDuration ? formatDurationSeconds(value) : formatNumber(value);

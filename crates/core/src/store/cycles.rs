@@ -201,12 +201,7 @@ mod tests {
         for (name, def) in fields {
             map.insert(name.to_owned(), def);
         }
-        let inverse_table = Schema::build_inverse_table(&map);
-        Schema {
-            fields: map,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(map, vec![])
     }
 
     /// Convert a list of string slices into a `Vec<WorkItemId>` for test assertions.

@@ -1,8 +1,8 @@
 //! Shared output rendering for `workdown` field-mutation commands.
 //!
-//! Each mutation command (`set`, `unset`, and the future `--append`,
-//! `--remove`, `--delta` modes) picks the format that matches what the
-//! user asked for. Pre-existing diagnostics surfaced after the write
+//! Each mutation command (`set` in every mode — plain value,
+//! `--append`, `--remove`, `--delta`, `--toggle` — and `unset`) picks
+//! the format that matches what the user asked for. Pre-existing diagnostics surfaced after the write
 //! flow through the same per-mode entry point so the call sites stay
 //! uniform.
 
@@ -45,6 +45,18 @@ pub enum MutationMode {
 /// warnings. Info messages describe what the operation did (e.g. a
 /// duplicate append) and never affect the exit code; warnings come from
 /// the post-write store reload and do.
+///
+/// The policy across every mutating command: **a warning this mutation
+/// caused fails the command; a warning that was already there does
+/// not.** The post-write reload sees the whole project, so it surfaces
+/// both — only the first kind is this invocation's doing, and only the
+/// first kind should stop a script.
+///
+/// `workdown body` looks like an exception and is not. It prints the
+/// same warnings but always exits successfully, because body text goes
+/// through no schema validation and so cannot cause one: every warning
+/// it prints is pre-existing by construction. Same rule, no branch to
+/// write.
 pub fn render_outcome(id: &str, field: &str, mode: MutationMode, outcome: &SetOutcome) -> ExitCode {
     let headline = match &mode {
         MutationMode::Replace => format_replace(field, outcome),

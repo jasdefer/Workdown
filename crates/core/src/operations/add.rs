@@ -9,7 +9,7 @@ use crate::model::diagnostic::Diagnostic;
 use crate::model::template::TemplateError;
 use crate::model::work_item::is_valid_id;
 use crate::model::WorkItemId;
-use crate::operations::frontmatter_io::build_frontmatter_yaml;
+use crate::operations::frontmatter_io::{build_frontmatter_yaml, write_file_atomically};
 use crate::operations::templates::load_template_by_name;
 use crate::parser::schema::SchemaLoadError;
 
@@ -18,8 +18,8 @@ use crate::parser::schema::SchemaLoadError;
 /// The outcome of a successful `workdown add`.
 pub struct AddOutcome {
     /// ID of the created work item (the slug, equal to the filename
-    /// without `.md`). Exposed so callers — notably the future server —
-    /// don't have to re-derive it from `path`.
+    /// without `.md`). Exposed so callers — notably the server — don't
+    /// have to re-derive it from `path`.
     pub id: WorkItemId,
     /// Path to the created file.
     pub path: PathBuf,
@@ -186,7 +186,7 @@ pub fn run_add(
     // Write the file. Body (template or empty) follows the closing
     // delimiter.
     let file_content = format!("---\n{yaml_content}---\n{body}");
-    std::fs::write(&file_path, &file_content).map_err(|source| AddError::WriteFile {
+    write_file_atomically(&file_path, &file_content).map_err(|source| AddError::WriteFile {
         path: file_path.clone(),
         source,
     })?;

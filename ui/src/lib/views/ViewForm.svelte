@@ -116,7 +116,7 @@
 		chooseKind(event.currentTarget.value as ViewType);
 	}
 
-	function fieldOptions(accepts: import('$lib/api/generated/FieldType').FieldType[]) {
+	function fieldOptions(accepts: readonly import('$lib/api/generated/FieldType').FieldType[]) {
 		return schemaStore.fields.filter((field) => fieldFits(field.field_type, accepts));
 	}
 

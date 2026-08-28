@@ -7,15 +7,18 @@ use std::path::Path;
 
 use indexmap::IndexMap;
 
+use crate::coerce::{coerce_value, yaml_type_name};
 use crate::expression::parse_expression;
+use crate::model::message::one_of;
 use crate::model::schema::{
-    allowed_aggregate_functions, is_defined_inverse, is_relation_anchor, Assertion, ComputeConfig,
-    Condition, ConditionValue, CountConstraint, DefaultValue, FieldDefinition, FieldType,
-    FieldTypeConfig, Generator, NegationValue, RawFieldDefinition, RawRule, RawSchema, RoundMode,
-    Rule, Schema, WhenBranch, WhenConfig,
+    allowed_aggregate_functions, field_property_allowed, is_defined_inverse, is_relation_anchor,
+    Assertion, CompiledPattern, ComputeConfig, Condition, ConditionValue, CountConstraint,
+    DefaultValue, FieldDefinition, FieldProperty, FieldType, FieldTypeConfig, Generator,
+    NegationValue, RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema, WhenBranch,
+    WhenConfig,
 };
 use crate::model::views::COLOR_NONE_SENTINEL;
-use crate::store::coerce::coerce_value;
+use strum::VariantArray;
 
 // ── Public API ────────────────────────────────────────────────────────
 
@@ -72,13 +75,7 @@ pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
         })
         .collect();
 
-    let inverse_table = Schema::build_inverse_table(&fields);
-
-    Ok(Schema {
-        fields,
-        rules,
-        inverse_table,
-    })
+    Ok(Schema::new(fields, rules))
 }
 
 /// Load a schema from a file on disk.
@@ -148,8 +145,10 @@ fn rule_error(name: &str, message: impl Into<String>) -> SchemaValidationError {
 
 // ── Field validation ──────────────────────────────────────────────────
 
-/// Regex for valid field names: lowercase letters/digits/underscores,
-/// starting with a letter or underscore.
+/// Valid field name: lowercase letters, digits and underscores,
+/// starting with a letter or an underscore. Mirrors the
+/// `^[a-z_][a-z0-9_]*$` pattern `defaults/schema.schema.json` uses for
+/// the same rule — change both together.
 fn is_valid_field_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
@@ -159,7 +158,8 @@ fn is_valid_field_name(name: &str) -> bool {
     chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
-/// Regex for valid rule names: kebab-case, starting with a lowercase letter.
+/// Valid rule name: kebab-case, starting with a lowercase letter.
+/// Mirrors `^[a-z][a-z0-9-]*$` in `defaults/schema.schema.json`.
 fn is_valid_rule_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
@@ -169,7 +169,9 @@ fn is_valid_rule_name(name: &str) -> bool {
     chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-/// Regex for valid field references: `field_name` or `field_name.field_name`.
+/// Valid field reference: `field_name` or `field_name.field_name`.
+/// Mirrors `^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?$` in
+/// `defaults/schema.schema.json`.
 fn is_valid_field_reference(reference: &str) -> bool {
     let parts: Vec<&str> = reference.split('.').collect();
     match parts.len() {
@@ -363,8 +365,12 @@ fn interpret_when_branch(
             }
             Some("then") => then_value = Some(value.clone()),
             _ => {
+                let named = match key.as_str() {
+                    Some(name) => format!("'{name}'"),
+                    None => "a non-string key".to_owned(),
+                };
                 return Err(branch_error(format!(
-                    "unknown key {key:?} (a branch has exactly 'if' and 'then')"
+                    "unknown key {named} (a branch has exactly 'if' and 'then')"
                 )));
             }
         }
@@ -453,9 +459,10 @@ fn interpret_compute(value: &serde_yaml::Value) -> Result<ComputeParts, String> 
                     Some("floor") => RoundMode::Floor,
                     Some("ceil") => RoundMode::Ceil,
                     _ => {
-                        return Err(
-                            "compute 'round' must be one of: nearest, floor, ceil".to_owned()
-                        )
+                        return Err(format!(
+                            "compute 'round' must be {}",
+                            one_of(&["nearest", "floor", "ceil"])
+                        ))
                     }
                 });
             }
@@ -643,123 +650,42 @@ fn validate_inverse_property(
     }
 }
 
-/// Check that only properties valid for the field's type are set.
+/// Check that only properties valid for the field's type are set, and
+/// that the ones which are valid hold usable values.
+///
+/// Which property goes with which type is the table in
+/// [`field_property_allowed`]; this function only walks it. What stays
+/// here is the handful of rules a yes/no table cannot express: a
+/// `choice` field does not merely *permit* `values`, it requires a
+/// non-empty list, and the numeric and duration bounds have to parse.
 fn validate_type_specific_properties(
     name: &str,
     field: &RawFieldDefinition,
     errors: &mut Vec<SchemaValidationError>,
 ) {
+    for &property in FieldProperty::VARIANTS {
+        if property_is_set(field, property) && !field_property_allowed(field.field_type, property) {
+            errors.push(field_error(
+                name,
+                format!("'{property}' is not valid for type '{}'", field.field_type),
+            ));
+        }
+    }
+
     match field.field_type {
-        FieldType::Choice | FieldType::Multichoice => {
-            // Must have values
-            match &field.values {
-                None => errors.push(field_error(
-                    name,
-                    format!("'values' is required for type '{}'", field.field_type),
-                )),
-                Some(v) if v.is_empty() => {
-                    errors.push(field_error(name, "'values' must not be empty"))
-                }
-                _ => {}
-            }
-            // Reject invalid properties
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(name, "min", &field.min, field.field_type, errors);
-            reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(
+        FieldType::Choice | FieldType::Multichoice => match &field.values {
+            None => errors.push(field_error(
                 name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(
-                name,
-                "aggregate",
-                &field.aggregate,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
-        }
-        FieldType::String => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "min", &field.min, field.field_type, errors);
-            reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(
-                name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(
-                name,
-                "aggregate",
-                &field.aggregate,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
-        }
+                format!("'values' is required for type '{}'", field.field_type),
+            )),
+            Some(v) if v.is_empty() => errors.push(field_error(name, "'values' must not be empty")),
+            _ => {}
+        },
         FieldType::Integer | FieldType::Float => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(
-                name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
             validate_numeric_bound(name, "min", &field.min, field.field_type, errors);
             validate_numeric_bound(name, "max", &field.max, field.field_type, errors);
         }
-        FieldType::Date => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(name, "min", &field.min, field.field_type, errors);
-            reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(
-                name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
-        }
-        FieldType::Boolean => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(name, "min", &field.min, field.field_type, errors);
-            reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(
-                name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
-        }
         FieldType::Duration => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(
-                name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
             // min/max are duration strings; validate they parse and that
             // min ≤ max if both are present.
             validate_duration_bound(name, "min", &field.min, errors);
@@ -776,80 +702,42 @@ fn validate_type_specific_properties(
                 }
             }
         }
-        FieldType::Color => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(name, "min", &field.min, field.field_type, errors);
-            reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(
-                name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(
-                name,
-                "aggregate",
-                &field.aggregate,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
+        FieldType::String => {
+            // A pattern that will not compile is a schema defect, so it
+            // is caught here — once, naming the field — rather than
+            // surfacing later as a coercion failure on every item that
+            // uses the field.
+            if let Some(pattern) = &field.pattern {
+                if let Err(error) = CompiledPattern::new(pattern.clone()) {
+                    errors.push(field_error(
+                        name,
+                        format!("'pattern' is not a valid regex: {error}"),
+                    ));
+                }
+            }
         }
-        FieldType::List => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(name, "min", &field.min, field.field_type, errors);
-            reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(
-                name,
-                "allow_cycles",
-                &field.allow_cycles,
-                field.field_type,
-                errors,
-            );
-            reject_prop(
-                name,
-                "aggregate",
-                &field.aggregate,
-                field.field_type,
-                errors,
-            );
-            reject_prop(name, "inverse", &field.inverse, field.field_type, errors);
-        }
-        FieldType::Link | FieldType::Links => {
-            reject_prop(name, "values", &field.values, field.field_type, errors);
-            reject_prop(name, "pattern", &field.pattern, field.field_type, errors);
-            reject_prop(name, "min", &field.min, field.field_type, errors);
-            reject_prop(name, "max", &field.max, field.field_type, errors);
-            reject_prop(name, "resource", &field.resource, field.field_type, errors);
-            reject_prop(
-                name,
-                "aggregate",
-                &field.aggregate,
-                field.field_type,
-                errors,
-            );
-            // Note: inverse IS valid for link/links — no rejection here.
-        }
+        FieldType::Date
+        | FieldType::Color
+        | FieldType::Boolean
+        | FieldType::List
+        | FieldType::Link
+        | FieldType::Links => {}
     }
 }
 
-/// Helper: push an error if the property is `Some` (i.e. set when it shouldn't be).
-fn reject_prop<T: std::fmt::Debug>(
-    field_name: &str,
-    prop_name: &str,
-    value: &Option<T>,
-    field_type: FieldType,
-    errors: &mut Vec<SchemaValidationError>,
-) {
-    if value.is_some() {
-        errors.push(field_error(
-            field_name,
-            format!("'{prop_name}' is not valid for type '{field_type}'"),
-        ));
+/// Whether `property` carries a value on this field. The one place the
+/// flat [`RawFieldDefinition`] layout is mapped onto
+/// [`FieldProperty`]; each arm reads the field of that name.
+fn property_is_set(field: &RawFieldDefinition, property: FieldProperty) -> bool {
+    match property {
+        FieldProperty::Values => field.values.is_some(),
+        FieldProperty::Pattern => field.pattern.is_some(),
+        FieldProperty::Min => field.min.is_some(),
+        FieldProperty::Max => field.max.is_some(),
+        FieldProperty::AllowCycles => field.allow_cycles.is_some(),
+        FieldProperty::Resource => field.resource.is_some(),
+        FieldProperty::Aggregate => field.aggregate.is_some(),
+        FieldProperty::Inverse => field.inverse.is_some(),
     }
 }
 
@@ -868,7 +756,7 @@ fn validate_numeric_bound(
                 field_name,
                 format!(
                     "'{prop_name}' must be a number for type '{field_type}', got {}",
-                    yaml_kind_name(value)
+                    yaml_type_name(value)
                 ),
             ));
         }
@@ -904,7 +792,7 @@ fn validate_duration_bound(
             field_name,
             format!(
                 "'{prop_name}' must be a duration string for type 'duration', got {}",
-                yaml_kind_name(value)
+                yaml_type_name(value)
             ),
         )),
     }
@@ -924,26 +812,17 @@ fn parse_duration_bound_opt(value: &Option<serde_yaml::Value>) -> Option<i64> {
     value.as_ref().and_then(parse_duration_bound)
 }
 
-/// Human-readable name for a YAML value kind, for error messages.
-fn yaml_kind_name(value: &serde_yaml::Value) -> &'static str {
-    match value {
-        serde_yaml::Value::Null => "null",
-        serde_yaml::Value::Bool(_) => "boolean",
-        serde_yaml::Value::Number(_) => "number",
-        serde_yaml::Value::String(_) => "string",
-        serde_yaml::Value::Sequence(_) => "sequence",
-        serde_yaml::Value::Mapping(_) => "mapping",
-        serde_yaml::Value::Tagged(_) => "tagged value",
-    }
-}
-
 /// Convert a raw (flat) field definition into a typed [`FieldDefinition`]
 /// with a [`FieldTypeConfig`] variant. Called after validation passes,
 /// so type-specific fields are guaranteed to be present where required.
 fn convert_field(raw: RawFieldDefinition) -> FieldDefinition {
     let type_config = match raw.field_type {
         FieldType::String => FieldTypeConfig::String {
-            pattern: raw.pattern,
+            // Validation already reported an uncompilable pattern and
+            // will abort the load, so dropping it here is unobservable.
+            pattern: raw
+                .pattern
+                .and_then(|source| CompiledPattern::new(source).ok()),
         },
         FieldType::Choice => FieldTypeConfig::Choice {
             values: raw.values.unwrap_or_default(),
@@ -1017,9 +896,9 @@ fn validate_aggregate_compatibility(
     };
 
     let Some(allowed) = allowed_aggregate_functions(field.field_type) else {
-        // Other types can't have aggregate (caught by reject_prop) —
-        // already reported by type-specific validation; skip to avoid
-        // a duplicate.
+        // No functions defined means the type cannot carry `aggregate`
+        // at all, which the property table already reported; skip to
+        // avoid a duplicate.
         return;
     };
 
@@ -1040,8 +919,9 @@ fn validate_aggregate_compatibility(
 /// Check that the aggregate's `over` link field exists, is of type
 /// `link`, and declares `allow_cycles: false`.
 ///
-/// `over` defaults to `"parent"` when unset; the same rules apply to
-/// the default. The acyclicity requirement mirrors the pull config's:
+/// `over` is mandatory, so absence is the deserializer's finding and
+/// never reaches here. The acyclicity requirement mirrors the pull
+/// config's:
 /// aggregated values need an acyclic hierarchy to evaluate in, and it
 /// guarantees that any data-level cycle in the hierarchy is the link
 /// cycle detector's finding (which only checks fields declared
@@ -1058,18 +938,14 @@ fn validate_aggregate_over(
         None => return,
     };
 
-    let target_name = agg.over.as_deref().unwrap_or("parent");
+    let target_name = agg.over.as_str();
     let target = match all_fields.get(target_name) {
         Some(f) => f,
         None => {
-            let detail = if agg.over.is_some() {
-                format!("aggregate.over references unknown field '{target_name}'")
-            } else {
-                "aggregate uses the default 'over: parent' but no field 'parent' is defined; \
-                 add a `parent` link field or set `over` explicitly"
-                    .to_owned()
-            };
-            errors.push(field_error(name, detail));
+            errors.push(field_error(
+                name,
+                format!("aggregate.over references unknown field '{target_name}'"),
+            ));
             return;
         }
     };
@@ -1145,7 +1021,7 @@ fn validate_default_compatibility(
                     if !values.contains(s) {
                         errors.push(field_error(
                             name,
-                            format!("default '{s}' is not in the allowed values"),
+                            format!("default '{s}' is not {}", one_of(values)),
                         ));
                     }
                 }
@@ -1744,6 +1620,7 @@ fields:
     type: duration
     aggregate:
       function: all
+      over: parent
 ";
         let err = parse_schema(yaml).unwrap_err();
         let errors = match err {
@@ -1769,6 +1646,7 @@ fields:
     type: duration
     aggregate:
       function: sum
+      over: parent
 ";
         parse_schema(yaml).expect("duration field with sum aggregate parses");
     }
@@ -1861,6 +1739,49 @@ fields:
     }
 
     #[test]
+    fn uncompilable_pattern_rejected_once_against_the_schema() {
+        let yaml = "\
+fields:
+  code:
+    type: string
+    pattern: \"[unclosed\"
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        let matching: Vec<_> = errors
+            .iter()
+            .filter(|error| error.message.contains("'pattern' is not a valid regex"))
+            .collect();
+        assert_eq!(
+            matching.len(),
+            1,
+            "expected exactly one pattern error, got: {errors:?}"
+        );
+        assert_eq!(matching[0].context, "field 'code'");
+    }
+
+    #[test]
+    fn valid_pattern_survives_conversion() {
+        let yaml = "\
+fields:
+  code:
+    type: string
+    pattern: \"^[A-Z]{3}$\"
+";
+        let schema = parse_schema(yaml).unwrap();
+        let FieldTypeConfig::String { pattern } = &schema.fields["code"].type_config else {
+            panic!("expected a string field");
+        };
+        let pattern = pattern.as_ref().expect("pattern kept");
+        assert_eq!(pattern.source(), "^[A-Z]{3}$");
+        assert!(pattern.is_match("ABC"));
+        assert!(!pattern.is_match("abc"));
+    }
+
+    #[test]
     fn color_field_parses_minimal() {
         let yaml = "\
 fields:
@@ -1904,6 +1825,7 @@ fields:
     type: color
     aggregate:
       function: sum
+      over: parent
 ";
         let err = parse_schema(yaml).unwrap_err();
         let errors = match err {
@@ -1976,6 +1898,7 @@ fields:
     type: link
     aggregate:
       function: sum
+      over: parent
 ";
         let err = parse_schema(yaml).unwrap_err();
         let errors = match err {
@@ -1998,6 +1921,7 @@ fields:
     type: boolean
     aggregate:
       function: sum
+      over: parent
 ";
         let err = parse_schema(yaml).unwrap_err();
         let errors = match err {
@@ -2020,6 +1944,7 @@ fields:
     type: date
     aggregate:
       function: average
+      over: parent
 ";
         parse_schema(yaml).expect("date + average should parse");
     }
@@ -2035,28 +1960,36 @@ fields:
     type: boolean
     aggregate:
       function: count
+      over: parent
 ";
         parse_schema(yaml).expect("boolean + count should parse");
     }
 
     #[test]
-    fn aggregate_default_over_requires_parent_field() {
+    fn aggregate_without_over_is_rejected_by_the_deserializer() {
+        // `over` is mandatory: a rollup names the relation it climbs,
+        // there is no implicit `parent`. Absence is unconditional, so it
+        // is the file reader's finding — like a missing `function` — and
+        // never reaches the validation pass.
         let yaml = "\
 fields:
+  parent:
+    type: link
+    allow_cycles: false
   effort:
     type: integer
     aggregate:
       function: sum
 ";
         let err = parse_schema(yaml).unwrap_err();
-        let errors = match err {
-            SchemaLoadError::Validation(e) => e,
-            other => panic!("expected Validation error, got: {other}"),
-        };
-        assert!(errors
-            .iter()
-            .any(|e| e.message.contains("default 'over: parent'")
-                && e.message.contains("no field 'parent' is defined")));
+        assert!(
+            matches!(err, SchemaLoadError::InvalidYaml(_)),
+            "expected a deserialization error, got: {err}"
+        );
+        assert!(
+            err.to_string().contains("over"),
+            "the error should name the missing key, got: {err}"
+        );
     }
 
     #[test]
@@ -2134,6 +2067,7 @@ fields:
     type: integer
     aggregate:
       function: sum
+      over: parent
 ";
         let err = parse_schema(yaml).unwrap_err();
         let errors = match err {
@@ -2361,6 +2295,7 @@ fields:
     type: date
     aggregate:
       function: min
+      over: parent
     pull:
       over: depends_on
       field: end
@@ -2494,7 +2429,7 @@ fields:
         then: green
         els: red
 ";
-        assert_validation_error_contains(unknown_key, "'when' branch 1: unknown key");
+        assert_validation_error_contains(unknown_key, "'when' branch 1: unknown key 'els'");
 
         let not_a_list = "\
 fields:
@@ -2711,9 +2646,12 @@ fields:
             SchemaLoadError::Validation(e) => e,
             other => panic!("expected Validation error, got: {other}"),
         };
-        assert!(errors
-            .iter()
-            .any(|e| e.message.contains("not in the allowed values")));
+        assert!(
+            errors.iter().any(|error| error
+                .message
+                .contains("default 'pending' is not one of: open, closed")),
+            "{errors:?}"
+        );
     }
 
     // ── Rule validation errors ────────────────────────────────────

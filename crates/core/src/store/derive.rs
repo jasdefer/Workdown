@@ -39,11 +39,16 @@
 //! pass (an aggregate on the same field still runs), so a broken
 //! config surfaces once against `schema.yaml` and never per item.
 //!
-//! Ends with the deferred required check that coercion skipped for
-//! derivable fields: an item still blank on a `required` aggregate
-//! field gets the classic `MissingRequired`; on a `required` computed
-//! field it gets `ComputeMissingInputs` naming the actual inputs that
-//! were absent — the real cause, one step before the symptom.
+//! A field coercion recorded as written-but-invalid (see
+//! `conversion_failures`) is never filled: the author wrote a value,
+//! and replacing a broken hand-written value with a derived one would
+//! silently override the file. Its slot stays absent until the file is
+//! fixed; an aggregating ancestor still passes its children's
+//! contributions through, so the rest of the tree degrades gracefully.
+//!
+//! Completeness is judged elsewhere: the required check
+//! ([`super::required`]) runs as its own phase after this one, per the
+//! pipeline contract in [`super`] (ADR-012).
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -64,9 +69,11 @@ use super::rollup;
 /// Run every derive pass. Mutates `items` in place; returns all
 /// diagnostics the passes produced. `constants` are the project
 /// constants from `resources.yaml`, resolved by compute expressions;
-/// `evaluation_date` is what `$today` resolves to; and
+/// `evaluation_date` is what `$today` resolves to;
 /// `disabled_compute_fields` names the compute configs that failed
-/// `compute_check` and must not evaluate.
+/// `compute_check` and must not evaluate; and `conversion_failures` is
+/// coercion's per-item record of written-but-invalid fields, whose
+/// slots no pass may fill.
 pub(crate) fn run(
     items: &mut HashMap<WorkItemId, WorkItem>,
     reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
@@ -74,22 +81,22 @@ pub(crate) fn run(
     constants: &IndexMap<String, FieldValue>,
     evaluation_date: NaiveDate,
     disabled_compute_fields: &HashSet<String>,
+    conversion_failures: &HashMap<WorkItemId, HashSet<String>>,
 ) -> Vec<Diagnostic> {
     let derive_fields = derive_fields_in_order(schema, disabled_compute_fields);
 
     let mut item_ids: Vec<WorkItemId> = items.keys().cloned().collect();
     item_ids.sort_by(|left, right| left.as_str().cmp(right.as_str()));
-    let item_count = item_ids.len();
+    let grid = NodeGrid {
+        item_count: item_ids.len(),
+    };
     let item_index: HashMap<WorkItemId, usize> = item_ids
         .iter()
         .enumerate()
         .map(|(position, item_id)| (item_id.clone(), position))
         .collect();
 
-    // Node id = field slot × item count + item position. Ascending
-    // node id is exactly the evaluation priority: field reference
-    // order first, then item id.
-    let node_count = derive_fields.len() * item_count;
+    let node_count = derive_fields.len() * item_ids.len();
     let slot_of_field: HashMap<&str, usize> = derive_fields
         .iter()
         .enumerate()
@@ -100,10 +107,13 @@ pub(crate) fn run(
     // the input. An item whose file already carries the field is
     // *settled*: its node waits for nothing (manual wins, so evaluation
     // reads no inputs there) — which is what lets a hand-written anchor
-    // break any dependency loop. And an item the same-item/pull pass is
-    // not eligible for (a non-leaf of a derive+aggregate field) never
-    // waits for that pass's inputs either — a wait for a pass that
-    // never runs could close a loop that doesn't exist semantically.
+    // break any dependency loop. A field coercion recorded as
+    // written-but-invalid is treated the same way here: its pass never
+    // runs (the slot is never filled), so waiting for its inputs could
+    // close a loop that doesn't exist semantically. And an item the
+    // same-item/pull pass is not eligible for (a non-leaf of a
+    // derive+aggregate field) never waits for that pass's inputs
+    // either, for the same reason.
     let mut dependents: Vec<Vec<usize>> = vec![Vec::new(); node_count];
     let mut pending_inputs: Vec<usize> = vec![0; node_count];
     for (slot, derive_field) in derive_fields.iter().enumerate() {
@@ -125,14 +135,14 @@ pub(crate) fn run(
                         continue;
                     };
                     if item.fields.contains_key(derive_field.name)
+                        || conversion_failed(conversion_failures, item_id, derive_field.name)
                         || !same_item_pass_runs_on(derive_field, reverse_links, item_id)
                     {
                         continue;
                     }
                     for &input_slot in &input_slots {
-                        dependents[input_slot * item_count + position]
-                            .push(slot * item_count + position);
-                        pending_inputs[slot * item_count + position] += 1;
+                        dependents[grid.node(input_slot, position)].push(grid.node(slot, position));
+                        pending_inputs[grid.node(slot, position)] += 1;
                     }
                 }
             }
@@ -147,16 +157,17 @@ pub(crate) fn run(
                             continue;
                         };
                         if item.fields.contains_key(derive_field.name)
+                            || conversion_failed(conversion_failures, item_id, derive_field.name)
                             || !same_item_pass_runs_on(derive_field, reverse_links, item_id)
                         {
                             continue;
                         }
-                        let node = slot * item_count + position;
+                        let node = grid.node(slot, position);
                         for target in targets_of(item, &pull.over) {
                             let Some(&target_position) = item_index.get(target) else {
                                 continue;
                             };
-                            let source_node = source_slot * item_count + target_position;
+                            let source_node = grid.node(source_slot, target_position);
                             if source_node == node {
                                 continue;
                             }
@@ -191,8 +202,8 @@ pub(crate) fn run(
                 {
                     continue;
                 }
-                dependents[slot * item_count + position].push(slot * item_count + target_position);
-                pending_inputs[slot * item_count + target_position] += 1;
+                dependents[grid.node(slot, position)].push(grid.node(slot, target_position));
+                pending_inputs[grid.node(slot, target_position)] += 1;
             }
         }
     }
@@ -200,10 +211,11 @@ pub(crate) fn run(
     let inputs = EvaluationInputs {
         item_ids: &item_ids,
         item_index: &item_index,
-        item_count,
+        grid,
         reverse_links,
         constants,
         today: compute::timestamp_of(evaluation_date),
+        conversion_failures,
     };
     let mut state = EvaluationState {
         contributions: vec![Vec::new(); node_count],
@@ -218,12 +230,12 @@ pub(crate) fn run(
         .map(Reverse)
         .collect();
     while let Some(Reverse(node)) = ready.pop() {
-        let slot = node / item_count;
+        let slot = grid.slot_of(node);
         evaluate_node(
             &inputs,
             &derive_fields[slot],
             slot,
-            node % item_count,
+            grid.position_of(node),
             items,
             &mut state,
         );
@@ -255,8 +267,9 @@ pub(crate) fn run(
         // are complete: an item with a hand-written value has no
         // incoming edges (settled nodes wait for nothing), so its node
         // always evaluates — even when it sits on a dependency loop.
-        let bearer_ids: Vec<WorkItemId> = (0..item_count)
-            .filter(|position| state.bearer[slot * item_count + position])
+        let bearer_ids: Vec<WorkItemId> = grid
+            .positions()
+            .filter(|position| state.bearer[grid.node(slot, *position)])
             .map(|position| item_ids[position].clone())
             .collect();
         let bearer_set: HashSet<WorkItemId> = bearer_ids.iter().cloned().collect();
@@ -281,19 +294,12 @@ pub(crate) fn run(
     diagnostics.extend(derive_cycle_diagnostics(
         &derive_fields,
         &item_ids,
-        item_count,
+        grid,
         &dependents,
         &state.evaluated,
         items,
     ));
 
-    required_check(
-        items,
-        reverse_links,
-        schema,
-        disabled_compute_fields,
-        &mut diagnostics,
-    );
     diagnostics
 }
 
@@ -333,12 +339,10 @@ fn derive_fields_in_order<'schema>(
             Some(DeriveField {
                 name: name.as_str(),
                 definition,
-                aggregate_over: definition.aggregate.as_ref().map(|aggregate| {
-                    aggregate
-                        .over
-                        .clone()
-                        .unwrap_or_else(|| rollup::DEFAULT_OVER_FIELD.to_owned())
-                }),
+                aggregate_over: definition
+                    .aggregate
+                    .as_ref()
+                    .map(|aggregate| aggregate.over.clone()),
                 same_item_enabled,
                 pull_enabled,
             })
@@ -359,19 +363,69 @@ fn same_item_pass_runs_on(
     derive_field
         .aggregate_over
         .as_deref()
-        .is_none_or(|over| compute::is_leaf(reverse_links, item_id, over))
+        .is_none_or(|over| super::is_leaf(reverse_links, item_id, over))
+}
+
+/// The derive graph's node numbering: one node per (field slot, item
+/// position) pair, laid out slot-major.
+///
+/// The layout is load-bearing, not incidental — ascending node id is
+/// exactly the evaluation priority, field reference order first and
+/// then item id, which is what lets the Kahn walk pop a plain
+/// min-heap. Every conversion between a node id and its coordinates
+/// goes through here so the layout is stated once.
+#[derive(Clone, Copy)]
+struct NodeGrid {
+    item_count: usize,
+}
+
+impl NodeGrid {
+    /// The node id for a field slot and an item position.
+    fn node(self, slot: usize, item_position: usize) -> usize {
+        slot * self.item_count + item_position
+    }
+
+    /// The field slot a node belongs to.
+    fn slot_of(self, node: usize) -> usize {
+        node / self.item_count
+    }
+
+    /// The item position a node belongs to.
+    fn position_of(self, node: usize) -> usize {
+        node % self.item_count
+    }
+
+    /// Every item position, ascending.
+    fn positions(self) -> std::ops::Range<usize> {
+        0..self.item_count
+    }
 }
 
 /// Shared read-only inputs of every node evaluation.
 struct EvaluationInputs<'run> {
     item_ids: &'run [WorkItemId],
     item_index: &'run HashMap<WorkItemId, usize>,
-    item_count: usize,
+    grid: NodeGrid,
     reverse_links: &'run HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
     constants: &'run IndexMap<String, FieldValue>,
     /// The evaluation date as a midnight timestamp — what `$today`
     /// resolves to for every node.
     today: Value,
+    /// Coercion's per-item record of written-but-invalid fields —
+    /// slots no pass may fill.
+    conversion_failures: &'run HashMap<WorkItemId, HashSet<String>>,
+}
+
+/// Whether coercion recorded this item's field as written but invalid
+/// — a slot no pass may fill.
+fn conversion_failed(
+    conversion_failures: &HashMap<WorkItemId, HashSet<String>>,
+    item_id: &WorkItemId,
+    field_name: &str,
+) -> bool {
+    conversion_failures
+        .get(item_id)
+        .is_some_and(|failed_fields| failed_fields.contains(field_name))
 }
 
 /// Mutable evaluation state, indexed by node id.
@@ -405,7 +459,7 @@ fn evaluate_node(
     state: &mut EvaluationState,
 ) {
     let item_id = &inputs.item_ids[item_position];
-    let node = slot * inputs.item_count + item_position;
+    let node = inputs.grid.node(slot, item_position);
     state.evaluated[node] = true;
 
     let had_value = items
@@ -414,9 +468,12 @@ fn evaluate_node(
 
     // Derivation pass: compute, when, or pull fills absence — on
     // leaves only when the field also aggregates (the rollup owns
-    // everything above).
+    // everything above), and never where coercion recorded a
+    // written-but-invalid value (the author wrote something; the file
+    // must be fixed, not silently overridden).
     let mut derived_value: Option<FieldValue> = None;
     if !had_value
+        && !conversion_failed(inputs.conversion_failures, item_id, derive_field.name)
         && (derive_field.same_item_enabled || derive_field.pull_enabled)
         && same_item_pass_runs_on(derive_field, inputs.reverse_links, item_id)
     {
@@ -515,16 +572,17 @@ fn evaluate_node(
             if source_position == item_position {
                 continue;
             }
-            gathered.extend_from_slice(
-                &state.contributions[slot * inputs.item_count + source_position],
-            );
+            gathered
+                .extend_from_slice(&state.contributions[inputs.grid.node(slot, source_position)]);
         }
     }
     // Ascending bearer id, so order-sensitive reductions (float sums)
     // are deterministic.
     gathered.sort_by_key(|(bearer_position, _)| *bearer_position);
 
-    if !gathered.is_empty() {
+    if !gathered.is_empty()
+        && !conversion_failed(inputs.conversion_failures, item_id, derive_field.name)
+    {
         let values: Vec<FieldValue> = gathered.iter().map(|(_, value)| value.clone()).collect();
         if let Some(reduced) = rollup::apply_aggregate(aggregate.function, &values) {
             if let Some(item) = items.get_mut(item_id) {
@@ -532,6 +590,8 @@ fn evaluate_node(
             }
         }
     }
+    // The children's contributions pass through regardless — a broken
+    // value on this item must not cut its subtree off from ancestors.
     state.contributions[node] = gathered;
 }
 
@@ -597,24 +657,6 @@ fn evaluate_pull(
     }
 }
 
-/// The pull's link targets that have no source value, as
-/// `target_id.field` — the cause the required-field diagnostic names.
-fn pull_missing_inputs(
-    item: &WorkItem,
-    pull: &PullConfig,
-    items: &HashMap<WorkItemId, WorkItem>,
-) -> Vec<String> {
-    targets_of(item, &pull.over)
-        .into_iter()
-        .filter(|target_id| {
-            !items
-                .get(*target_id)
-                .is_some_and(|target| target.fields.contains_key(&pull.field))
-        })
-        .map(|target_id| format!("{}.{}", target_id.as_str(), pull.field))
-        .collect()
-}
-
 // ── Cross-link cycle diagnostics ────────────────────────────────────
 
 /// A cross-item edge's provenance: which link field it followed, and
@@ -635,7 +677,7 @@ enum EdgeProvenance {
 fn derive_cycle_diagnostics(
     derive_fields: &[DeriveField<'_>],
     item_ids: &[WorkItemId],
-    item_count: usize,
+    grid: NodeGrid,
     dependents: &[Vec<usize>],
     evaluated: &[bool],
     items: &HashMap<WorkItemId, WorkItem>,
@@ -700,7 +742,7 @@ fn derive_cycle_diagnostics(
                             &path[cycle_start..],
                             derive_fields,
                             item_ids,
-                            item_count,
+                            grid,
                             items,
                         ) {
                             diagnostics.push(diagnostic);
@@ -724,25 +766,25 @@ fn cycle_diagnostic(
     cycle: &[usize],
     derive_fields: &[DeriveField<'_>],
     item_ids: &[WorkItemId],
-    item_count: usize,
+    grid: NodeGrid,
     items: &HashMap<WorkItemId, WorkItem>,
 ) -> Option<Diagnostic> {
     let mut provenances: HashSet<EdgeProvenance> = HashSet::new();
     for (edge_index, &from_node) in cycle.iter().enumerate() {
         let to_node = cycle[(edge_index + 1) % cycle.len()];
-        let from_position = from_node % item_count;
-        let to_position = to_node % item_count;
+        let from_position = grid.position_of(from_node);
+        let to_position = grid.position_of(to_node);
         if from_position == to_position {
             continue; // same-item edge: no link field involved
         }
-        let from_slot = from_node / item_count;
-        let to_slot = to_node / item_count;
+        let from_slot = grid.slot_of(from_node);
+        let to_slot = grid.slot_of(to_node);
         if from_slot == to_slot {
-            let over = derive_fields[to_slot]
-                .aggregate_over
-                .clone()
-                .unwrap_or_else(|| rollup::DEFAULT_OVER_FIELD.to_owned());
-            provenances.insert(EdgeProvenance::AggregateReverse(over));
+            // A same-slot edge is an aggregate-reverse edge, so the slot
+            // always carries an `over`; no aggregate means no such edge.
+            if let Some(over) = derive_fields[to_slot].aggregate_over.clone() {
+                provenances.insert(EdgeProvenance::AggregateReverse(over));
+            }
         } else if let Some(pull) = &derive_fields[to_slot].definition.pull {
             provenances.insert(EdgeProvenance::PullForward(pull.over.clone()));
         }
@@ -756,14 +798,14 @@ fn cycle_diagnostic(
         .map(|node| {
             format!(
                 "{}.{}",
-                item_ids[node % item_count].as_str(),
-                derive_fields[node / item_count].name
+                item_ids[grid.position_of(*node)].as_str(),
+                derive_fields[grid.slot_of(*node)].name
             )
         })
         .collect();
     chain.push(chain[0].clone());
 
-    let first_item_id = &item_ids[cycle[0] % item_count];
+    let first_item_id = &item_ids[grid.position_of(cycle[0])];
     let source_path = items.get(first_item_id)?.source_path.clone();
     Some(Diagnostic::item(
         Severity::Error,
@@ -771,102 +813,6 @@ fn cycle_diagnostic(
         first_item_id.clone(),
         ItemDiagnosticKind::DeriveCycle { chain },
     ))
-}
-
-/// Deferred required check for derivable fields (coercion skipped them —
-/// the derive passes may have filled them in).
-fn required_check(
-    items: &HashMap<WorkItemId, WorkItem>,
-    reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
-    schema: &Schema,
-    disabled_compute_fields: &HashSet<String>,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    for (field_name, field_definition) in &schema.fields {
-        if !field_definition.required
-            || (field_definition.aggregate.is_none()
-                && !field_definition.is_derived()
-                && field_definition.pull.is_none())
-        {
-            continue;
-        }
-        let disabled = disabled_compute_fields.contains(field_name.as_str());
-        let mut missing: Vec<(&WorkItemId, &WorkItem)> = items
-            .iter()
-            .filter(|(_, item)| !item.fields.contains_key(field_name))
-            .collect();
-        missing.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
-
-        for (item_id, item) in missing {
-            // Name the actual cause instead of just the blank output: a
-            // computed field's absent inputs, or a conditional field's
-            // unmatched branches. Falls back to the classic message when
-            // there is no per-input or per-branch cause to name — the
-            // same-item pass never ran here (a non-leaf of a
-            // derive+aggregate field, where the rollup found nothing to
-            // aggregate), a computed field's inputs are all present, or
-            // the schema-level check disabled the config and its
-            // diagnostic carries the cause.
-            let pass_skipped_this_item = (field_definition.is_derived()
-                || field_definition.pull.is_some())
-                && field_definition
-                    .aggregate
-                    .as_ref()
-                    .is_some_and(|aggregate| {
-                        let over = aggregate
-                            .over
-                            .as_deref()
-                            .unwrap_or(rollup::DEFAULT_OVER_FIELD);
-                        !compute::is_leaf(reverse_links, item_id, over)
-                    });
-            let kind = if disabled || pass_skipped_this_item {
-                ItemDiagnosticKind::MissingRequired {
-                    field: field_name.clone(),
-                }
-            } else if let Some(config) = &field_definition.compute {
-                let missing_inputs = compute::missing_inputs(item, config);
-                if missing_inputs.is_empty() {
-                    ItemDiagnosticKind::MissingRequired {
-                        field: field_name.clone(),
-                    }
-                } else {
-                    ItemDiagnosticKind::ComputeMissingInputs {
-                        field: field_name.clone(),
-                        missing_inputs,
-                    }
-                }
-            } else if let Some(pull) = &field_definition.pull {
-                let missing_inputs = pull_missing_inputs(item, pull, items);
-                if missing_inputs.is_empty() {
-                    // No incomplete link target — an unanchored root
-                    // (or a manual anchor simply not written yet).
-                    ItemDiagnosticKind::MissingRequired {
-                        field: field_name.clone(),
-                    }
-                } else {
-                    ItemDiagnosticKind::PullMissingInputs {
-                        field: field_name.clone(),
-                        missing_inputs,
-                    }
-                }
-            } else if let Some(when_config) = &field_definition.when {
-                ItemDiagnosticKind::WhenUnmatched {
-                    field: field_name.clone(),
-                    missing_inputs: conditional::missing_inputs(item, when_config),
-                }
-            } else {
-                ItemDiagnosticKind::MissingRequired {
-                    field: field_name.clone(),
-                }
-            };
-            diagnostics.push(Diagnostic::item(
-                Severity::Error,
-                item.source_path.clone(),
-                item_id.clone(),
-                kind,
-            ));
-        }
-    }
 }
 
 /// Schema fields in evaluation order: a derivation's inputs (compute
@@ -979,20 +925,44 @@ mod tests {
         schema_yaml: &str,
         resources_yaml: &str,
     ) -> Vec<Diagnostic> {
+        // In-memory items never went through coercion, so most tests
+        // have no conversion failures to carry.
+        run_derive_with_failures(items, schema_yaml, resources_yaml, &HashMap::new())
+    }
+
+    /// `run_derive` with coercion's written-but-invalid record carried
+    /// in, for tests exercising how the passes treat a slot no pass
+    /// may fill.
+    fn run_derive_with_failures(
+        items: &mut HashMap<WorkItemId, WorkItem>,
+        schema_yaml: &str,
+        resources_yaml: &str,
+        conversion_failures: &HashMap<WorkItemId, HashSet<String>>,
+    ) -> Vec<Diagnostic> {
         let schema = parse_schema(schema_yaml).expect("test schema must parse");
         let resources = parse_resources(resources_yaml).expect("test resources must parse");
         let reverse_links = reverse_links_of(items);
         // Mirror Store::load_with_resources: check-failed compute
-        // fields are skipped, exactly as in production.
+        // fields are skipped and the required check follows the derive
+        // passes as its own phase, exactly as in production.
         let disabled_compute_fields = crate::compute_check::failed_fields(&schema, &resources);
-        run(
+        let mut diagnostics = run(
             items,
             &reverse_links,
             &schema,
             &resources.constants,
             test_evaluation_date(),
             &disabled_compute_fields,
-        )
+            conversion_failures,
+        );
+        diagnostics.extend(super::super::required::check(
+            items,
+            &reverse_links,
+            &schema,
+            &disabled_compute_fields,
+            conversion_failures,
+        ));
+        diagnostics
     }
 
     fn field<'a>(
@@ -1012,15 +982,18 @@ fields:
     type: date
     aggregate:
       function: min
+      over: parent
   duration:
     type: duration
     aggregate:
       function: sum
+      over: parent
   end_date:
     type: date
     compute: start_date + duration
     aggregate:
       function: max
+      over: parent
 ";
 
     // ── The motivating scenario ───────────────────────────────────────
@@ -1097,10 +1070,12 @@ fields:
     type: duration
     aggregate:
       function: sum
+      over: parent
   duration:
     type: duration
     aggregate:
       function: sum
+      over: parent
   flow_efficiency:
     type: float
     compute: effort / duration
@@ -1590,6 +1565,7 @@ fields:
     compute: start + duration
     aggregate:
       function: max
+      over: parent
 ";
         let mut items = HashMap::from([
             item(
@@ -1647,11 +1623,13 @@ fields:
       function: max
     aggregate:
       function: min
+      over: parent
   end:
     type: date
     compute: start + duration
     aggregate:
       function: max
+      over: parent
 ";
         let mut items = HashMap::from([
             item(
@@ -1795,6 +1773,32 @@ fields:
     }
 
     #[test]
+    fn a_written_but_invalid_anchor_breaks_the_loop_like_a_valid_one() {
+        // Same jointly-cyclic wiring, but `a.f` is written-but-invalid
+        // (coercion recorded the failure, so no pass may fill the
+        // slot). Its node must wait for nothing, exactly like the
+        // hand-written anchor above: the slot is never filled, so
+        // waiting on its inputs would close a loop that doesn't exist
+        // semantically and report a false cycle. `b.g` is simply left
+        // with a missing input; the invalid value itself is coercion's
+        // finding, not the derive pass's.
+        let mut items = HashMap::from([
+            item("a", vec![("first_link", links_value(&["b"]))]),
+            item("b", vec![("second_link", links_value(&["a"]))]),
+        ]);
+        let conversion_failures = HashMap::from([(
+            WorkItemId::from("a".to_owned()),
+            HashSet::from(["f".to_owned()]),
+        )]);
+        let diagnostics =
+            run_derive_with_failures(&mut items, JOINTLY_CYCLIC_SCHEMA, "", &conversion_failures);
+
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+        assert_eq!(field(&items, "a", "f"), None);
+        assert_eq!(field(&items, "b", "g"), None);
+    }
+
+    #[test]
     fn milestone_with_own_depends_on_does_not_deadlock() {
         // Milestones never run their own pull/compute — their children
         // own their values — so their nodes must not wait for those
@@ -1820,11 +1824,13 @@ fields:
       function: max
     aggregate:
       function: min
+      over: parent
   end:
     type: date
     compute: start + duration
     aggregate:
       function: max
+      over: parent
 ";
         let mut items = HashMap::from([
             item(

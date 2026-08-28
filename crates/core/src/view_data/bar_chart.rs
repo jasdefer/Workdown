@@ -21,7 +21,7 @@ use crate::store::Store;
 
 use super::aggregate::aggregate_bucket;
 use super::common::{
-    build_card, group_keys, sort_unplaced, AggregateValue, UnplacedCard, UnplacedReason,
+    build_card, group_keys, sort_unplaced, ChartValue, UnplacedCard, UnplacedReason,
 };
 use super::filter::filtered_items;
 
@@ -37,7 +37,7 @@ pub struct BarChartData {
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct BarChartBar {
     pub group: String,
-    pub value: AggregateValue,
+    pub value: ChartValue,
 }
 
 pub fn extract_bar_chart(view: &View, store: &Store, schema: &Schema) -> BarChartData {
@@ -178,8 +178,8 @@ mod tests {
         assert_eq!(data.bars.len(), 2);
         let done = data.bars.iter().find(|b| b.group == "done").unwrap();
         let open = data.bars.iter().find(|b| b.group == "open").unwrap();
-        assert!(matches!(done.value, AggregateValue::Number(n) if n == 1.0));
-        assert!(matches!(open.value, AggregateValue::Number(n) if n == 2.0));
+        assert!(matches!(done.value, ChartValue::Number(n) if n == 1.0));
+        assert!(matches!(open.value, ChartValue::Number(n) if n == 2.0));
     }
 
     #[test]
@@ -211,7 +211,7 @@ mod tests {
         let data = extract_bar_chart(&view, &store, &schema);
 
         let open = data.bars.iter().find(|b| b.group == "open").unwrap();
-        assert!(matches!(open.value, AggregateValue::Number(n) if (n - 8.0).abs() < 1e-9));
+        assert!(matches!(open.value, ChartValue::Number(n) if (n - 8.0).abs() < 1e-9));
     }
 
     #[test]
@@ -243,7 +243,7 @@ mod tests {
         let data = extract_bar_chart(&view, &store, &schema);
 
         let open = data.bars.iter().find(|b| b.group == "open").unwrap();
-        assert_eq!(open.value, AggregateValue::Date(ymd(2026, 1, 3)));
+        assert_eq!(open.value, ChartValue::Date(ymd(2026, 1, 3)));
     }
 
     #[test]
@@ -266,7 +266,7 @@ mod tests {
 
         assert_eq!(data.bars.len(), 2);
         for bar in &data.bars {
-            assert!(matches!(bar.value, AggregateValue::Number(n) if n == 1.0));
+            assert!(matches!(bar.value, ChartValue::Number(n) if n == 1.0));
         }
     }
 
@@ -308,7 +308,7 @@ mod tests {
         let data = extract_bar_chart(&view, &store, &schema);
 
         let open = data.bars.iter().find(|b| b.group == "open").unwrap();
-        assert!(matches!(open.value, AggregateValue::Number(n) if (n - 3.0).abs() < 1e-9));
+        assert!(matches!(open.value, ChartValue::Number(n) if (n - 3.0).abs() < 1e-9));
         assert_eq!(data.unplaced.len(), 1);
         assert_eq!(data.unplaced[0].card.id.as_str(), "b");
     }

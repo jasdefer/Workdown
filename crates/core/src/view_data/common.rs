@@ -304,10 +304,11 @@ pub(super) fn sort_unplaced(unplaced: &mut [UnplacedCard]) {
     unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
 }
 
-// ── Aggregate / axis values ─────────────────────────────────────────
+// ── Chart values ────────────────────────────────────────────────────
 
-/// Result of an aggregate (sum/avg/min/max) on a numeric, date, or
-/// duration field.
+/// A typed scalar on a chart: the result of an aggregate (sum/avg/
+/// min/max) on a numeric, date, or duration field, or a point
+/// coordinate on a chart axis.
 ///
 /// Count always produces `Number(n as f64)`. Sum applies to numeric or
 /// duration fields; avg/min/max apply to numeric, date, or duration
@@ -323,19 +324,7 @@ pub(super) fn sort_unplaced(unplaced: &mut [UnplacedCard]) {
 /// value is typed as `number` on the TS side.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, ts_rs::TS)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
-pub enum AggregateValue {
-    Number(f64),
-    Date(NaiveDate),
-    Duration(#[ts(type = "number")] i64),
-}
-
-/// A point coordinate on a chart's x-axis (or similar).
-///
-/// Wire shape is tagged (`{type, value}`) for the same variant-recovery
-/// reason as [`AggregateValue`].
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, ts_rs::TS)]
-#[serde(tag = "type", content = "value", rename_all = "snake_case")]
-pub enum AxisValue {
+pub enum ChartValue {
     Number(f64),
     Date(NaiveDate),
     Duration(#[ts(type = "number")] i64),
@@ -344,10 +333,10 @@ pub enum AxisValue {
 /// A magnitude carried by a non-aggregated leaf field — the size column
 /// of a treemap, the y-coordinate of a line chart, etc.
 ///
-/// Mirrors the `Number`/`Duration` arms of [`AggregateValue`] without
+/// Mirrors the `Number`/`Duration` arms of [`ChartValue`] without
 /// the `Date` arm (sizes can't be dates). Carrying the variant through
 /// the data structure lets downstream renderers format `5d` instead of
-/// raw seconds — same role `AggregateValue` plays for metric/heatmap.
+/// raw seconds — same role `ChartValue` plays for metric/heatmap.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, ts_rs::TS)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum SizeValue {
@@ -363,6 +352,17 @@ impl SizeValue {
         match self {
             SizeValue::Number(number) => number,
             SizeValue::Duration(seconds) => seconds as f64,
+        }
+    }
+}
+
+/// Every size is also a valid chart value — the reverse is not true
+/// (sizes can't be dates), which is why `SizeValue` exists at all.
+impl From<SizeValue> for ChartValue {
+    fn from(size: SizeValue) -> Self {
+        match size {
+            SizeValue::Number(number) => ChartValue::Number(number),
+            SizeValue::Duration(seconds) => ChartValue::Duration(seconds),
         }
     }
 }
@@ -427,15 +427,15 @@ pub(super) fn as_size(value: Option<&FieldValue>) -> Option<SizeValue> {
     }
 }
 
-/// Extract an [`AxisValue`] — numeric, date, or duration — from a field
+/// Extract an [`ChartValue`] — numeric, date, or duration — from a field
 /// value. Duration values keep their variant so renderers can format
 /// axis ticks as `1d` instead of `86400`.
-pub(super) fn as_axis(value: Option<&FieldValue>) -> Option<AxisValue> {
+pub(super) fn as_axis(value: Option<&FieldValue>) -> Option<ChartValue> {
     match value {
-        Some(FieldValue::Integer(integer)) => Some(AxisValue::Number(*integer as f64)),
-        Some(FieldValue::Float(float)) => Some(AxisValue::Number(*float)),
-        Some(FieldValue::Duration(seconds)) => Some(AxisValue::Duration(*seconds)),
-        Some(FieldValue::Date(date)) => Some(AxisValue::Date(*date)),
+        Some(FieldValue::Integer(integer)) => Some(ChartValue::Number(*integer as f64)),
+        Some(FieldValue::Float(float)) => Some(ChartValue::Number(*float)),
+        Some(FieldValue::Duration(seconds)) => Some(ChartValue::Duration(*seconds)),
+        Some(FieldValue::Date(date)) => Some(ChartValue::Date(*date)),
         _ => None,
     }
 }

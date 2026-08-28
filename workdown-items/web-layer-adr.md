@@ -1,7 +1,7 @@
 ---
 id: web-layer-adr
-status: to_do
 title: Write down the web layer's design decisions as an ADR
+status: done
 parent: maintenance-review-2026-08
 ---
 

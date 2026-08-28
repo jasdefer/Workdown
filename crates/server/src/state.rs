@@ -1,7 +1,7 @@
 //! Server-side state — what every handler needs to find the workdown
 //! project on disk, plus the live-update channel.
 //!
-//! Per the cold-load decision in `first-view-end-to-end`, the server
+//! Per the cold-load decision in ADR-013, the server
 //! never caches the loaded project. Each request goes through
 //! `core::load_project()` against `project_root` and `config`. The
 //! state is therefore just the two pieces needed to re-load: where the
@@ -24,7 +24,9 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 
 use workdown_core::model::config::Config;
+use workdown_core::project::{load_project, Project};
 
+use crate::envelope::ApiResponse;
 use crate::timer::TimerService;
 
 /// Capacity of the live-update broadcast channel. Pings are contentless
@@ -66,6 +68,32 @@ pub struct AppState {
     /// in this struct the timer is genuinely shared mutable state — every
     /// cloned handler must see the *same* lock, not a copy of it.
     pub timer: Arc<TimerService>,
+}
+
+/// Cold-load the project this request is about, mapping a load failure
+/// to the envelope's rejected tier.
+///
+/// Every project-reading handler opens with exactly this, so it is
+/// written once. The error side is a ready-made [`ApiResponse`], which
+/// is why the return type is generic in `T`: the caller's own payload
+/// type flows through, and the handler's opening line is
+///
+/// ```ignore
+/// let project = match load_state_project(&state) {
+///     Ok(project) => project,
+///     Err(response) => return response,
+/// };
+/// ```
+pub fn load_state_project<T: serde::Serialize>(
+    state: &AppState,
+) -> Result<Project, ApiResponse<T>> {
+    load_project(
+        &state.config,
+        &state.project_root,
+        &state.config_path,
+        state.evaluation_date_override,
+    )
+    .map_err(|error| ApiResponse::rejected(vec![error.to_diagnostic()]))
 }
 
 impl AppState {

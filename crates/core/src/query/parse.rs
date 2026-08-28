@@ -4,7 +4,7 @@
 //! are combined into [`Predicate::And`] by the command layer — this parser
 //! handles one expression at a time.
 
-use crate::query::types::{Comparison, FieldReference, Operator, Predicate};
+use crate::query::types::{Comparison, FieldReference, Operand, Operator, Predicate, QueryRegex};
 
 // ── Error ───────────────────────────────────────────────────────────
 
@@ -95,7 +95,7 @@ pub fn parse_where(input: &str) -> Result<Predicate, QueryParseError> {
                 Comparison {
                     field: build_field_ref(field_name),
                     operator: Operator::IsSet,
-                    value: String::new(),
+                    operand: Operand::Value(String::new()),
                 },
             ))));
         }
@@ -108,7 +108,7 @@ pub fn parse_where(input: &str) -> Result<Predicate, QueryParseError> {
         return Ok(Predicate::Comparison(Comparison {
             field: build_field_ref(field_name),
             operator: Operator::IsSet,
-            value: String::new(),
+            operand: Operand::Value(String::new()),
         }));
     }
 
@@ -130,7 +130,7 @@ pub fn parse_where(input: &str) -> Result<Predicate, QueryParseError> {
             return Ok(Predicate::Comparison(Comparison {
                 field: build_field_ref(field_name),
                 operator,
-                value: value.to_owned(),
+                operand: Operand::Value(value.to_owned()),
             }));
         }
     }
@@ -149,7 +149,7 @@ pub fn parse_where(input: &str) -> Result<Predicate, QueryParseError> {
             return Ok(Predicate::Comparison(Comparison {
                 field: build_field_ref(field_name),
                 operator,
-                value: value.to_owned(),
+                operand: Operand::Value(value.to_owned()),
             }));
         }
     }
@@ -250,7 +250,7 @@ fn desugar_membership(field_name: &str, operator: Operator, values: &[String]) -
                 } else {
                     Operator::Equal
                 },
-                value: value.clone(),
+                operand: Operand::Value(value.clone()),
             })
         })
         .collect();
@@ -314,29 +314,19 @@ fn try_parse_regex(input: &str) -> Result<Option<Predicate>, QueryParseError> {
         return Ok(None);
     }
 
-    // Validate the field name (reject related fields).
+    // The field name must be non-empty; related fields (`parent.title/…/`)
+    // are allowed and evaluate against the related item's value.
     validate_field_name(field_name, input)?;
 
-    // Validate the regex pattern by compiling it.
-    let test_pattern = if flags == "i" {
-        format!("(?i){pattern}")
-    } else {
-        pattern.to_owned()
-    };
-    if let Err(error) = regex::Regex::new(&test_pattern) {
-        return Err(QueryParseError::InvalidRegex {
-            pattern: pattern.to_owned(),
-            reason: error.to_string(),
-        });
-    }
-
-    // Store the full /pattern/flags form so the evaluator can reconstruct it.
-    let stored_value = format!("/{pattern}/{flags}");
+    let regex = QueryRegex::new(pattern, flags).map_err(|error| QueryParseError::InvalidRegex {
+        pattern: pattern.to_owned(),
+        reason: error.to_string(),
+    })?;
 
     Ok(Some(Predicate::Comparison(Comparison {
         field: build_field_ref(field_name),
         operator: Operator::Matches,
-        value: stored_value,
+        operand: Operand::Regex(regex),
     })))
 }
 
@@ -369,7 +359,7 @@ mod tests {
         let comparison = as_comparison(&predicate);
         assert_eq!(field_name(comparison), "status");
         assert_eq!(comparison.operator, Operator::Equal);
-        assert_eq!(comparison.value, "open");
+        assert_eq!(comparison.operand.text(), "open");
     }
 
     // ── Not-equal ───────────────────────────────────────────────
@@ -380,7 +370,7 @@ mod tests {
         let comparison = as_comparison(&predicate);
         assert_eq!(field_name(comparison), "status");
         assert_eq!(comparison.operator, Operator::NotEqual);
-        assert_eq!(comparison.value, "done");
+        assert_eq!(comparison.operand.text(), "done");
     }
 
     // ── Numeric comparisons ─────────────────────────────────────
@@ -391,7 +381,7 @@ mod tests {
         let comparison = as_comparison(&predicate);
         assert_eq!(field_name(comparison), "points");
         assert_eq!(comparison.operator, Operator::GreaterThan);
-        assert_eq!(comparison.value, "3");
+        assert_eq!(comparison.operand.text(), "3");
     }
 
     #[test]
@@ -400,7 +390,7 @@ mod tests {
         let comparison = as_comparison(&predicate);
         assert_eq!(field_name(comparison), "points");
         assert_eq!(comparison.operator, Operator::LessThan);
-        assert_eq!(comparison.value, "10");
+        assert_eq!(comparison.operand.text(), "10");
     }
 
     #[test]
@@ -409,7 +399,7 @@ mod tests {
         let comparison = as_comparison(&predicate);
         assert_eq!(field_name(comparison), "points");
         assert_eq!(comparison.operator, Operator::GreaterOrEqual);
-        assert_eq!(comparison.value, "3");
+        assert_eq!(comparison.operand.text(), "3");
     }
 
     #[test]
@@ -418,7 +408,7 @@ mod tests {
         let comparison = as_comparison(&predicate);
         assert_eq!(field_name(comparison), "points");
         assert_eq!(comparison.operator, Operator::LessOrEqual);
-        assert_eq!(comparison.value, "10");
+        assert_eq!(comparison.operand.text(), "10");
     }
 
     // ── Contains ────────────────────────────────────────────────
@@ -429,7 +419,7 @@ mod tests {
         let comparison = as_comparison(&predicate);
         assert_eq!(field_name(comparison), "title");
         assert_eq!(comparison.operator, Operator::Contains);
-        assert_eq!(comparison.value, "login");
+        assert_eq!(comparison.operand.text(), "login");
     }
 
     // ── Regex ───────────────────────────────────────────────────
@@ -440,7 +430,7 @@ mod tests {
         let comparison = as_comparison(&predicate);
         assert_eq!(field_name(comparison), "title");
         assert_eq!(comparison.operator, Operator::Matches);
-        assert_eq!(comparison.value, "/^fix-.*/");
+        assert_eq!(comparison.operand.text(), "/^fix-.*/");
     }
 
     #[test]
@@ -449,13 +439,30 @@ mod tests {
         let comparison = as_comparison(&predicate);
         assert_eq!(field_name(comparison), "title");
         assert_eq!(comparison.operator, Operator::Matches);
-        assert_eq!(comparison.value, "/^fix-.*/i");
+        assert_eq!(comparison.operand.text(), "/^fix-.*/i");
     }
 
     #[test]
     fn parse_regex_invalid_pattern() {
         let result = parse_where("title/[invalid/");
         assert!(matches!(result, Err(QueryParseError::InvalidRegex { .. })));
+    }
+
+    /// A regex on a related field is intended, like every other operator on
+    /// a related field — the dot traverses, the pattern tests the target.
+    #[test]
+    fn parse_regex_on_related_field() {
+        let predicate = parse_where("parent.title/^fix-/i").unwrap();
+        let comparison = as_comparison(&predicate);
+        assert_eq!(
+            comparison.field,
+            FieldReference::Related {
+                relation: "parent".to_owned(),
+                field: "title".to_owned(),
+            }
+        );
+        assert_eq!(comparison.operator, Operator::Matches);
+        assert_eq!(comparison.operand.text(), "/^fix-/i");
     }
 
     // ── IsSet / IsNotSet ────────────────────────────────────────
@@ -492,11 +499,11 @@ mod tests {
                 let first = as_comparison(&predicates[0]);
                 assert_eq!(field_name(first), "status");
                 assert_eq!(first.operator, Operator::Equal);
-                assert_eq!(first.value, "open");
+                assert_eq!(first.operand.text(), "open");
                 let second = as_comparison(&predicates[1]);
                 assert_eq!(field_name(second), "status");
                 assert_eq!(second.operator, Operator::Equal);
-                assert_eq!(second.value, "in_progress");
+                assert_eq!(second.operand.text(), "in_progress");
             }
             other => panic!("expected Or, got {other:?}"),
         }
@@ -512,7 +519,7 @@ mod tests {
                     let comparison = as_comparison(sub);
                     assert_eq!(field_name(comparison), "status");
                     assert_eq!(comparison.operator, Operator::NotEqual);
-                    assert_eq!(comparison.value, expected);
+                    assert_eq!(comparison.operand.text(), expected);
                 }
             }
             other => panic!("expected And, got {other:?}"),
@@ -547,8 +554,8 @@ mod tests {
         let predicate = parse_where("status in open , in_progress").unwrap();
         match &predicate {
             Predicate::Or(predicates) => {
-                assert_eq!(as_comparison(&predicates[0]).value, "open");
-                assert_eq!(as_comparison(&predicates[1]).value, "in_progress");
+                assert_eq!(as_comparison(&predicates[0]).operand.text(), "open");
+                assert_eq!(as_comparison(&predicates[1]).operand.text(), "in_progress");
             }
             other => panic!("expected Or, got {other:?}"),
         }
@@ -594,7 +601,7 @@ mod tests {
         let comparison = as_comparison(&predicate);
         assert_eq!(field_name(comparison), "title");
         assert_eq!(comparison.operator, Operator::Equal);
-        assert_eq!(comparison.value, "bug, crash");
+        assert_eq!(comparison.operand.text(), "bug, crash");
     }
 
     /// `=` and `!=` agree about what a comma means.
@@ -603,7 +610,7 @@ mod tests {
         let comparison_predicate = parse_where("title!=bug, crash").unwrap();
         let comparison = as_comparison(&comparison_predicate);
         assert_eq!(comparison.operator, Operator::NotEqual);
-        assert_eq!(comparison.value, "bug, crash");
+        assert_eq!(comparison.operand.text(), "bug, crash");
     }
 
     // ── Word-operator precedence ────────────────────────────────
@@ -615,7 +622,7 @@ mod tests {
         let comparison = as_comparison(&predicate);
         assert_eq!(field_name(comparison), "title");
         assert_eq!(comparison.operator, Operator::Equal);
-        assert_eq!(comparison.value, "a in b");
+        assert_eq!(comparison.operand.text(), "a in b");
     }
 
     /// The token is whitespace-delimited, so a field name containing the
@@ -702,7 +709,7 @@ mod tests {
             other => panic!("expected Related, got {other:?}"),
         }
         assert_eq!(comparison.operator, Operator::Equal);
-        assert_eq!(comparison.value, "open");
+        assert_eq!(comparison.operand.text(), "open");
     }
 
     #[test]
@@ -718,6 +725,6 @@ mod tests {
         let predicate = parse_where(" status = open ").unwrap();
         let comparison = as_comparison(&predicate);
         assert_eq!(field_name(comparison), "status");
-        assert_eq!(comparison.value, "open");
+        assert_eq!(comparison.operand.text(), "open");
     }
 }

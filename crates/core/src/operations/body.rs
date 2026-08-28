@@ -6,8 +6,8 @@
 //! the file at the body offset rather than re-emitting the YAML.
 //!
 //! Interactive editing is out of scope — the user opens the `.md` file
-//! directly. This command exists for non-interactive callers (UI,
-//! scripts, the future server).
+//! directly. This command exists for non-interactive callers (the web
+//! UI, scripts).
 
 use std::path::{Path, PathBuf};
 

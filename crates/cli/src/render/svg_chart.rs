@@ -9,7 +9,7 @@ use chrono::{Datelike, NaiveDate};
 use plotters::style::RGBColor;
 
 use workdown_core::model::duration::format_duration_seconds;
-use workdown_core::view_data::AggregateValue;
+use workdown_core::view_data::ChartValue;
 
 use super::markdown::format_number;
 
@@ -179,22 +179,22 @@ pub fn format_compact_number(value: f64) -> String {
     }
 }
 
-/// Pick the axis kind for a stream of [`AggregateValue`]s.
+/// Pick the axis kind for a stream of [`ChartValue`]s.
 ///
 /// Variant comes from the first value; for `Duration`, the unit is
 /// chosen so the largest absolute magnitude becomes a small whole
 /// number. Single-pass over the iterator. Panics on an empty stream
 /// — every caller has a non-empty data set by the time it asks.
-pub fn axis_kind_for(values: impl Iterator<Item = AggregateValue>) -> AxisKind {
+pub fn axis_kind_for(values: impl Iterator<Item = ChartValue>) -> AxisKind {
     let mut iter = values;
     let first = iter.next().expect("axis_kind_for called with no values");
     match first {
-        AggregateValue::Number(_) => AxisKind::Number,
-        AggregateValue::Date(_) => AxisKind::Date,
-        AggregateValue::Duration(seconds_first) => {
+        ChartValue::Number(_) => AxisKind::Number,
+        ChartValue::Date(_) => AxisKind::Date,
+        ChartValue::Duration(seconds_first) => {
             let max = std::iter::once(seconds_first)
                 .chain(iter.filter_map(|value| match value {
-                    AggregateValue::Duration(seconds) => Some(seconds),
+                    ChartValue::Duration(seconds) => Some(seconds),
                     _ => None,
                 }))
                 .map(|seconds| seconds.unsigned_abs() as i64)
@@ -209,30 +209,30 @@ pub fn axis_kind_for(values: impl Iterator<Item = AggregateValue>) -> AxisKind {
     }
 }
 
-/// Convert an [`AggregateValue`] to the f64 plot-space coordinate that
+/// Convert a [`ChartValue`] to the f64 plot-space coordinate that
 /// matches `kind`. Mismatched variant + kind is a programming error
 /// (every caller derives `kind` from the same value stream) and panics.
-pub fn value_to_f64(value: AggregateValue, kind: AxisKind) -> f64 {
+pub fn value_to_f64(value: ChartValue, kind: AxisKind) -> f64 {
     match (value, kind) {
-        (AggregateValue::Number(n), AxisKind::Number) => n,
-        (AggregateValue::Date(date), AxisKind::Date) => date_to_f64(date),
-        (AggregateValue::Duration(seconds), AxisKind::Duration { divisor, .. }) => {
+        (ChartValue::Number(n), AxisKind::Number) => n,
+        (ChartValue::Date(date), AxisKind::Date) => date_to_f64(date),
+        (ChartValue::Duration(seconds), AxisKind::Duration { divisor, .. }) => {
             seconds as f64 / divisor as f64
         }
-        (value, kind) => panic!("mixed aggregate value types: value {value:?} with kind {kind:?}"),
+        (value, kind) => panic!("mixed chart value types: value {value:?} with kind {kind:?}"),
     }
 }
 
-/// Format an [`AggregateValue`] for display in a Markdown table cell.
+/// Format a [`ChartValue`] for display in a Markdown table cell.
 ///
 /// Numbers go through [`format_number`] (drops trailing `.0`), dates
 /// render as ISO `YYYY-MM-DD`, durations as the canonical `Wd Xh Ym Zs`
 /// shorthand from [`format_duration_seconds`].
-pub fn format_aggregate_value(value: &AggregateValue) -> String {
+pub fn format_chart_value(value: &ChartValue) -> String {
     match value {
-        AggregateValue::Number(n) => format_number(*n),
-        AggregateValue::Date(d) => d.format("%Y-%m-%d").to_string(),
-        AggregateValue::Duration(seconds) => format_duration_seconds(*seconds),
+        ChartValue::Number(n) => format_number(*n),
+        ChartValue::Date(d) => d.format("%Y-%m-%d").to_string(),
+        ChartValue::Duration(seconds) => format_duration_seconds(*seconds),
     }
 }
 

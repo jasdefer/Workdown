@@ -14,11 +14,10 @@ use axum::extract::State;
 use axum::routing::get;
 use axum::Router;
 
-use workdown_core::project::load_project;
 use workdown_core::schema_data::{self, SchemaData};
 
 use crate::envelope::ApiResponse;
-use crate::state::AppState;
+use crate::state::{load_state_project, AppState};
 
 /// Router for `/schema` under `/api`.
 pub fn router() -> Router<AppState> {
@@ -26,13 +25,8 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn get_schema(State(state): State<AppState>) -> ApiResponse<SchemaData> {
-    match load_project(
-        &state.config,
-        &state.project_root,
-        &state.config_path,
-        state.evaluation_date_override,
-    ) {
-        Err(error) => ApiResponse::rejected(vec![error.to_diagnostic()]),
+    match load_state_project(&state) {
+        Err(response) => response,
         Ok(project) => ApiResponse::ok(schema_data::build(
             &project.schema,
             &project.store,

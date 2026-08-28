@@ -813,6 +813,7 @@ fields:
     type: duration
     aggregate:
       function: sum
+      over: parent
   end_date:
     type: date
     compute: start_date + duration

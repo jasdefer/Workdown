@@ -1,7 +1,7 @@
 ---
 id: maintenance-review-2026-08
-status: to_do
 title: 'Maintenance pass: findings from the 2026-08 codebase review'
+status: done
 ---
 
 ## In plain words
@@ -27,13 +27,19 @@ The items are largely independent, but a sensible sequence:
 1. **Behavior first** — the three findings where users can already see
    wrong output: [[derived-field-single-predicate]],
    [[view-order-in-extractor]], [[over-default-single-definition]].
-2. **Deduplication** — [[metric-row-check-unification]],
+2. **Deduplication** — [[validation-phase-boundaries]] (added
+   mid-milestone: deciding where the required-field check lives, and
+   removing the hand-mirrored mechanism list behind
+   [[derived-field-single-predicate]]), [[metric-row-check-unification]],
    [[query-value-consolidation]], [[chart-renderer-sharing]],
    [[schema-property-table]], [[message-style-consistency]].
 3. **Documentation** — [[web-layer-adr]], [[render-flow-doc]],
    [[stale-docs-refresh]].
 4. **Guards and tests** — [[view-kind-sync-guards]],
-   [[stateful-test-gaps]].
+   [[stateful-test-gaps]], and [[cli-exit-code-contract]], added
+   mid-milestone once the CLI's exit codes turned out to be an
+   undocumented contract that the generated pre-commit hook already
+   depends on.
 5. **Anytime** — [[assorted-small-fixes]] is a grab bag of
    minutes-to-hours fixes to fold into any of the above.
 

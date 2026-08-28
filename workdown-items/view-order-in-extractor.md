@@ -1,6 +1,6 @@
 ---
 id: view-order-in-extractor
-status: to_do
+status: done
 title: Sort and group view items in one place, not per renderer
 parent: maintenance-review-2026-08
 ---
@@ -66,3 +66,76 @@ while in the area):
 
 - Changing what any view shows or how it looks — this only relocates
   the decisions, pinned by the existing snapshot tests.
+
+## Decisions taken
+
+Recorded 2026-08-24 after review. The dividing line agreed on: **core
+owns structure and order; each front end owns wording and color.**
+ADR-006 mandates that resolution happens in extraction but says nothing
+about labels or colors, which is the gap that let four different "no
+value" spellings grow. ADR-006 gains one clarifying sentence rather
+than a change of rule.
+
+1. **Treemap child ordering moves to core.** Core sorts children
+   size-descending, id-ascending on ties, at every level of the tree.
+   Both renderers drop their local sorts and draw in received order.
+   Rationale: the tie-break needs to know how sizes compare (duration
+   vs. number), which is core's knowledge; two independent copies of
+   the rule are how the current drift happened.
+
+2. **Line chart: core emits ordered series, not loose points.**
+   `LineChartData` carries `series: Vec<LineSeries>`, each with its own
+   points — mirroring board's columns-of-cards and gantt's
+   sections-of-bars. Rejected alternative: keep flat points plus an
+   order hint, which fixes ordering but leaves the partition rule
+   duplicated in both renderers. The web's plotting library wants a
+   flat array, so it re-flattens and passes the series order along for
+   its color domain.
+
+3. **The no-value bucket stays structural in core.** Core reports that
+   a series/column/section has no group value; it never ships the
+   string `(no team)`. Label text is presentation — it is what you
+   would translate, restyle, or render as a heading instead of a
+   legend entry.
+
+4. **Each front end gets one shared no-value label helper.** Decision 3
+   alone does not fix the drift: core already ships a structural null
+   for all three views, and the four spellings exist anyway because
+   each renderer converts it to words inline at the draw site. One
+   helper per front end, called by board, gantt, and line chart:
+   - CLI `render/markdown.rs`: `no_value_label(field)` → `(no team)`
+     for inline use, and `no_value_heading(field)` → `No team` for
+     board's `##` section heading. Paired in one place so the two
+     forms stay deliberate.
+   - Web `views/prettify.ts`: `noValueLabel(field)` →
+     `(no ${prettifyId(field)})` — the module that already holds the
+     other label fallbacks (`cardLabel`, `viewLabel`).
+
+   Accepted scope expansion: this touches board and gantt, which the
+   original "out of scope" note excluded. Fixing the line chart's label
+   while leaving board's inconsistent would be the wrong trade.
+
+5. **Colors stay renderer-side; their order comes from core.** The
+   terminal draws into an SVG with a fixed colorblind-safe palette; the
+   browser uses theme-following CSS variables. Genuinely different
+   media. What must match is the sequence the palette is walked in,
+   which falls out of core deciding series order.
+
+6. **The two hand-rolled unplaced sorts delegate to `sort_unplaced`.**
+   No behavior change.
+
+### Accepted asymmetry
+
+The web prettifies every field name it displays (axis labels, legend
+titles); the terminal prints them raw. So the web says `(no Team)` and
+the terminal `(no team)`. That is a consistent house style within each
+front end, not drift — forcing parity would mean changing how one front
+end displays field names everywhere. After this work the two agree on
+structure, order, and bucket membership, and still differ on
+capitalization, consistently.
+
+### Still out of scope
+
+User-configurable sort order in `views.yaml`. A reasonable future
+feature — and one that would have to live in core, which is a further
+argument for decision 1.

@@ -30,7 +30,7 @@ use crate::model::schema::{FieldType, Schema};
 use crate::model::views::{View, ViewKind};
 use crate::store::Store;
 
-use super::common::{as_date, as_size, build_card, UnplacedCard, UnplacedReason};
+use super::common::{as_date, as_size, build_card, sort_unplaced, UnplacedCard, UnplacedReason};
 use super::filter::filtered_items;
 
 /// How a [`WorkloadBucket::total`] should be interpreted.
@@ -160,7 +160,7 @@ pub fn extract_workload(
 
     let buckets = dense_working_buckets(&totals, &calendar);
 
-    unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
+    sort_unplaced(&mut unplaced);
 
     WorkloadData {
         start_field: start.clone(),

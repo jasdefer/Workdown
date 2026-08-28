@@ -108,7 +108,7 @@ mod tests {
     use crate::model::schema::{FieldDefinition, FieldTypeConfig};
     use crate::model::{FieldValue, WorkItemId};
     use crate::query::types::{
-        Comparison, FieldReference, Operator, Predicate, SortDirection, SortSpec,
+        Comparison, FieldReference, Operand, Operator, Predicate, SortDirection, SortSpec,
     };
     use indexmap::IndexMap;
     use std::path::PathBuf;
@@ -131,12 +131,7 @@ mod tests {
                 max: None,
             }),
         );
-        let inverse_table = Schema::build_inverse_table(&fields);
-        Schema {
-            fields,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(fields, vec![])
     }
 
     fn make_store(items: Vec<WorkItem>) -> Store {
@@ -193,7 +188,7 @@ mod tests {
             predicate: Some(Predicate::Comparison(Comparison {
                 field: FieldReference::Local("status".to_owned()),
                 operator: Operator::Equal,
-                value: "open".to_owned(),
+                operand: Operand::Value("open".to_owned()),
             })),
             sort: vec![],
             fields: vec![],

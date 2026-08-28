@@ -9,8 +9,13 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import type { FieldType } from '$lib/api/generated/FieldType';
+	import { VIEW_SLOT_TYPES } from '$lib/api/generated/viewSlotTypes';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import { fieldFits } from './viewKinds';
+
+	// The three gantt kinds share these input slots, so their generated
+	// entries carry identical lists; `gantt` is the one they all mirror.
+	const SLOTS = VIEW_SLOT_TYPES.gantt;
 
 	type GanttMode = 'end' | 'duration' | 'after';
 
@@ -52,7 +57,7 @@
 		}
 	});
 
-	function fieldOptions(accepts: FieldType[]) {
+	function fieldOptions(accepts: readonly FieldType[]) {
 		return schemaStore.fields.filter((field) => fieldFits(field.field_type, accepts));
 	}
 
@@ -73,7 +78,7 @@
 		}}
 	>
 		<option value="">Select field…</option>
-		{#each fieldOptions(['date']) as field (field.name)}
+		{#each fieldOptions(SLOTS.start) as field (field.name)}
 			<option value={field.name}>{field.name}</option>
 		{/each}
 	</select>
@@ -122,7 +127,7 @@
 			}}
 		>
 			<option value="">Select field…</option>
-			{#each fieldOptions(['date']) as field (field.name)}
+			{#each fieldOptions(SLOTS.end) as field (field.name)}
 				<option value={field.name}>{field.name}</option>
 			{/each}
 		</select>
@@ -137,7 +142,7 @@
 			}}
 		>
 			<option value="">Select field…</option>
-			{#each fieldOptions(['duration']) as field (field.name)}
+			{#each fieldOptions(SLOTS.duration) as field (field.name)}
 				<option value={field.name}>{field.name}</option>
 			{/each}
 		</select>
@@ -152,7 +157,7 @@
 				}}
 			>
 				<option value="">Select field…</option>
-				{#each fieldOptions(['link', 'links']) as field (field.name)}
+				{#each fieldOptions(SLOTS.after) as field (field.name)}
 					<option value={field.name}>{field.name}</option>
 				{/each}
 			</select>

@@ -659,6 +659,7 @@ fields:
     type: integer
     aggregate:
       function: sum
+      over: parent
 ";
 
 /// Set up a project whose schema declares an `effort` field aggregated

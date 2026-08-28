@@ -136,13 +136,38 @@
           "description": "'when' cannot be combined with 'compute' (both derive the field's value) or a generator 'default' (next to 'when' the fallback is evaluated, never stamped), and is not supported on link/links fields (a derived relation would be invisible to reverse links and reference checks)."
         }
       },
+      "$comment": "One block per field type, in the order model/schema.rs declares FieldType. Each `then` lists the properties that type rejects, mirroring allowed_field_properties (and, for `aggregate`, allowed_aggregate_functions) in crates/core/src/model/schema.rs. crates/core/tests/schema_schema.rs probes every type/property pair against the Rust answer, so a block that drifts from the table fails there. Keep one block per type rather than sharing blocks across type lists — overlapping lists is how two entries went missing once already. The `compute` / `pull` blocks at the end are type lists on purpose; the rule they encode is tracked in the compute-type-support-mismatch work item.",
       "allOf": [
+        {
+          "if": {
+            "properties": { "type": { "const": "string" } }
+          },
+          "then": {
+            "properties": {
+              "values": false,
+              "min": false,
+              "max": false,
+              "allow_cycles": false,
+              "aggregate": false,
+              "inverse": false
+            }
+          }
+        },
         {
           "if": {
             "properties": { "type": { "const": "choice" } }
           },
           "then": {
-            "required": ["values"]
+            "required": ["values"],
+            "properties": {
+              "pattern": false,
+              "min": false,
+              "max": false,
+              "allow_cycles": false,
+              "resource": false,
+              "aggregate": false,
+              "inverse": false
+            }
           }
         },
         {
@@ -150,52 +175,21 @@
             "properties": { "type": { "const": "multichoice" } }
           },
           "then": {
-            "required": ["values"]
-          }
-        },
-        {
-          "if": {
-            "properties": { "type": { "enum": ["string", "date", "boolean", "list"] } }
-          },
-          "then": {
-            "properties": {
-              "values": false,
-              "min": false,
-              "max": false,
-              "inverse": false
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "type": { "enum": ["link", "links"] } }
-          },
-          "then": {
-            "properties": {
-              "values": false,
-              "min": false,
-              "max": false
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "type": { "enum": ["choice", "multichoice"] } }
-          },
-          "then": {
+            "required": ["values"],
             "properties": {
               "pattern": false,
               "min": false,
               "max": false,
               "allow_cycles": false,
               "resource": false,
+              "aggregate": false,
               "inverse": false
             }
           }
         },
         {
           "if": {
-            "properties": { "type": { "enum": ["integer", "float"] } }
+            "properties": { "type": { "const": "integer" } }
           },
           "then": {
             "properties": {
@@ -206,6 +200,38 @@
               "inverse": false,
               "min": { "type": "number" },
               "max": { "type": "number" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "float" } }
+          },
+          "then": {
+            "properties": {
+              "values": false,
+              "pattern": false,
+              "allow_cycles": false,
+              "resource": false,
+              "inverse": false,
+              "min": { "type": "number" },
+              "max": { "type": "number" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "date" } }
+          },
+          "then": {
+            "properties": {
+              "values": false,
+              "pattern": false,
+              "min": false,
+              "max": false,
+              "allow_cycles": false,
+              "resource": false,
+              "inverse": false
             }
           }
         },
@@ -250,32 +276,7 @@
         },
         {
           "if": {
-            "properties": { "type": { "const": "string" } }
-          },
-          "then": {
-            "properties": {
-              "values": false,
-              "min": false,
-              "max": false,
-              "allow_cycles": false,
-              "inverse": false
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "type": { "enum": ["date", "boolean"] } }
-          },
-          "then": {
-            "properties": {
-              "resource": false,
-              "inverse": false
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "type": { "enum": ["link", "links"] } }
+            "properties": { "type": { "const": "boolean" } }
           },
           "then": {
             "properties": {
@@ -283,16 +284,54 @@
               "pattern": false,
               "min": false,
               "max": false,
-              "resource": false
+              "allow_cycles": false,
+              "resource": false,
+              "inverse": false
             }
           }
         },
         {
           "if": {
-            "properties": { "type": { "enum": ["string", "choice", "multichoice", "list", "link", "links"] } }
+            "properties": { "type": { "const": "list" } }
           },
           "then": {
             "properties": {
+              "values": false,
+              "pattern": false,
+              "min": false,
+              "max": false,
+              "allow_cycles": false,
+              "aggregate": false,
+              "inverse": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "link" } }
+          },
+          "then": {
+            "properties": {
+              "values": false,
+              "pattern": false,
+              "min": false,
+              "max": false,
+              "resource": false,
+              "aggregate": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "links" } }
+          },
+          "then": {
+            "properties": {
+              "values": false,
+              "pattern": false,
+              "min": false,
+              "max": false,
+              "resource": false,
               "aggregate": false
             }
           }
@@ -329,8 +368,8 @@
 
     "aggregate": {
       "type": "object",
-      "description": "Aggregation config. The field is set manually on leaf items and computed automatically by walking the link field named in `over` (default 'parent') upward through the hierarchy.",
-      "required": ["function"],
+      "description": "Aggregation config. The field is set manually on leaf items and computed automatically by walking the link field named in `over` upward through the hierarchy.",
+      "required": ["function", "over"],
       "properties": {
         "function": {
           "type": "string",
@@ -344,8 +383,7 @@
         },
         "over": {
           "type": "string",
-          "default": "parent",
-          "description": "Name of the link field to walk upward for the rollup. Must reference a `link` (single-valued) field in the schema that declares allow_cycles: false — aggregated values need an acyclic hierarchy to evaluate in. Defaults to 'parent' when omitted.",
+          "description": "Name of the link field to walk upward for the rollup. Must reference a `link` (single-valued) field in the schema that declares allow_cycles: false — aggregated values need an acyclic hierarchy to evaluate in.",
           "pattern": "^[a-z_][a-z0-9_]*$"
         }
       },

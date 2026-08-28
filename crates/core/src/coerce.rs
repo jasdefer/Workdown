@@ -3,27 +3,50 @@
 //! Operates on a single [`crate::parser::RawWorkItem`] and the project [`Schema`].
 //! Produces a map of successfully coerced fields plus a list of
 //! [`Diagnostic`]s for fields that failed coercion or violated constraints.
+//!
+//! Coercion judges only what is literally written — never completeness.
+//! Whether a required field ended up filled in is the required check's
+//! question, asked after the fill-in phase (see the pipeline contract
+//! in [`crate::store`], and ADR-012). Coercion's contribution to that check is
+//! the record of fields that were written but failed conversion: those
+//! are dropped from the field map, and without the record a later phase
+//! could not tell "written but invalid" from "never written".
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use chrono::NaiveDate;
-use regex::Regex;
 
-use crate::model::diagnostic::{Diagnostic, FieldValueError, ItemDiagnosticKind};
-use crate::model::schema::{FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity};
+use crate::model::diagnostic::{Diagnostic, FieldValueError, ItemDiagnosticKind, RangeBound};
+use crate::model::schema::{
+    CompiledPattern, FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity,
+};
 use crate::model::{FieldValue, WorkItemId};
 use crate::parser::RawWorkItem;
 
+/// What coercing one item produced.
+pub(crate) struct CoercionOutcome {
+    /// The successfully coerced fields, plus the `id` projection.
+    pub fields: HashMap<String, FieldValue>,
+    /// Names of fields that were written but failed conversion. They
+    /// are absent from `fields`, so this record is the only thing that
+    /// distinguishes them from fields never written — the required
+    /// check consults it to avoid a false "missing" on top of the
+    /// invalid-value diagnostic, and the fill-in phase consults it to
+    /// leave a hand-written (if broken) value's slot alone.
+    pub conversion_failures: HashSet<String>,
+    /// Findings about what was written: type mismatches, constraint
+    /// violations, unknown fields.
+    pub diagnostics: Vec<Diagnostic>,
+}
+
 /// Coerce raw frontmatter values into typed [`FieldValue`]s according to the schema.
 ///
-/// Returns the successfully coerced fields and any diagnostics.
-/// Fields that fail coercion are omitted from the map; required fields
-/// that are absent produce an [`ItemDiagnosticKind::MissingRequired`].
-pub(crate) fn coerce_fields(
-    raw: &RawWorkItem,
-    schema: &Schema,
-) -> (HashMap<String, FieldValue>, Vec<Diagnostic>) {
+/// Fields that fail coercion are omitted from the field map and named
+/// in the outcome's `conversion_failures`. Completeness of required
+/// fields is deliberately not judged here — see the module docs.
+pub(crate) fn coerce_fields(raw: &RawWorkItem, schema: &Schema) -> CoercionOutcome {
     let mut fields = HashMap::new();
+    let mut conversion_failures = HashSet::new();
     let mut diagnostics = Vec::new();
 
     // The id is identity, not frontmatter — the parser has already resolved
@@ -50,6 +73,7 @@ pub(crate) fn coerce_fields(
                     fields.insert(name.clone(), field_value);
                 }
                 Err(detail) => {
+                    conversion_failures.insert(name.clone());
                     diagnostics.push(Diagnostic::item(
                         Severity::Error,
                         raw.source_path.clone(),
@@ -61,26 +85,11 @@ pub(crate) fn coerce_fields(
                     ));
                 }
             },
-            _ => {
-                // Value is absent or null. Required-field check is deferred
-                // for derivable fields — aggregate, compute, and when
-                // configs can fill them in, so the post-derive check in
-                // `derive::run` reports only items that remain blank.
-                if def.required
-                    && def.aggregate.is_none()
-                    && def.compute.is_none()
-                    && def.when.is_none()
-                {
-                    diagnostics.push(Diagnostic::item(
-                        Severity::Error,
-                        raw.source_path.clone(),
-                        raw.id.clone(),
-                        ItemDiagnosticKind::MissingRequired {
-                            field: name.clone(),
-                        },
-                    ));
-                }
-            }
+            // Absent or null: nothing to coerce, nothing to judge. If
+            // the field is required, the required check decides after
+            // the fill-in phase — every mechanism that could supply a
+            // value must have run before absence means anything.
+            _ => {}
         }
     }
 
@@ -98,7 +107,11 @@ pub(crate) fn coerce_fields(
         }
     }
 
-    (fields, diagnostics)
+    CoercionOutcome {
+        fields,
+        conversion_failures,
+        diagnostics,
+    }
 }
 
 /// Coerce a single YAML value into a [`FieldValue`] according to the field definition.
@@ -107,7 +120,7 @@ pub(crate) fn coerce_value(
     def: &FieldDefinition,
 ) -> Result<FieldValue, FieldValueError> {
     match &def.type_config {
-        FieldTypeConfig::String { pattern } => coerce_string(value, pattern.as_deref()),
+        FieldTypeConfig::String { pattern } => coerce_string(value, pattern.as_ref()),
         FieldTypeConfig::Choice { values } => coerce_choice(value, values),
         FieldTypeConfig::Multichoice { values } => coerce_multichoice(value, values),
         FieldTypeConfig::Integer { min, max } => coerce_integer(value, *min, *max),
@@ -126,7 +139,7 @@ pub(crate) fn coerce_value(
 
 fn coerce_string(
     value: &serde_yaml::Value,
-    pattern: Option<&str>,
+    pattern: Option<&CompiledPattern>,
 ) -> Result<FieldValue, FieldValueError> {
     let s = value
         .as_str()
@@ -136,14 +149,10 @@ fn coerce_string(
         })?;
 
     if let Some(pattern) = pattern {
-        let re = Regex::new(pattern).map_err(|e| FieldValueError::InvalidPattern {
-            pattern: pattern.to_owned(),
-            error: e.to_string(),
-        })?;
-        if !re.is_match(s) {
+        if !pattern.is_match(s) {
             return Err(FieldValueError::PatternMismatch {
                 value: s.to_owned(),
-                pattern: pattern.to_owned(),
+                pattern: pattern.source().to_owned(),
             });
         }
     }
@@ -223,8 +232,8 @@ fn coerce_integer(
         if (n as f64) < min {
             return Err(FieldValueError::OutOfRange {
                 value: n as f64,
-                min: Some(min),
-                max,
+                bound: RangeBound::Minimum,
+                limit: min,
             });
         }
     }
@@ -232,8 +241,8 @@ fn coerce_integer(
         if (n as f64) > max {
             return Err(FieldValueError::OutOfRange {
                 value: n as f64,
-                min,
-                max: Some(max),
+                bound: RangeBound::Maximum,
+                limit: max,
             });
         }
     }
@@ -257,8 +266,8 @@ fn coerce_float(
         if n < min {
             return Err(FieldValueError::OutOfRange {
                 value: n,
-                min: Some(min),
-                max,
+                bound: RangeBound::Minimum,
+                limit: min,
             });
         }
     }
@@ -266,8 +275,8 @@ fn coerce_float(
         if n > max {
             return Err(FieldValueError::OutOfRange {
                 value: n,
-                min,
-                max: Some(max),
+                bound: RangeBound::Maximum,
+                limit: max,
             });
         }
     }
@@ -298,8 +307,8 @@ fn coerce_duration(
         if seconds < min {
             return Err(FieldValueError::OutOfRangeDuration {
                 value: format_duration_seconds(seconds),
-                min: Some(format_duration_seconds(min)),
-                max: max.map(format_duration_seconds),
+                bound: RangeBound::Minimum,
+                limit: format_duration_seconds(min),
             });
         }
     }
@@ -307,8 +316,8 @@ fn coerce_duration(
         if seconds > max {
             return Err(FieldValueError::OutOfRangeDuration {
                 value: format_duration_seconds(seconds),
-                min: min.map(format_duration_seconds),
-                max: Some(format_duration_seconds(max)),
+                bound: RangeBound::Maximum,
+                limit: format_duration_seconds(max),
             });
         }
     }
@@ -415,7 +424,10 @@ fn coerce_links(value: &serde_yaml::Value) -> Result<FieldValue, FieldValueError
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /// Human-readable name for a YAML value type (for error messages).
-fn yaml_type_name(value: &serde_yaml::Value) -> &'static str {
+///
+/// The one spelling of these names in the crate: both value coercion
+/// and schema parsing report unexpected YAML through it.
+pub(crate) fn yaml_type_name(value: &serde_yaml::Value) -> &'static str {
     match value {
         serde_yaml::Value::Null => "null",
         serde_yaml::Value::Bool(_) => "boolean",
@@ -423,7 +435,7 @@ fn yaml_type_name(value: &serde_yaml::Value) -> &'static str {
         serde_yaml::Value::String(_) => "string",
         serde_yaml::Value::Sequence(_) => "sequence",
         serde_yaml::Value::Mapping(_) => "mapping",
-        serde_yaml::Value::Tagged(_) => "tagged",
+        serde_yaml::Value::Tagged(_) => "tagged value",
     }
 }
 
@@ -443,12 +455,7 @@ mod tests {
             .into_iter()
             .map(|(name, def)| (name.to_owned(), def))
             .collect();
-        let inverse_table = Schema::build_inverse_table(&fields);
-        Schema {
-            fields,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(fields, vec![])
     }
 
     /// Build a RawWorkItem with the given frontmatter.
@@ -507,7 +514,11 @@ mod tests {
             FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
         )]);
         let raw = raw_item("t", vec![("title", yaml_str("Hello"))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
         assert_eq!(fields["title"], FieldValue::String("Hello".into()));
@@ -520,7 +531,11 @@ mod tests {
             FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
         )]);
         let raw = raw_item("t", vec![("title", yaml_int(42))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(!fields.contains_key("title"));
         assert_field_error(&diagnostics, |e| {
@@ -531,17 +546,25 @@ mod tests {
     #[test]
     fn coerce_string_with_pattern() {
         let def = FieldDefinition::new(FieldTypeConfig::String {
-            pattern: Some(r"^[A-Z]{3}-\d+$".to_owned()),
+            pattern: Some(CompiledPattern::new(r"^[A-Z]{3}-\d+$").unwrap()),
         });
         let s = schema(vec![("code", def)]);
 
         let raw = raw_item("t", vec![("code", yaml_str("ABC-123"))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
         assert!(diagnostics.is_empty());
         assert_eq!(fields["code"], FieldValue::String("ABC-123".into()));
 
         let raw_bad = raw_item("t", vec![("code", yaml_str("abc"))]);
-        let (fields, diagnostics) = coerce_fields(&raw_bad, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw_bad, &s);
         assert!(!fields.contains_key("code"));
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::PatternMismatch { .. })
@@ -557,7 +580,11 @@ mod tests {
         });
         let s = schema(vec![("status", def)]);
         let raw = raw_item("t", vec![("status", yaml_str("open"))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
         assert_eq!(fields["status"], FieldValue::Choice("open".into()));
@@ -570,7 +597,11 @@ mod tests {
         });
         let s = schema(vec![("status", def)]);
         let raw = raw_item("t", vec![("status", yaml_str("unknown"))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(!fields.contains_key("status"));
         assert_field_error(&diagnostics, |e| {
@@ -585,7 +616,7 @@ mod tests {
         });
         let s = schema(vec![("status", def)]);
         let raw = raw_item("t", vec![("status", yaml_int(1))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::TypeMismatch { .. })
@@ -604,7 +635,11 @@ mod tests {
             "t",
             vec![("labels", yaml_seq(vec![yaml_str("a"), yaml_str("b")]))],
         );
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
         assert_eq!(
@@ -623,7 +658,7 @@ mod tests {
             "t",
             vec![("labels", yaml_seq(vec![yaml_str("a"), yaml_str("x")]))],
         );
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::InvalidMultichoice { .. })
@@ -637,7 +672,7 @@ mod tests {
         });
         let s = schema(vec![("labels", def)]);
         let raw = raw_item("t", vec![("labels", yaml_str("a"))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::TypeMismatch { .. })
@@ -656,7 +691,11 @@ mod tests {
             }),
         )]);
         let raw = raw_item("t", vec![("priority", yaml_int(42))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
         assert_eq!(fields["priority"], FieldValue::Integer(42));
@@ -671,15 +710,29 @@ mod tests {
         let s = schema(vec![("priority", def)]);
 
         let raw = raw_item("t", vec![("priority", yaml_int(0))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
         assert_field_error(&diagnostics, |e| {
-            matches!(e, FieldValueError::OutOfRange { .. })
+            matches!(
+                e,
+                FieldValueError::OutOfRange {
+                    bound: RangeBound::Minimum,
+                    limit,
+                    ..
+                } if *limit == 1.0
+            )
         });
 
         let raw = raw_item("t", vec![("priority", yaml_int(11))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
         assert_field_error(&diagnostics, |e| {
-            matches!(e, FieldValueError::OutOfRange { .. })
+            matches!(
+                e,
+                FieldValueError::OutOfRange {
+                    bound: RangeBound::Maximum,
+                    limit,
+                    ..
+                } if *limit == 10.0
+            )
         });
     }
 
@@ -693,7 +746,7 @@ mod tests {
             }),
         )]);
         let raw = raw_item("t", vec![("priority", yaml_str("high"))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::TypeMismatch { .. })
@@ -712,7 +765,11 @@ mod tests {
             }),
         )]);
         let raw = raw_item("t", vec![("weight", yaml_float(2.5))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
         assert_eq!(fields["weight"], FieldValue::Float(2.5));
@@ -728,7 +785,11 @@ mod tests {
             }),
         )]);
         let raw = raw_item("t", vec![("weight", yaml_int(5))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
         assert_eq!(fields["weight"], FieldValue::Float(5.0));
@@ -742,10 +803,17 @@ mod tests {
         });
         let s = schema(vec![("ratio", def)]);
         let raw = raw_item("t", vec![("ratio", yaml_float(1.5))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
-            matches!(e, FieldValueError::OutOfRange { .. })
+            matches!(
+                e,
+                FieldValueError::OutOfRange {
+                    bound: RangeBound::Maximum,
+                    limit,
+                    ..
+                } if *limit == 1.0
+            )
         });
     }
 
@@ -758,7 +826,11 @@ mod tests {
             FieldDefinition::new(FieldTypeConfig::Date),
         )]);
         let raw = raw_item("t", vec![("created", yaml_str("2026-01-15"))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
         assert_eq!(
@@ -774,7 +846,7 @@ mod tests {
             FieldDefinition::new(FieldTypeConfig::Date),
         )]);
         let raw = raw_item("t", vec![("created", yaml_str("01/15/2026"))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::InvalidDate { .. })
@@ -788,7 +860,7 @@ mod tests {
             FieldDefinition::new(FieldTypeConfig::Date),
         )]);
         let raw = raw_item("t", vec![("created", yaml_str("2026-02-30"))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::InvalidDate { .. })
@@ -803,7 +875,11 @@ mod tests {
         )]);
 
         let raw = raw_item("t", vec![("created", yaml_str("2024-02-29"))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
         assert!(diagnostics.is_empty());
         assert_eq!(
             fields["created"],
@@ -811,7 +887,7 @@ mod tests {
         );
 
         let raw = raw_item("t", vec![("created", yaml_str("2023-02-29"))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
         assert!(!diagnostics.is_empty());
     }
 
@@ -827,7 +903,11 @@ mod tests {
             }),
         )]);
         let raw = raw_item("t", vec![("estimate", yaml_str("5d"))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty(), "got diagnostics: {diagnostics:?}");
         assert_eq!(fields["estimate"], FieldValue::Duration(432_000));
@@ -843,7 +923,11 @@ mod tests {
             }),
         )]);
         let raw = raw_item("t", vec![("estimate", yaml_str("1w 2d 3h"))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
         // 1w + 2d + 3h = 604_800 + 172_800 + 10_800 = 788_400
@@ -860,7 +944,11 @@ mod tests {
             }),
         )]);
         let raw = raw_item("t", vec![("estimate", yaml_str("-2d"))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
         assert_eq!(fields["estimate"], FieldValue::Duration(-172_800));
@@ -876,10 +964,16 @@ mod tests {
             }),
         )]);
         let raw = raw_item("t", vec![("estimate", yaml_str("-2d"))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
-            matches!(e, FieldValueError::OutOfRangeDuration { .. })
+            matches!(
+                e,
+                FieldValueError::OutOfRangeDuration {
+                    bound: RangeBound::Minimum,
+                    ..
+                }
+            )
         });
     }
 
@@ -893,10 +987,16 @@ mod tests {
             }),
         )]);
         let raw = raw_item("t", vec![("estimate", yaml_str("2d"))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
-            matches!(e, FieldValueError::OutOfRangeDuration { .. })
+            matches!(
+                e,
+                FieldValueError::OutOfRangeDuration {
+                    bound: RangeBound::Maximum,
+                    ..
+                }
+            )
         });
     }
 
@@ -912,7 +1012,7 @@ mod tests {
             }),
         )]);
         let raw = raw_item("t", vec![("estimate", yaml_int(5))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::TypeMismatch { .. })
@@ -929,7 +1029,7 @@ mod tests {
             }),
         )]);
         let raw = raw_item("t", vec![("estimate", yaml_str("garbage"))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::InvalidDuration { .. })
@@ -947,7 +1047,7 @@ mod tests {
             }),
         )]);
         let raw = raw_item("t", vec![("estimate", yaml_str("5y"))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::InvalidDuration { .. })
@@ -964,7 +1064,11 @@ mod tests {
         )]);
 
         let raw = raw_item("t", vec![("background", yaml_str("#ABC"))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
         assert!(diagnostics.is_empty(), "got diagnostics: {diagnostics:?}");
         assert_eq!(fields["background"], FieldValue::Color("#aabbcc".into()));
     }
@@ -977,7 +1081,11 @@ mod tests {
         )]);
 
         let raw = raw_item("t", vec![("background", yaml_str("Red"))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
         assert!(diagnostics.is_empty());
         assert_eq!(fields["background"], FieldValue::Color("red".into()));
     }
@@ -990,7 +1098,11 @@ mod tests {
         )]);
 
         let raw = raw_item("t", vec![("background", yaml_str("teal"))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
         assert!(!fields.contains_key("background"));
         assert_field_error(
             &diagnostics,
@@ -1008,7 +1120,7 @@ mod tests {
         // Alpha channels and rgb() are out of scope for v1.
         for input in ["#aabbccdd", "rgb(1, 2, 3)"] {
             let raw = raw_item("t", vec![("background", yaml_str(input))]);
-            let (_, diagnostics) = coerce_fields(&raw, &s);
+            let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
             assert_field_error(&diagnostics, |e| {
                 matches!(e, FieldValueError::InvalidColor { .. })
             });
@@ -1023,7 +1135,7 @@ mod tests {
         )]);
 
         let raw = raw_item("t", vec![("background", yaml_int(0xff0000))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::TypeMismatch { .. })
         });
@@ -1038,7 +1150,11 @@ mod tests {
             FieldDefinition::new(FieldTypeConfig::Boolean),
         )]);
         let raw = raw_item("t", vec![("active", yaml_bool(true))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
         assert_eq!(fields["active"], FieldValue::Boolean(true));
@@ -1051,7 +1167,7 @@ mod tests {
             FieldDefinition::new(FieldTypeConfig::Boolean),
         )]);
         let raw = raw_item("t", vec![("active", yaml_str("true"))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::TypeMismatch { .. })
@@ -1067,7 +1183,11 @@ mod tests {
             "t",
             vec![("tags", yaml_seq(vec![yaml_str("a"), yaml_str("b")]))],
         );
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
         assert_eq!(
@@ -1083,7 +1203,7 @@ mod tests {
             "t",
             vec![("tags", yaml_seq(vec![yaml_str("a"), yaml_int(1)]))],
         );
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::TypeMismatch { .. })
@@ -1102,7 +1222,11 @@ mod tests {
             }),
         )]);
         let raw = raw_item("t", vec![("parent", yaml_str("auth-epic"))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
         assert_eq!(
@@ -1121,7 +1245,7 @@ mod tests {
             }),
         )]);
         let raw = raw_item("t", vec![("parent", yaml_int(1))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::TypeMismatch { .. })
@@ -1143,7 +1267,11 @@ mod tests {
             "t",
             vec![("depends_on", yaml_seq(vec![yaml_str("a"), yaml_str("b")]))],
         );
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
         assert_eq!(
@@ -1165,7 +1293,7 @@ mod tests {
             }),
         )]);
         let raw = raw_item("t", vec![("depends_on", yaml_str("a"))]);
-        let (_, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome { diagnostics, .. } = coerce_fields(&raw, &s);
 
         assert_field_error(&diagnostics, |e| {
             matches!(e, FieldValueError::TypeMismatch { .. })
@@ -1197,7 +1325,11 @@ mod tests {
             "t",
             vec![("title", yaml_str("Hi")), ("bogus", yaml_str("x"))],
         );
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(!fields.contains_key("bogus"));
         assert!(diagnostics.iter().any(|diagnostic| {
@@ -1208,33 +1340,72 @@ mod tests {
         }));
     }
 
+    /// Completeness is not coercion's question: an absent required
+    /// field produces no finding here — the required check decides
+    /// after the fill-in phase (see the module docs and ADR-012).
     #[test]
-    fn missing_required_field() {
+    fn missing_required_field_is_not_coercions_finding() {
         let mut def = FieldDefinition::new(FieldTypeConfig::String { pattern: None });
         def.required = true;
         let s = schema(vec![("title", def)]);
         let raw = raw_item("t", vec![]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            conversion_failures,
+            diagnostics,
+        } = coerce_fields(&raw, &s);
 
         assert!(!fields.contains_key("title"));
-        assert!(diagnostics.iter().any(|diagnostic| matches_item_kind(
-            diagnostic,
-            |kind| matches!(kind, ItemDiagnosticKind::MissingRequired { field } if field == "title")
-        )));
+        assert!(conversion_failures.is_empty());
+        assert!(diagnostics.is_empty());
     }
 
+    /// Null is absence, not a conversion failure: no field, no entry in
+    /// the failure record, no finding.
     #[test]
     fn null_value_treated_as_absent() {
         let mut def = FieldDefinition::new(FieldTypeConfig::String { pattern: None });
         def.required = true;
         let s = schema(vec![("title", def)]);
         let raw = raw_item("t", vec![("title", serde_yaml::Value::Null)]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            conversion_failures,
+            diagnostics,
+        } = coerce_fields(&raw, &s);
 
         assert!(!fields.contains_key("title"));
-        assert!(diagnostics.iter().any(|diagnostic| matches_item_kind(
-            diagnostic,
-            |kind| matches!(kind, ItemDiagnosticKind::MissingRequired { field } if field == "title")
+        assert!(conversion_failures.is_empty());
+        assert!(diagnostics.is_empty());
+    }
+
+    /// A written value that fails conversion lands in the failure
+    /// record — the one thing that later distinguishes it from a field
+    /// never written, since both are absent from the field map.
+    #[test]
+    fn failed_conversion_is_recorded_per_field() {
+        let mut def = FieldDefinition::new(FieldTypeConfig::Integer {
+            min: None,
+            max: None,
+        });
+        def.required = true;
+        let s = schema(vec![("estimate", def)]);
+        let raw = raw_item(
+            "t",
+            vec![("estimate", serde_yaml::Value::String("soon".to_owned()))],
+        );
+        let CoercionOutcome {
+            fields,
+            conversion_failures,
+            diagnostics,
+        } = coerce_fields(&raw, &s);
+
+        assert!(!fields.contains_key("estimate"));
+        assert!(conversion_failures.contains("estimate"));
+        assert_eq!(diagnostics.len(), 1);
+        assert!(matches_item_kind(&diagnostics[0], |kind| matches!(
+            kind,
+            ItemDiagnosticKind::InvalidFieldValue { field, .. } if field == "estimate"
         )));
     }
 
@@ -1255,7 +1426,11 @@ mod tests {
             ),
         ]);
         let raw = raw_item("t", vec![("title", yaml_str("Hi"))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert!(diagnostics.is_empty());
         assert_eq!(fields["id"], FieldValue::String("t".into()));
@@ -1274,7 +1449,11 @@ mod tests {
         id_def.required = true;
         let s = schema(vec![("id", id_def)]);
         let raw = raw_item("t", vec![]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            diagnostics,
+            ..
+        } = coerce_fields(&raw, &s);
 
         assert_eq!(fields["id"], FieldValue::String("t".into()));
         assert!(diagnostics.is_empty());
@@ -1288,7 +1467,7 @@ mod tests {
             FieldDefinition::new(FieldTypeConfig::String { pattern: None }),
         )]);
         let raw = raw_item("t", vec![("title", yaml_str("Hi"))]);
-        let (fields, _) = coerce_fields(&raw, &s);
+        let CoercionOutcome { fields, .. } = coerce_fields(&raw, &s);
 
         assert_eq!(fields["id"], FieldValue::String("t".into()));
     }
@@ -1302,12 +1481,23 @@ mod tests {
         });
         let s = schema(vec![("title", title_def), ("status", status_def)]);
 
-        // title is missing (required), status has wrong value
+        // title is missing (required — but that's the required check's
+        // finding, not coercion's), status has a wrong value.
         let raw = raw_item("t", vec![("status", yaml_str("invalid"))]);
-        let (fields, diagnostics) = coerce_fields(&raw, &s);
+        let CoercionOutcome {
+            fields,
+            conversion_failures,
+            diagnostics,
+        } = coerce_fields(&raw, &s);
 
         assert!(!fields.contains_key("title"));
         assert!(!fields.contains_key("status"));
-        assert_eq!(diagnostics.len(), 2);
+        assert_eq!(diagnostics.len(), 1);
+        assert!(matches_item_kind(&diagnostics[0], |kind| matches!(
+            kind,
+            ItemDiagnosticKind::InvalidFieldValue { field, .. } if field == "status"
+        )));
+        assert!(conversion_failures.contains("status"));
+        assert!(!conversion_failures.contains("title"));
     }
 }

@@ -168,12 +168,7 @@ mod tests {
                 inverse: Some("dependents".into()),
             }),
         );
-        let inverse_table = Schema::build_inverse_table(&fields);
-        Schema {
-            fields,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(fields, vec![])
     }
 
     fn setup_items(items: Vec<(&str, &str)>) -> (tempfile::TempDir, PathBuf) {

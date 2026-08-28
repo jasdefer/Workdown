@@ -63,7 +63,7 @@ Fields can have generated defaults, applied when creating a new work item with `
 
 ### Aggregated fields
 
-Fields with an `aggregate` config are set manually on leaf items and computed automatically up the parent chain.
+Fields with an `aggregate` config are set manually on leaf items and computed automatically up the hierarchy named in `over`.
 
 ```yaml
 fields:
@@ -72,13 +72,14 @@ fields:
     required: false
     aggregate:
       function: sum
+      over: parent
       error_on_missing: false
 ```
 
 | Option | Description |
 |--------|-------------|
 | `function` | The aggregation function. See table below. |
-| `over` | The `link` field whose hierarchy the rollup climbs. Default: `parent`. Must declare `allow_cycles: false` — aggregated values need an acyclic hierarchy to evaluate in. |
+| `over` | **Required.** The `link` field whose hierarchy the rollup climbs. Must declare `allow_cycles: false` — aggregated values need an acyclic hierarchy to evaluate in. There is no implicit hierarchy: a rollup always names the relation it climbs, the way `pull` does. |
 | `error_on_missing` | Whether to report an error if a leaf item is missing this field. Default: `false`. |
 
 Available aggregate functions by type:

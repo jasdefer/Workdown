@@ -1,9 +1,12 @@
 <!--
   Dispatches a `ViewData` payload to the matching per-kind component.
-  Every variant of the discriminated union currently has a renderer; if
-  the backend ever adds a new variant the regenerated `ViewData` union
-  will widen and the final `{:else}` branch surfaces the unknown kind
-  rather than silently rendering nothing.
+
+  Every variant of the discriminated union has a branch below, and
+  `unrenderedKind` makes that a compile-time requirement rather than a
+  convention: in the final `{:else}` branch `data` is narrowed to `never`
+  only while the chain is exhaustive, so a variant without a branch fails
+  `npm run check` and is named in the error. The placeholder it guards is
+  for a stale bundle talking to a newer server.
 -->
 <script lang="ts">
 	import type { ViewData } from '$lib/api/generated/ViewData';
@@ -26,6 +29,14 @@
 	}
 
 	let { data }: Props = $props();
+
+	// Takes `never`, so it only type-checks while every view kind above has
+	// its own branch, as the comment at the top of this file explains. The
+	// cast reads a `type` off a value the type system says cannot exist,
+	// which is exactly the stale-bundle case the placeholder explains.
+	function unrenderedKind(data: never): string {
+		return (data as { type: string }).type;
+	}
 </script>
 
 {#if data.type === 'board'}
@@ -57,7 +68,7 @@
 {:else}
 	<div class="placeholder">
 		<p>
-			View kind <code>{(data as { type: string }).type}</code> is not yet rendered.
+			View kind <code>{unrenderedKind(data)}</code> is not yet rendered.
 		</p>
 		<p class="hint">Regenerate types after a backend addition and add the matching branch above.</p>
 	</div>

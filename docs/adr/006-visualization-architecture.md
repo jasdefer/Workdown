@@ -33,6 +33,8 @@ A single extraction pipeline reads work items and produces a `ViewData` structur
 
 Renderers consume ViewData and are pure formatting: they translate the resolved structure into a specific output format. No business logic lives in renderers.
 
+The dividing line: ViewData owns **structure and order** — which buckets exist, which items land in each, what sequence they come in, and that a bucket holds the items with no value for the grouping field. Renderers own **wording and color** — the text that names a no-value bucket, and the palette drawn with. So ViewData carries a structural absence (`None`), never a rendered string like `(no team)`; each front end turns that absence into words in one shared helper, so its own views stay consistent with each other.
+
 ### Static and interactive are separate
 
 `workdown render` produces self-contained static files (HTML, Markdown, Mermaid) meant to be committed to the repo — readable on GitHub, usable in CI.

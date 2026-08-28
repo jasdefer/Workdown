@@ -1,24 +1,43 @@
 // The fixed vocabulary of view kinds and the inputs each one needs — the
-// static spec that drives the create form.
+// spec that drives the create form.
 //
-// This is deliberately a hand-maintained table, not server data: the 13
-// kinds and their slots are baked into the Rust `ViewType` enum + `RawView`
-// and are identical for every project (unlike fields/operators, which are
-// project-schema-driven and must be served). The accepted-type lists mirror
-// `crates/core/src/views_check.rs`; the server re-validates on save, so a
-// drift here is a UX gap, never a corrupt write. Keep this in sync with
-// `views_check` / `convert_view` when the view model changes.
+// What lives here is presentation: which controls a kind shows, in what
+// order, under what label, and which of them are optional. Those are form
+// decisions with no counterpart in the CLI.
+//
+// What does *not* live here is which field types each slot accepts — that
+// is `crates/core/src/model/view_slots.rs`, reaching the UI as the
+// generated `VIEW_SLOT_TYPES` table below. It used to be hand-copied here,
+// and two slots had quietly drifted narrower than the rule the server
+// enforces. Read a slot's `accepts` from the table; never retype the list.
+//
+// The kinds themselves are not served either: they are baked into the Rust
+// `ViewType` enum and identical for every project (unlike fields and
+// operators, which are schema-driven and do come from the server).
 
 import type { FieldType } from '$lib/api/generated/FieldType';
 import type { ViewType } from '$lib/api/generated/ViewType';
+import { VIEW_SLOT_TYPES } from '$lib/api/generated/viewSlotTypes';
 
 /** A control in a kind's create form. */
 export type Control =
 	// A single schema-field reference, constrained by type (empty `accepts`
 	// = any field). `optional` slots may be left unset.
-	| { control: 'field'; key: string; label: string; accepts: FieldType[]; optional?: boolean }
+	| {
+			control: 'field';
+			key: string;
+			label: string;
+			accepts: readonly FieldType[];
+			optional?: boolean;
+	  }
 	// An ordered list of field names (table/tree columns).
-	| { control: 'fieldList'; key: string; label: string; accepts: FieldType[]; optional?: boolean }
+	| {
+			control: 'fieldList';
+			key: string;
+			label: string;
+			accepts: readonly FieldType[];
+			optional?: boolean;
+	  }
 	// The chart aggregate function.
 	| { control: 'aggregate'; key: string; label: string }
 	// Optional date-bucketing for heatmap axes.
@@ -30,9 +49,9 @@ export type Control =
 	// Workload's optional working-days override.
 	| { control: 'workingDays'; key: string; label: string };
 
-const DATE: FieldType[] = ['date'];
-const SCALAR: FieldType[] = ['integer', 'float', 'duration'];
-const GROUPABLE: FieldType[] = ['choice', 'multichoice', 'string', 'list', 'link', 'links'];
+// Slots the create form owns rather than mirrors: `columns` is serialized
+// into the `fields` display role on save, which takes any field.
+const ANY_FIELD: readonly FieldType[] = [];
 
 /** Controls for each view kind, in form order. */
 export const VIEW_KIND_CONTROLS: Record<ViewType, Control[]> = {
@@ -41,85 +60,122 @@ export const VIEW_KIND_CONTROLS: Record<ViewType, Control[]> = {
 			control: 'field',
 			key: 'field',
 			label: 'Group by',
-			accepts: ['choice', 'multichoice', 'string']
+			accepts: VIEW_SLOT_TYPES.board.field
 		}
 	],
 	tree: [
-		{ control: 'field', key: 'field', label: 'Parent link', accepts: ['link'] },
-		{ control: 'fieldList', key: 'columns', label: 'Columns', accepts: [], optional: true }
+		{ control: 'field', key: 'field', label: 'Parent link', accepts: VIEW_SLOT_TYPES.tree.field },
+		{ control: 'fieldList', key: 'columns', label: 'Columns', accepts: ANY_FIELD, optional: true }
 	],
 	graph: [
-		{ control: 'field', key: 'field', label: 'Relation', accepts: ['link', 'links'] },
-		{ control: 'field', key: 'group_by', label: 'Group by', accepts: ['link'], optional: true }
+		{ control: 'field', key: 'field', label: 'Relation', accepts: VIEW_SLOT_TYPES.graph.field },
+		{
+			control: 'field',
+			key: 'group_by',
+			label: 'Group by',
+			accepts: VIEW_SLOT_TYPES.graph.group_by,
+			optional: true
+		}
 	],
 	// `columns` is a form-local slot: the create form serializes it into
 	// the `fields` display role (`display.fields`) on save. Optional —
 	// an unset role falls back to every schema field.
-	table: [{ control: 'fieldList', key: 'columns', label: 'Columns', accepts: [], optional: true }],
+	table: [
+		{ control: 'fieldList', key: 'columns', label: 'Columns', accepts: ANY_FIELD, optional: true }
+	],
 	gantt: [
 		{ control: 'ganttInput' },
-		{ control: 'field', key: 'group', label: 'Group by', accepts: GROUPABLE, optional: true }
+		{
+			control: 'field',
+			key: 'group',
+			label: 'Group by',
+			accepts: VIEW_SLOT_TYPES.gantt.group,
+			optional: true
+		}
 	],
 	gantt_by_initiative: [
 		{ control: 'ganttInput' },
-		{ control: 'field', key: 'root_link', label: 'Initiative link', accepts: ['link'] }
+		{
+			control: 'field',
+			key: 'root_link',
+			label: 'Initiative link',
+			accepts: VIEW_SLOT_TYPES.gantt_by_initiative.root_link
+		}
 	],
 	gantt_by_depth: [
 		{ control: 'ganttInput' },
-		{ control: 'field', key: 'depth_link', label: 'Depth link', accepts: ['link'] }
+		{
+			control: 'field',
+			key: 'depth_link',
+			label: 'Depth link',
+			accepts: VIEW_SLOT_TYPES.gantt_by_depth.depth_link
+		}
 	],
 	bar_chart: [
-		{ control: 'field', key: 'group_by', label: 'Group by', accepts: [] },
+		{
+			control: 'field',
+			key: 'group_by',
+			label: 'Group by',
+			accepts: VIEW_SLOT_TYPES.bar_chart.group_by
+		},
 		{ control: 'aggregate', key: 'aggregate', label: 'Aggregate' },
-		{ control: 'field', key: 'value', label: 'Value', accepts: SCALAR, optional: true }
+		{
+			control: 'field',
+			key: 'value',
+			label: 'Value',
+			accepts: VIEW_SLOT_TYPES.bar_chart.value,
+			optional: true
+		}
 	],
 	line_chart: [
 		{
 			control: 'field',
 			key: 'x',
 			label: 'X axis',
-			accepts: ['integer', 'float', 'date', 'duration']
+			accepts: VIEW_SLOT_TYPES.line_chart.x
 		},
-		{ control: 'field', key: 'y', label: 'Y axis', accepts: SCALAR },
-		{ control: 'field', key: 'group', label: 'Series', accepts: GROUPABLE, optional: true }
+		{ control: 'field', key: 'y', label: 'Y axis', accepts: VIEW_SLOT_TYPES.line_chart.y },
+		{
+			control: 'field',
+			key: 'group',
+			label: 'Series',
+			accepts: VIEW_SLOT_TYPES.line_chart.group,
+			optional: true
+		}
 	],
 	workload: [
-		{ control: 'field', key: 'start', label: 'Start', accepts: DATE },
-		{ control: 'field', key: 'end', label: 'End', accepts: DATE },
-		{ control: 'field', key: 'effort', label: 'Effort', accepts: SCALAR },
+		{ control: 'field', key: 'start', label: 'Start', accepts: VIEW_SLOT_TYPES.workload.start },
+		{ control: 'field', key: 'end', label: 'End', accepts: VIEW_SLOT_TYPES.workload.end },
+		{ control: 'field', key: 'effort', label: 'Effort', accepts: VIEW_SLOT_TYPES.workload.effort },
 		{ control: 'workingDays', key: 'working_days', label: 'Working days' }
 	],
 	metric: [{ control: 'metrics' }],
 	treemap: [
-		{ control: 'field', key: 'group', label: 'Group by', accepts: ['link'] },
-		{ control: 'field', key: 'size', label: 'Size', accepts: SCALAR }
+		{ control: 'field', key: 'group', label: 'Group by', accepts: VIEW_SLOT_TYPES.treemap.group },
+		{ control: 'field', key: 'size', label: 'Size', accepts: VIEW_SLOT_TYPES.treemap.size }
 	],
 	heatmap: [
-		{ control: 'field', key: 'x', label: 'X axis', accepts: [] },
-		{ control: 'field', key: 'y', label: 'Y axis', accepts: [] },
+		{ control: 'field', key: 'x', label: 'X axis', accepts: VIEW_SLOT_TYPES.heatmap.x },
+		{ control: 'field', key: 'y', label: 'Y axis', accepts: VIEW_SLOT_TYPES.heatmap.y },
 		{ control: 'aggregate', key: 'aggregate', label: 'Aggregate' },
-		{ control: 'field', key: 'value', label: 'Value', accepts: SCALAR, optional: true },
+		{
+			control: 'field',
+			key: 'value',
+			label: 'Value',
+			accepts: VIEW_SLOT_TYPES.heatmap.value,
+			optional: true
+		},
 		{ control: 'bucket', key: 'bucket', label: 'Bucket', optional: true }
 	]
 };
 
-/** All selectable view kinds, in a sensible menu order. */
-export const VIEW_KINDS: ViewType[] = [
-	'board',
-	'table',
-	'tree',
-	'graph',
-	'gantt',
-	'gantt_by_initiative',
-	'gantt_by_depth',
-	'bar_chart',
-	'line_chart',
-	'heatmap',
-	'treemap',
-	'workload',
-	'metric'
-];
-
+/**
+ * Every kind's menu label, in the order the picker offers them.
+ *
+ * `Record<ViewType, string>` makes a missing kind a TypeScript error, and
+ * the key order *is* the picker order — so the list of kinds and their
+ * labels are one list rather than two that have to agree.
+ */
 const KIND_LABELS: Record<ViewType, string> = {
 	board: 'Board',
 	table: 'Table',
@@ -135,6 +191,14 @@ const KIND_LABELS: Record<ViewType, string> = {
 	workload: 'Workload',
 	metric: 'Metric'
 };
+
+/**
+ * All selectable view kinds, in menu order — the keys of `KIND_LABELS`,
+ * whose insertion order ES guarantees for non-numeric keys. Derived rather
+ * than written out, because a hand-kept second list is what let a kind go
+ * missing from the picker unnoticed.
+ */
+export const VIEW_KINDS = Object.keys(KIND_LABELS) as ViewType[];
 
 export function kindLabel(kind: ViewType): string {
 	return KIND_LABELS[kind];
@@ -153,7 +217,7 @@ export const WEEKDAYS = [
 ] as const;
 
 /** Whether a field of `fieldType` is acceptable for a slot's `accepts` list. */
-export function fieldFits(fieldType: FieldType, accepts: FieldType[]): boolean {
+export function fieldFits(fieldType: FieldType, accepts: readonly FieldType[]): boolean {
 	return accepts.length === 0 || accepts.includes(fieldType);
 }
 

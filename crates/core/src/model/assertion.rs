@@ -54,15 +54,15 @@ pub struct AssertionOperator {
     /// Field must not equal this value (or any in the list).
     pub not: Option<NegationValue>,
     /// Field must equal the referenced field's value.
-    pub eq_field: Option<std::string::String>,
+    pub eq_field: Option<String>,
     /// Field must be less than the referenced field's value.
-    pub lt_field: Option<std::string::String>,
+    pub lt_field: Option<String>,
     /// Field must be less than or equal to the referenced field's value.
-    pub lte_field: Option<std::string::String>,
+    pub lte_field: Option<String>,
     /// Field must be greater than the referenced field's value.
-    pub gt_field: Option<std::string::String>,
+    pub gt_field: Option<String>,
     /// Field must be greater than or equal to the referenced field's value.
-    pub gte_field: Option<std::string::String>,
+    pub gte_field: Option<String>,
     /// Related items must number at least this many.
     pub min_count: Option<u32>,
     /// Related items must number at most this many.

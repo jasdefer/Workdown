@@ -4,7 +4,7 @@
 //! Table rendering is handled by the command layer using
 //! `cli::output::table()` to keep this module free of CLI dependencies.
 
-use crate::model::duration::format_duration_seconds;
+use crate::model::field_value::format_field_value;
 use crate::model::{FieldValue, WorkItem};
 use crate::query::types::QueryResult;
 
@@ -45,10 +45,11 @@ pub struct DelimitedOptions {
 }
 
 /// Errors produced while rendering delimited output.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum DelimitedError {
     /// A list/multichoice/links element contains the configured list separator,
     /// which would make the cell ambiguous.
+    #[error("item '{item_id}' field '{field}' contains list separator '{separator}' in a value; pick a different --delimiter or remove the character")]
     EmbeddedSeparator {
         item_id: String,
         field: String,
@@ -56,50 +57,14 @@ pub enum DelimitedError {
     },
     /// The column delimiter equals the list separator — the cell would be
     /// indistinguishable from two columns.
+    #[error("column delimiter '{delimiter}' matches the list-cell separator '{list_separator}'; pick a different --delimiter")]
     DelimiterConflict {
         delimiter: char,
         list_separator: char,
     },
     /// Low-level write failure from the `csv` writer.
-    Io(std::io::Error),
-}
-
-impl std::fmt::Display for DelimitedError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::EmbeddedSeparator {
-                item_id,
-                field,
-                separator,
-            } => write!(
-                f,
-                "item '{item_id}' field '{field}' contains list separator '{separator}' in a value; pick a different --delimiter or remove the character",
-            ),
-            Self::DelimiterConflict {
-                delimiter,
-                list_separator,
-            } => write!(
-                f,
-                "column delimiter '{delimiter}' matches the list-cell separator '{list_separator}'; pick a different --delimiter",
-            ),
-            Self::Io(error) => write!(f, "failed writing delimited output: {error}"),
-        }
-    }
-}
-
-impl std::error::Error for DelimitedError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Io(error) => Some(error),
-            _ => None,
-        }
-    }
-}
-
-impl From<std::io::Error> for DelimitedError {
-    fn from(error: std::io::Error) -> Self {
-        Self::Io(error)
-    }
+    #[error("failed writing delimited output: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 /// Render matched items as CSV/TSV using `options.delimiter` between columns
@@ -159,8 +124,9 @@ pub fn render_delimited(
     Ok(String::from_utf8(buffer).expect("csv writer emits valid UTF-8"))
 }
 
-/// Format a field value for delimited output, joining multi-valued fields
-/// with `list_separator` and erroring if any element itself contains it.
+/// Format a field value for delimited output. Multi-valued fields join with
+/// `list_separator`, erroring if any element itself contains it; scalars
+/// delegate to [`format_field_value`].
 fn format_value_delimited(
     value: &FieldValue,
     list_separator: char,
@@ -168,15 +134,6 @@ fn format_value_delimited(
     field: &str,
 ) -> Result<String, DelimitedError> {
     match value {
-        FieldValue::String(string) => Ok(string.clone()),
-        FieldValue::Choice(string) => Ok(string.clone()),
-        FieldValue::Date(date) => Ok(date.format("%Y-%m-%d").to_string()),
-        FieldValue::Duration(seconds) => Ok(format_duration_seconds(*seconds)),
-        FieldValue::Color(color) => Ok(color.clone()),
-        FieldValue::Link(id) => Ok(id.as_str().to_owned()),
-        FieldValue::Integer(number) => Ok(number.to_string()),
-        FieldValue::Float(number) => Ok(number.to_string()),
-        FieldValue::Boolean(flag) => Ok(flag.to_string()),
         FieldValue::Multichoice(values) | FieldValue::List(values) => join_with_separator(
             values.iter().map(String::as_str),
             list_separator,
@@ -189,6 +146,7 @@ fn format_value_delimited(
             item_id,
             field,
         ),
+        scalar => Ok(format_field_value(scalar)),
     }
 }
 

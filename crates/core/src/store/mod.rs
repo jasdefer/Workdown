@@ -7,16 +7,43 @@
 //! Individual item problems (bad YAML, type mismatches, missing fields) are
 //! collected as [`Diagnostic`]s — the store loads as much as it can and
 //! reports all findings.
+//!
+//! # The load pipeline and its ordering contract
+//!
+//! Loading runs as a fixed sequence of phases (see
+//! [`Store::load_with_resources_as_of`]):
+//!
+//! 1. collect the `.md` file paths (`collect_item_paths`)
+//! 2. parse each file, enforce id uniqueness, coerce written values to
+//!    their declared types (`parse_and_coerce`)
+//! 3. build the link graph and find broken references
+//!    (`build_reverse_links`)
+//! 4. run the fill-in mechanisms — compute, condition, pull, roll-up
+//!    (`derive`)
+//! 5. check that required fields ended up filled (`required`)
+//! 6. check `resource:`-backed values against `resources.yaml`
+//!    (`resource_refs`)
+//!
+//! The order encodes one contract: **a check that judges a field's
+//! final value runs after the fill-in phase; anything earlier may only
+//! judge what was literally written.** That is why the required check
+//! and the resource check both sit on the far side of phase 4 — a
+//! derived value is held to the same standard as a hand-written one,
+//! and no check has to predict what a mechanism would have produced.
+//! What crosses the boundary instead is a record: coercion notes which
+//! fields were written but failed conversion, so later phases can
+//! still tell "written but invalid" from "never written" after the
+//! invalid value has been dropped (ADR-012).
 
-pub(crate) mod coerce;
 mod compute;
 mod conditional;
 mod cycles;
 mod derive;
+mod required;
 mod resource_refs;
 mod rollup;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::model::diagnostic::{
@@ -92,92 +119,31 @@ impl Store {
         resources: &Resources,
         evaluation_date: chrono::NaiveDate,
     ) -> Result<Store, std::io::Error> {
-        let mut diagnostics = Vec::new();
+        // The phase order below is a contract — see the module docs.
 
-        // 1. Collect all .md file paths, sorted alphabetically for determinism.
+        // Phase 1: collect all .md file paths, sorted alphabetically
+        // for determinism.
         let paths = collect_item_paths(items_dir)?;
 
-        // 2. Parse each file and check ID uniqueness.
-        let mut items = HashMap::new();
-        let mut seen_ids: HashMap<WorkItemId, PathBuf> = HashMap::new();
+        // Phase 2: parse each file, enforce id uniqueness, coerce
+        // written values to their declared types.
+        let ParsedItems {
+            mut items,
+            conversion_failures,
+            mut diagnostics,
+        } = parse_and_coerce(&paths, schema);
 
-        for path in &paths {
-            let raw = match parser::parse_work_item_file(path) {
-                Ok(raw) => raw,
-                Err(e) => {
-                    diagnostics.push(Diagnostic::file(
-                        Severity::Error,
-                        path.clone(),
-                        FileDiagnosticKind::ReadError {
-                            detail: e.to_string(),
-                        },
-                    ));
-                    continue;
-                }
-            };
+        // Phase 3: build the link graph and find broken references.
+        let (reverse_links, broken_reference_diagnostics) = build_reverse_links(&items);
+        diagnostics.extend(broken_reference_diagnostics);
 
-            // Check for duplicate IDs.
-            if let Some(first_path) = seen_ids.get(&raw.id) {
-                diagnostics.push(Diagnostic::files(
-                    Severity::Error,
-                    vec![first_path.clone(), path.clone()],
-                    FilesDiagnosticKind::DuplicateId { id: raw.id.clone() },
-                ));
-                continue;
-            }
-            seen_ids.insert(raw.id.clone(), path.clone());
-
-            // 3. Coerce fields.
-            let (fields, coercion_diagnostics) = coerce::coerce_fields(&raw, schema);
-            diagnostics.extend(coercion_diagnostics);
-
-            items.insert(
-                raw.id.clone(),
-                WorkItem {
-                    id: raw.id,
-                    fields,
-                    body: raw.body,
-                    source_path: raw.source_path,
-                },
-            );
-        }
-
-        // 4. Build reverse links and detect broken references.
-        let mut reverse_links: HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>> =
-            HashMap::new();
-
-        for item in items.values() {
-            for field_name in item.fields.keys() {
-                for target_id in targets_of(item, field_name) {
-                    if !items.contains_key(target_id.as_str()) {
-                        diagnostics.push(Diagnostic::item(
-                            Severity::Error,
-                            item.source_path.clone(),
-                            item.id.clone(),
-                            ItemDiagnosticKind::BrokenLink {
-                                field: field_name.clone(),
-                                target_id: target_id.clone(),
-                            },
-                        ));
-                    }
-
-                    reverse_links
-                        .entry(field_name.clone())
-                        .or_default()
-                        .entry(target_id.clone())
-                        .or_default()
-                        .push(item.id.clone());
-                }
-            }
-        }
-
-        // 5. Derive passes: evaluate compute expressions and aggregate
-        // rollups per field in dependency order, emitting their
-        // diagnostics. Compute fields whose config fails the cross-file
-        // check are skipped entirely — the check's findings are schema
-        // diagnostics (surfaced by `compute_check::evaluate` at project
-        // load), not per-item ones. Mutates `items` in place so
-        // downstream consumers see manual + derived values
+        // Phase 4: the fill-in mechanisms — compute expressions,
+        // conditions, pulls and aggregate rollups per field in
+        // dependency order. Compute fields whose config fails the
+        // cross-file check are skipped entirely — the check's findings
+        // are schema diagnostics (surfaced by `compute_check::evaluate`
+        // at project load), not per-item ones. Mutates `items` in place
+        // so downstream consumers see manual + derived values
         // indistinguishably.
         let disabled_compute_fields = crate::compute_check::failed_fields(schema, resources);
         diagnostics.extend(derive::run(
@@ -187,11 +153,23 @@ impl Store {
             &resources.constants,
             evaluation_date,
             &disabled_compute_fields,
+            &conversion_failures,
         ));
 
-        // 6. Check `resource:`-backed values against `resources.yaml`.
-        // After the derive passes so a stamped default or a `when:`
-        // result is held to the same standard as a hand-written value.
+        // Phase 5: the required check — after the fill-in phase, so it
+        // judges what actually ended up filled, whatever supplied it.
+        diagnostics.extend(required::check(
+            &items,
+            &reverse_links,
+            schema,
+            &disabled_compute_fields,
+            &conversion_failures,
+        ));
+
+        // Phase 6: check `resource:`-backed values against
+        // `resources.yaml` — after the fill-in phase for the same
+        // reason: a stamped default or a `when:` result is held to the
+        // same standard as a hand-written value.
         diagnostics.extend(resource_refs::check(&items, schema, resources));
 
         Ok(Store {
@@ -281,8 +259,133 @@ impl Store {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/// The `.md` files directly inside `items_dir`, sorted by file name for
-/// determinism.
+/// What the parse phase produced: every loadable item, coercion's
+/// per-item record of written-but-invalid fields (carried to the
+/// fill-in phase and the required check — see the module docs), and
+/// the phase's diagnostics.
+struct ParsedItems {
+    items: HashMap<WorkItemId, WorkItem>,
+    conversion_failures: HashMap<WorkItemId, HashSet<String>>,
+    diagnostics: Vec<Diagnostic>,
+}
+
+/// Pipeline phase 2: parse each file, enforce id uniqueness, and
+/// coerce written values to their declared types.
+///
+/// A file that fails to parse, or whose id duplicates an earlier
+/// file's, is reported and skipped — everything else loads. Judges
+/// only what is literally written, per the pipeline contract.
+fn parse_and_coerce(paths: &[PathBuf], schema: &Schema) -> ParsedItems {
+    let mut items = HashMap::new();
+    let mut conversion_failures: HashMap<WorkItemId, HashSet<String>> = HashMap::new();
+    let mut diagnostics = Vec::new();
+    let mut seen_ids: HashMap<WorkItemId, PathBuf> = HashMap::new();
+
+    for path in paths {
+        let raw = match parser::parse_work_item_file(path) {
+            Ok(raw) => raw,
+            Err(e) => {
+                diagnostics.push(Diagnostic::file(
+                    Severity::Error,
+                    path.clone(),
+                    FileDiagnosticKind::ReadError {
+                        detail: e.to_string(),
+                    },
+                ));
+                continue;
+            }
+        };
+
+        if let Some(first_path) = seen_ids.get(&raw.id) {
+            diagnostics.push(Diagnostic::files(
+                Severity::Error,
+                vec![first_path.clone(), path.clone()],
+                FilesDiagnosticKind::DuplicateId { id: raw.id.clone() },
+            ));
+            continue;
+        }
+        seen_ids.insert(raw.id.clone(), path.clone());
+
+        let outcome = crate::coerce::coerce_fields(&raw, schema);
+        diagnostics.extend(outcome.diagnostics);
+        if !outcome.conversion_failures.is_empty() {
+            conversion_failures.insert(raw.id.clone(), outcome.conversion_failures);
+        }
+
+        items.insert(
+            raw.id.clone(),
+            WorkItem {
+                id: raw.id,
+                fields: outcome.fields,
+                body: raw.body,
+                source_path: raw.source_path,
+            },
+        );
+    }
+
+    ParsedItems {
+        items,
+        conversion_failures,
+        diagnostics,
+    }
+}
+
+/// The reverse-link index: `field_name → target_id → [source_ids]`.
+type ReverseLinks = HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>;
+
+/// True if no item references `item_id` via `over_field` — nothing has
+/// it as their parent in that field's hierarchy.
+///
+/// The shared bottom-of-the-chain test: the compute pass, the roll-up
+/// pass, the derive scheduler, and the required check all ask this same
+/// question of the same index, and must agree on the answer.
+pub(super) fn is_leaf(
+    reverse_links: &ReverseLinks,
+    item_id: &WorkItemId,
+    over_field: &str,
+) -> bool {
+    reverse_links
+        .get(over_field)
+        .and_then(|by_target| by_target.get(item_id))
+        .is_none_or(|sources| sources.is_empty())
+}
+
+/// Pipeline phase 3: build the reverse-link index and report
+/// references to items that don't exist.
+fn build_reverse_links(items: &HashMap<WorkItemId, WorkItem>) -> (ReverseLinks, Vec<Diagnostic>) {
+    let mut reverse_links: ReverseLinks = HashMap::new();
+    let mut diagnostics = Vec::new();
+
+    for item in items.values() {
+        for field_name in item.fields.keys() {
+            for target_id in targets_of(item, field_name) {
+                if !items.contains_key(target_id.as_str()) {
+                    diagnostics.push(Diagnostic::item(
+                        Severity::Error,
+                        item.source_path.clone(),
+                        item.id.clone(),
+                        ItemDiagnosticKind::BrokenLink {
+                            field: field_name.clone(),
+                            target_id: target_id.clone(),
+                        },
+                    ));
+                }
+
+                reverse_links
+                    .entry(field_name.clone())
+                    .or_default()
+                    .entry(target_id.clone())
+                    .or_default()
+                    .push(item.id.clone());
+            }
+        }
+    }
+
+    (reverse_links, diagnostics)
+}
+
+/// Pipeline phase 1: the `.md` files directly inside `items_dir`,
+/// sorted by file name for determinism.
 ///
 /// A directory that doesn't exist yields an empty list rather than an
 /// error: that's a project with no items, which is a valid state. Git
@@ -366,12 +469,7 @@ mod tests {
             FieldDefinition::new(FieldTypeConfig::List),
         );
 
-        let inverse_table = Schema::build_inverse_table(&fields);
-        Schema {
-            fields,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(fields, vec![])
     }
 
     /// Create a temp directory with work item files for testing.
@@ -708,16 +806,11 @@ mod tests {
         effort.aggregate = Some(AggregateConfig {
             function: AggregateFunction::Sum,
             error_on_missing: false,
-            over: None,
+            over: "parent".to_owned(),
         });
         fields.insert("effort".to_owned(), effort);
 
-        let inverse_table = Schema::build_inverse_table(&fields);
-        Schema {
-            fields,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(fields, vec![])
     }
 
     #[test]

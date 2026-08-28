@@ -10,7 +10,7 @@
 -->
 <script lang="ts">
 	import type { MetricData } from '$lib/api/generated/MetricData';
-	import { formatAggregateValue, pluralize } from '$lib/views/format';
+	import { formatChartValue, pluralize } from '$lib/views/format';
 	import EmptyHint from '$lib/views/EmptyHint.svelte';
 
 	interface Props {
@@ -26,7 +26,7 @@
 	<div class="metric-grid" role="region" aria-label="Metric view">
 		{#each data.rows as row, index (index)}
 			<article class="tile">
-				<span class="value" class:none={row.value === null}>{formatAggregateValue(row.value)}</span>
+				<span class="value" class:none={row.value === null}>{formatChartValue(row.value)}</span>
 				<span class="label">{row.label}</span>
 				{#if row.unplaced.length > 0}
 					<span class="dropped">

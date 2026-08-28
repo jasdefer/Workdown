@@ -1,15 +1,24 @@
 <!--
-  Line chart view. Points are pre-extracted server-side: each point
-  carries an item id, an AxisValue x, a SizeValue y, and an optional
-  group string. The wire also ships an `items` sidecar resolving each
-  point's id to its title (via the view's `title:` slot, Table pattern)
-  so hover tooltips can show the item by name rather than raw id.
+  Line chart view. The extractor ships points already partitioned into
+  series and ordered: each point carries an item id, a ChartValue x and
+  a SizeValue y, and each series carries the group value its points
+  share (null for the synthetic no-value series). The wire also ships an
+  `items` sidecar resolving each point's id to its title (via the view's
+  `title:` slot, Table pattern) so hover tooltips can show the item by
+  name rather than raw id.
 
   Two visual modes share the same code path:
     - Single-series (group_field is null) — one accent-colored line +
       points; no legend.
-    - Grouped (group_field is set) — one line per group with Plot's
-      categorical color scale; legend rendered above the chart.
+    - Grouped (group_field is set) — one line per series with Plot's
+      categorical color scale; legend rendered above the chart. The
+      no-value series is named here by `noValueLabel`, never by the
+      extractor.
+
+  Plot wants a flat array with a `z` channel rather than nested series,
+  so `plotPoints` flattens them back out and `seriesLabels` is handed to
+  Plot as the color domain — keeping the palette order the extractor's,
+  the same order the Markdown renderer walks.
 
   Plot's `dot` mark holds the hover behavior (each point is hoverable);
   the `line` mark connects them. When grouped, `z: groupKey` separates
@@ -19,14 +28,18 @@
 <script lang="ts">
 	import type { LineChartData } from '$lib/api/generated/LineChartData';
 	import type { LinePoint } from '$lib/api/generated/LinePoint';
-	import type { AxisValue } from '$lib/api/generated/AxisValue';
+	import type { ChartValue } from '$lib/api/generated/ChartValue';
 	import type { WorkItemId } from '$lib/api/generated/WorkItemId';
 	import { formatDurationSeconds, formatIsoDate, formatNumber } from '$lib/views/format';
 	import { mountPlot, PLOT_STYLE } from '$lib/views/plot';
-	import { itemRefLabel, prettifyId } from '$lib/views/prettify';
+	import { itemRefLabel, noValueLabel, prettifyId } from '$lib/views/prettify';
 	import EmptyHint from '$lib/views/EmptyHint.svelte';
 	import RowCount from '$lib/views/RowCount.svelte';
 	import UnplacedFooter from '$lib/views/UnplacedFooter.svelte';
+
+	/** A wire point flattened out of its series, carrying that series'
+	 * display label so Plot can use it as the `z` / color channel. */
+	type PlottedPoint = LinePoint & { series: string };
 
 	interface Props {
 		data: LineChartData;
@@ -42,9 +55,23 @@
 	let availableWidth = $state(0);
 	const CHART_HEIGHT = 400;
 
-	const pointCount = $derived(data.points.length);
+	// Core decides which points form which series and in what order.
+	// Plot wants one flat array with a `z` channel, so flatten it back
+	// out and hand Plot the received order as the color domain — that
+	// way both front ends walk their palettes in the same sequence.
+	const seriesLabels = $derived(
+		data.series.map(
+			(series) => series.group ?? (data.group_field !== null ? noValueLabel(data.group_field) : '')
+		)
+	);
+	const plotPoints = $derived(
+		data.series.flatMap((series, index) =>
+			series.points.map((point) => ({ ...point, series: seriesLabels[index] }))
+		)
+	);
+	const pointCount = $derived(plotPoints.length);
 
-	function axisAsNumber(value: AxisValue): number {
+	function axisAsNumber(value: ChartValue): number {
 		if (value.type === 'date') return new Date(value.value).getTime();
 		return value.value;
 	}
@@ -55,10 +82,10 @@
 
 	$effect(() => {
 		const host = container;
-		if (host === undefined || data.points.length === 0 || availableWidth === 0) return;
+		if (host === undefined || plotPoints.length === 0 || availableWidth === 0) return;
 
-		const xType: AxisValue['type'] | undefined = data.points[0]?.x.type;
-		const yType = data.points[0]?.y.type;
+		const xType: ChartValue['type'] | undefined = plotPoints[0]?.x.type;
+		const yType = plotPoints[0]?.y.type;
 		const isGrouped = data.group_field !== null;
 		const groupLabel = data.group_field !== null ? prettifyId(data.group_field) : '';
 
@@ -75,8 +102,8 @@
 			return formatNumber(n);
 		};
 
-		const groupKey = (p: LinePoint): string => p.group ?? '(none)';
-		const colorChannel: ((p: LinePoint) => string) | string = isGrouped
+		const groupKey = (p: PlottedPoint): string => p.series;
+		const colorChannel: ((p: PlottedPoint) => string) | string = isGrouped
 			? groupKey
 			: 'var(--color-accent)';
 
@@ -103,22 +130,24 @@
 						type: 'linear',
 						zero: false
 					},
-					...(isGrouped ? { color: { legend: true, label: groupLabel } } : {}),
+					...(isGrouped
+						? { color: { legend: true, label: groupLabel, domain: seriesLabels } }
+						: {}),
 					marks: [
-						Plot.line(data.points, {
-							x: (p: LinePoint) => axisAsNumber(p.x),
-							y: (p: LinePoint) => p.y.value,
+						Plot.line(plotPoints, {
+							x: (p: PlottedPoint) => axisAsNumber(p.x),
+							y: (p: PlottedPoint) => p.y.value,
 							stroke: colorChannel,
 							strokeWidth: 1.5,
 							...(isGrouped ? { z: groupKey } : {})
 						}),
-						Plot.dot(data.points, {
-							x: (p: LinePoint) => axisAsNumber(p.x),
-							y: (p: LinePoint) => p.y.value,
+						Plot.dot(plotPoints, {
+							x: (p: PlottedPoint) => axisAsNumber(p.x),
+							y: (p: PlottedPoint) => p.y.value,
 							fill: colorChannel,
 							stroke: colorChannel,
 							r: 4,
-							channels: { item: (p: LinePoint): string => titleFor(p.id) },
+							channels: { item: (p: PlottedPoint): string => titleFor(p.id) },
 							tip: {
 								format: {
 									x: formatXTick,
@@ -137,7 +166,7 @@
 	});
 </script>
 
-{#if data.points.length === 0}
+{#if plotPoints.length === 0}
 	<EmptyHint />
 {:else}
 	<div

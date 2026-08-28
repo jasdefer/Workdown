@@ -11,9 +11,10 @@
 //!   Absent-vs-null disambiguates "rejected" from "explicit null".
 //! - `diagnostics` is **always present**, often `[]`. The UI never
 //!   needs to optional-chain it: `response.diagnostics.length` always
-//!   works. Same shape as `workdown check --json` produces. These are
-//!   *project-validation findings* — including the save-with-warning
-//!   warnings a successful mutation returns on a `200`.
+//!   works. Same shape as `workdown validate --format json`
+//!   produces. These are *project-validation findings* — including
+//!   the save-with-warning warnings a successful mutation returns
+//!   on a `200`.
 //! - `error` is omitted unless a *hard operational failure* occurred —
 //!   the request was understood but couldn't be carried out (unknown
 //!   item, an op invalid for the field's type, a write I/O error) and
@@ -26,6 +27,9 @@
 //! did this request fail?". `200` for success (warnings still possible),
 //! `422` for well-formed-but-rejected, `404` for unknown routes/IDs,
 //! `500` for I/O failures and panics.
+//!
+//! The three failure tiers and the two 404 shapes are recorded in
+//! ADR-013.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
