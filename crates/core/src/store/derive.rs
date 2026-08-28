@@ -157,6 +157,7 @@ pub(crate) fn run(
                             continue;
                         };
                         if item.fields.contains_key(derive_field.name)
+                            || conversion_failed(conversion_failures, item_id, derive_field.name)
                             || !same_item_pass_runs_on(derive_field, reverse_links, item_id)
                         {
                             continue;
@@ -924,16 +925,27 @@ mod tests {
         schema_yaml: &str,
         resources_yaml: &str,
     ) -> Vec<Diagnostic> {
+        // In-memory items never went through coercion, so most tests
+        // have no conversion failures to carry.
+        run_derive_with_failures(items, schema_yaml, resources_yaml, &HashMap::new())
+    }
+
+    /// `run_derive` with coercion's written-but-invalid record carried
+    /// in, for tests exercising how the passes treat a slot no pass
+    /// may fill.
+    fn run_derive_with_failures(
+        items: &mut HashMap<WorkItemId, WorkItem>,
+        schema_yaml: &str,
+        resources_yaml: &str,
+        conversion_failures: &HashMap<WorkItemId, HashSet<String>>,
+    ) -> Vec<Diagnostic> {
         let schema = parse_schema(schema_yaml).expect("test schema must parse");
         let resources = parse_resources(resources_yaml).expect("test resources must parse");
         let reverse_links = reverse_links_of(items);
         // Mirror Store::load_with_resources: check-failed compute
         // fields are skipped and the required check follows the derive
-        // passes as its own phase, exactly as in production. In-memory
-        // items never went through coercion, so there are no
-        // conversion failures to carry.
+        // passes as its own phase, exactly as in production.
         let disabled_compute_fields = crate::compute_check::failed_fields(&schema, &resources);
-        let conversion_failures = HashMap::new();
         let mut diagnostics = run(
             items,
             &reverse_links,
@@ -941,14 +953,14 @@ mod tests {
             &resources.constants,
             test_evaluation_date(),
             &disabled_compute_fields,
-            &conversion_failures,
+            conversion_failures,
         );
         diagnostics.extend(super::super::required::check(
             items,
             &reverse_links,
             &schema,
             &disabled_compute_fields,
-            &conversion_failures,
+            conversion_failures,
         ));
         diagnostics
     }
@@ -1758,6 +1770,32 @@ fields:
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
         assert_eq!(field(&items, "a", "f"), Some(&FieldValue::Integer(10)));
         assert_eq!(field(&items, "b", "g"), Some(&FieldValue::Integer(10)));
+    }
+
+    #[test]
+    fn a_written_but_invalid_anchor_breaks_the_loop_like_a_valid_one() {
+        // Same jointly-cyclic wiring, but `a.f` is written-but-invalid
+        // (coercion recorded the failure, so no pass may fill the
+        // slot). Its node must wait for nothing, exactly like the
+        // hand-written anchor above: the slot is never filled, so
+        // waiting on its inputs would close a loop that doesn't exist
+        // semantically and report a false cycle. `b.g` is simply left
+        // with a missing input; the invalid value itself is coercion's
+        // finding, not the derive pass's.
+        let mut items = HashMap::from([
+            item("a", vec![("first_link", links_value(&["b"]))]),
+            item("b", vec![("second_link", links_value(&["a"]))]),
+        ]);
+        let conversion_failures = HashMap::from([(
+            WorkItemId::from("a".to_owned()),
+            HashSet::from(["f".to_owned()]),
+        )]);
+        let diagnostics =
+            run_derive_with_failures(&mut items, JOINTLY_CYCLIC_SCHEMA, "", &conversion_failures);
+
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+        assert_eq!(field(&items, "a", "f"), None);
+        assert_eq!(field(&items, "b", "g"), None);
     }
 
     #[test]
