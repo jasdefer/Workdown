@@ -43,5 +43,11 @@ pub enum GitStatus {
         /// Files with uncommitted changes (staged, unstaged, or
         /// untracked) — `git status --porcelain` line count.
         dirty_count: u32,
+        /// Why the requested remote contact failed, when it did — the
+        /// local numbers above are still served (`behind` is then as of
+        /// the last successful fetch). `None` when the fetch succeeded
+        /// or none was requested; the client keeps the last attempt's
+        /// answer across local-only refreshes.
+        fetch_error: Option<String>,
     },
 }

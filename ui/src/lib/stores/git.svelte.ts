@@ -4,10 +4,11 @@
 // The server owns the repository; this store holds its last status
 // answer and the in-flight/result state of the one operation the pill
 // can run at a time. The first load fetches from the remote so
-// `behind` starts truthful; afterwards the generic file-change ping
-// (wired in the root layout) refreshes the counts locally — every item
-// edit, timer write or CLI mutation moves `dirty_count`, and a pull's
-// rewritten files land the same way.
+// `behind` starts truthful; afterwards two live-update signals keep it
+// current without touching the network: the generic file-change ping
+// moves `dirty_count` (item edits, timer writes, CLI mutations), and
+// the git-named ping fires when the repository itself moves (a commit
+// or fetch in a terminal — the server watches `.git` for exactly this).
 
 import { api } from '$lib/api/client';
 import type { GitStatus } from '$lib/api/generated/GitStatus';
@@ -21,8 +22,17 @@ export interface GitMessage {
 let status = $state<GitStatus | null>(null);
 let busy = $state(false);
 let message = $state<GitMessage | null>(null);
-let loadPromise: Promise<void> | null = null;
 let messageTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Response-ordering guards. `statusGeneration` is bumped whenever an
+// operation (pull/push) writes `status` directly, so a slower status
+// request started *before* the operation cannot land afterwards and
+// overwrite the fresh answer with pre-operation counts.
+// `refreshPromise` coalesces concurrent refreshes (SSE pings can stack
+// while a status request is still running) into one request.
+let statusGeneration = 0;
+let refreshPromise: Promise<void> | null = null;
+let loadStarted = false;
 
 function show(next: GitMessage): void {
 	if (messageTimer !== null) {
@@ -40,25 +50,42 @@ function show(next: GitMessage): void {
 	}
 }
 
-async function fetchStatus(withRemote: boolean): Promise<boolean> {
+async function fetchStatus(withRemote: boolean): Promise<void> {
+	const generation = statusGeneration;
 	const result = await api.getGitStatus(withRemote);
-	if (result.data === undefined) {
-		return false;
+	if (result.data === undefined) return;
+	if (generation !== statusGeneration) return; // superseded by an operation's answer
+	const next = result.data;
+	// A local-only answer knows nothing about the remote; keep the last
+	// remote attempt's verdict visible instead of silently clearing the
+	// "remote not reachable" hint on the next file-change ping.
+	if (!withRemote && next.state === 'ready' && status?.state === 'ready') {
+		next.fetch_error = status.fetch_error;
 	}
-	status = result.data;
-	return true;
+	status = next;
 }
 
-// One initial fetch shared by every caller; a failed one clears itself
-// so the next `load()` retries instead of pinning a dead answer.
-function beginLoad(): Promise<void> {
-	const attempt = fetchStatus(true).then((loaded) => {
-		if (!loaded && loadPromise === attempt) {
-			loadPromise = null;
+/** One operation at a time: flips `busy` around `call`, routes the
+ * failure or the applied result into the message slot. */
+async function runOperation<T>(
+	call: () => Promise<{ data?: T; error?: string }>,
+	apply: (data: T) => { status: GitStatus; toast: string },
+	failureText: string
+): Promise<void> {
+	busy = true;
+	try {
+		const result = await call();
+		if (result.data === undefined) {
+			show({ kind: 'error', text: result.error ?? failureText });
+			return;
 		}
-	});
-	loadPromise = attempt;
-	return attempt;
+		const applied = apply(result.data);
+		statusGeneration += 1;
+		status = applied.status;
+		show({ kind: 'ok', text: applied.toast });
+	} finally {
+		busy = false;
+	}
 }
 
 export const gitStore = {
@@ -72,40 +99,48 @@ export const gitStore = {
 		return message;
 	},
 
-	/** Fetch once (remote included); concurrent callers share the request. */
-	load(): Promise<void> {
-		return loadPromise ?? beginLoad();
+	/** The initial fetch, remote included — called once from the root
+	 * layout's mount. If it fails outright, the next ping's `refresh()`
+	 * retries with a local-only request, so the pill still appears. */
+	async load(): Promise<void> {
+		loadStarted = true;
+		await fetchStatus(true);
 	},
 
-	/** Cheap local-only recount — the file-change ping lands here. Skipped
-	 * while an operation runs; the operation's answer supersedes it. */
-	async refresh(): Promise<void> {
-		if (busy || status?.state !== 'ready') return;
-		await fetchStatus(false);
+	/** Cheap local-only recount — the file-change and git pings land
+	 * here. Coalesced while one is in flight; skipped while an operation
+	 * runs (its answer supersedes) and for the two stable states that
+	 * only a server restart can change. */
+	refresh(): Promise<void> {
+		const stable = status?.state === 'disabled' || status?.state === 'not_a_repo';
+		if (busy || stable || !loadStarted) return Promise.resolve();
+		refreshPromise ??= fetchStatus(false).finally(() => {
+			refreshPromise = null;
+		});
+		return refreshPromise;
 	},
 
-	async pull(): Promise<void> {
-		busy = true;
-		const result = await api.gitPull();
-		busy = false;
-		if (result.data === undefined) {
-			show({ kind: 'error', text: result.error ?? 'Pull failed.' });
-			return;
-		}
-		status = result.data.status;
-		show({ kind: 'ok', text: pullMessage(result.data.pulled_commits) });
+	/** Contact the remote again — the retry behind the pill's
+	 * "remote not reachable" hint. */
+	async retryRemote(): Promise<void> {
+		if (busy) return;
+		await fetchStatus(true);
 	},
 
-	async push(): Promise<void> {
-		busy = true;
-		const result = await api.gitPush();
-		busy = false;
-		if (result.data === undefined) {
-			show({ kind: 'error', text: result.error ?? 'Push failed.' });
-			return;
-		}
-		status = result.data;
-		show({ kind: 'ok', text: 'Pushed' });
+	pull(): Promise<void> {
+		return runOperation(
+			() => api.gitPull(),
+			(data) => ({ status: data.status, toast: pullMessage(data.pulled_commits) }),
+			'Pull failed.'
+		);
+	},
+
+	push(): Promise<void> {
+		return runOperation(
+			() => api.gitPush(),
+			(data) => ({ status: data, toast: 'Pushed' }),
+			'Push failed.'
+		);
 	},
 
 	dismissMessage(): void {

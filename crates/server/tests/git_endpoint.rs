@@ -20,7 +20,11 @@ use tower::ServiceExt;
 use workdown_core::parser::config::parse_config;
 use workdown_server::{router, AppState};
 
-const CONFIG_WITHOUT_GIT_CONTROLS: &str = "\
+/// The project config, with or without the git-controls opt-in — one
+/// base plus the flag lines, so the enabled/disabled pair the tests
+/// compare can never drift apart.
+fn project_config(git_controls: bool) -> String {
+    let base = "\
 project:
   name: Test Project
   description: ''
@@ -35,24 +39,12 @@ defaults:
   tree_field: parent
   graph_field: parent
 ";
-
-const CONFIG_WITH_GIT_CONTROLS: &str = "\
-project:
-  name: Test Project
-  description: ''
-paths:
-  work_items: workdown-items
-  templates: .workdown/templates
-  resources: .workdown/resources.yaml
-  views: .workdown/views.yaml
-schema: .workdown/schema.yaml
-defaults:
-  board_field: status
-  tree_field: parent
-  graph_field: parent
-serve:
-  git_controls: true
-";
+    if git_controls {
+        format!("{base}serve:\n  git_controls: true\n")
+    } else {
+        base.to_owned()
+    }
+}
 
 const SCHEMA: &str = "\
 fields:
@@ -126,9 +118,9 @@ async fn post_json(state: AppState, uri: &str, origin: Option<&str>) -> (StatusC
 async fn status_reports_disabled_when_flag_off() {
     let directory = TempDir::new().unwrap();
     let root = directory.path().to_path_buf();
-    write_project_files(&root, CONFIG_WITHOUT_GIT_CONTROLS);
+    write_project_files(&root, &project_config(false));
 
-    let (status, body) = get_json(state_for(root, CONFIG_WITHOUT_GIT_CONTROLS), "/api/git").await;
+    let (status, body) = get_json(state_for(root, &project_config(false)), "/api/git").await;
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["state"], "disabled");
@@ -138,9 +130,9 @@ async fn status_reports_disabled_when_flag_off() {
 async fn status_reports_not_a_repo_outside_git() {
     let directory = TempDir::new().unwrap();
     let root = directory.path().to_path_buf();
-    write_project_files(&root, CONFIG_WITH_GIT_CONTROLS);
+    write_project_files(&root, &project_config(true));
 
-    let (status, body) = get_json(state_for(root, CONFIG_WITH_GIT_CONTROLS), "/api/git").await;
+    let (status, body) = get_json(state_for(root, &project_config(true)), "/api/git").await;
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["state"], "not_a_repo");
@@ -150,11 +142,7 @@ async fn status_reports_not_a_repo_outside_git() {
 async fn status_reports_clean_synced_repo() {
     let (_directory, work) = init_synced_repo();
 
-    let (status, body) = get_json(
-        state_for(work.clone(), CONFIG_WITH_GIT_CONTROLS),
-        "/api/git",
-    )
-    .await;
+    let (status, body) = get_json(state_for(work.clone(), &project_config(true)), "/api/git").await;
 
     assert_eq!(status, StatusCode::OK);
     let data = &body["data"];
@@ -164,6 +152,28 @@ async fn status_reports_clean_synced_repo() {
     assert_eq!(data["ahead"], 0);
     assert_eq!(data["behind"], 0);
     assert_eq!(data["dirty_count"], 0);
+    assert_eq!(data["fetch_error"], Value::Null);
+}
+
+#[tokio::test]
+async fn status_on_repo_with_no_commits_names_the_real_branch() {
+    // A supported early state: `git init`, project files written,
+    // nothing committed yet. The branch is unborn — plumbing that asks
+    // where HEAD points fails — but the status must still name the
+    // branch instead of coercing the failure into a nameless "HEAD".
+    let directory = TempDir::new().unwrap();
+    let root = directory.path().to_path_buf();
+    run_git(&root, &["init", "--initial-branch=main", "."]);
+    write_project_files(&root, &project_config(true));
+
+    let (status, body) = get_json(state_for(root, &project_config(true)), "/api/git").await;
+
+    assert_eq!(status, StatusCode::OK);
+    let data = &body["data"];
+    assert_eq!(data["state"], "ready");
+    assert_eq!(data["branch"], "main");
+    assert_eq!(data["has_upstream"], false);
+    assert!(data["dirty_count"].as_u64().unwrap() > 0);
 }
 
 #[tokio::test]
@@ -203,7 +213,7 @@ async fn status_with_fetch_counts_ahead_behind_and_dirty() {
     .unwrap();
 
     let (status, body) = get_json(
-        state_for(work.clone(), CONFIG_WITH_GIT_CONTROLS),
+        state_for(work.clone(), &project_config(true)),
         "/api/git?fetch=true",
     )
     .await;
@@ -217,7 +227,7 @@ async fn status_with_fetch_counts_ahead_behind_and_dirty() {
 }
 
 #[tokio::test]
-async fn status_fetch_against_unreachable_remote_fails_cleanly() {
+async fn status_fetch_against_unreachable_remote_degrades_to_local_answer() {
     let (directory, work) = init_synced_repo();
     let gone = directory.path().join("nonexistent.git");
     run_git(
@@ -226,14 +236,58 @@ async fn status_fetch_against_unreachable_remote_fails_cleanly() {
     );
 
     let (status, body) = get_json(
-        state_for(work.clone(), CONFIG_WITH_GIT_CONTROLS),
+        state_for(work.clone(), &project_config(true)),
         "/api/git?fetch=true",
     )
     .await;
 
-    assert_eq!(status, StatusCode::BAD_GATEWAY);
-    let error = body["error"].as_str().unwrap();
-    assert!(error.contains("fetch failed"), "unexpected error: {error}");
+    // The remote being unreachable must not hide the widget: the local
+    // numbers are still served, and `fetch_error` says why `behind` is
+    // only as fresh as the last successful fetch.
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let data = &body["data"];
+    assert_eq!(data["state"], "ready");
+    assert_eq!(data["branch"], "main");
+    assert!(
+        data["fetch_error"].as_str().is_some_and(|e| !e.is_empty()),
+        "fetch_error should carry the failure, body: {body}"
+    );
+}
+
+#[tokio::test]
+async fn status_fetch_rejects_foreign_browser_origins() {
+    // Plain status is a harmless local read, but `fetch=true` contacts
+    // the remote and can invoke a credential helper — the same-origin
+    // guard covers it like the POSTs.
+    let (_directory, work) = init_synced_repo();
+    let app = router(state_for(work.clone(), &project_config(true)));
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/git?fetch=true")
+                .header("origin", "https://evil.example")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+    // Without the fetch, the same foreign origin may read: responses to
+    // cross-origin requests are unreadable to the page anyway, and the
+    // request has no side effects.
+    let app = router(state_for(work, &project_config(true)));
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/git")
+                .header("origin", "https://evil.example")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -251,7 +305,7 @@ async fn pull_fast_forwards_new_remote_commits() {
     run_git(&other, &["push"]);
 
     let (status, body) = post_json(
-        state_for(work.clone(), CONFIG_WITH_GIT_CONTROLS),
+        state_for(work.clone(), &project_config(true)),
         "/api/git/pull",
         None,
     )
@@ -270,7 +324,7 @@ async fn pull_when_up_to_date_reports_zero_commits() {
     let (_directory, work) = init_synced_repo();
 
     let (status, body) = post_json(
-        state_for(work.clone(), CONFIG_WITH_GIT_CONTROLS),
+        state_for(work.clone(), &project_config(true)),
         "/api/git/pull",
         None,
     )
@@ -308,7 +362,7 @@ async fn pull_counts_only_incoming_commits_not_rebased_local_ones() {
     run_git(&work, &["commit", "-m", "local: add item-c"]);
 
     let (status, body) = post_json(
-        state_for(work.clone(), CONFIG_WITH_GIT_CONTROLS),
+        state_for(work.clone(), &project_config(true)),
         "/api/git/pull",
         None,
     )
@@ -341,7 +395,7 @@ async fn pull_conflict_aborts_and_leaves_tree_as_it_was() {
     run_git(&work, &["commit", "-m", "local: rename item-a"]);
 
     let (status, body) = post_json(
-        state_for(work.clone(), CONFIG_WITH_GIT_CONTROLS),
+        state_for(work.clone(), &project_config(true)),
         "/api/git/pull",
         None,
     )
@@ -359,6 +413,125 @@ async fn pull_conflict_aborts_and_leaves_tree_as_it_was() {
 }
 
 #[tokio::test]
+async fn pull_refused_while_uncommitted_changes_exist() {
+    let (_directory, work) = init_synced_repo();
+
+    // One uncommitted edit — the state pull must never touch.
+    let edited_content = "---\ntitle: Item A\nstatus: in_progress\n---\n";
+    fs::write(work.join("workdown-items/item-a.md"), edited_content).unwrap();
+
+    let (status, body) = post_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/pull",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    let error = body["error"].as_str().unwrap();
+    assert!(
+        error.contains("uncommitted"),
+        "error should explain the refusal, got: {error}"
+    );
+    // The edit is exactly where the user left it — not stashed, not
+    // rebased over, not marked up with conflict markers.
+    let content = fs::read_to_string(work.join("workdown-items/item-a.md")).unwrap();
+    assert_eq!(content, edited_content);
+    assert_eq!(git_stdout(&work, &["stash", "list"]), "");
+}
+
+#[tokio::test]
+async fn pull_refused_while_a_rebase_is_in_progress_and_leaves_it_alone() {
+    let (directory, work) = init_synced_repo();
+
+    // Manufacture a rebase stopped on a conflict, as if the user had
+    // run `git pull --rebase` in a terminal and were mid-resolution.
+    let other = clone_remote(&directory, "other");
+    fs::write(
+        other.join("workdown-items/item-a.md"),
+        "---\ntitle: Item A\nstatus: done\n---\n",
+    )
+    .unwrap();
+    run_git(&other, &["add", "-A"]);
+    run_git(&other, &["commit", "-m", "remote: item-a done"]);
+    run_git(&other, &["push"]);
+    fs::write(
+        work.join("workdown-items/item-a.md"),
+        "---\ntitle: Item A renamed\nstatus: open\n---\n",
+    )
+    .unwrap();
+    run_git(&work, &["add", "-A"]);
+    run_git(&work, &["commit", "-m", "local: rename item-a"]);
+    let conflicting_pull = Command::new("git")
+        .arg("-C")
+        .arg(&work)
+        .args(["pull", "--rebase"])
+        .output()
+        .expect("spawn git");
+    assert!(
+        !conflicting_pull.status.success(),
+        "the terminal-side pull should conflict"
+    );
+    assert!(work.join(".git/rebase-merge").exists());
+
+    let (status, body) = post_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/pull",
+        None,
+    )
+    .await;
+
+    // Refused — and the user's half-resolved rebase is still there,
+    // not aborted out from under them.
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    let error = body["error"].as_str().unwrap();
+    assert!(
+        error.contains("rebase"),
+        "error should name the rebase, got: {error}"
+    );
+    assert!(work.join(".git/rebase-merge").exists());
+}
+
+#[tokio::test]
+async fn pull_counts_commits_already_fetched_by_an_earlier_status_call() {
+    // The primary flow: opening the board fetches (so the pill can show
+    // "behind"), then the user clicks Pull. The count reported must be
+    // what the pull integrated — not the tracking-ref movement during
+    // the pull, which after that earlier fetch would be zero.
+    let (directory, work) = init_synced_repo();
+
+    let other = clone_remote(&directory, "other");
+    fs::write(
+        other.join("workdown-items/item-b.md"),
+        "---\ntitle: Item B\nstatus: open\n---\n",
+    )
+    .unwrap();
+    run_git(&other, &["add", "-A"]);
+    run_git(&other, &["commit", "-m", "add item-b"]);
+    run_git(&other, &["push"]);
+
+    // The page-load status call, remote included.
+    let (status, body) = get_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git?fetch=true",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["behind"], 1);
+
+    let (status, body) = post_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/pull",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["data"]["pulled_commits"], 1);
+    assert_eq!(body["data"]["status"]["behind"], 0);
+}
+
+#[tokio::test]
 async fn push_publishes_local_commits() {
     let (directory, work) = init_synced_repo();
 
@@ -371,7 +544,7 @@ async fn push_publishes_local_commits() {
     run_git(&work, &["commit", "-m", "add item-b"]);
 
     let (status, body) = post_json(
-        state_for(work.clone(), CONFIG_WITH_GIT_CONTROLS),
+        state_for(work.clone(), &project_config(true)),
         "/api/git/push",
         None,
     )
@@ -410,7 +583,7 @@ async fn push_rejected_when_remote_has_newer_commits() {
     run_git(&work, &["commit", "-m", "local: add item-c"]);
 
     let (status, body) = post_json(
-        state_for(work.clone(), CONFIG_WITH_GIT_CONTROLS),
+        state_for(work.clone(), &project_config(true)),
         "/api/git/push",
         None,
     )
@@ -426,12 +599,8 @@ async fn mutations_refused_when_git_controls_disabled() {
     let (_directory, work) = init_synced_repo();
     // The repo is real, but this server runs without the opt-in flag.
     for uri in ["/api/git/pull", "/api/git/push"] {
-        let (status, body) = post_json(
-            state_for(work.clone(), CONFIG_WITHOUT_GIT_CONTROLS),
-            uri,
-            None,
-        )
-        .await;
+        let (status, body) =
+            post_json(state_for(work.clone(), &project_config(false)), uri, None).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{uri} body: {body}");
         let error = body["error"].as_str().unwrap();
         assert!(
@@ -446,7 +615,7 @@ async fn mutations_reject_foreign_browser_origins() {
     let (_directory, work) = init_synced_repo();
     for uri in ["/api/git/pull", "/api/git/push"] {
         let (status, body) = post_json(
-            state_for(work.clone(), CONFIG_WITH_GIT_CONTROLS),
+            state_for(work.clone(), &project_config(true)),
             uri,
             Some("https://evil.example"),
         )
@@ -457,14 +626,14 @@ async fn mutations_reject_foreign_browser_origins() {
     // server proxies from 5173, serve binds wherever the port scan
     // lands).
     let (status, body) = post_json(
-        state_for(work.clone(), CONFIG_WITH_GIT_CONTROLS),
+        state_for(work.clone(), &project_config(true)),
         "/api/git/pull",
         Some("http://127.0.0.1:3141"),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "body: {body}");
     let (status, body) = post_json(
-        state_for(work, CONFIG_WITH_GIT_CONTROLS),
+        state_for(work, &project_config(true)),
         "/api/git/pull",
         Some("http://localhost:5173"),
     )
@@ -537,7 +706,7 @@ fn init_synced_repo() -> (TempDir, PathBuf) {
         &["remote", "add", "origin", remote.to_str().unwrap()],
     );
 
-    write_project_files(&work, CONFIG_WITH_GIT_CONTROLS);
+    write_project_files(&work, &project_config(true));
     run_git(&work, &["add", "-A"]);
     run_git(&work, &["commit", "-m", "initial project"]);
     run_git(&work, &["push", "-u", "origin", "main"]);

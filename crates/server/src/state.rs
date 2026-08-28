@@ -58,6 +58,14 @@ pub struct AppState {
     /// unambiguous: overflow on this channel can only mean missed
     /// timer pings.
     pub timer_events: broadcast::Sender<()>,
+    /// The git watcher's announcement board, same mechanics as
+    /// `timer_events`: a *named* SSE event so tabs refetch only the git
+    /// status when the repository moves (a commit, pull, or branch
+    /// switch made in a terminal touches only `.git/`, which the file
+    /// watcher deliberately ignores). Its own channel for the same
+    /// reasons as the timer's — its refresh scope is its own, and a
+    /// lagged receiver stays unambiguous.
+    pub git_events: broadcast::Sender<()>,
     /// Pinned evaluation date from `serve --as-of`, forwarded to every
     /// per-request `load_project` call. `None` (the default) means each
     /// request evaluates `$today` at its own current local date, so a
@@ -112,12 +120,14 @@ impl AppState {
     ) -> Self {
         let (events, _initial_receiver) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let (timer_events, _initial_receiver) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
+        let (git_events, _initial_receiver) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         Self {
             project_root,
             config,
             config_path,
             events,
             timer_events,
+            git_events,
             evaluation_date_override,
             timer: Arc::new(TimerService::system()),
             git_lock: Arc::new(tokio::sync::Mutex::new(())),

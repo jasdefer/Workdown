@@ -41,6 +41,13 @@
 		source.addEventListener('timer', () => {
 			void timerStore.reload();
 		});
+		// Repository movement (a commit, fetch, or branch switch — often
+		// made in a terminal, which touches only `.git` and therefore
+		// never fires the file-change ping) also travels named: it
+		// refreshes the git pill alone, not the page.
+		source.addEventListener('git', () => {
+			void gitStore.refresh();
+		});
 		void timerStore.load();
 		void gitStore.load();
 		return () => {

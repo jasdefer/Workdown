@@ -9,6 +9,7 @@ const ready = (overrides: Partial<Extract<GitStatus, { state: 'ready' }>> = {}):
 	ahead: 0,
 	behind: 0,
 	dirty_count: 0,
+	fetch_error: null,
 	...overrides
 });
 
@@ -35,10 +36,25 @@ describe('pillModel', () => {
 		expect(pillModel(ready({ dirty_count: 1 }), false).summary).toBe('1 local');
 	});
 
-	it('enables pull whenever there is an upstream and no operation runs', () => {
+	it('enables pull only with an upstream, a clean tree, and no operation running', () => {
 		expect(pillModel(ready(), false).canPull).toBe(true);
 		expect(pillModel(ready(), true).canPull).toBe(false);
 		expect(pillModel(ready({ has_upstream: false }), false).canPull).toBe(false);
+		// Pull never touches uncommitted work — the button goes off and
+		// the tooltip carries the way out.
+		const dirty = pillModel(ready({ dirty_count: 1 }), false);
+		expect(dirty.canPull).toBe(false);
+		expect(dirty.pullTitle).toBe(
+			'Commit your local changes first — pull never touches uncommitted work'
+		);
+		expect(pillModel(ready(), false).pullTitle).toBe('Pull the latest changes from the remote');
+	});
+
+	it('surfaces a failed remote contact as a retryable hint', () => {
+		expect(pillModel(ready(), false).remoteHint).toBe(null);
+		const unreachable = pillModel(ready({ fetch_error: 'could not resolve host' }), false);
+		expect(unreachable.visible).toBe(true);
+		expect(unreachable.remoteHint).toBe('could not resolve host');
 	});
 
 	it('enables push only with an upstream and commits to publish', () => {

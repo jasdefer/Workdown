@@ -48,6 +48,7 @@
 | [foundation-cleanup](../workdown-items/foundation-cleanup.md) | done | [foundation](../workdown-items/foundation.md) |  |
 | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) | done | [renderers](../workdown-items/renderers.md) | [render-gantt](../workdown-items/render-gantt.md), [duration-field-type](../workdown-items/duration-field-type.md) |
 | [gantt-predecessor-mode](../workdown-items/gantt-predecessor-mode.md) | done | [renderers](../workdown-items/renderers.md) | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) |
+| [git-sync-controls](../workdown-items/git-sync-controls.md) | in_progress | [server](../workdown-items/server.md) |  |
 | [github-render-action](../workdown-items/github-render-action.md) | removed | [polish](../workdown-items/polish.md) |  |
 | [graph-item-open](../workdown-items/graph-item-open.md) | done |  |  |
 | [init-install-hooks](../workdown-items/init-install-hooks.md) | done | [polish](../workdown-items/polish.md) |  |

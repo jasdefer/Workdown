@@ -106,7 +106,7 @@
 	<div class="timer" bind:this={container}>
 		<button
 			type="button"
-			class="pill"
+			class="header-pill pill"
 			aria-expanded={timerStore.panelOpen}
 			onclick={() => (timerStore.panelOpen = !timerStore.panelOpen)}
 		>
@@ -208,16 +208,9 @@
 		position: relative;
 	}
 
+	/* The chip itself comes from the shared `.header-pill` (base.css);
+	   only the timer's extra — the whole pill is a button — lives here. */
 	.pill {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.4rem;
-		font-size: var(--text-sm);
-		background: var(--color-card);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-full);
-		color: var(--color-fg);
-		padding: 0.25rem 0.7rem;
 		cursor: pointer;
 	}
 

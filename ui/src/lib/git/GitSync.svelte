@@ -2,10 +2,17 @@
   The git sync pill — the header's pull/push surface, shown only when
   the project opted in (`serve.git_controls: true`) and sits inside a
   git repository. Shows the branch and a glanceable summary
-  (`↓behind ↑ahead · N local`, or `in sync`), a Pull button, and a Push
-  button that is enabled only when local commits exist — uncommitted
-  edits never leave the machine from here; the tooltip and the dirty
-  hint say so.
+  (`↓behind ↑ahead · N local`, or `in sync`), a Pull button that is
+  enabled only while the tree is clean — pull never touches uncommitted
+  work — and a Push button that is enabled only when local commits
+  exist; the tooltips and the dirty hint say why either is off. When
+  the remote couldn't be reached, a hint appears whose click retries.
+
+  Staleness is the server's problem, not this component's: it watches
+  the repository's git directory and pings the git-named live-update
+  event on any movement (wired to a refresh in the root layout), so a
+  terminal-side commit shows up here without this window having to
+  regain focus.
 
   Display rules live in `gitPill.ts` (unit-tested); operations and
   state live in the git store.
@@ -15,34 +22,26 @@
 	import { pillModel } from './gitPill';
 
 	const model = $derived(pillModel(gitStore.status, gitStore.busy));
-
-	// A commit made in a terminal changes nothing the file watcher sees
-	// (only `.git/`), so no live-update ping arrives and the counts go
-	// stale. But to click Pull or Push the user must focus this window
-	// again — refresh at that moment, and the pill is current by the
-	// time the cursor reaches the button.
-	$effect(() => {
-		const refresh = () => {
-			void gitStore.refresh();
-		};
-		window.addEventListener('focus', refresh);
-		document.addEventListener('visibilitychange', refresh);
-		return () => {
-			window.removeEventListener('focus', refresh);
-			document.removeEventListener('visibilitychange', refresh);
-		};
-	});
 </script>
 
 {#if model.visible}
-	<div class="git-pill" title={model.dirtyHint ?? undefined}>
+	<div class="header-pill" title={model.dirtyHint ?? undefined}>
 		<span class="branch">{model.branch}</span>
 		<span class="summary">{model.summary}</span>
+		{#if model.remoteHint !== null}
+			<button
+				class="remote-hint"
+				title={`${model.remoteHint} — click to try again`}
+				onclick={() => void gitStore.retryRemote()}
+			>
+				remote unreachable ↻
+			</button>
+		{/if}
 		<button
 			class="action"
 			onclick={() => void gitStore.pull()}
 			disabled={!model.canPull}
-			title="Pull the latest changes from the remote"
+			title={model.pullTitle}
 		>
 			Pull
 		</button>
@@ -69,18 +68,6 @@
 {/if}
 
 <style>
-	.git-pill {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.4rem;
-		font-size: var(--text-sm);
-		background: var(--color-card);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-full);
-		color: var(--color-fg);
-		padding: 0.25rem 0.7rem;
-	}
-
 	.branch {
 		font-weight: 600;
 		max-width: 10rem;
@@ -92,6 +79,17 @@
 	.summary {
 		color: var(--color-fg-muted);
 		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	.remote-hint {
+		font: inherit;
+		font-size: var(--text-sm);
+		color: var(--color-warning-fg);
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
 		white-space: nowrap;
 	}
 

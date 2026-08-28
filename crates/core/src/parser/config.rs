@@ -258,7 +258,7 @@ serve:
 "#;
         let config = parse_config(yaml).unwrap();
         let serve = config.serve.unwrap();
-        assert_eq!(serve.git_controls, Some(true));
+        assert!(serve.git_controls);
         // `git_controls` alone leaves `port` on the CLI default.
         assert!(serve.port.is_none());
     }

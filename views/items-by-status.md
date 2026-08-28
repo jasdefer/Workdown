@@ -64,9 +64,10 @@ Bars showing item count by `status`.
 <line opacity="0.1" stroke="#000000" stroke-width="1" x1="751" y1="129" x2="751" y2="20"/>
 <line opacity="0.1" stroke="#000000" stroke-width="1" x1="761" y1="129" x2="761" y2="20"/>
 <line opacity="0.1" stroke="#000000" stroke-width="1" x1="771" y1="129" x2="771" y2="20"/>
-<line opacity="0.1" stroke="#000000" stroke-width="1" x1="170" y1="111" x2="779" y2="111"/>
-<line opacity="0.1" stroke="#000000" stroke-width="1" x1="170" y1="74" x2="779" y2="74"/>
-<line opacity="0.1" stroke="#000000" stroke-width="1" x1="170" y1="38" x2="779" y2="38"/>
+<line opacity="0.1" stroke="#000000" stroke-width="1" x1="170" y1="115" x2="779" y2="115"/>
+<line opacity="0.1" stroke="#000000" stroke-width="1" x1="170" y1="88" x2="779" y2="88"/>
+<line opacity="0.1" stroke="#000000" stroke-width="1" x1="170" y1="61" x2="779" y2="61"/>
+<line opacity="0.1" stroke="#000000" stroke-width="1" x1="170" y1="34" x2="779" y2="34"/>
 <text x="475" y="180" dy="-0.5ex" text-anchor="middle" font-family="sans-serif" font-size="9.67741935483871" opacity="1" fill="#000000">
 count
 </text>
@@ -76,21 +77,26 @@ count
 <line opacity="0.2" stroke="#000000" stroke-width="1" x1="499" y1="129" x2="499" y2="20"/>
 <line opacity="0.2" stroke="#000000" stroke-width="1" x1="600" y1="129" x2="600" y2="20"/>
 <line opacity="0.2" stroke="#000000" stroke-width="1" x1="700" y1="129" x2="700" y2="20"/>
-<line opacity="0.2" stroke="#000000" stroke-width="1" x1="170" y1="111" x2="779" y2="111"/>
-<line opacity="0.2" stroke="#000000" stroke-width="1" x1="170" y1="74" x2="779" y2="74"/>
-<line opacity="0.2" stroke="#000000" stroke-width="1" x1="170" y1="38" x2="779" y2="38"/>
+<line opacity="0.2" stroke="#000000" stroke-width="1" x1="170" y1="115" x2="779" y2="115"/>
+<line opacity="0.2" stroke="#000000" stroke-width="1" x1="170" y1="88" x2="779" y2="88"/>
+<line opacity="0.2" stroke="#000000" stroke-width="1" x1="170" y1="61" x2="779" y2="61"/>
+<line opacity="0.2" stroke="#000000" stroke-width="1" x1="170" y1="34" x2="779" y2="34"/>
 <polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="169,20 169,129 "/>
-<text x="160" y="111" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="9.67741935483871" opacity="1" fill="#000000">
+<text x="160" y="115" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="9.67741935483871" opacity="1" fill="#000000">
 done
 </text>
-<polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="164,111 169,111 "/>
-<text x="160" y="74" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="9.67741935483871" opacity="1" fill="#000000">
+<polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="164,115 169,115 "/>
+<text x="160" y="88" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="9.67741935483871" opacity="1" fill="#000000">
+in_progress
+</text>
+<polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="164,88 169,88 "/>
+<text x="160" y="61" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="9.67741935483871" opacity="1" fill="#000000">
 to_do
 </text>
-<polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="164,74 169,74 "/>
-<text x="160" y="38" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="9.67741935483871" opacity="1" fill="#000000">
+<polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="164,61 169,61 "/>
+<text x="160" y="34" dy="0.5ex" text-anchor="end" font-family="sans-serif" font-size="9.67741935483871" opacity="1" fill="#000000">
 </text>
-<polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="164,38 169,38 "/>
+<polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="164,34 169,34 "/>
 <polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="170,130 779,130 "/>
 <text x="197" y="140" dy="0.76em" text-anchor="middle" font-family="sans-serif" font-size="9.67741935483871" opacity="1" fill="#000000">
 0
@@ -116,8 +122,9 @@ to_do
 100
 </text>
 <polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="700,130 700,135 "/>
-<rect x="197" y="93" width="554" height="36" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="197" y="56" width="96" height="37" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="197" y="102" width="554" height="27" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="197" y="75" width="5" height="27" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="197" y="47" width="96" height="28" opacity="1" fill="#E69F00" stroke="none"/>
 </svg>
 
 ## Values
@@ -125,5 +132,6 @@ to_do
 | status | count |
 | --- | --- |
 | done | 110 |
+| in_progress | 1 |
 | to_do | 19 |
 

@@ -84,9 +84,11 @@ pub struct ServeConfig {
     /// Show git pull/push controls in the web UI. Off unless explicitly
     /// enabled: pull and push act on whatever git repository contains
     /// the project, which may be the user's whole code repo — nobody
-    /// should get network-touching buttons they didn't ask for.
+    /// should get network-touching buttons they didn't ask for. Plain
+    /// `bool`, not `Option`: absent and `false` mean the same thing,
+    /// unlike `port`, whose `None` defers to the CLI default.
     #[serde(default)]
-    pub git_controls: Option<bool>,
+    pub git_controls: bool,
 }
 
 /// Project-wide field roles: the project's answer to "which field
