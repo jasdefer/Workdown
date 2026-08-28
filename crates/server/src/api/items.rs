@@ -30,10 +30,9 @@ use workdown_core::mutation_data::{
 };
 use workdown_core::operations::add::{run_add, AddError};
 use workdown_core::operations::set::{run_set, SetError};
-use workdown_core::project::load_project;
 
 use crate::envelope::ApiResponse;
-use crate::state::AppState;
+use crate::state::{load_state_project, AppState};
 
 /// Router for the item endpoints under `/api`.
 pub fn router() -> Router<AppState> {
@@ -49,14 +48,9 @@ async fn get_item(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResponse<ItemDetail> {
-    let project = match load_project(
-        &state.config,
-        &state.project_root,
-        &state.config_path,
-        state.evaluation_date_override,
-    ) {
-        Err(error) => return ApiResponse::rejected(vec![error.to_diagnostic()]),
+    let project = match load_state_project(&state) {
         Ok(project) => project,
+        Err(response) => return response,
     };
 
     match project.store.get(&id) {

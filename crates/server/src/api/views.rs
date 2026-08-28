@@ -43,13 +43,13 @@ use workdown_core::operations::view_write::{
     create_view, delete_view, set_view_filter, update_view, ViewWriteError, ViewWriteOutcome,
 };
 use workdown_core::parser::views::load_views;
-use workdown_core::project::load_project;
+use workdown_core::project::Project;
 use workdown_core::query::clause::{clauses_to_strings, decompose_clauses, Clause};
 use workdown_core::view_data::{self, ViewData};
 use workdown_core::views_check;
 
 use crate::envelope::ApiResponse;
-use crate::state::AppState;
+use crate::state::{load_state_project, AppState};
 
 /// Router for `/views`, `/views/{id}`, `/views/{id}/filter`, and
 /// `/views/{id}/definition` under `/api`.
@@ -84,13 +84,8 @@ struct ViewQuery {
 }
 
 async fn list_views(State(state): State<AppState>) -> ApiResponse<Vec<ViewSummary>> {
-    match load_project(
-        &state.config,
-        &state.project_root,
-        &state.config_path,
-        state.evaluation_date_override,
-    ) {
-        Err(error) => ApiResponse::rejected(vec![error.to_diagnostic()]),
+    match load_state_project(&state) {
+        Err(response) => response,
         Ok(project) => {
             let summaries: Vec<ViewSummary> = project
                 .views
@@ -107,14 +102,9 @@ async fn get_view(
     Path(id): Path<String>,
     Query(query): Query<ViewQuery>,
 ) -> ApiResponse<ViewData> {
-    let project = match load_project(
-        &state.config,
-        &state.project_root,
-        &state.config_path,
-        state.evaluation_date_override,
-    ) {
-        Err(error) => return ApiResponse::rejected(vec![error.to_diagnostic()]),
+    let project = match load_state_project(&state) {
         Ok(project) => project,
+        Err(response) => return response,
     };
 
     let views = match project.views.as_ref() {
@@ -145,72 +135,23 @@ async fn get_view(
     };
 
     // Preview path: render with an ad-hoc, non-persisted filter supplied
-    // by the editor, instead of the view's saved `where:`. The diagnostics
-    // are recomputed as if the draft were saved: the whole views file is
-    // re-checked with this view's filter substituted, so stale findings
-    // about the persisted filter drop out while findings about other views
-    // stay (the "always show all" convention) — and nothing is written.
-    // From here both paths share the same tier logic.
-    let (render_view, diagnostics) = if let Some(filter_json) = query.filter.as_deref() {
-        let clauses: Vec<Clause> = match serde_json::from_str(filter_json) {
-            Ok(clauses) => clauses,
-            Err(error) => {
-                return ApiResponse::failed(
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    format!("invalid filter parameter: {error}"),
-                )
-            }
-        };
-        // An operand that doesn't match its operator's arity is a malformed
-        // request, not a filter that renders badly — same 422 treatment as
-        // unparseable JSON above, and the same reason the write path rejects it.
-        let where_clauses = match clauses_to_strings(&clauses) {
-            Ok(where_clauses) => where_clauses,
-            Err(error) => {
-                return ApiResponse::failed(
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    format!("invalid filter parameter: {error}"),
-                )
-            }
-        };
-        let effective = View {
-            where_clauses,
-            ..view.clone()
-        };
-        let views_path = state.project_root.join(&state.config.paths.views);
-        let candidate = Views {
-            output_dir: views.output_dir.clone(),
-            views: views
-                .views
-                .iter()
-                .map(|existing| {
-                    if existing.id == view.id {
-                        effective.clone()
-                    } else {
-                        existing.clone()
-                    }
-                })
-                .collect(),
-        };
-        // Every view-config diagnostic in `project.diagnostics` came from
-        // checking the *persisted* file; replace them all with the
-        // candidate's (which re-derives the other views' findings too).
-        let mut diagnostics: Vec<Diagnostic> = project
-            .diagnostics
-            .iter()
-            .filter(|diagnostic| diagnostic.view_id().is_none())
-            .cloned()
-            .collect();
-        diagnostics.extend(views_check::evaluate(
-            &candidate,
-            &project.schema,
-            &project.resources,
-            &project.store,
-            &views_path,
-        ));
-        (effective, diagnostics)
-    } else {
-        (view.clone(), project.diagnostics.clone())
+    // by the editor, instead of the view's saved `where:`. From here
+    // both paths share the same tier logic.
+    let (render_view, diagnostics) = match query.filter.as_deref() {
+        None => (view.clone(), project.diagnostics.clone()),
+        Some(filter_json) => {
+            let effective = match effective_view(view, filter_json) {
+                Ok(effective) => effective,
+                Err(error) => {
+                    return ApiResponse::failed(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        format!("invalid filter parameter: {error}"),
+                    )
+                }
+            };
+            let diagnostics = preview_diagnostics(&effective, views, &project, &state);
+            (effective, diagnostics)
+        }
     };
 
     // Tier 2: this specific view has a config *error* pinned to it (e.g.
@@ -245,6 +186,70 @@ async fn get_view(
         &project.calendar,
     );
     ApiResponse::ok_with(data, diagnostics)
+}
+
+/// The view to render, with the editor's draft `where:` in place of the
+/// saved one.
+///
+/// Two ways to fail — unparseable JSON, and an operand that doesn't
+/// match its operator's arity — reported as one message for the
+/// caller to wrap. Neither is a filter that renders badly; both are
+/// malformed requests, which is why the caller answers 422 and the
+/// write path rejects them the same way.
+fn effective_view(view: &View, filter_json: &str) -> Result<View, String> {
+    let clauses: Vec<Clause> =
+        serde_json::from_str(filter_json).map_err(|error| error.to_string())?;
+    let where_clauses = clauses_to_strings(&clauses).map_err(|error| error.to_string())?;
+    Ok(View {
+        where_clauses,
+        ..view.clone()
+    })
+}
+
+/// The diagnostics a filter preview should report: what the project
+/// would say if the draft filter were saved.
+///
+/// The whole views file is re-checked with this view's draft
+/// substituted in, so stale findings about the persisted filter drop
+/// out while findings about every other view stay (the "always show
+/// all" convention). Every view-config diagnostic the real load
+/// produced came from checking the *persisted* file, so all of them are
+/// dropped and replaced by the candidate's. Nothing is written.
+fn preview_diagnostics(
+    effective: &View,
+    views: &Views,
+    project: &Project,
+    state: &AppState,
+) -> Vec<Diagnostic> {
+    let candidate = Views {
+        output_dir: views.output_dir.clone(),
+        views: views
+            .views
+            .iter()
+            .map(|existing| {
+                if existing.id == effective.id {
+                    effective.clone()
+                } else {
+                    existing.clone()
+                }
+            })
+            .collect(),
+    };
+
+    let mut diagnostics: Vec<Diagnostic> = project
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.view_id().is_none())
+        .cloned()
+        .collect();
+    diagnostics.extend(views_check::evaluate(
+        &candidate,
+        &project.schema,
+        &project.resources,
+        &project.store,
+        &state.project_root.join(&state.config.paths.views),
+    ));
+    diagnostics
 }
 
 /// Load `views.yaml` alone and find one view by id — the authoring seed
