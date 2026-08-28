@@ -1,7 +1,6 @@
 ---
 title: Git sync controls in the web UI
 status: in_progress
-parent: server
 ---
 
 Pull/push surface for teams whose item repo is shared, put where the
