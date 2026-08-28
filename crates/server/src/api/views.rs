@@ -9,8 +9,9 @@
 //!
 //! - `Err(LoadError)` → 422 with the synthesized load diagnostic.
 //! - Project loaded, view id not in `views.yaml` → 404 with empty body.
-//! - Project loaded, the requested view has a `views_check` diagnostic
-//!   pinned to it → 200 with empty `data` and the full diagnostic list
+//! - Project loaded, the requested view has a `views_check` *error*
+//!   pinned to it (a warning pinned to a view rides along in tier 3
+//!   instead) → 200 with empty `data` and the full diagnostic list
 //!   (tier 2). The view can't render; the banner explains.
 //! - Project loaded, view is valid → 200 with `ViewData` and the full
 //!   project diagnostic list (tier 3). The UI groups primary/secondary.

@@ -18,8 +18,8 @@ use crate::parser::schema::SchemaLoadError;
 /// The outcome of a successful `workdown add`.
 pub struct AddOutcome {
     /// ID of the created work item (the slug, equal to the filename
-    /// without `.md`). Exposed so callers — notably the future server —
-    /// don't have to re-derive it from `path`.
+    /// without `.md`). Exposed so callers — notably the server — don't
+    /// have to re-derive it from `path`.
     pub id: WorkItemId,
     /// Path to the created file.
     pub path: PathBuf,

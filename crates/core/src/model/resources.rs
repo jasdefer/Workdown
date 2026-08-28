@@ -81,9 +81,10 @@ pub struct ResourceEntry {
 }
 
 impl ResourceEntry {
-    /// Display label: the `name` when present, otherwise the `id`. This is
-    /// the default labelling policy (`name ?? id`); a future display-config
-    /// feature may let a project pick a different attribute.
+    /// Display label: the `name` when present, otherwise the `id`. This
+    /// is the whole labelling policy (`name ?? id`) — the display-role
+    /// system configures how *items* are presented, not resource entries,
+    /// so there is nothing to override here today.
     pub fn label(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.id)
     }

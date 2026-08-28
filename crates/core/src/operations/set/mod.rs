@@ -65,7 +65,7 @@ pub enum SetOperation {
 
 /// Mutations available on collection-shaped fields (`list`, `links`,
 /// `multichoice`). Both modes accept one or more values; the caller
-/// (CLI or future server) builds a `Vec<Value>` from comma-separated
+/// (the CLI or the server) builds a `Vec<Value>` from comma-separated
 /// input or a JSON array.
 #[derive(Debug, Clone)]
 pub enum CollectionMode {
@@ -123,7 +123,7 @@ pub struct SetOutcome {
     /// absent too, and report `None` for it rather than a null the file
     /// never really said.
     pub previous_value: Option<serde_yaml::Value>,
-    /// The value written, if any. `None` for future `Unset`.
+    /// The value written, if any. `None` for an `Unset` operation.
     pub new_value: Option<serde_yaml::Value>,
     /// All non-blocking diagnostics from the post-write store reload
     /// plus rule evaluation. Includes any coercion warning produced by

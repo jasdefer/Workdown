@@ -1,8 +1,8 @@
 //! Shared output rendering for `workdown` field-mutation commands.
 //!
-//! Each mutation command (`set`, `unset`, and the future `--append`,
-//! `--remove`, `--delta` modes) picks the format that matches what the
-//! user asked for. Pre-existing diagnostics surfaced after the write
+//! Each mutation command (`set` in every mode — plain value,
+//! `--append`, `--remove`, `--delta`, `--toggle` — and `unset`) picks
+//! the format that matches what the user asked for. Pre-existing diagnostics surfaced after the write
 //! flow through the same per-mode entry point so the call sites stay
 //! uniform.
 

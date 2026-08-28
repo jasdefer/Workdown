@@ -64,9 +64,9 @@ fn build_ui(workspace_root: &Path) -> Result<()> {
     // Prettier + eslint — the same gate a developer runs locally, so CI
     // (which builds the bundle through here) enforces it too.
     run("npm run lint", &npm, &["run", "lint"], &ui_dir)?;
-    // Unit tests (vitest) — gates the bundle on the gantt scale math
-    // and format helpers so a regression fails the build, in CI and in
-    // local release builds alike.
+    // Unit tests (vitest) — gates the bundle on the UI's pure-module
+    // tests so a regression fails the build, in CI and in local release
+    // builds alike.
     run("npm run test", &npm, &["run", "test"], &ui_dir)?;
     run("npm run build", &npm, &["run", "build"], &ui_dir)?;
     // The static adapter empties ui/dist/ on build, deleting the

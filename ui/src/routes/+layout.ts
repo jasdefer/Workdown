@@ -1,7 +1,8 @@
 // Load the views index for every page. Used by:
 //   - `+page.ts` at `/` to pick the landing view (first in the list).
 //   - `+error.svelte` to render "did you mean…" alternatives on 404.
-//   - the diagnostic banner / future nav menu.
+//   - the view switcher (`ViewNav`) and the diagnostic banner in
+//     `+layout.svelte`.
 //
 // One round trip per navigation; SvelteKit caches `load()` per route
 // so navigating between views doesn't re-fetch.

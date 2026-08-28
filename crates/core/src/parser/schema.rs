@@ -144,8 +144,10 @@ fn rule_error(name: &str, message: impl Into<String>) -> SchemaValidationError {
 
 // ── Field validation ──────────────────────────────────────────────────
 
-/// Regex for valid field names: lowercase letters/digits/underscores,
-/// starting with a letter or underscore.
+/// Valid field name: lowercase letters, digits and underscores,
+/// starting with a letter or an underscore. Mirrors the
+/// `^[a-z_][a-z0-9_]*$` pattern `defaults/schema.schema.json` uses for
+/// the same rule — change both together.
 fn is_valid_field_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
@@ -155,7 +157,8 @@ fn is_valid_field_name(name: &str) -> bool {
     chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
-/// Regex for valid rule names: kebab-case, starting with a lowercase letter.
+/// Valid rule name: kebab-case, starting with a lowercase letter.
+/// Mirrors `^[a-z][a-z0-9-]*$` in `defaults/schema.schema.json`.
 fn is_valid_rule_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
@@ -165,7 +168,9 @@ fn is_valid_rule_name(name: &str) -> bool {
     chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-/// Regex for valid field references: `field_name` or `field_name.field_name`.
+/// Valid field reference: `field_name` or `field_name.field_name`.
+/// Mirrors `^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?$` in
+/// `defaults/schema.schema.json`.
 fn is_valid_field_reference(reference: &str) -> bool {
     let parts: Vec<&str> = reference.split('.').collect();
     match parts.len() {

@@ -186,7 +186,7 @@ Vite serves the UI at `http://localhost:5173` and proxies `/api/*` to the backen
 **Production build** (UI embedded in the binary):
 
 ```sh
-cargo xtask build      # npm ci + npm run check + npm run build + cargo build --release
+cargo xtask build      # gen-types + npm ci + check + lint + test + build, then cargo build --release
 ./target/release/workdown serve
 ```
 

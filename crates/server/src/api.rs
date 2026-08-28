@@ -7,8 +7,7 @@
 //! The flat-by-resource layout is deliberate: the view surface is one
 //! generic `/api/views/:id` endpoint serving every view kind, so
 //! feature-folder organization would either contain almost nothing or
-//! fight the schema-driven view system. See the issue body for the
-//! full rationale and planned resource files.
+//! fight the schema-driven view system.
 
 use axum::Router;
 

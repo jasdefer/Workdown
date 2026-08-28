@@ -1,8 +1,8 @@
 //! Shared helpers for reading and writing work item frontmatter.
 //!
 //! Built first for `workdown add`, reused by every command that mutates an
-//! item's frontmatter or body (`set`, `unset`, the future `body`,
-//! `rename`, etc.). The CLI layer is a thin caller of these.
+//! item's frontmatter or body (`set`, `unset`, `body`, `rename`, etc.).
+//! The CLI layer is a thin caller of these.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -84,18 +84,6 @@ fn temp_path_for(path: &Path) -> PathBuf {
 
 // ── String → typed value ──────────────────────────────────────────────
 
-/// Parse a user-supplied string into a `serde_yaml::Value` shaped for
-/// the given field type.
-///
-/// Infallible by design: when the string can't be parsed as the natural
-/// type (e.g. `"high"` for an integer field), the raw string is returned
-/// instead, and the downstream coercion pass flags the type mismatch.
-/// This mirrors what would happen if the user hand-edited the file with
-/// the same bad value.
-///
-/// List, links, and multichoice values are comma-split with whitespace
-/// trimmed — matching the comma-separated form already accepted by
-/// `workdown add`'s schema-derived flags.
 /// Parse a comma-separated string into a vector of `String` values
 /// (each trimmed of surrounding whitespace).
 ///
@@ -111,6 +99,18 @@ pub fn parse_collection_values(value_str: &str) -> Vec<serde_yaml::Value> {
         .collect()
 }
 
+/// Parse a user-supplied string into a `serde_yaml::Value` shaped for
+/// the given field type.
+///
+/// Infallible by design: when the string can't be parsed as the natural
+/// type (e.g. `"high"` for an integer field), the raw string is returned
+/// instead, and the downstream coercion pass flags the type mismatch.
+/// This mirrors what would happen if the user hand-edited the file with
+/// the same bad value.
+///
+/// List, links, and multichoice values are comma-split with whitespace
+/// trimmed by [`parse_collection_values`] — matching the comma-separated
+/// form already accepted by `workdown add`'s schema-derived flags.
 pub fn parse_value_for_field(value_str: &str, field_def: &FieldDefinition) -> serde_yaml::Value {
     use serde_yaml::Value;
 
@@ -133,11 +133,7 @@ pub fn parse_value_for_field(value_str: &str, field_def: &FieldDefinition) -> se
         FieldTypeConfig::List
         | FieldTypeConfig::Links { .. }
         | FieldTypeConfig::Multichoice { .. } => {
-            let elements: Vec<Value> = value_str
-                .split(',')
-                .map(|element| Value::String(element.trim().to_owned()))
-                .collect();
-            Value::Sequence(elements)
+            Value::Sequence(parse_collection_values(value_str))
         }
         // Valid colors are written in canonical form (`#ABC` → `#aabbcc`,
         // `RED` → `red`); invalid input falls through verbatim and the
