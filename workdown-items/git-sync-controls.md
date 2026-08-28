@@ -63,3 +63,8 @@ and reworked per the decisions below.
   flagged in the PR for design feedback before building.
 - An origin guard for the other mutating endpoints (items, timer) —
   worth doing across the board; this PR guards only its own surface.
+- Dogfooding: enable `serve.git_controls: true` in this repo's own
+  `.workdown/config.yaml` only after the next release ships and
+  binaries are updated — a 0.2.3 binary hard-fails on the unknown key
+  (same release-ordering rule as `defaults.effort_field`, still
+  pending for the same reason).
