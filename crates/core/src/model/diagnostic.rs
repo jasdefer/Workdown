@@ -249,9 +249,6 @@ pub struct ConfigDiagnostic {
     pub kind: ConfigDiagnosticKind,
 }
 
-/// Cross-file failures against a config file — `views.yaml` for the
-/// `View*` variants, `config.yaml` for the `Config*` variants.
-///
 /// Where in `views.yaml` a field-reference finding sits: which view,
 /// which metric row when the slot lives inside `metrics[i]`, and which
 /// slot within that.
@@ -313,6 +310,9 @@ impl std::fmt::Display for ViewLocation {
     }
 }
 
+/// Cross-file failures against a config file — `views.yaml` for the
+/// `View*` variants, `config.yaml` for the `Config*` variants.
+///
 /// The `View*` variants carry a `view_id` and pin the finding to one
 /// view, leaving the rest working; the `Config*` variants are
 /// project-wide and carry none — a bad default degrades every view to

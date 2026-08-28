@@ -1,6 +1,6 @@
 <!--
   Bar chart view. Bars are pre-aggregated server-side: each carries a
-  group key (categorical string) and an ChartValue (number, date,
+  group key (categorical string) and a ChartValue (number, date,
   or duration). The y-axis adapts to that variant — linear for number
   and duration, time scale for date. Tick labels run through the same
   shared formatter as the metric tiles so a duration axis reads as

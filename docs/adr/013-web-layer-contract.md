@@ -38,9 +38,10 @@ mutation saves, its warnings ride in `diagnostics`.
 
 ### Two shapes of 404
 
-A URL naming a view that does not exist answers `404` with no body; an
-operation on an unknown *item* answers `404` with an envelope carrying
-`error`. A wrong URL is not a project finding, and synthesizing a
+A URL naming a view or item that does not exist answers `404` with no
+body; a *mutation against* an unknown item answers `404` with an
+envelope carrying `error`. A wrong URL is not a project finding, and
+synthesizing a
 diagnostic for one would dilute a vocabulary that otherwise means
 "something needs attention in your project" — whereas a failed operation
 does have something to tell the caller who attempted it.

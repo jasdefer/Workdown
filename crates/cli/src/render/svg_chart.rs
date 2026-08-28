@@ -209,7 +209,7 @@ pub fn axis_kind_for(values: impl Iterator<Item = ChartValue>) -> AxisKind {
     }
 }
 
-/// Convert an [`ChartValue`] to the f64 plot-space coordinate that
+/// Convert a [`ChartValue`] to the f64 plot-space coordinate that
 /// matches `kind`. Mismatched variant + kind is a programming error
 /// (every caller derives `kind` from the same value stream) and panics.
 pub fn value_to_f64(value: ChartValue, kind: AxisKind) -> f64 {
@@ -223,7 +223,7 @@ pub fn value_to_f64(value: ChartValue, kind: AxisKind) -> f64 {
     }
 }
 
-/// Format an [`ChartValue`] for display in a Markdown table cell.
+/// Format a [`ChartValue`] for display in a Markdown table cell.
 ///
 /// Numbers go through [`format_number`] (drops trailing `.0`), dates
 /// render as ISO `YYYY-MM-DD`, durations as the canonical `Wd Xh Ym Zs`

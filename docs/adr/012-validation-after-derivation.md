@@ -19,7 +19,7 @@ What crosses the phase boundary is a record, not a judgment: coercion notes per 
 
 Supporting decisions:
 
-- "Which fill mechanisms exist" is one closed enumeration on the field definition (`FillMechanism`: aggregate, compute, pull, when), produced in exactly one place. Code that behaves differently per mechanism matches on it exhaustively, so a fifth mechanism is a compile error at every site not yet taught about it.
+- "Which fill mechanisms exist" is one closed enumeration on the field definition (`FillMechanism`: aggregate, compute, pull, when), produced in exactly one place. Code that behaves differently per mechanism matches on it exhaustively, so a fifth mechanism is a compile error at every match site not yet taught about it.
 - Required findings report item-first (ascending item id, schema declaration order within an item): users fix files, not schema fields. The check keeps the cause-naming messages — a computed field's absent inputs, a pull's incomplete targets, a conditional field's unmatched branches — and stays silent where the pull pass already reported the same inputs.
 - The load pipeline is written as named phase functions with the ordering contract stated once in the store module docs. No stage framework: the phases are few, fixed, and heterogeneous; the safety comes from the enumeration, not from scaffolding.
 

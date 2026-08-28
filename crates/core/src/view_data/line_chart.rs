@@ -61,7 +61,9 @@ pub struct LineSeries {
     /// value for the group field, or the single series of an ungrouped
     /// chart. Renderers turn it into a label; the extractor never does.
     pub group: Option<String>,
-    /// Points in x-ascending order, ties broken by id.
+    /// Points in x-ascending order, ties broken by id. Never empty: a
+    /// series exists only because at least one point landed in it, and
+    /// renderers rely on that.
     pub points: Vec<LinePoint>,
 }
 

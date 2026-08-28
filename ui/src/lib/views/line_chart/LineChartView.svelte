@@ -1,6 +1,6 @@
 <!--
   Line chart view. The extractor ships points already partitioned into
-  series and ordered: each point carries an item id, an ChartValue x and
+  series and ordered: each point carries an item id, a ChartValue x and
   a SizeValue y, and each series carries the group value its points
   share (null for the synthetic no-value series). The wire also ships an
   `items` sidecar resolving each point's id to its title (via the view's

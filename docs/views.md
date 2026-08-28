@@ -46,7 +46,7 @@ Slot semantics:
 - **`field`** — a single schema field name. Type per view: `choice`/`multichoice`/`string` for board, `link` for tree, `links` for graph.
 - **`start` / `end`** — `date` fields. **`duration`** — `duration` field; mutually exclusive with `end`. **`after`** — `link`/`links` field naming each item's predecessors (predecessor mode); requires `duration`, forbids `end`. Predecessor fields must have `allow_cycles: false` and not be inverse names.
 - **`group_by`** — categorical field for bar chart grouping; `link` field for graph subgraph nesting. **`group`** — field for in-chart sectioning (gantt only). **`root_link`** — single `link` field whose chain identifies each item's top-level ancestor (`gantt_by_initiative`). **`depth_link`** — single `link` field whose chain depth places each item in a level (`gantt_by_depth`). Both must have `allow_cycles: false` and not be inverse names.
-- **`value`** — numeric field to aggregate. Must be omitted when `aggregate: count`; setting both is an error.
+- **`value`** — the field to aggregate: integer, float, or duration, plus date for `min`/`max`/`avg`. Must be omitted when `aggregate: count`; setting both is an error.
 - **`aggregate`** — one of `count`, `sum`, `avg`, `min`, `max`.
 - **`x` / `y`** — field names for axis values (numeric or date for line chart; categorical or date for heatmap).
 - **`bucket`** — date bucketing for a heatmap axis bound to a date field: `day`, `week`, or `month`.

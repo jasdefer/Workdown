@@ -55,8 +55,12 @@ const GROUPABLE: &[FieldType] = &[
     FieldType::Links,
 ];
 
-/// The types a board groups by: `GROUPABLE` minus the relation and list
-/// types, whose multi-valued nature would put one item in several columns.
+/// The types a board groups by: `GROUPABLE` minus the relation types,
+/// whose columns would be named by item ids — grouping by a relation is
+/// the tree and graph views' job — and minus `list`, whose freeform
+/// values give every item columns of its own. Multi-valued as such is
+/// fine: `multichoice` stays, and an item holding two of its values
+/// appears in both columns.
 const BOARD_GROUPABLE: &[FieldType] =
     &[FieldType::Choice, FieldType::Multichoice, FieldType::String];
 
