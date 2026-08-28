@@ -7,16 +7,17 @@ use std::path::Path;
 
 use indexmap::IndexMap;
 
+use crate::coerce::{coerce_value, yaml_type_name};
 use crate::expression::parse_expression;
 use crate::model::message::one_of;
 use crate::model::schema::{
     allowed_aggregate_functions, field_property_allowed, is_defined_inverse, is_relation_anchor,
-    Assertion, ComputeConfig, Condition, ConditionValue, CountConstraint, DefaultValue,
-    FieldDefinition, FieldProperty, FieldType, FieldTypeConfig, Generator, NegationValue,
-    RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema, WhenBranch, WhenConfig,
+    Assertion, CompiledPattern, ComputeConfig, Condition, ConditionValue, CountConstraint,
+    DefaultValue, FieldDefinition, FieldProperty, FieldType, FieldTypeConfig, Generator,
+    NegationValue, RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema, WhenBranch,
+    WhenConfig,
 };
 use crate::model::views::COLOR_NONE_SENTINEL;
-use crate::coerce::{coerce_value, yaml_type_name};
 
 // ── Public API ────────────────────────────────────────────────────────
 
@@ -701,8 +702,21 @@ fn validate_type_specific_properties(
                 }
             }
         }
-        FieldType::String
-        | FieldType::Date
+        FieldType::String => {
+            // A pattern that will not compile is a schema defect, so it
+            // is caught here — once, naming the field — rather than
+            // surfacing later as a coercion failure on every item that
+            // uses the field.
+            if let Some(pattern) = &field.pattern {
+                if let Err(error) = CompiledPattern::new(pattern.clone()) {
+                    errors.push(field_error(
+                        name,
+                        format!("'pattern' is not a valid regex: {error}"),
+                    ));
+                }
+            }
+        }
+        FieldType::Date
         | FieldType::Color
         | FieldType::Boolean
         | FieldType::List
@@ -804,7 +818,11 @@ fn parse_duration_bound_opt(value: &Option<serde_yaml::Value>) -> Option<i64> {
 fn convert_field(raw: RawFieldDefinition) -> FieldDefinition {
     let type_config = match raw.field_type {
         FieldType::String => FieldTypeConfig::String {
-            pattern: raw.pattern,
+            // Validation already reported an uncompilable pattern and
+            // will abort the load, so dropping it here is unobservable.
+            pattern: raw
+                .pattern
+                .and_then(|source| CompiledPattern::new(source).ok()),
         },
         FieldType::Choice => FieldTypeConfig::Choice {
             values: raw.values.unwrap_or_default(),
@@ -1718,6 +1736,49 @@ fields:
                 .contains("'pattern' is not valid for type 'duration'")),
             "expected pattern-rejection error, got: {errors:?}"
         );
+    }
+
+    #[test]
+    fn uncompilable_pattern_rejected_once_against_the_schema() {
+        let yaml = "\
+fields:
+  code:
+    type: string
+    pattern: \"[unclosed\"
+";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        let matching: Vec<_> = errors
+            .iter()
+            .filter(|e| e.message.contains("'pattern' is not a valid regex"))
+            .collect();
+        assert_eq!(
+            matching.len(),
+            1,
+            "expected exactly one pattern error, got: {errors:?}"
+        );
+        assert_eq!(matching[0].context, "field 'code'");
+    }
+
+    #[test]
+    fn valid_pattern_survives_conversion() {
+        let yaml = "\
+fields:
+  code:
+    type: string
+    pattern: \"^[A-Z]{3}$\"
+";
+        let schema = parse_schema(yaml).unwrap();
+        let FieldTypeConfig::String { pattern } = &schema.fields["code"].type_config else {
+            panic!("expected a string field");
+        };
+        let pattern = pattern.as_ref().expect("pattern kept");
+        assert_eq!(pattern.source(), "^[A-Z]{3}$");
+        assert!(pattern.is_match("ABC"));
+        assert!(!pattern.is_match("abc"));
     }
 
     #[test]

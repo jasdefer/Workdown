@@ -15,10 +15,11 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::NaiveDate;
-use regex::Regex;
 
 use crate::model::diagnostic::{Diagnostic, FieldValueError, ItemDiagnosticKind, RangeBound};
-use crate::model::schema::{FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity};
+use crate::model::schema::{
+    CompiledPattern, FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity,
+};
 use crate::model::{FieldValue, WorkItemId};
 use crate::parser::RawWorkItem;
 
@@ -119,7 +120,7 @@ pub(crate) fn coerce_value(
     def: &FieldDefinition,
 ) -> Result<FieldValue, FieldValueError> {
     match &def.type_config {
-        FieldTypeConfig::String { pattern } => coerce_string(value, pattern.as_deref()),
+        FieldTypeConfig::String { pattern } => coerce_string(value, pattern.as_ref()),
         FieldTypeConfig::Choice { values } => coerce_choice(value, values),
         FieldTypeConfig::Multichoice { values } => coerce_multichoice(value, values),
         FieldTypeConfig::Integer { min, max } => coerce_integer(value, *min, *max),
@@ -138,7 +139,7 @@ pub(crate) fn coerce_value(
 
 fn coerce_string(
     value: &serde_yaml::Value,
-    pattern: Option<&str>,
+    pattern: Option<&CompiledPattern>,
 ) -> Result<FieldValue, FieldValueError> {
     let s = value
         .as_str()
@@ -148,14 +149,10 @@ fn coerce_string(
         })?;
 
     if let Some(pattern) = pattern {
-        let re = Regex::new(pattern).map_err(|e| FieldValueError::InvalidPattern {
-            pattern: pattern.to_owned(),
-            error: e.to_string(),
-        })?;
-        if !re.is_match(s) {
+        if !pattern.is_match(s) {
             return Err(FieldValueError::PatternMismatch {
                 value: s.to_owned(),
-                pattern: pattern.to_owned(),
+                pattern: pattern.source().to_owned(),
             });
         }
     }
@@ -554,7 +551,7 @@ mod tests {
     #[test]
     fn coerce_string_with_pattern() {
         let def = FieldDefinition::new(FieldTypeConfig::String {
-            pattern: Some(r"^[A-Z]{3}-\d+$".to_owned()),
+            pattern: Some(CompiledPattern::new(r"^[A-Z]{3}-\d+$").unwrap()),
         });
         let s = schema(vec![("code", def)]);
 

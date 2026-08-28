@@ -156,7 +156,7 @@ impl FieldSchema {
             _ => (None, None),
         };
         let pattern = match &definition.type_config {
-            FieldTypeConfig::String { pattern } => pattern.clone(),
+            FieldTypeConfig::String { pattern } => pattern.as_ref().map(|p| p.source().to_owned()),
             _ => None,
         };
 

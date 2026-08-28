@@ -236,6 +236,41 @@ impl FieldDefinition {
     }
 }
 
+/// A `pattern:` constraint that has already been compiled.
+///
+/// Compiling belongs to schema parsing, not to coercion: an
+/// uncompilable pattern is a defect in `schema.yaml`, so it is reported
+/// once against the schema rather than once per item that happens to
+/// use the field. Holding the compiled form here also means the regex
+/// is built once per load instead of once per value.
+///
+/// The source text is kept for diagnostics and for reporting the schema
+/// back out (the web UI's field descriptions).
+#[derive(Debug, Clone)]
+pub struct CompiledPattern {
+    source: String,
+    regex: regex::Regex,
+}
+
+impl CompiledPattern {
+    /// Compile `source`, or report why it is not a valid regex.
+    pub fn new(source: impl Into<String>) -> Result<Self, regex::Error> {
+        let source = source.into();
+        let regex = regex::Regex::new(&source)?;
+        Ok(Self { source, regex })
+    }
+
+    /// The pattern as written in `schema.yaml`.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    /// True if `value` satisfies the pattern.
+    pub fn is_match(&self, value: &str) -> bool {
+        self.regex.is_match(value)
+    }
+}
+
 /// Per-type configuration for a field definition.
 ///
 /// Each variant carries only the fields that are valid for that type,
@@ -243,7 +278,7 @@ impl FieldDefinition {
 #[derive(Debug, Clone)]
 pub enum FieldTypeConfig {
     String {
-        pattern: Option<String>,
+        pattern: Option<CompiledPattern>,
     },
     Choice {
         values: Vec<String>,

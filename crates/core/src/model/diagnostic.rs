@@ -634,9 +634,6 @@ pub enum FieldValueError {
 
     /// String doesn't match the required regex pattern.
     PatternMismatch { value: String, pattern: String },
-
-    /// The regex pattern itself is invalid.
-    InvalidPattern { pattern: String, error: String },
 }
 
 // ── Constructors ─────────────────────────────────────────────────────
@@ -1211,9 +1208,6 @@ impl std::fmt::Display for FieldValueError {
             }
             Self::PatternMismatch { value, pattern } => {
                 write!(f, "'{value}' does not match pattern '{pattern}'")
-            }
-            Self::InvalidPattern { pattern, error } => {
-                write!(f, "invalid regex pattern '{pattern}': {error}")
             }
         }
     }
