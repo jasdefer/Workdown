@@ -1,6 +1,6 @@
 ---
 id: view-kind-sync-guards
-status: to_do
+status: done
 title: Make the non-Rust schema mirrors fail loudly when they drift
 parent: maintenance-review-2026-08
 depends_on:
@@ -136,3 +136,106 @@ Depends on [[render-flow-doc]] because that item writes the
 adding-a-view-kind checklist this one makes enforceable; writing the
 checklist twice, or guarding a list nobody has written down, is the
 failure mode.
+
+## Decisions taken
+
+1. **Rust enumerates its own variants via `strum`** (`VariantArray` derive),
+   not a hand-written `ALL` const. A hand list would make the guard itself
+   the next mirror — self-defeating for an item whose whole point is "no
+   fact written twice". The derive generates the list from the enum
+   definition, so a new variant reaches every guard automatically. Applied
+   to `ViewType`, `FieldType`, and the existing hand-written
+   `FieldProperty::ALL`, which it replaces.
+2. **The picker list (`VIEW_KINDS`) is guarded at compile time**, by a
+   TypeScript assertion that the array covers every member of the generated
+   `ViewType` union — not by a runtime test. It costs three lines, runs in
+   the existing `npm run check` gate, and reports a missing kind by name.
+   The `toHaveLength(13)` assertion it replaces is deleted.
+3. **The accepted-type lists are generated from Rust**, not served at
+   runtime and not left unguarded. The slot type lists move out of
+   `views_check`'s check calls into a Rust table; `gen_types` emits the
+   TypeScript from it. Chosen over a backend endpoint (the table is static
+   and project-independent — a build artifact beats a round-trip) and over
+   guarding kind coverage only (leaves the drift the item is about).
+
+   This is adjacent to the "no registry architecture" exclusion below and
+   was okayed explicitly: the per-kind exhaustive matches stay exactly where
+   they are, and the table is data those matches read — not a dispatch
+   mechanism.
+4. **`views.schema.json`**: one all-kinds fixture, with the display-block
+   variant derived from it programmatically rather than written a second
+   time; plus one assertion that the schema's accepted `type` values equal
+   the enum.
+5. **`schema.schema.json`'s property matrix is guarded by behavioral
+   probing**, not by parsing its `if`/`then` blocks: for each field type ×
+   property pair, build a minimal field definition and assert the JSON
+   schema accepts it exactly when Rust does. The probe is indifferent to how
+   the schema expresses the rule. `field_property_allowed` becomes public —
+   it is a genuine fact about the model, not an implementation detail.
+
+   Scope stays at the eight type-restricted properties. `compute:` / `pull:`
+   are excluded: reading the two sides side by side turned up a *behavioral*
+   disagreement (the JSON schema forbids `compute:` on `string`, `choice`
+   and `color`; `compute_check::expression_type_of` accepts all three), and
+   settling which side is right is a real rule change that should not ride
+   along in a test-only item. Filed separately.
+6. **`docs/views.md` gets the drift test**, though the item called it
+   optional — its kind table is machine-readable and the test is ~15 lines.
+7. **Checklist row 12 is in scope** — `ViewRenderer.svelte`'s if/else chain
+   becomes a kind → component map, so TypeScript enforces it for the same
+   cost as decision 2. **Row 14** (the recording dot, reimplemented in six
+   components) is **out**: it is duplication rather than a mirror, and the
+   extraction has design questions of its own. Filed separately.
+
+## What landed
+
+Every row of the adding-a-view-kind checklist in `docs/architecture.md`
+now has an enforcement mechanism except the recording dot, which moved to
+[[recording-dot-extraction]]. Four things came out differently than the
+decisions above anticipated, and one mirror turned out to be a fifth:
+
+- **Row 12's guard is an exhaustiveness assertion, not a component map.**
+  A `Record<ViewType, Component>` fights the per-variant prop types (each
+  view component takes its own `ViewData` variant), so `ViewRenderer`
+  keeps its `if`/`else` chain and its final `{:else}` branch passes `data`
+  to `unrenderedKind(data: never)`. Same guarantee — a missing branch
+  fails `npm run check` and the error names the kind — without weakening
+  any component's props. The runtime placeholder survives for the
+  stale-bundle case.
+- **The picker list is gone rather than guarded.** `VIEW_KINDS` was one of
+  *two* hand-kept kind lists in `viewKinds.ts`; the other was
+  `KIND_LABELS`, already exhaustive by its `Record<ViewType, string>`
+  type. The picker list is now derived from that record's keys, so there
+  is no second list to guard. The compile-time assertion decision 2 called
+  for was written and then deleted as redundant.
+- **`config_check` was a third copy of the slot type lists**, with a
+  comment saying so ("Each rule mirrors the matching slot in
+  `views_check` exactly"). It reads `view_slots` now, which is why the new
+  module has three consumers rather than two.
+- **`docs/views.md` carried a second, shorter adding-a-view-kind
+  checklist** that had already drifted (no UI rows, no docs row). Replaced
+  with a pointer to the one in `docs/architecture.md`.
+- **The property-matrix probe found six real disagreements**: the shipped
+  `schema.schema.json` accepted `pattern:` and `allow_cycles:` on `date`,
+  `boolean` and `list` fields, all six of which the CLI rejects. Fixed by
+  restructuring that file's matrix into one block per field type, mirroring
+  the shape of the Rust table — the overlapping type-list blocks are how
+  the six went missing.
+
+Two smaller things the work needed:
+
+- `check_slot`'s `expected_label` parameter is gone. Every mismatch message
+  is now worded from the slot's type list by `view_slots::describe`, so the
+  prose and the list cannot disagree; `check_link_slot`'s arity parameter
+  went the same way, since a link slot's accepted types say what its arity
+  is.
+- The three editor-schema guards (`schema_schema`, `resources_schema`,
+  `views_schema`) each carried the same four helpers. They share
+  `tests/json_schema/mod.rs` now — the "write the helper once" this item
+  was bundled for, though it turned out to be the compile-and-assert
+  harness rather than a compare-against-the-enum helper: the views side is
+  a structural read of `oneOf` branches, the schema side a behavioral
+  probe, and they have no shared shape.
+- `vitest.config.ts` needed the `$lib` alias. Type-only imports are erased
+  before Vitest sees them, so the generated table was the first *value*
+  imported from `$lib` by a module under test.

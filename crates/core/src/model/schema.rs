@@ -414,7 +414,13 @@ pub(crate) struct RawFieldDefinition {
 }
 
 /// The 12 built-in field types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
+///
+/// `VariantArray` supplies `FieldType::VARIANTS`, the list the JSON
+/// schema drift guards compare against. Derived rather than written out
+/// so a new type reaches every guard without being added anywhere.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS, strum::VariantArray,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum FieldType {
     String,
@@ -645,8 +651,11 @@ pub(crate) fn aggregate_result_type(
 /// type. Type-agnostic properties (`description`, `required`,
 /// `default`) and the ones policed by their own checks (`compute`,
 /// `pull`, `when`) are deliberately absent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FieldProperty {
+///
+/// `VariantArray` supplies `FieldProperty::VARIANTS`; declaration order
+/// here is the order violations are reported in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::VariantArray)]
+pub enum FieldProperty {
     Values,
     Pattern,
     Min,
@@ -655,21 +664,6 @@ pub(crate) enum FieldProperty {
     Resource,
     Aggregate,
     Inverse,
-}
-
-impl FieldProperty {
-    /// Every type-restricted property, in the order violations are
-    /// reported.
-    pub(crate) const ALL: [FieldProperty; 8] = [
-        Self::Values,
-        Self::Pattern,
-        Self::Min,
-        Self::Max,
-        Self::AllowCycles,
-        Self::Resource,
-        Self::Aggregate,
-        Self::Inverse,
-    ];
 }
 
 impl std::fmt::Display for FieldProperty {
@@ -715,7 +709,12 @@ fn allowed_field_properties(field_type: FieldType) -> &'static [FieldProperty] {
 }
 
 /// Whether `property` may be set on a field of `field_type`.
-pub(crate) fn field_property_allowed(field_type: FieldType, property: FieldProperty) -> bool {
+///
+/// Public because it is the answer `crates/core/defaults/schema.schema.json`
+/// mirrors for editor autocomplete, and `tests/schema_schema.rs` probes the
+/// two against each other — the matrix is a fact about the model, not an
+/// implementation detail of the schema parser.
+pub fn field_property_allowed(field_type: FieldType, property: FieldProperty) -> bool {
     match property {
         // Single source of truth: a type accepts `aggregate:` exactly
         // when it has aggregate functions defined.
@@ -723,6 +722,7 @@ pub(crate) fn field_property_allowed(field_type: FieldType, property: FieldPrope
         other => allowed_field_properties(field_type).contains(&other),
     }
 }
+
 // ── Pull config ───────────────────────────────────────────────────────
 
 /// Configuration of a pull field (`pull:` in `schema.yaml`): read
@@ -846,4 +846,27 @@ pub(crate) fn is_relation_anchor(name: &str, fields: &IndexMap<String, FieldDefi
 /// True iff `name` is declared as an inverse on any link/links field.
 pub(crate) fn is_defined_inverse(name: &str, fields: &IndexMap<String, FieldDefinition>) -> bool {
     fields.values().any(|f| f.inverse() == Some(name))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use strum::VariantArray;
+
+    #[test]
+    fn field_type_display_matches_its_serde_name() {
+        // `#[serde(rename_all)]` reads `schema.yaml`, the `Display` impl
+        // names the type in diagnostics, and the drift guard for
+        // `schema.schema.json` reads the names through `Display`. Three
+        // consumers, one pair of hand-written lists to keep aligned.
+        for &field_type in FieldType::VARIANTS {
+            let written = field_type.to_string();
+            let parsed = serde_json::to_value(field_type).expect("a field type serializes");
+            assert_eq!(
+                parsed.as_str(),
+                Some(written.as_str()),
+                "FieldType::{field_type:?} serializes as {parsed} but displays as `{written}`"
+            );
+        }
+    }
 }

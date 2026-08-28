@@ -13,6 +13,7 @@ pub mod resources;
 pub mod rule;
 pub mod schema;
 pub mod template;
+pub mod view_slots;
 pub mod views;
 pub mod weekday;
 pub mod work_item;

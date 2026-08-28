@@ -18,6 +18,7 @@ use crate::model::schema::{
     WhenConfig,
 };
 use crate::model::views::COLOR_NONE_SENTINEL;
+use strum::VariantArray;
 
 // ── Public API ────────────────────────────────────────────────────────
 
@@ -662,7 +663,7 @@ fn validate_type_specific_properties(
     field: &RawFieldDefinition,
     errors: &mut Vec<SchemaValidationError>,
 ) {
-    for property in FieldProperty::ALL {
+    for &property in FieldProperty::VARIANTS {
         if property_is_set(field, property) && !field_property_allowed(field.field_type, property) {
             errors.push(field_error(
                 name,

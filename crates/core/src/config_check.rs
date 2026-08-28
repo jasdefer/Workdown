@@ -43,6 +43,7 @@ use crate::display_check::{check_display_roles, RoleViolation};
 use crate::model::config::{Config, ViewDefaults};
 use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic};
 use crate::model::schema::{FieldType, Schema, Severity};
+use crate::model::view_slots;
 
 /// Run all cross-file checks on `config.yaml` against a schema.
 ///
@@ -96,10 +97,11 @@ struct FieldRoleReference<'a> {
     slot: &'static str,
     /// The field name the project wrote there.
     field_name: &'a str,
-    /// Types that can play this role.
+    /// Types that can play this role. Taken from the matching slot in
+    /// `model::view_slots` wherever the role stands in for a view slot,
+    /// so the two cannot come apart; the mismatch message is worded from
+    /// this list rather than written beside it.
     allowed: &'static [FieldType],
-    /// Human-readable form of `allowed`, for the mismatch message.
-    expected_label: &'static str,
     /// Whether an inverse relation name (declared via `inverse:` on a
     /// link field) may stand in for a field of its own.
     inverse_names_allowed: bool,
@@ -107,11 +109,12 @@ struct FieldRoleReference<'a> {
 
 /// Pair every field-role key in `config.yaml` with its rule.
 ///
-/// Each rule mirrors the matching slot in `views_check` exactly, so a
-/// field the tool already accepts for a board, a tree or a graph is
-/// never reported here — deliberately not stricter: `workdown move`
-/// type-checks nothing at all today, so a `string` board field works
-/// and must not be flagged as if it were broken.
+/// Each rule reads the matching slot's accepted types from
+/// [`crate::model::view_slots`], so a field the tool already accepts for
+/// a board, a tree or a graph is never reported here — deliberately not
+/// stricter: `workdown move` type-checks nothing at all today, so a
+/// `string` board field works and must not be flagged as if it were
+/// broken.
 ///
 /// The defaults are destructured so a field role added to
 /// [`ViewDefaults`] fails to compile here rather than silently going
@@ -129,15 +132,13 @@ fn field_roles(defaults: &ViewDefaults) -> Vec<FieldRoleReference<'_>> {
         FieldRoleReference {
             slot: "defaults.board_field",
             field_name: board_field,
-            allowed: &[FieldType::Choice, FieldType::Multichoice, FieldType::String],
-            expected_label: "choice, multichoice, or string",
+            allowed: view_slots::BOARD_FIELD.accepts,
             inverse_names_allowed: false,
         },
         FieldRoleReference {
             slot: "defaults.tree_field",
             field_name: tree_field,
-            allowed: &[FieldType::Link],
-            expected_label: "link",
+            allowed: view_slots::TREE_FIELD.accepts,
             inverse_names_allowed: false,
         },
         FieldRoleReference {
@@ -146,8 +147,7 @@ fn field_roles(defaults: &ViewDefaults) -> Vec<FieldRoleReference<'_>> {
             // Inverse names resolve to their original field at
             // extraction time, exactly as the graph view's own slot
             // accepts them.
-            allowed: &[FieldType::Link, FieldType::Links],
-            expected_label: "link or links",
+            allowed: view_slots::GRAPH_FIELD.accepts,
             inverse_names_allowed: true,
         },
     ];
@@ -162,8 +162,9 @@ fn field_roles(defaults: &ViewDefaults) -> Vec<FieldRoleReference<'_>> {
         roles.push(FieldRoleReference {
             slot: "defaults.effort_field",
             field_name: effort_field,
+            // No view slot to borrow from: the timer writes a duration,
+            // and this role exists only in config.yaml.
             allowed: &[FieldType::Duration],
-            expected_label: "duration",
             inverse_names_allowed: false,
         });
     }
@@ -199,7 +200,7 @@ fn check_field_role(
                 slot: role.slot,
                 field_name: role.field_name.to_owned(),
                 actual_type,
-                expected: role.expected_label.to_owned(),
+                expected: view_slots::describe(role.allowed),
             }));
         }
         return;

@@ -23,6 +23,17 @@ its source — internal refactors are deliberately absent.
 
 ### Fixed
 
+- Editor autocomplete for `schema.yaml` no longer accepts properties the CLI
+  rejects: `pattern:` and `allow_cycles:` on a `date`, `boolean` or `list`
+  field passed the shipped JSON schema but failed validation. Editors now
+  flag them where they are written.
+
+- The web UI's view create form offers the fields a slot actually accepts.
+  Two slots were narrower than the rule the CLI enforces — a `min`/`max`
+  aggregate's `value:` takes a date field, and the field pickers now say so —
+  and the form's type lists are generated from the same table the validator
+  reads, so they cannot drift again.
+
 - A required field whose written value is invalid gets exactly one error —
   about the value. Previously, a derivable required field with an invalid
   value could earn a second, false, "missing" complaint on top, or have the

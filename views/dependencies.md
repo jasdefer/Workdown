@@ -4,10 +4,10 @@ Directed graph of items connected through `depends_on`, nested by `parent`.
 
 ```mermaid
 flowchart TD
+    compute-type-support-mismatch["Decide which field types may declare compute and pull"]
     config-hot-reload["Read config.yaml per request so it hot-reloads like everything else"]
     subgraph maintenance-review-2026-08 ["Maintenance pass: findings from the 2026-08 codebase review"]
         stateful-test-gaps["Test the two stateful areas that currently have no coverage"]
-        view-kind-sync-guards["Make the non-Rust schema mirrors fail loudly when they drift"]
     end
     subgraph misc-work ["Miscellaneous improvements"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
@@ -20,6 +20,7 @@ flowchart TD
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]
     end
     project-load-cache["Cache the project load in the server (when it starts to hurt)"]
+    recording-dot-extraction["Extract the recording indicator the six item-presenting views each rebuilt"]
     subgraph schema-expressions ["Derived field expressions"]
         expression-comparison-corner-cases["Integer precision and NaN in comparison evaluation"]
         expression-logical-combinators["`and` / `or` / `not` in the expression grammar"]

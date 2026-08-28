@@ -19,6 +19,7 @@
 | [code-quality](../workdown-items/code-quality.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) |  |
 | [color-display-slot](../workdown-items/color-display-slot.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [color-field-type](../workdown-items/color-field-type.md), [view-display-config](../workdown-items/view-display-config.md) |
 | [color-field-type](../workdown-items/color-field-type.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [mutations-slice](../workdown-items/mutations-slice.md) |
+| [compute-type-support-mismatch](../workdown-items/compute-type-support-mismatch.md) | to_do |  |  |
 | [computed-fields](../workdown-items/computed-fields.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [project-constants](../workdown-items/project-constants.md) |
 | [conditional-field-value](../workdown-items/conditional-field-value.md) | done | [polish](../workdown-items/polish.md) | [expression-predicates](../workdown-items/expression-predicates.md), [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
 | [config-field-role-validation](../workdown-items/config-field-role-validation.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
@@ -67,6 +68,7 @@
 | [pull-fields](../workdown-items/pull-fields.md) | done | [schema-expressions](../workdown-items/schema-expressions.md) | [computed-fields](../workdown-items/computed-fields.md), [aggregate-rollup](../workdown-items/aggregate-rollup.md) |
 | [query-value-consolidation](../workdown-items/query-value-consolidation.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [readme-visualization-update](../workdown-items/readme-visualization-update.md) | done | [polish](../workdown-items/polish.md) |  |
+| [recording-dot-extraction](../workdown-items/recording-dot-extraction.md) | to_do |  |  |
 | [remaining-read-views](../workdown-items/remaining-read-views.md) | done | [server](../workdown-items/server.md) | [first-view-end-to-end](../workdown-items/first-view-end-to-end.md) |
 | [render-bar-chart](../workdown-items/render-bar-chart.md) | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
 | [render-board](../workdown-items/render-board.md) | done | [renderers](../workdown-items/renderers.md) | [view-data-intermediate](../workdown-items/view-data-intermediate.md) |
@@ -109,7 +111,7 @@
 | [view-display-config](../workdown-items/view-display-config.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [remaining-read-views](../workdown-items/remaining-read-views.md) |
 | [view-edit-delete](../workdown-items/view-edit-delete.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [view-authoring](../workdown-items/view-authoring.md) |
 | [view-filter-editor](../workdown-items/view-filter-editor.md) | done | [view-authoring](../workdown-items/view-authoring.md) | [remaining-read-views](../workdown-items/remaining-read-views.md), [schema-metadata-api](../workdown-items/schema-metadata-api.md), [view-write-backend](../workdown-items/view-write-backend.md) |
-| [view-kind-sync-guards](../workdown-items/view-kind-sync-guards.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [render-flow-doc](../workdown-items/render-flow-doc.md) |
+| [view-kind-sync-guards](../workdown-items/view-kind-sync-guards.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [render-flow-doc](../workdown-items/render-flow-doc.md) |
 | [view-order-in-extractor](../workdown-items/view-order-in-extractor.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [view-presentation](../workdown-items/view-presentation.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [server](../workdown-items/server.md) |
 | [view-write-backend](../workdown-items/view-write-backend.md) | done | [view-authoring](../workdown-items/view-authoring.md) |  |

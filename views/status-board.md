@@ -3,6 +3,7 @@
 Cards grouped into columns by `status`.
 
 ## to_do
+- [Decide which field types may declare compute and pull](../workdown-items/compute-type-support-mismatch.md)
 - [Read config.yaml per request so it hot-reloads like everything else](../workdown-items/config-hot-reload.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
 - [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md)
@@ -11,12 +12,12 @@ Cards grouped into columns by `status`.
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
+- [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
 - [Test the two stateful areas that currently have no coverage](../workdown-items/stateful-test-gaps.md)
 - [A view over tags](../workdown-items/tags-view.md)
 - [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md)
 - [Move value coercion out of the store to break the parser↔store cycle](../workdown-items/value-coercion-layering.md)
-- [Make the non-Rust schema mirrors fail loudly when they drift](../workdown-items/view-kind-sync-guards.md)
 - [Collapse the metric-row duplicates of the generic view checks](../workdown-items/views-check-metric-row-dedup.md)
 - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md)
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
@@ -115,6 +116,7 @@ Cards grouped into columns by `status`.
 - [Per-view-kind display configuration (which fields show where)](../workdown-items/view-display-config.md)
 - [Edit and delete views from the UI](../workdown-items/view-edit-delete.md)
 - [Build and edit a view's where filter from the UI](../workdown-items/view-filter-editor.md)
+- [Make the non-Rust schema mirrors fail loudly when they drift](../workdown-items/view-kind-sync-guards.md)
 - [Sort and group view items in one place, not per renderer](../workdown-items/view-order-in-extractor.md)
 - [View & item presentation](../workdown-items/view-presentation.md)
 - [Persist view definitions to views.yaml](../workdown-items/view-write-backend.md)

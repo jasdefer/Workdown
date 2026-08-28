@@ -25,6 +25,7 @@ use std::path::Path;
 
 use ts_rs::TS;
 
+use strum::VariantArray;
 use workdown_core::item_data::ItemDetail;
 use workdown_core::model::diagnostic::{
     CollectionDiagnostic, CollectionDiagnosticKind, ConfigDiagnostic, ConfigDiagnosticKind,
@@ -33,6 +34,7 @@ use workdown_core::model::diagnostic::{
 };
 use workdown_core::model::field_value::FieldValue;
 use workdown_core::model::schema::{FieldType, Severity};
+use workdown_core::model::view_slots;
 use workdown_core::model::views::{Aggregate, Bucket, DisplayConfig, ViewSummary, ViewType};
 use workdown_core::model::WorkItemId;
 use workdown_core::mutation_data::{
@@ -234,7 +236,84 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<WorkloadBucket>();
     exports.add::<WorkloadUnit>();
 
-    exports.write_all(&target_dir)
+    exports.write_all(&target_dir)?;
+    write_view_slot_types(&target_dir)
+}
+
+/// The imports and doc comment above the generated slot table.
+const SLOT_TABLE_HEADER: &str = r#"import type { FieldType } from './FieldType';
+import type { ViewType } from './ViewType';
+
+/**
+ * The field types each view kind's structural slots accept, keyed by the
+ * slot name used in `views.yaml`. An empty list means any field.
+ *
+ * Generated from `crates/core/src/model/view_slots.rs`, which is the same
+ * table `views_check` validates a saved view against — so the fields the
+ * create form offers are the fields the CLI accepts. A view kind with no
+ * structural slots (`table`) has an empty entry.
+ *
+ * A slot's rule can be narrower than its type list: a gantt's input modes
+ * are mutually exclusive, and an aggregate's `value` set depends on the
+ * function chosen. Those are cross-slot rules, checked on save.
+ */
+export const VIEW_SLOT_TYPES = {
+"#;
+
+/// Closes the generated table. The `satisfies` clause makes a missing view
+/// kind a TypeScript error, and `as const` keeps the slot keys literal, so
+/// a form control naming a slot the table lacks fails `npm run check`.
+const SLOT_TABLE_FOOTER: &str =
+    "} as const satisfies Record<ViewType, Readonly<Record<string, readonly FieldType[]>>>;\n";
+
+/// Emit the view-slot type table as a TypeScript constant.
+///
+/// Not a ts-rs export: this is *data*, not a type. The web UI's view create
+/// form needs to know which fields each slot accepts, and
+/// `crates/core/src/model/view_slots.rs` is where that is written — so it is
+/// generated here rather than hand-maintained beside the form, where it
+/// used to drift (two slots were quietly narrower than the CLI's rule).
+fn write_view_slot_types(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let mut entries = String::new();
+    for (kind_index, &kind) in ViewType::VARIANTS.iter().enumerate() {
+        let slots = view_slots::slots_of(kind);
+        let kind_comma = separator(kind_index, ViewType::VARIANTS.len());
+        if slots.is_empty() {
+            entries.push_str(&format!("\t{kind}: {{}}{kind_comma}\n"));
+            continue;
+        }
+        entries.push_str(&format!("\t{kind}: {{\n"));
+        for (slot_index, slot) in slots.iter().enumerate() {
+            let accepts: Vec<String> = slot
+                .accepts
+                .iter()
+                .map(|field_type| format!("'{field_type}'"))
+                .collect();
+            entries.push_str(&format!(
+                "\t\t{}: [{}]{}\n",
+                slot.name,
+                accepts.join(", "),
+                separator(slot_index, slots.len())
+            ));
+        }
+        entries.push_str(&format!("\t}}{kind_comma}\n"));
+    }
+
+    let content = format!("{FILE_HEADER}{SLOT_TABLE_HEADER}{entries}{SLOT_TABLE_FOOTER}");
+    let path = dir.join("viewSlotTypes.ts");
+    std::fs::write(&path, &content)
+        .map_err(|error| format!("write {}: {error}", path.display()))?;
+    eprintln!("gen-types: wrote {}", path.display());
+    Ok(())
+}
+
+/// The comma after an object entry — absent on the last one.
+fn separator(index: usize, total: usize) -> &'static str {
+    if index + 1 == total {
+        ""
+    } else {
+        ","
+    }
 }
 
 /// Whether `needle` appears in `haystack` as a whole identifier

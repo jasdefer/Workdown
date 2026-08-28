@@ -391,7 +391,14 @@ impl ViewKind {
 }
 
 /// The v1 view types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
+///
+/// `VariantArray` supplies `ViewType::VARIANTS`, the list the drift
+/// guards for `views.schema.json` and the views guide compare against.
+/// Derived rather than written out, so a fourteenth kind reaches every
+/// guard without being added anywhere.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS, strum::VariantArray,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ViewType {
     Board,
@@ -431,7 +438,13 @@ impl std::fmt::Display for ViewType {
 }
 
 /// Aggregation functions used by chart / metric views.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
+///
+/// `VariantArray` supplies `Aggregate::VARIANTS`, which
+/// `model::view_slots` iterates to check that the `value:` slot offers
+/// every type some function accepts.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS, strum::VariantArray,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Aggregate {
     Count,
@@ -479,6 +492,7 @@ impl std::fmt::Display for Bucket {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use strum::VariantArray;
 
     #[test]
     fn color_role_deserializes_sentinel_and_field() {
@@ -592,5 +606,23 @@ mod tests {
         }
         .or_inherit(&base);
         assert_eq!(none_shown.fields, Some(vec![]));
+    }
+
+    #[test]
+    fn view_type_display_matches_its_serde_name() {
+        // Two hand-written name lists: `#[serde(rename_all)]` reads and
+        // writes `views.yaml`, the `Display` impl names the kind in
+        // diagnostics. Nothing but this test stops them drifting apart —
+        // and the drift guards for the JSON schema and the views guide
+        // read the names through `Display`.
+        for &kind in ViewType::VARIANTS {
+            let written = kind.to_string();
+            let parsed = serde_json::to_value(kind).expect("a view type serializes");
+            assert_eq!(
+                parsed.as_str(),
+                Some(written.as_str()),
+                "ViewType::{kind:?} serializes as {parsed} but displays as `{written}`"
+            );
+        }
     }
 }

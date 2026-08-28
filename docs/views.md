@@ -270,14 +270,12 @@ Load-time failures surface through the same diagnostic stream: read/YAML errors 
 
 ## Extensibility
 
-Adding a new view type:
-
-1. Add a variant to `ViewType` and `ViewKind` in `crates/core/src/model/views.rs`.
-2. Add `RawView` field(s) and a `convert_view` arm in `crates/core/src/parser/views.rs`.
-3. Add a `views_check` arm in `crates/core/src/views_check.rs` (slot-type checks; cross-slot rules; new diagnostic kinds in `crates/core/src/model/diagnostic.rs` if needed, plus their entries in the three exhaustive `DiagnosticKind` matches in `validate.rs`, `commands/render.rs`, and `operations/add.rs`).
-4. Add a `ViewData::Foo` variant + extractor module under `crates/core/src/view_data/`, then export and dispatch from `view_data/mod.rs`.
-5. Add a renderer module under `crates/cli/src/render/`, an arm in `render::description::description_for`, and a dispatch arm in `commands/render.rs`.
-6. Add a `oneOf` ref + definition in `crates/core/defaults/views.schema.json` for editor autocomplete.
+Adding a new view type touches the parser, the checks, the extractor, both
+renderers, the editor schema, the create form and this page's table. The
+full list, with what enforces each entry, is the adding-a-view-kind
+checklist in [architecture.md](architecture.md#adding-a-view-kind) — kept
+there rather than restated here, because a checklist in two places is a
+checklist that disagrees with itself.
 
 Existing configurations are unaffected — the change is purely additive.
 

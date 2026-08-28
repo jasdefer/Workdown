@@ -18,6 +18,12 @@
 //! configuration, and renderers can rely on validated views never naming
 //! `id` in a structural slot.
 //!
+//! Which field types each structural slot accepts is not written here: it is
+//! [`crate::model::view_slots`], which the web UI's create form also reads
+//! (as generated TypeScript) so the fields it offers are the fields this
+//! module accepts. Cross-slot rules — a gantt's input modes, a heatmap's
+//! bucket needing a date axis, `count` forbidding a `value` — stay here.
+//!
 //! The companion helper [`parse_errors_to_diagnostics`] converts load-time
 //! errors from [`crate::parser::views`] into the same diagnostic stream,
 //! so `workdown validate` can report them instead of aborting.
@@ -32,6 +38,7 @@ use crate::model::resources::Resources;
 use crate::model::schema::{
     is_relation_anchor, FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity,
 };
+use crate::model::view_slots::{self, SlotSpec};
 use crate::model::views::{Aggregate, MetricRow, View, ViewKind, Views};
 use crate::parser::views::{ViewsLoadError, ViewsValidationError};
 use crate::query::parse::parse_where;
@@ -242,22 +249,16 @@ fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
     let locus = SlotLocus::view(view.id.as_str());
 
     match &view.kind {
-        ViewKind::Board { field } => check_slot(
-            ctx,
-            locus,
-            "field",
-            field,
-            &[FieldType::Choice, FieldType::Multichoice, FieldType::String],
-            "choice, multichoice, or string",
-            out,
-        ),
+        ViewKind::Board { field } => {
+            check_slot(ctx, locus, view_slots::BOARD_FIELD, field, out);
+        }
         ViewKind::Tree { field } => {
-            check_slot(ctx, locus, "field", field, &[FieldType::Link], "link", out);
+            check_slot(ctx, locus, view_slots::TREE_FIELD, field, out);
         }
         ViewKind::Graph { field, group_by } => {
             check_graph_field(ctx, locus, field, out);
             if let Some(group_by) = group_by {
-                check_link_slot(ctx, locus, "group_by", group_by, LinkArity::Single, out);
+                check_link_slot(ctx, locus, view_slots::GRAPH_GROUP_BY, group_by, out);
             }
         }
         // Table has no structural slots — its columns come from the
@@ -280,22 +281,7 @@ fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
                 out,
             );
             if let Some(group) = group {
-                check_slot(
-                    ctx,
-                    locus,
-                    "group",
-                    group,
-                    &[
-                        FieldType::Choice,
-                        FieldType::Multichoice,
-                        FieldType::String,
-                        FieldType::List,
-                        FieldType::Link,
-                        FieldType::Links,
-                    ],
-                    "choice, multichoice, string, list, link, or links",
-                    out,
-                );
+                check_slot(ctx, locus, view_slots::GANTT_GROUP, group, out);
             }
         }
         ViewKind::GanttByInitiative {
@@ -314,7 +300,7 @@ fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
                 after.as_deref(),
                 out,
             );
-            check_link_slot(ctx, locus, "root_link", root_link, LinkArity::Single, out);
+            check_link_slot(ctx, locus, view_slots::GANTT_ROOT_LINK, root_link, out);
         }
         ViewKind::GanttByDepth {
             start,
@@ -332,59 +318,23 @@ fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
                 after.as_deref(),
                 out,
             );
-            check_link_slot(ctx, locus, "depth_link", depth_link, LinkArity::Single, out);
+            check_link_slot(ctx, locus, view_slots::GANTT_DEPTH_LINK, depth_link, out);
         }
         ViewKind::BarChart {
             group_by,
             value,
             aggregate,
         } => {
-            check_slot(ctx, locus, "group_by", group_by, &[], "", out);
+            check_slot(ctx, locus, view_slots::BAR_CHART_GROUP_BY, group_by, out);
             if let Some(value) = value {
                 check_aggregate_value_slot(ctx, locus, value, *aggregate, out);
             }
         }
         ViewKind::LineChart { x, y, group } => {
-            check_slot(
-                ctx,
-                locus,
-                "x",
-                x,
-                &[
-                    FieldType::Integer,
-                    FieldType::Float,
-                    FieldType::Date,
-                    FieldType::Duration,
-                ],
-                "integer, float, date, or duration",
-                out,
-            );
-            check_slot(
-                ctx,
-                locus,
-                "y",
-                y,
-                &[FieldType::Integer, FieldType::Float, FieldType::Duration],
-                "integer, float, or duration",
-                out,
-            );
+            check_slot(ctx, locus, view_slots::LINE_CHART_X, x, out);
+            check_slot(ctx, locus, view_slots::LINE_CHART_Y, y, out);
             if let Some(group) = group {
-                check_slot(
-                    ctx,
-                    locus,
-                    "group",
-                    group,
-                    &[
-                        FieldType::Choice,
-                        FieldType::Multichoice,
-                        FieldType::String,
-                        FieldType::List,
-                        FieldType::Link,
-                        FieldType::Links,
-                    ],
-                    "choice, multichoice, string, list, link, or links",
-                    out,
-                );
+                check_slot(ctx, locus, view_slots::LINE_CHART_GROUP, group, out);
             }
         }
         ViewKind::Workload {
@@ -393,17 +343,9 @@ fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
             effort,
             working_days: _,
         } => {
-            check_slot(ctx, locus, "start", start, &[FieldType::Date], "date", out);
-            check_slot(ctx, locus, "end", end, &[FieldType::Date], "date", out);
-            check_slot(
-                ctx,
-                locus,
-                "effort",
-                effort,
-                &[FieldType::Integer, FieldType::Float, FieldType::Duration],
-                "integer, float, or duration",
-                out,
-            );
+            check_slot(ctx, locus, view_slots::WORKLOAD_START, start, out);
+            check_slot(ctx, locus, view_slots::WORKLOAD_END, end, out);
+            check_slot(ctx, locus, view_slots::WORKLOAD_EFFORT, effort, out);
         }
         ViewKind::Metric { metrics } => {
             for (metric_index, row) in metrics.iter().enumerate() {
@@ -411,16 +353,8 @@ fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
             }
         }
         ViewKind::Treemap { group, size } => {
-            check_slot(ctx, locus, "group", group, &[FieldType::Link], "link", out);
-            check_slot(
-                ctx,
-                locus,
-                "size",
-                size,
-                &[FieldType::Integer, FieldType::Float, FieldType::Duration],
-                "integer, float, or duration",
-                out,
-            );
+            check_slot(ctx, locus, view_slots::TREEMAP_GROUP, group, out);
+            check_slot(ctx, locus, view_slots::TREEMAP_SIZE, size, out);
         }
         ViewKind::Heatmap {
             x,
@@ -429,8 +363,8 @@ fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
             aggregate,
             bucket,
         } => {
-            check_slot(ctx, locus, "x", x, &[], "", out);
-            check_slot(ctx, locus, "y", y, &[], "", out);
+            check_slot(ctx, locus, view_slots::HEATMAP_X, x, out);
+            check_slot(ctx, locus, view_slots::HEATMAP_Y, y, out);
             if let Some(value) = value {
                 check_aggregate_value_slot(ctx, locus, value, *aggregate, out);
             }
@@ -477,7 +411,7 @@ fn check_display(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>)
 
 // ── Slot helper ──────────────────────────────────────────────────────
 
-/// Check one slot's field reference. Emits:
+/// Check one slot's field reference against its [`SlotSpec`]. Emits:
 /// - [`ConfigDiagnosticKind::ViewVirtualIdNotAllowed`] for the virtual
 ///   `"id"` — every `check_slot` caller is a structural slot, and the
 ///   id is unique per item, so grouping or plotting by it is
@@ -485,47 +419,44 @@ fn check_display(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>)
 ///   checked in `display_check`, not here),
 /// - [`ConfigDiagnosticKind::ViewUnknownField`] if `field_name` isn't defined in
 ///   `schema.fields`,
-/// - [`ConfigDiagnosticKind::ViewFieldTypeMismatch`] if `allowed` is non-empty and
-///   the field's type isn't in the list.
+/// - [`ConfigDiagnosticKind::ViewFieldTypeMismatch`] if the slot accepts a
+///   list of types and the field's isn't in it.
 ///
-/// Passing an empty `allowed` performs an existence-only check (used
-/// by slots that accept any field type, e.g. the bar chart's
-/// `group_by` and the heatmap's `x`/`y`).
+/// A slot whose `accepts` is empty takes any field, so the check is
+/// existence-only — the bar chart's `group_by`, the heatmap's `x`/`y`.
 fn check_slot(
     ctx: &ViewCheckContext,
     locus: SlotLocus,
-    slot: &'static str,
+    slot: SlotSpec,
     field_name: &str,
-    allowed: &[FieldType],
-    expected_label: &'static str,
     out: &mut Vec<Diagnostic>,
 ) {
     if field_name == "id" {
         out.push(ctx.error(ConfigDiagnosticKind::ViewVirtualIdNotAllowed {
-            location: locus.at(slot),
+            location: locus.at(slot.name),
         }));
         return;
     }
 
     let Some(def) = ctx.schema.fields.get(field_name) else {
         out.push(ctx.error(ConfigDiagnosticKind::ViewUnknownField {
-            location: locus.at(slot),
+            location: locus.at(slot.name),
             field_name: field_name.to_owned(),
         }));
         return;
     };
 
-    if allowed.is_empty() {
+    if slot.accepts.is_empty() {
         return;
     }
 
     let actual = def.field_type();
-    if !allowed.contains(&actual) {
+    if !slot.accepts.contains(&actual) {
         out.push(ctx.error(ConfigDiagnosticKind::ViewFieldTypeMismatch {
-            location: locus.at(slot),
+            location: locus.at(slot.name),
             field_name: field_name.to_owned(),
             actual_type: actual,
-            expected: expected_label.to_owned(),
+            expected: view_slots::describe(slot.accepts),
         }));
     }
 }
@@ -549,15 +480,16 @@ fn check_graph_field(
         return;
     }
 
+    let slot = view_slots::GRAPH_FIELD;
     if let Some(def) = ctx.schema.fields.get(field_name) {
-        match def.field_type() {
-            FieldType::Link | FieldType::Links => {}
-            actual => out.push(ctx.error(ConfigDiagnosticKind::ViewFieldTypeMismatch {
-                location: locus.at("field"),
+        let actual = def.field_type();
+        if !slot.accepts.contains(&actual) {
+            out.push(ctx.error(ConfigDiagnosticKind::ViewFieldTypeMismatch {
+                location: locus.at(slot.name),
                 field_name: field_name.to_owned(),
                 actual_type: actual,
-                expected: "link or links".to_owned(),
-            })),
+                expected: view_slots::describe(slot.accepts),
+            }));
         }
         return;
     }
@@ -574,38 +506,32 @@ fn check_graph_field(
 
 // ── Link-slot helper ─────────────────────────────────────────────────
 
-/// Whether a link-style slot accepts `Links` in addition to `Link`.
-#[derive(Clone, Copy)]
-enum LinkArity {
-    /// Single-target only: `group_by`, `root_link`, `depth_link`.
-    Single,
-    /// Single or multiple targets: `after`.
-    SingleOrMulti,
-}
-
 /// Validates a slot that drives an upward chain walk (`group_by`, `after`,
 /// `root_link`, `depth_link`).
 ///
 /// All four require:
 /// - the field exists in the schema (not an inverse name);
-/// - the field is a `Link` (or `Links` when `arity == SingleOrMulti`);
+/// - the field's type is one the slot accepts — `link` for the
+///   single-target walks, `link` or `links` for `after`;
 /// - cycles are explicitly disabled (`allow_cycles: false`).
 ///
 /// Each rule has its own diagnostic so the error message points at the
-/// actual constraint violated.
+/// actual constraint violated. Which link types the slot takes comes from
+/// its [`SlotSpec`], so there is no arity parameter to keep aligned with
+/// the table — a link slot that accepts `links` says so in
+/// [`crate::model::view_slots`].
 fn check_link_slot(
     ctx: &ViewCheckContext,
     locus: SlotLocus,
-    slot: &'static str,
+    slot: SlotSpec,
     field_name: &str,
-    arity: LinkArity,
     out: &mut Vec<Diagnostic>,
 ) {
     // Without this, `id` falls into the unknown-field arm below — a
     // misleading message for a field that does exist, just not here.
     if field_name == "id" {
         out.push(ctx.error(ConfigDiagnosticKind::ViewVirtualIdNotAllowed {
-            location: locus.at(slot),
+            location: locus.at(slot.name),
         }));
         return;
     }
@@ -613,43 +539,44 @@ fn check_link_slot(
     let Some(def) = ctx.schema.fields.get(field_name) else {
         if ctx.schema.inverse_table.contains_key(field_name) {
             out.push(ctx.error(ConfigDiagnosticKind::ViewSlotInverseNotAllowed {
-                location: locus.at(slot),
+                location: locus.at(slot.name),
                 field_name: field_name.to_owned(),
             }));
         } else {
             out.push(ctx.error(ConfigDiagnosticKind::ViewUnknownField {
-                location: locus.at(slot),
+                location: locus.at(slot.name),
                 field_name: field_name.to_owned(),
             }));
         }
         return;
     };
 
-    let allow_cycles = match (&def.type_config, arity) {
-        (FieldTypeConfig::Link { allow_cycles, .. }, _) => *allow_cycles,
-        (FieldTypeConfig::Links { allow_cycles, .. }, LinkArity::SingleOrMulti) => *allow_cycles,
-        _ => {
-            out.push(ctx.error(ConfigDiagnosticKind::ViewFieldTypeMismatch {
-                location: locus.at(slot),
-                field_name: field_name.to_owned(),
-                actual_type: def.field_type(),
-                expected: match arity {
-                    LinkArity::Single => "link".to_owned(),
-                    LinkArity::SingleOrMulti => "link or links".to_owned(),
-                },
-            }));
-            return;
-        }
+    let actual = def.field_type();
+    if !slot.accepts.contains(&actual) {
+        out.push(ctx.error(ConfigDiagnosticKind::ViewFieldTypeMismatch {
+            location: locus.at(slot.name),
+            field_name: field_name.to_owned(),
+            actual_type: actual,
+            expected: view_slots::describe(slot.accepts),
+        }));
+        return;
+    }
+
+    let allow_cycles = match &def.type_config {
+        FieldTypeConfig::Link { allow_cycles, .. }
+        | FieldTypeConfig::Links { allow_cycles, .. } => *allow_cycles,
+        // Unreachable: every type a link slot accepts is one of the two
+        // above, and the check before this one has returned otherwise.
+        _ => return,
     };
 
     if allow_cycles != Some(false) {
         out.push(ctx.error(ConfigDiagnosticKind::ViewSlotCyclic {
-            location: locus.at(slot),
+            location: locus.at(slot.name),
             field_name: field_name.to_owned(),
         }));
     }
 }
-
 // ── Gantt input-mode helper ──────────────────────────────────────────
 
 /// Validate the `start` slot and the cross-slot input-mode rules shared
@@ -671,7 +598,7 @@ fn check_gantt_input_modes(
     after: Option<&str>,
     out: &mut Vec<Diagnostic>,
 ) {
-    check_slot(ctx, locus, "start", start, &[FieldType::Date], "date", out);
+    check_slot(ctx, locus, view_slots::GANTT_START, start, out);
     if let Some(after_field) = after {
         if end.is_some() {
             out.push(
@@ -687,24 +614,9 @@ fn check_gantt_input_modes(
                 }),
             );
         }
-        check_link_slot(
-            ctx,
-            locus,
-            "after",
-            after_field,
-            LinkArity::SingleOrMulti,
-            out,
-        );
+        check_link_slot(ctx, locus, view_slots::GANTT_AFTER, after_field, out);
         if let Some(duration) = duration {
-            check_slot(
-                ctx,
-                locus,
-                "duration",
-                duration,
-                &[FieldType::Duration],
-                "duration",
-                out,
-            );
+            check_slot(ctx, locus, view_slots::GANTT_DURATION, duration, out);
         }
     } else {
         match (end, duration) {
@@ -719,18 +631,10 @@ fn check_gantt_input_modes(
                 },
             )),
             (Some(end), None) => {
-                check_slot(ctx, locus, "end", end, &[FieldType::Date], "date", out);
+                check_slot(ctx, locus, view_slots::GANTT_END, end, out);
             }
             (None, Some(duration)) => {
-                check_slot(
-                    ctx,
-                    locus,
-                    "duration",
-                    duration,
-                    &[FieldType::Duration],
-                    "duration",
-                    out,
-                );
+                check_slot(ctx, locus, view_slots::GANTT_DURATION, duration, out);
             }
         }
     }
@@ -741,16 +645,14 @@ fn check_gantt_input_modes(
 /// Verify an aggregate's `value` slot: the field exists, isn't the
 /// virtual `id`, and has a type the chosen aggregate can combine.
 ///
-/// | aggregate         | allowed field types            |
-/// |-------------------|--------------------------------|
-/// | `count`           | none — `count` takes no `value` |
-/// | `sum`             | integer, float, duration       |
-/// | `avg`/`min`/`max` | integer, float, date, duration |
+/// Which types each function accepts is
+/// [`view_slots::aggregate_value_types`]; the web UI's create form reads
+/// the same table, so the fields it offers are the fields this accepts.
 ///
 /// Shared by every locus carrying an aggregate — the bar chart's and
-/// heatmap's `value` slot, and each row of a metric view — so the table
-/// above is enforced in exactly one place. Which locus is reported comes
-/// from `locus`; the caller decides, the rule does not.
+/// heatmap's `value` slot, and each row of a metric view — so the rule is
+/// enforced in exactly one place. Which locus is reported comes from
+/// `locus`; the caller decides, the rule does not.
 ///
 /// Called only when a `value` is actually set, which is why `count`
 /// lands on [`ConfigDiagnosticKind::ViewCountAggregateWithValue`] here:
@@ -786,17 +688,7 @@ fn check_aggregate_value_slot(
         return;
     };
     let actual = def.field_type();
-    let allowed: &[FieldType] = match aggregate {
-        Aggregate::Count => unreachable!("handled above"),
-        Aggregate::Sum => &[FieldType::Integer, FieldType::Float, FieldType::Duration],
-        Aggregate::Avg | Aggregate::Min | Aggregate::Max => &[
-            FieldType::Integer,
-            FieldType::Float,
-            FieldType::Date,
-            FieldType::Duration,
-        ],
-    };
-    if !allowed.contains(&actual) {
+    if !view_slots::aggregate_value_types(aggregate).contains(&actual) {
         out.push(ctx.error(ConfigDiagnosticKind::ViewAggregateTypeMismatch {
             location: locus.at("value"),
             aggregate,
