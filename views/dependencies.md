@@ -6,11 +6,10 @@ Directed graph of items connected through `depends_on`, nested by `parent`.
 flowchart TD
     config-hot-reload["Read config.yaml per request so it hot-reloads like everything else"]
     subgraph maintenance-review-2026-08 ["Maintenance pass: findings from the 2026-08 codebase review"]
-        assorted-small-fixes["Grab bag of small consistency fixes from the review"]
         render-flow-doc["One page that shows how a render flows through the system"]
         stale-docs-refresh["Fix the documentation that is actively wrong"]
         stateful-test-gaps["Test the two stateful areas that currently have no coverage"]
-        view-kind-sync-guards["Make the non-Rust view-kind mirrors fail loudly when they drift"]
+        view-kind-sync-guards["Make the non-Rust schema mirrors fail loudly when they drift"]
     end
     subgraph misc-work ["Miscellaneous improvements"]
         evaluation-date-single-read["One clock read per invocation, writes included"]

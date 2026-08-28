@@ -3,7 +3,6 @@
 Cards grouped into columns by `status`.
 
 ## to_do
-- [Grab bag of small consistency fixes from the review](../workdown-items/assorted-small-fixes.md)
 - [Read config.yaml per request so it hot-reloads like everything else](../workdown-items/config-hot-reload.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
 - [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md)
@@ -19,7 +18,7 @@ Cards grouped into columns by `status`.
 - [A view over tags](../workdown-items/tags-view.md)
 - [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md)
 - [Move value coercion out of the store to break the parser↔store cycle](../workdown-items/value-coercion-layering.md)
-- [Make the non-Rust view-kind mirrors fail loudly when they drift](../workdown-items/view-kind-sync-guards.md)
+- [Make the non-Rust schema mirrors fail loudly when they drift](../workdown-items/view-kind-sync-guards.md)
 - [Collapse the metric-row duplicates of the generic view checks](../workdown-items/views-check-metric-row-dedup.md)
 - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md)
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
@@ -32,6 +31,7 @@ Cards grouped into columns by `status`.
 - [ADR — visualization architecture](../workdown-items/adr-phase-04-architecture.md)
 - [Compute schema-declared aggregate fields up the parent chain](../workdown-items/aggregate-rollup.md)
 - [App shell navigation (views menu + future link slots)](../workdown-items/app-shell-navigation.md)
+- [Grab bag of small consistency fixes from the review](../workdown-items/assorted-small-fixes.md)
 - [Make the terminal chart renderers share what they each rebuilt](../workdown-items/chart-renderer-sharing.md)
 - [Run the whole workspace in CI](../workdown-items/ci-workspace-coverage.md)
 - [Audit workdown add for UI-driven creation](../workdown-items/cli-add-audit.md)

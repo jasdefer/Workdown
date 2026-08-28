@@ -1,7 +1,7 @@
 ---
 id: view-kind-sync-guards
 status: to_do
-title: Make the non-Rust view-kind mirrors fail loudly when they drift
+title: Make the non-Rust schema mirrors fail loudly when they drift
 parent: maintenance-review-2026-08
 depends_on:
 - render-flow-doc
@@ -17,6 +17,12 @@ to be guarded already — the gap there is narrower than the review
 thought. The web UI table has nothing, and both existing guards check
 *shapes* rather than the *list of kinds*, so a fourteenth kind missing
 from a mirror still ships silently. Close that.
+
+A fourth mirror with the same shape — `schema.schema.json`'s copy of
+the field-type property matrix — was folded in from
+[[assorted-small-fixes]]: it needs the same "does this JSON schema
+still agree with the Rust enum" assertion, and writing that helper
+once for both is the reason they belong together.
 
 ## The problem in detail
 
@@ -48,6 +54,23 @@ The three mirrors, and what guards each today:
   thirteen-for-thirteen when the review ran. A doc-drift test is
   optional; at minimum the adding-a-view-kind checklist
   ([[render-flow-doc]]) must name it.
+
+### A fourth mirror, same shape (moved here from [[assorted-small-fixes]])
+
+- **`crates/core/defaults/schema.schema.json`** — the field-type →
+  allowed-properties matrix. [[schema-property-table]] made Rust the
+  single source of truth (`model/schema.rs::allowed_field_properties`,
+  an exhaustive match a new field type cannot dodge), but this file
+  still hand-encodes the same matrix as `allOf` / `if`-`then` blocks
+  for editor autocomplete. The CLI never reads it (ADR-005), so drift
+  is a UX gap rather than a correctness one — the same trade, and the
+  same fix, as `views.schema.json` above: one test asserting the JSON
+  schema's per-type property sets equal what the Rust match allows.
+
+  It landed here rather than in the grab bag because doing it beside
+  the `views.schema.json` assertion means writing the
+  compare-a-JSON-schema-against-a-Rust-enum helper once. Neither is
+  worth the helper alone; together they are.
 
 ## Evidence this is worth doing
 

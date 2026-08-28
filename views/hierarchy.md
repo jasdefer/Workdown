@@ -4,11 +4,10 @@ Hierarchical outline following `parent` upward to roots.
 
 - [Read config.yaml per request so it hot-reloads like everything else](../workdown-items/config-hot-reload.md) — status: to_do
 - [Maintenance pass: findings from the 2026-08 codebase review](../workdown-items/maintenance-review-2026-08.md) — status: in_progress
-  - [Grab bag of small consistency fixes from the review](../workdown-items/assorted-small-fixes.md) — status: to_do
   - [One page that shows how a render flows through the system](../workdown-items/render-flow-doc.md) — status: to_do
   - [Fix the documentation that is actively wrong](../workdown-items/stale-docs-refresh.md) — status: to_do
   - [Test the two stateful areas that currently have no coverage](../workdown-items/stateful-test-gaps.md) — status: to_do
-  - [Make the non-Rust view-kind mirrors fail loudly when they drift](../workdown-items/view-kind-sync-guards.md) — status: to_do
+  - [Make the non-Rust schema mirrors fail loudly when they drift](../workdown-items/view-kind-sync-guards.md) — status: to_do
 - [Miscellaneous improvements](../workdown-items/misc-work.md) — status: to_do
   - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md) — status: to_do
   - [A view over tags](../workdown-items/tags-view.md) — status: to_do
