@@ -35,7 +35,6 @@
 //! still tell "written but invalid" from "never written" after the
 //! invalid value has been dropped (ADR-012).
 
-pub(crate) mod coerce;
 mod compute;
 mod conditional;
 mod cycles;
@@ -307,7 +306,7 @@ fn parse_and_coerce(paths: &[PathBuf], schema: &Schema) -> ParsedItems {
         }
         seen_ids.insert(raw.id.clone(), path.clone());
 
-        let outcome = coerce::coerce_fields(&raw, schema);
+        let outcome = crate::coerce::coerce_fields(&raw, schema);
         diagnostics.extend(outcome.diagnostics);
         if !outcome.conversion_failures.is_empty() {
             conversion_failures.insert(raw.id.clone(), outcome.conversion_failures);
@@ -333,6 +332,23 @@ fn parse_and_coerce(paths: &[PathBuf], schema: &Schema) -> ParsedItems {
 
 /// The reverse-link index: `field_name → target_id → [source_ids]`.
 type ReverseLinks = HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>;
+
+/// True if no item references `item_id` via `over_field` — nothing has
+/// it as their parent in that field's hierarchy.
+///
+/// The shared bottom-of-the-chain test: the compute pass, the roll-up
+/// pass, the derive scheduler, and the required check all ask this same
+/// question of the same index, and must agree on the answer.
+pub(super) fn is_leaf(
+    reverse_links: &ReverseLinks,
+    item_id: &WorkItemId,
+    over_field: &str,
+) -> bool {
+    reverse_links
+        .get(over_field)
+        .and_then(|by_target| by_target.get(item_id))
+        .is_none_or(|sources| sources.is_empty())
+}
 
 /// Pipeline phase 3: build the reverse-link index and report
 /// references to items that don't exist.

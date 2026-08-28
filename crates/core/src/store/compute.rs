@@ -28,7 +28,7 @@ use indexmap::IndexMap;
 use crate::expression::{evaluate, EvaluateError, Value, ValueContext};
 use crate::model::diagnostic::{Diagnostic, ItemDiagnosticKind};
 use crate::model::schema::{ComputeConfig, FieldType, RoundMode, Severity};
-use crate::model::{FieldValue, WorkItem, WorkItemId};
+use crate::model::{FieldValue, WorkItem};
 
 const SECONDS_PER_DAY: i64 = 86_400;
 
@@ -108,19 +108,6 @@ pub(super) fn missing_inputs(item: &WorkItem, config: &ComputeConfig) -> Vec<Str
         }
     }
     missing
-}
-
-/// True if no item references `item_id` via `over_field` — nothing has
-/// it as their parent in the aggregate hierarchy.
-pub(super) fn is_leaf(
-    reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
-    item_id: &WorkItemId,
-    over_field: &str,
-) -> bool {
-    reverse_links
-        .get(over_field)
-        .and_then(|by_target| by_target.get(item_id))
-        .is_none_or(|sources| sources.is_empty())
 }
 
 // ── Value conversion ──────────────────────────────────────────────────

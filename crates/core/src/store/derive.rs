@@ -363,7 +363,7 @@ fn same_item_pass_runs_on(
     derive_field
         .aggregate_over
         .as_deref()
-        .is_none_or(|over| compute::is_leaf(reverse_links, item_id, over))
+        .is_none_or(|over| super::is_leaf(reverse_links, item_id, over))
 }
 
 /// Shared read-only inputs of every node evaluation.

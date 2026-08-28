@@ -133,7 +133,7 @@ fn finding(
         && field_definition
             .aggregate
             .as_ref()
-            .is_some_and(|aggregate| !compute::is_leaf(reverse_links, &item.id, &aggregate.over));
+            .is_some_and(|aggregate| !super::is_leaf(reverse_links, &item.id, &aggregate.over));
     if same_item_pass_skipped {
         return Finding::Report(generic);
     }

@@ -76,7 +76,7 @@ pub(super) fn coverage_diagnostics(
 ) -> Vec<Diagnostic> {
     let mut leaves: Vec<(&WorkItemId, &WorkItem)> = items
         .iter()
-        .filter(|(id, _)| is_tree_leaf(reverse_links, id, over))
+        .filter(|(id, _)| super::is_leaf(reverse_links, id, over))
         .collect();
     leaves.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
 
@@ -97,19 +97,6 @@ pub(super) fn coverage_diagnostics(
 }
 
 // ── Helpers: tree navigation ────────────────────────────────────────
-
-/// True if no item references `item_id` as its `over_field` target —
-/// nothing has it as their parent in the rollup hierarchy.
-fn is_tree_leaf(
-    reverse_links: &HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
-    item_id: &WorkItemId,
-    over_field: &str,
-) -> bool {
-    reverse_links
-        .get(over_field)
-        .and_then(|by_target| by_target.get(item_id))
-        .is_none_or(|sources| sources.is_empty())
-}
 
 /// True if `start` itself or any ancestor on its `over_field` chain is in
 /// `manual_set`. Cycle-safe via the walker's visited tracking.

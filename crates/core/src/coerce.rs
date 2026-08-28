@@ -7,7 +7,7 @@
 //! Coercion judges only what is literally written — never completeness.
 //! Whether a required field ended up filled in is the required check's
 //! question, asked after the fill-in phase (see the pipeline contract
-//! in [`super`], and ADR-012). Coercion's contribution to that check is
+//! in [`crate::store`], and ADR-012). Coercion's contribution to that check is
 //! the record of fields that were written but failed conversion: those
 //! are dropped from the field map, and without the record a later phase
 //! could not tell "written but invalid" from "never written".
@@ -427,7 +427,10 @@ fn coerce_links(value: &serde_yaml::Value) -> Result<FieldValue, FieldValueError
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /// Human-readable name for a YAML value type (for error messages).
-fn yaml_type_name(value: &serde_yaml::Value) -> &'static str {
+///
+/// The one spelling of these names in the crate: both value coercion
+/// and schema parsing report unexpected YAML through it.
+pub(crate) fn yaml_type_name(value: &serde_yaml::Value) -> &'static str {
     match value {
         serde_yaml::Value::Null => "null",
         serde_yaml::Value::Bool(_) => "boolean",
@@ -435,7 +438,7 @@ fn yaml_type_name(value: &serde_yaml::Value) -> &'static str {
         serde_yaml::Value::String(_) => "string",
         serde_yaml::Value::Sequence(_) => "sequence",
         serde_yaml::Value::Mapping(_) => "mapping",
-        serde_yaml::Value::Tagged(_) => "tagged",
+        serde_yaml::Value::Tagged(_) => "tagged value",
     }
 }
 

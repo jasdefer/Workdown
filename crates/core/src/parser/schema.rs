@@ -16,7 +16,7 @@ use crate::model::schema::{
     RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema, WhenBranch, WhenConfig,
 };
 use crate::model::views::COLOR_NONE_SENTINEL;
-use crate::store::coerce::coerce_value;
+use crate::coerce::{coerce_value, yaml_type_name};
 
 // ── Public API ────────────────────────────────────────────────────────
 
@@ -742,7 +742,7 @@ fn validate_numeric_bound(
                 field_name,
                 format!(
                     "'{prop_name}' must be a number for type '{field_type}', got {}",
-                    yaml_kind_name(value)
+                    yaml_type_name(value)
                 ),
             ));
         }
@@ -778,7 +778,7 @@ fn validate_duration_bound(
             field_name,
             format!(
                 "'{prop_name}' must be a duration string for type 'duration', got {}",
-                yaml_kind_name(value)
+                yaml_type_name(value)
             ),
         )),
     }
@@ -796,19 +796,6 @@ fn parse_duration_bound(value: &serde_yaml::Value) -> Option<i64> {
 /// Same as `parse_duration_bound` but reads through an `Option` first.
 fn parse_duration_bound_opt(value: &Option<serde_yaml::Value>) -> Option<i64> {
     value.as_ref().and_then(parse_duration_bound)
-}
-
-/// Human-readable name for a YAML value kind, for error messages.
-fn yaml_kind_name(value: &serde_yaml::Value) -> &'static str {
-    match value {
-        serde_yaml::Value::Null => "null",
-        serde_yaml::Value::Bool(_) => "boolean",
-        serde_yaml::Value::Number(_) => "number",
-        serde_yaml::Value::String(_) => "string",
-        serde_yaml::Value::Sequence(_) => "sequence",
-        serde_yaml::Value::Mapping(_) => "mapping",
-        serde_yaml::Value::Tagged(_) => "tagged value",
-    }
 }
 
 /// Convert a raw (flat) field definition into a typed [`FieldDefinition`]
