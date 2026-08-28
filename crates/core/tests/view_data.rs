@@ -15,7 +15,7 @@ use workdown_core::model::calendar::WorkingCalendar;
 use workdown_core::parser::schema::load_schema;
 use workdown_core::parser::views::load_views;
 use workdown_core::store::Store;
-use workdown_core::view_data::{extract, ChartValue, ViewData};
+use workdown_core::view_data::{extract, ChartValue, CheckedView, ViewData};
 
 const SCHEMA_YAML: &str = "\
 fields:
@@ -179,7 +179,10 @@ fn extract_exercises_every_variant() {
 
     let calendar = WorkingCalendar::default_business_week();
     for view in &views.views {
-        let data = extract(view, &store, &schema, &calendar);
+        // The fixture is a known-good views.yaml, so an empty
+        // diagnostic list clears every view in it.
+        let checked = CheckedView::new(view, &[]).expect("fixture views are valid");
+        let data = extract(checked, &store, &schema, &calendar);
         match (view.id.as_str(), &data) {
             ("status-board", ViewData::Board(board)) => {
                 assert_eq!(board.field, "status");

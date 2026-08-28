@@ -34,7 +34,6 @@ use axum::{Json, Router};
 use serde::Deserialize;
 
 use workdown_core::model::diagnostic::Diagnostic;
-use workdown_core::model::schema::Severity;
 use workdown_core::model::views::{DisplayConfig, View, ViewSummary, Views};
 use workdown_core::mutation_data::{
     CreateView, SetViewFilter, UpdateView, ViewDefinition, ViewMutationResult,
@@ -45,7 +44,7 @@ use workdown_core::operations::view_write::{
 use workdown_core::parser::views::load_views;
 use workdown_core::project::Project;
 use workdown_core::query::clause::{clauses_to_strings, decompose_clauses, Clause};
-use workdown_core::view_data::{self, ViewData};
+use workdown_core::view_data::{self, CheckedView, ViewData};
 use workdown_core::views_check;
 
 use crate::envelope::ApiResponse;
@@ -154,37 +153,33 @@ async fn get_view(
         }
     };
 
-    // Tier 2: this specific view has a config *error* pinned to it (e.g.
-    // references a missing field, gantt config conflict) — with the
-    // effective filter in place. The view can't render; surface the
-    // diagnostics instead of data.
-    //
-    // Severity is what separates the tiers here. A warning pinned to this
-    // view (a `where:` operand that can never match, say) describes a view
-    // that renders perfectly well; withholding the data over it would hide
-    // more than it explains. Such findings ride along in the tier-3
-    // response's `diagnostics` instead.
-    let has_view_config_error = diagnostics.iter().any(|diagnostic| {
-        diagnostic.severity == Severity::Error && diagnostic.view_id() == Some(view.id.as_str())
-    });
-    if has_view_config_error {
-        return ApiResponse::unrenderable(diagnostics);
-    }
-
-    // Tier 3: extract and return view data. Display roles resolve here —
-    // after validation, so diagnostics keep pointing at what views.yaml
-    // says: per-session override › view `display:` › config defaults.
+    // Display roles resolve here — after validation, so diagnostics keep
+    // pointing at what views.yaml says: per-session override › view
+    // `display:` › config defaults. Neither step can change the view's
+    // id, which is what the tier-2 check below matches on.
     let mut render_view = render_view;
     if let Some(override_config) = display_override {
         render_view.display = override_config.or_inherit(&render_view.display);
     }
     let render_view = render_view.with_display_defaults(&state.config.defaults.display);
-    let data = view_data::extract(
-        &render_view,
-        &project.store,
-        &project.schema,
-        &project.calendar,
-    );
+
+    // Tier 2: this specific view has a config *error* pinned to it (e.g.
+    // references a missing field, gantt config conflict) — with the
+    // effective filter in place. The view can't render; surface the
+    // diagnostics instead of data.
+    //
+    // Severity is what separates the tiers, and `CheckedView` is where
+    // that rule lives. A warning pinned to this view (a `where:` operand
+    // that can never match, say) describes a view that renders perfectly
+    // well; withholding the data over it would hide more than it
+    // explains. Such findings ride along in the tier-3 response's
+    // `diagnostics` instead.
+    let Some(checked) = CheckedView::new(&render_view, &diagnostics) else {
+        return ApiResponse::unrenderable(diagnostics);
+    };
+
+    // Tier 3: extract and return view data.
+    let data = view_data::extract(checked, &project.store, &project.schema, &project.calendar);
     ApiResponse::ok_with(data, diagnostics)
 }
 
