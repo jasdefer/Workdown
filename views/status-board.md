@@ -14,7 +14,6 @@ Cards grouped into columns by `status`.
 - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
-- [Test the two stateful areas that currently have no coverage](../workdown-items/stateful-test-gaps.md)
 - [A view over tags](../workdown-items/tags-view.md)
 - [Decide what our tests are for, and restructure them accordingly](../workdown-items/testing-strategy.md)
 - [Work out the testing approach and break the milestone into items](../workdown-items/testing-strategy-design.md)
@@ -25,7 +24,7 @@ Cards grouped into columns by `status`.
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
-- [Maintenance pass: findings from the 2026-08 codebase review](../workdown-items/maintenance-review-2026-08.md)
+_(no cards)_
 
 ## done
 - [Commands fail when the work-items directory is missing](../workdown-items/add-missing-items-directory.md)
@@ -72,6 +71,7 @@ Cards grouped into columns by `status`.
 - [Optional --install-hooks for pre-commit render](../workdown-items/init-install-hooks.md)
 - [Item mutations](../workdown-items/item-mutations.md)
 - [File watcher and SSE for live updates](../workdown-items/live-updates.md)
+- [Maintenance pass: findings from the 2026-08 codebase review](../workdown-items/maintenance-review-2026-08.md)
 - [One voice for validation messages](../workdown-items/message-style-consistency.md)
 - [Stop validating views and metric rows with two copies of every check](../workdown-items/metric-row-check-unification.md)
 - [Mutations end-to-end](../workdown-items/mutations-slice.md)
@@ -107,6 +107,7 @@ Cards grouped into columns by `status`.
 - [Table-drive the "is this property allowed on this field type?" check](../workdown-items/schema-property-table.md)
 - [Interactive UI (workdown serve)](../workdown-items/server.md)
 - [Fix the documentation that is actively wrong](../workdown-items/stale-docs-refresh.md)
+- [Cover the browser-side paths that fail silently](../workdown-items/stateful-test-gaps.md)
 - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md)
 - [Time tracking](../workdown-items/time-tracking.md)
 - [Tell the user when a timed interval is over](../workdown-items/timer-notifications.md)

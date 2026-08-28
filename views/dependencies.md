@@ -6,9 +6,6 @@ Directed graph of items connected through `depends_on`, nested by `parent`.
 flowchart TD
     compute-type-support-mismatch["Decide which field types may declare compute and pull"]
     config-hot-reload["Read config.yaml per request so it hot-reloads like everything else"]
-    subgraph maintenance-review-2026-08 ["Maintenance pass: findings from the 2026-08 codebase review"]
-        stateful-test-gaps["Test the two stateful areas that currently have no coverage"]
-    end
     subgraph misc-work ["Miscellaneous improvements"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
         tags-view["A view over tags"]

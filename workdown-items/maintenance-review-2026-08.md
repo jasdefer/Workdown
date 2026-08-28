@@ -1,7 +1,7 @@
 ---
 id: maintenance-review-2026-08
 title: 'Maintenance pass: findings from the 2026-08 codebase review'
-status: in_progress
+status: done
 ---
 
 ## In plain words
@@ -36,7 +36,10 @@ The items are largely independent, but a sensible sequence:
 3. **Documentation** — [[web-layer-adr]], [[render-flow-doc]],
    [[stale-docs-refresh]].
 4. **Guards and tests** — [[view-kind-sync-guards]],
-   [[stateful-test-gaps]].
+   [[stateful-test-gaps]], and [[cli-exit-code-contract]], added
+   mid-milestone once the CLI's exit codes turned out to be an
+   undocumented contract that the generated pre-commit hook already
+   depends on.
 5. **Anytime** — [[assorted-small-fixes]] is a grab bag of
    minutes-to-hours fixes to fold into any of the above.
 

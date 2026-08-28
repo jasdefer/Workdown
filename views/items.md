@@ -53,7 +53,7 @@
 | [init-install-hooks](../workdown-items/init-install-hooks.md) | done | [polish](../workdown-items/polish.md) |  |
 | [item-mutations](../workdown-items/item-mutations.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md) |
 | [live-updates](../workdown-items/live-updates.md) | done | [server](../workdown-items/server.md) | [walking-skeleton](../workdown-items/walking-skeleton.md) |
-| [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | in_progress |  |  |
+| [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | done |  |  |
 | [message-style-consistency](../workdown-items/message-style-consistency.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) |
 | [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [misc-work](../workdown-items/misc-work.md) | to_do |  |  |
@@ -96,7 +96,7 @@
 | [schema-property-table](../workdown-items/schema-property-table.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [server](../workdown-items/server.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md), [item-mutations](../workdown-items/item-mutations.md), [renderers](../workdown-items/renderers.md) |
 | [stale-docs-refresh](../workdown-items/stale-docs-refresh.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
-| [stateful-test-gaps](../workdown-items/stateful-test-gaps.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
+| [stateful-test-gaps](../workdown-items/stateful-test-gaps.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [store-diagnostics-consistency](../workdown-items/store-diagnostics-consistency.md) | done | [polish](../workdown-items/polish.md) |  |
 | [tags-view](../workdown-items/tags-view.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
 | [testing-strategy](../workdown-items/testing-strategy.md) | to_do |  |  |

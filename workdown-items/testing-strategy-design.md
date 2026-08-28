@@ -70,7 +70,38 @@ before picking.
 
 **Note:** `workdown serve` blocks forever and has no shutdown handler,
 so it constrains any answer that involves running commands to
-completion.
+completion. One slice of it is testable regardless: the project config
+is loaded before the server binds a port, so `serve` without a project
+exits without blocking. Excluding the command entirely, or writing a
+shutdown handler first, are the other two answers.
+
+Three questions come with this one, inherited from
+[[stateful-test-gaps]] when the CLI half moved here. They only matter if
+the answer above is "yes, something drives it":
+
+- **How does a test get a project?** Running `workdown init` in a
+  temporary directory is self-bootstrapping and exercises the shipped
+  defaults, at the cost of coupling every test to
+  `defaults/schema.yaml`. Writing purpose-built config and schema
+  strings — what `crates/server/tests` already does — is explicit and
+  stable but verbose. A checked-in fixture copied per test is the third
+  shape. Note that `crates/core/tests/init.rs` already covers the
+  scaffold and that its config loads, so the first option may buy less
+  than it looks.
+- **One shared fixture helper across the crates, or accept the
+  duplication?** Three crates would be hand-rolling project fixtures.
+  Only the "write these strings to a temporary directory" part actually
+  overlaps; each crate wants a different thing out of the result.
+- **Substring assertions or snapshots?** Snapshots would freeze the
+  wording `message-style-consistency` just standardised, at the cost of
+  churn on every deliberate change. There is a third shape worth
+  weighing: several commands have a `--format json` mode, and that
+  output is a contract in a way human prose is not.
+
+**Also inherited:** building a CLI test binary needs `ui/dist/` present,
+because the CLI depends on `workdown-server`, whose `UiAssets` embed
+only switches to the committed fixture under `cargo test` *for the
+server crate*. A partial gate run misleads here.
 
 ### Does the exit-code contract need pinning, and by what?
 
@@ -117,8 +148,22 @@ follow — and drive the module as it is. The first is cheaper and
 narrower; the second covers the plumbing the first leaves out, and is
 the only route if rendered components are ever in scope.
 
-Note that [[stateful-test-gaps]] is holding a version of this same
-question; settle who answers it.
+[[stateful-test-gaps]] took the first route for the timer's two silent
+paths and handed the rest of the question here. Concretely, what is
+still undecided is whether `ui/src/lib/stores/timer.svelte.ts` becomes
+`createTimerStore({ api })` so its plumbing can be driven — the ten or
+so lines of await-and-assign that a store calling `undoMutation` and
+then ignoring its answer would slip past. It would cost
+`@sveltejs/vite-plugin-svelte` in the Vitest config and a teardown story
+for the store's heartbeat and effects, since each test would build its
+own instance.
+
+One claim to discount while weighing it: the factory was argued to have
+a benefit independent of testing, because the store's module-level
+`$effect.root` fires on import. It does, but `ui/src/routes/+layout.svelte`
+imports `timerStore`, so it loads on every page anyway — there are no
+code paths in the running app that avoid it. Decide this on the testing
+merits alone.
 
 ### What does CI gate, and how would we notice a silent green?
 

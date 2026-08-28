@@ -92,9 +92,9 @@ of [[testing-strategy-design]], not inputs to it.
 
 ## Related work already in flight
 
-[[stateful-test-gaps]] (under [[maintenance-review-2026-08]]) covers
-the two areas with no coverage at all: the web app's timer state and
-the CLI's wiring. Its CLI half asks the same question this milestone
-asks, so which of the two owns it — and whether that item should be
-narrowed, moved, or left alone — is worth settling early rather than
-answering twice.
+[[stateful-test-gaps]] (under [[maintenance-review-2026-08]]) held the
+two areas with no coverage at all: the web app's timer state and the
+CLI's wiring. It has been narrowed to the browser half, and its CLI
+questions moved into [[testing-strategy-design]] — testing the built
+binary is what this milestone is for, and answering it there would have
+pre-empted it.
