@@ -11,6 +11,7 @@
 | [ci-workspace-coverage](../workdown-items/ci-workspace-coverage.md) | done |  |  |
 | [cli-add-audit](../workdown-items/cli-add-audit.md) | done | [item-mutations](../workdown-items/item-mutations.md) |  |
 | [cli-body-command](../workdown-items/cli-body-command.md) | done | [item-mutations](../workdown-items/item-mutations.md) |  |
+| [cli-exit-code-contract](../workdown-items/cli-exit-code-contract.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [cli-move-command](../workdown-items/cli-move-command.md) | done | [item-mutations](../workdown-items/item-mutations.md) | [cli-set-command](../workdown-items/cli-set-command.md) |
 | [cli-rename-command](../workdown-items/cli-rename-command.md) | done | [item-mutations](../workdown-items/item-mutations.md) |  |
 | [cli-set-command](../workdown-items/cli-set-command.md) | done | [item-mutations](../workdown-items/item-mutations.md) |  |
@@ -98,6 +99,8 @@
 | [stateful-test-gaps](../workdown-items/stateful-test-gaps.md) | to_do | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [store-diagnostics-consistency](../workdown-items/store-diagnostics-consistency.md) | done | [polish](../workdown-items/polish.md) |  |
 | [tags-view](../workdown-items/tags-view.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
+| [testing-strategy](../workdown-items/testing-strategy.md) | to_do |  |  |
+| [testing-strategy-design](../workdown-items/testing-strategy-design.md) | to_do | [testing-strategy](../workdown-items/testing-strategy.md) |  |
 | [time-tracking](../workdown-items/time-tracking.md) | done |  |  |
 | [timer-notifications](../workdown-items/timer-notifications.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [pomodoro-timer](../workdown-items/pomodoro-timer.md) |
 | [timer-recording-indicator](../workdown-items/timer-recording-indicator.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [effort-timer](../workdown-items/effort-timer.md) |

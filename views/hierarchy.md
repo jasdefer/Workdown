@@ -21,3 +21,5 @@ Hierarchical outline following `parent` upward to roots.
   - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md) — status: to_do
   - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md) — status: to_do
   - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md) — status: to_do
+- [Decide what our tests are for, and restructure them accordingly](../workdown-items/testing-strategy.md) — status: to_do
+  - [Work out the testing approach and break the milestone into items](../workdown-items/testing-strategy-design.md) — status: to_do

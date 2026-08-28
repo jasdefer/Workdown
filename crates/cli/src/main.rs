@@ -166,7 +166,11 @@ fn load_project_config(cli: &cli::Cli) -> anyhow::Result<Config> {
     Ok(config)
 }
 
-/// `ExitCode::SUCCESS` when `ok`, `ExitCode::FAILURE` otherwise.
+/// The `0` / `1` axis of the exit-code contract: did the work succeed.
+///
+/// A malformed invocation is `2` and never comes through here — clap
+/// returns it directly for every command but `add`, which parses its
+/// schema-derived flags itself. See `docs/architecture.md`.
 fn exit_code(ok: bool) -> ExitCode {
     if ok {
         ExitCode::SUCCESS
@@ -276,12 +280,18 @@ fn run_add_command(
     let matches = match command.try_get_matches_from(raw_args.iter().cloned()) {
         Ok(matches) => matches,
         Err(error) => {
-            // `--help` / `--version` paths: print and exit successfully.
+            // The one command clap does not exit for us: its flags come
+            // from the schema, so the parse happens here and the exit
+            // code is ours to return. `--help` / `--version` are a
+            // successful invocation; anything else is a malformed one,
+            // and gets the same `2` clap returns for every other command.
             error.print()?;
-            return Ok(exit_code(matches!(
-                error.kind(),
-                clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
-            )));
+            return Ok(match error.kind() {
+                clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion => {
+                    ExitCode::SUCCESS
+                }
+                _ => ExitCode::from(2),
+            });
         }
     };
 

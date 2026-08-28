@@ -27,4 +27,7 @@ flowchart TD
         when-map-shorthand["`map:` — lookup-table shorthand over the `when:` evaluator"]
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end
+    subgraph testing-strategy ["Decide what our tests are for, and restructure them accordingly"]
+        testing-strategy-design["Work out the testing approach and break the milestone into items"]
+    end
 ```

@@ -88,6 +88,8 @@ Every finding is a scope-typed `Diagnostic` — file, item, config or collection
 
 ## The four exits
 
+Every command leaves through one of these and answers with one of three exit codes: **`0`** it did what was asked, **`1`** it ran but the work failed or warned, **`2`** the invocation itself was malformed. Keeping `1` and `2` apart is what lets a caller tell "this project has errors" from "this command line is wrong" — and the pre-commit hook `operations::install_hooks` generates depends on the first meaning. Clap returns the `2` for every command it parses; `workdown add` is the exception, because its flags come from the project's schema and so it parses them itself. Everything else the CLI reports as a failure — a config that will not load, a mutation that warned, a view that would not render — is `1`.
+
 ### `workdown render` — Markdown files
 
 `crates/cli/src/commands/render.rs` orchestrates; `crates/cli/src/render/` formats. Three hand-offs here are worth knowing:
