@@ -74,13 +74,7 @@ pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
         })
         .collect();
 
-    let inverse_table = Schema::build_inverse_table(&fields);
-
-    Ok(Schema {
-        fields,
-        rules,
-        inverse_table,
-    })
+    Ok(Schema::new(fields, rules))
 }
 
 /// Load a schema from a file on disk.

@@ -469,12 +469,7 @@ mod tests {
             FieldDefinition::new(FieldTypeConfig::List),
         );
 
-        let inverse_table = Schema::build_inverse_table(&fields);
-        Schema {
-            fields,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(fields, vec![])
     }
 
     /// Create a temp directory with work item files for testing.
@@ -815,12 +810,7 @@ mod tests {
         });
         fields.insert("effort".to_owned(), effort);
 
-        let inverse_table = Schema::build_inverse_table(&fields);
-        Schema {
-            fields,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(fields, vec![])
     }
 
     #[test]

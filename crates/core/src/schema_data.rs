@@ -243,12 +243,7 @@ mod tests {
         let mut assignee = FieldDefinition::new(FieldTypeConfig::String { pattern: None });
         assignee.resource = Some("people".to_owned());
         fields.insert("assignee".to_owned(), assignee);
-        let inverse_table = Schema::build_inverse_table(&fields);
-        Schema {
-            fields,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(fields, vec![])
     }
 
     fn empty_store(schema: &Schema) -> Store {

@@ -449,12 +449,7 @@ mod tests {
             FieldDefinition::new(FieldTypeConfig::Color),
         );
 
-        let inverse_table = Schema::build_inverse_table(&fields);
-        Schema {
-            fields,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(fields, vec![])
     }
 
     /// Build a work item with the given fields, including the `id`

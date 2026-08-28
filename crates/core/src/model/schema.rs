@@ -41,6 +41,23 @@ pub struct Schema {
 }
 
 impl Schema {
+    /// Assemble a schema from its fields and rules, deriving the
+    /// inverse table.
+    ///
+    /// The only way to build a `Schema`: `inverse_table` is not
+    /// independent data but a projection of `fields`, and every caller
+    /// that assembled the struct by hand had to remember to derive it.
+    /// A future invariant field is added here once rather than at every
+    /// construction site.
+    pub fn new(fields: IndexMap<String, FieldDefinition>, rules: Vec<Rule>) -> Self {
+        let inverse_table = Self::build_inverse_table(&fields);
+        Self {
+            fields,
+            rules,
+            inverse_table,
+        }
+    }
+
     /// Build the inverse name table from the schema's link/links field definitions.
     pub fn build_inverse_table(
         fields: &IndexMap<String, FieldDefinition>,

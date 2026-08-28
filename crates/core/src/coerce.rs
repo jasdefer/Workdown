@@ -455,12 +455,7 @@ mod tests {
             .into_iter()
             .map(|(name, def)| (name.to_owned(), def))
             .collect();
-        let inverse_table = Schema::build_inverse_table(&fields);
-        Schema {
-            fields,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(fields, vec![])
     }
 
     /// Build a RawWorkItem with the given frontmatter.

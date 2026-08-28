@@ -87,17 +87,16 @@ pub(crate) fn run(
 
     let mut item_ids: Vec<WorkItemId> = items.keys().cloned().collect();
     item_ids.sort_by(|left, right| left.as_str().cmp(right.as_str()));
-    let item_count = item_ids.len();
+    let grid = NodeGrid {
+        item_count: item_ids.len(),
+    };
     let item_index: HashMap<WorkItemId, usize> = item_ids
         .iter()
         .enumerate()
         .map(|(position, item_id)| (item_id.clone(), position))
         .collect();
 
-    // Node id = field slot × item count + item position. Ascending
-    // node id is exactly the evaluation priority: field reference
-    // order first, then item id.
-    let node_count = derive_fields.len() * item_count;
+    let node_count = derive_fields.len() * item_ids.len();
     let slot_of_field: HashMap<&str, usize> = derive_fields
         .iter()
         .enumerate()
@@ -142,9 +141,8 @@ pub(crate) fn run(
                         continue;
                     }
                     for &input_slot in &input_slots {
-                        dependents[input_slot * item_count + position]
-                            .push(slot * item_count + position);
-                        pending_inputs[slot * item_count + position] += 1;
+                        dependents[grid.node(input_slot, position)].push(grid.node(slot, position));
+                        pending_inputs[grid.node(slot, position)] += 1;
                     }
                 }
             }
@@ -163,12 +161,12 @@ pub(crate) fn run(
                         {
                             continue;
                         }
-                        let node = slot * item_count + position;
+                        let node = grid.node(slot, position);
                         for target in targets_of(item, &pull.over) {
                             let Some(&target_position) = item_index.get(target) else {
                                 continue;
                             };
-                            let source_node = source_slot * item_count + target_position;
+                            let source_node = grid.node(source_slot, target_position);
                             if source_node == node {
                                 continue;
                             }
@@ -203,8 +201,8 @@ pub(crate) fn run(
                 {
                     continue;
                 }
-                dependents[slot * item_count + position].push(slot * item_count + target_position);
-                pending_inputs[slot * item_count + target_position] += 1;
+                dependents[grid.node(slot, position)].push(grid.node(slot, target_position));
+                pending_inputs[grid.node(slot, target_position)] += 1;
             }
         }
     }
@@ -212,7 +210,7 @@ pub(crate) fn run(
     let inputs = EvaluationInputs {
         item_ids: &item_ids,
         item_index: &item_index,
-        item_count,
+        grid,
         reverse_links,
         constants,
         today: compute::timestamp_of(evaluation_date),
@@ -231,12 +229,12 @@ pub(crate) fn run(
         .map(Reverse)
         .collect();
     while let Some(Reverse(node)) = ready.pop() {
-        let slot = node / item_count;
+        let slot = grid.slot_of(node);
         evaluate_node(
             &inputs,
             &derive_fields[slot],
             slot,
-            node % item_count,
+            grid.position_of(node),
             items,
             &mut state,
         );
@@ -268,8 +266,9 @@ pub(crate) fn run(
         // are complete: an item with a hand-written value has no
         // incoming edges (settled nodes wait for nothing), so its node
         // always evaluates — even when it sits on a dependency loop.
-        let bearer_ids: Vec<WorkItemId> = (0..item_count)
-            .filter(|position| state.bearer[slot * item_count + position])
+        let bearer_ids: Vec<WorkItemId> = grid
+            .positions()
+            .filter(|position| state.bearer[grid.node(slot, *position)])
             .map(|position| item_ids[position].clone())
             .collect();
         let bearer_set: HashSet<WorkItemId> = bearer_ids.iter().cloned().collect();
@@ -294,7 +293,7 @@ pub(crate) fn run(
     diagnostics.extend(derive_cycle_diagnostics(
         &derive_fields,
         &item_ids,
-        item_count,
+        grid,
         &dependents,
         &state.evaluated,
         items,
@@ -366,11 +365,46 @@ fn same_item_pass_runs_on(
         .is_none_or(|over| super::is_leaf(reverse_links, item_id, over))
 }
 
+/// The derive graph's node numbering: one node per (field slot, item
+/// position) pair, laid out slot-major.
+///
+/// The layout is load-bearing, not incidental — ascending node id is
+/// exactly the evaluation priority, field reference order first and
+/// then item id, which is what lets the Kahn walk pop a plain
+/// min-heap. Every conversion between a node id and its coordinates
+/// goes through here so the layout is stated once.
+#[derive(Clone, Copy)]
+struct NodeGrid {
+    item_count: usize,
+}
+
+impl NodeGrid {
+    /// The node id for a field slot and an item position.
+    fn node(self, slot: usize, item_position: usize) -> usize {
+        slot * self.item_count + item_position
+    }
+
+    /// The field slot a node belongs to.
+    fn slot_of(self, node: usize) -> usize {
+        node / self.item_count
+    }
+
+    /// The item position a node belongs to.
+    fn position_of(self, node: usize) -> usize {
+        node % self.item_count
+    }
+
+    /// Every item position, ascending.
+    fn positions(self) -> std::ops::Range<usize> {
+        0..self.item_count
+    }
+}
+
 /// Shared read-only inputs of every node evaluation.
 struct EvaluationInputs<'run> {
     item_ids: &'run [WorkItemId],
     item_index: &'run HashMap<WorkItemId, usize>,
-    item_count: usize,
+    grid: NodeGrid,
     reverse_links: &'run HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
     constants: &'run IndexMap<String, FieldValue>,
     /// The evaluation date as a midnight timestamp — what `$today`
@@ -424,7 +458,7 @@ fn evaluate_node(
     state: &mut EvaluationState,
 ) {
     let item_id = &inputs.item_ids[item_position];
-    let node = slot * inputs.item_count + item_position;
+    let node = inputs.grid.node(slot, item_position);
     state.evaluated[node] = true;
 
     let had_value = items
@@ -537,9 +571,8 @@ fn evaluate_node(
             if source_position == item_position {
                 continue;
             }
-            gathered.extend_from_slice(
-                &state.contributions[slot * inputs.item_count + source_position],
-            );
+            gathered
+                .extend_from_slice(&state.contributions[inputs.grid.node(slot, source_position)]);
         }
     }
     // Ascending bearer id, so order-sensitive reductions (float sums)
@@ -643,7 +676,7 @@ enum EdgeProvenance {
 fn derive_cycle_diagnostics(
     derive_fields: &[DeriveField<'_>],
     item_ids: &[WorkItemId],
-    item_count: usize,
+    grid: NodeGrid,
     dependents: &[Vec<usize>],
     evaluated: &[bool],
     items: &HashMap<WorkItemId, WorkItem>,
@@ -708,7 +741,7 @@ fn derive_cycle_diagnostics(
                             &path[cycle_start..],
                             derive_fields,
                             item_ids,
-                            item_count,
+                            grid,
                             items,
                         ) {
                             diagnostics.push(diagnostic);
@@ -732,19 +765,19 @@ fn cycle_diagnostic(
     cycle: &[usize],
     derive_fields: &[DeriveField<'_>],
     item_ids: &[WorkItemId],
-    item_count: usize,
+    grid: NodeGrid,
     items: &HashMap<WorkItemId, WorkItem>,
 ) -> Option<Diagnostic> {
     let mut provenances: HashSet<EdgeProvenance> = HashSet::new();
     for (edge_index, &from_node) in cycle.iter().enumerate() {
         let to_node = cycle[(edge_index + 1) % cycle.len()];
-        let from_position = from_node % item_count;
-        let to_position = to_node % item_count;
+        let from_position = grid.position_of(from_node);
+        let to_position = grid.position_of(to_node);
         if from_position == to_position {
             continue; // same-item edge: no link field involved
         }
-        let from_slot = from_node / item_count;
-        let to_slot = to_node / item_count;
+        let from_slot = grid.slot_of(from_node);
+        let to_slot = grid.slot_of(to_node);
         if from_slot == to_slot {
             // A same-slot edge is an aggregate-reverse edge, so the slot
             // always carries an `over`; no aggregate means no such edge.
@@ -764,14 +797,14 @@ fn cycle_diagnostic(
         .map(|node| {
             format!(
                 "{}.{}",
-                item_ids[node % item_count].as_str(),
-                derive_fields[node / item_count].name
+                item_ids[grid.position_of(*node)].as_str(),
+                derive_fields[grid.slot_of(*node)].name
             )
         })
         .collect();
     chain.push(chain[0].clone());
 
-    let first_item_id = &item_ids[cycle[0] % item_count];
+    let first_item_id = &item_ids[grid.position_of(cycle[0])];
     let source_path = items.get(first_item_id)?.source_path.clone();
     Some(Diagnostic::item(
         Severity::Error,

@@ -65,12 +65,7 @@ fn build_schema(fields: Vec<(&str, FieldTypeConfig)>) -> Schema {
     for (name, config) in fields {
         map.insert(name.to_owned(), FieldDefinition::new(config));
     }
-    let inverse_table = Schema::build_inverse_table(&map);
-    Schema {
-        fields: map,
-        rules: vec![],
-        inverse_table,
-    }
+    Schema::new(map, vec![])
 }
 
 fn simple_schema() -> Schema {

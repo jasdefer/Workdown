@@ -236,12 +236,7 @@ mod tests {
         for (name, cfg) in fields {
             map.insert(name.to_owned(), FieldDefinition::new(cfg));
         }
-        let inverse_table = Schema::build_inverse_table(&map);
-        Schema {
-            fields: map,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(map, vec![])
     }
 
     fn config_with_display(display: DisplayConfig) -> Config {

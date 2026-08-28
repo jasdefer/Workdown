@@ -471,12 +471,7 @@ mod tests {
         reviewers.resource = Some("nobody".to_owned());
         fields.insert("reviewers".to_owned(), reviewers);
 
-        let inverse_table = Schema::build_inverse_table(&fields);
-        Schema {
-            fields,
-            rules: vec![],
-            inverse_table,
-        }
+        Schema::new(fields, vec![])
     }
 
     /// A `people` section with two entries, and an empty `nobody`
