@@ -5,7 +5,7 @@ tagged version into the top of that version's GitHub release page, so
 entries are written for people using workdown, not for people reading
 its source — internal refactors are deliberately absent.
 
-## 0.2.4 - 2026-08-30
+## Unreleased
 
 ### Added
 
@@ -22,6 +22,8 @@ its source — internal refactors are deliberately absent.
   local state plus a retryable hint. Opt-in via
   `serve.git_controls: true` in `config.yaml`, since the buttons act on
   whatever git repository contains the project.
+
+## 0.2.4 - 2026-08-30
 
 ### Changed
 
