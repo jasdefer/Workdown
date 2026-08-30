@@ -16,6 +16,8 @@ import type { CreateItemResult } from './generated/CreateItemResult';
 import type { CreateView } from './generated/CreateView';
 import type { Diagnostic } from './generated/Diagnostic';
 import type { FieldMutation } from './generated/FieldMutation';
+import type { GitPullResult } from './generated/GitPullResult';
+import type { GitStatus } from './generated/GitStatus';
 import type { FieldMutationResult } from './generated/FieldMutationResult';
 import type { ItemDetail } from './generated/ItemDetail';
 import type { SchemaData } from './generated/SchemaData';
@@ -152,6 +154,15 @@ export const api = {
 			mutation
 		),
 	createItem: (body: CreateItem) => request<CreateItemResult>('POST', '/api/items', body),
+	/**
+	 * The git sync status. `fetch` contacts the remote first so `behind`
+	 * is current — used on first load and explicit refreshes; the cheap
+	 * local-only variant answers the file-change pings.
+	 */
+	getGitStatus: (fetch: boolean) =>
+		request<GitStatus>('GET', `/api/git${fetch ? '?fetch=true' : ''}`),
+	gitPull: () => request<GitPullResult>('POST', '/api/git/pull'),
+	gitPush: () => request<GitStatus>('POST', '/api/git/push'),
 	getTimer: () => request<TimerState>('GET', '/api/timer'),
 	/**
 	 * Start the timer on an item. `confirmed` is the second leg of the

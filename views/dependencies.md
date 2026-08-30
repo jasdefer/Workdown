@@ -6,6 +6,7 @@ Directed graph of items connected through `depends_on`, nested by `parent`.
 flowchart TD
     compute-type-support-mismatch["Decide which field types may declare compute and pull"]
     config-hot-reload["Read config.yaml per request so it hot-reloads like everything else"]
+    git-sync-controls["Git sync controls in the web UI"]
     subgraph misc-work ["Miscellaneous improvements"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
         tags-view["A view over tags"]

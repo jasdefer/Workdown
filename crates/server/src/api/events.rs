@@ -36,6 +36,7 @@ async fn events(
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let file_receiver = state.events.subscribe();
     let timer_receiver = state.timer_events.subscribe();
+    let git_receiver = state.git_events.subscribe();
 
     // Each received ping maps to one contentless "changed" event. A
     // `Lagged` error (the browser fell behind and overflowed the buffer)
@@ -51,7 +52,12 @@ async fn events(
     let timer_changes = BroadcastStream::new(timer_receiver)
         .map(|_result| Ok::<_, Infallible>(Event::default().event("timer").data("changed")));
 
-    Sse::new(file_changes.merge(timer_changes)).keep_alive(KeepAlive::default())
+    // Git movement likewise travels named, so a terminal-side commit
+    // refreshes only the git pill, not the whole page.
+    let git_changes = BroadcastStream::new(git_receiver)
+        .map(|_result| Ok::<_, Infallible>(Event::default().event("git").data("changed")));
+
+    Sse::new(file_changes.merge(timer_changes).merge(git_changes)).keep_alive(KeepAlive::default())
 }
 
 #[cfg(test)]

@@ -16,7 +16,9 @@
 //!
 //! A `config.yaml` change pings like any other, but the server holds the
 //! config it read at startup — see ADR-013 for that asymmetry, and for
-//! why the timer gets a channel of its own rather than riding this one.
+//! why the timer and the git status get channels of their own rather
+//! than riding this one. The git channel's watcher also lives here —
+//! see [`start_git_watch`].
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -77,6 +79,68 @@ pub fn start(
     }
 
     Ok(debouncer)
+}
+
+/// Start watching the repository's git directory, so repository
+/// movement made *outside* the server — a commit in a terminal, a
+/// fetch, a branch switch — pings `git_events` and the pill refreshes
+/// without waiting for the user to touch anything. Started only when
+/// the project opted into the git controls; returns the same kind of
+/// guard as [`start`].
+///
+/// What counts as movement is an allowlist, mirroring the file
+/// watcher's: the head pointer files (`HEAD`, `ORIG_HEAD`,
+/// `FETCH_HEAD`) and anything under `logs/`, which git appends to on
+/// every ref update. Everything else in `.git` is deliberately ignored
+/// — above all the index, which the status endpoint's own `git status`
+/// may refresh: reacting to it would make every refresh trigger the
+/// next one.
+pub fn start_git_watch(
+    git_directory: &Path,
+    git_events: broadcast::Sender<()>,
+) -> Result<WatchGuard> {
+    let mut debouncer = new_debouncer(DEBOUNCE, None, move |result: DebounceEventResult| {
+        let should_notify = match result {
+            Ok(batch) => batch
+                .iter()
+                .flat_map(|event| event.paths.iter())
+                .any(|path| is_repository_movement(path)),
+            Err(_errors) => true,
+        };
+        if should_notify {
+            let _ = git_events.send(());
+        }
+    })
+    .context("initialising git watcher")?;
+
+    // The head pointer files live directly in the git directory; the
+    // ref logs live under `logs/`. The logs directory may not exist in
+    // a repository that has never moved a ref (fresh `git init`) — the
+    // non-recursive watch on the git directory itself still catches the
+    // first `HEAD` change after which a restart picks up the rest, so a
+    // missing `logs/` is skipped rather than an error.
+    debouncer
+        .watch(git_directory, RecursiveMode::NonRecursive)
+        .with_context(|| format!("watching {}", git_directory.display()))?;
+    let logs_directory = git_directory.join("logs");
+    if logs_directory.exists() {
+        debouncer
+            .watch(logs_directory.as_path(), RecursiveMode::Recursive)
+            .with_context(|| format!("watching {}", logs_directory.display()))?;
+    }
+
+    Ok(debouncer)
+}
+
+/// True when a path inside the git directory records the repository
+/// moving: one of the head pointer files, or a ref log under `logs/`.
+fn is_repository_movement(path: &Path) -> bool {
+    let file_name = path.file_name().and_then(|name| name.to_str());
+    if matches!(file_name, Some("HEAD" | "ORIG_HEAD" | "FETCH_HEAD")) {
+        return true;
+    }
+    path.components()
+        .any(|component| component.as_os_str() == "logs")
 }
 
 /// Create the work-items directory if it is missing.
@@ -164,6 +228,22 @@ mod tests {
         assert!(!is_watched_file(Path::new("4913"))); // vim probe, no extension
         assert!(!is_watched_file(Path::new("notes.txt")));
         assert!(!is_watched_file(Path::new("workdown-items"))); // a directory
+    }
+
+    #[test]
+    fn repository_movement_is_head_pointers_and_ref_logs() {
+        assert!(is_repository_movement(Path::new(".git/HEAD")));
+        assert!(is_repository_movement(Path::new(".git/ORIG_HEAD")));
+        assert!(is_repository_movement(Path::new(".git/FETCH_HEAD")));
+        assert!(is_repository_movement(Path::new(".git/logs/HEAD")));
+        assert!(is_repository_movement(Path::new(
+            ".git/logs/refs/remotes/origin/main"
+        )));
+        // The index is touched by `git status` itself — reacting to it
+        // would loop refresh → status → index write → refresh.
+        assert!(!is_repository_movement(Path::new(".git/index")));
+        assert!(!is_repository_movement(Path::new(".git/index.lock")));
+        assert!(!is_repository_movement(Path::new(".git/config")));
     }
 
     #[test]

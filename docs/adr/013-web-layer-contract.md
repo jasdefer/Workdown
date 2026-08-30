@@ -32,9 +32,17 @@ included).
 `diagnostics` and `error` stay separate: a diagnostic is a structured,
 scoped project finding (ADR-007), a request failure is neither. Around
 the tiers sit `201` on create, `409` for refusals about state rather
-than input (create over an existing id, start a timer while one runs),
-`500` for I/O. Per ADR-001 a schema violation is not a failure — the
-mutation saves, its warnings ride in `diagnostics`.
+than input (create over an existing id, start a timer while one runs,
+pull over uncommitted changes or into a conflict, a rejected push),
+`500` for I/O. The git surface adds two: `502` when an operation that
+needs the remote can't reach it, and `403` for a request bearing a
+foreign browser `Origin` — the git endpoints have side effects beyond
+the project (network, credential helpers), so they refuse cross-origin
+calls other endpoints tolerate. A *status* read degrades instead of
+failing when only the remote is unreachable: the local half of the
+answer is still true, and its `fetch_error` field carries the reason.
+Per ADR-001 a schema violation is not a failure — the mutation saves,
+its warnings ride in `diagnostics`.
 
 ### Two shapes of 404
 
@@ -67,17 +75,20 @@ restart (`crates/server/src/api/timer.rs`), and while the port and
 watched directories are genuinely boot-bound, the rest could be read per
 request as the cold-load rule predicts — see `config-hot-reload`.
 
-### Two live-update channels, not one
+### One live-update channel per refresh scope
 
-Two broadcast channels (`crates/server/src/state.rs`) merge into one SSE
+The broadcast channels (`crates/server/src/state.rs`) merge into one SSE
 stream per tab (`crates/server/src/api/events.rs`): a contentless
-"something changed" ping from the file watcher, and a timer-named
-message. Pings carry no detail because one item edit can ripple into
-other items' computed values, so refetching the current view is simpler
-and always correct. The channels stay separate so the two refresh scopes
-do — one channel would reload the timer on every file save and the whole
-page on every timer action — and so that lag on the timer channel can
-only mean missed timer pings.
+"something changed" ping from the file watcher, a timer-named message,
+and a git-named message fed by a second watcher on the repository's git
+directory (`serve.git_controls` projects only) — how a commit or fetch
+made in a terminal, which touches nothing the file watcher sees, still
+reaches the git pill. Pings carry no detail because one item edit can
+ripple into other items' computed values, so refetching the current view
+is simpler and always correct. The channels stay separate so the refresh
+scopes do — one channel would reload the timer on every file save and
+the whole page on every timer action — and so that lag on a channel can
+only mean missed pings of its own kind.
 
 ### The timer's lock is held across its file write
 

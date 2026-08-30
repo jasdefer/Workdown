@@ -48,6 +48,21 @@ code {
 	);
 }
 
+/* Header pill — the one definition of the rounded chip the header's
+ * widgets share (the timer pill, the git sync pill). Components add
+ * their own extras (a cursor, a max-width) in their scoped styles. */
+.header-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-size: var(--text-sm);
+	background: var(--color-card);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-full);
+	color: var(--color-fg);
+	padding: 0.25rem 0.7rem;
+}
+
 .sr-only {
 	position: absolute;
 	width: 1px;

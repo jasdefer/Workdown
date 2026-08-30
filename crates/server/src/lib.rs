@@ -11,6 +11,7 @@
 
 pub mod api;
 pub mod envelope;
+pub mod git;
 pub mod state;
 pub mod timer;
 pub mod watcher;

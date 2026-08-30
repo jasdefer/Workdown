@@ -2,7 +2,7 @@
 
 | Label | Value |
 | --- | --- |
-| Total items | 129 |
+| Total items | 130 |
 | To do | 19 |
-| In progress | 0 |
+| In progress | 1 |
 | Done | 110 |

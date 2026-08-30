@@ -4,6 +4,7 @@ Hierarchical outline following `parent` upward to roots.
 
 - [Decide which field types may declare compute and pull](../workdown-items/compute-type-support-mismatch.md) — status: to_do
 - [Read config.yaml per request so it hot-reloads like everything else](../workdown-items/config-hot-reload.md) — status: to_do
+- [Git sync controls in the web UI](../workdown-items/git-sync-controls.md) — status: in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md) — status: to_do
   - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md) — status: to_do
   - [A view over tags](../workdown-items/tags-view.md) — status: to_do

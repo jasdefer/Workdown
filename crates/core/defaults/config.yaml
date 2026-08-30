@@ -40,3 +40,8 @@ defaults:
 # CLI default (3141) with scan-on-conflict.
 serve:
   port: 3141
+  # Show git pull/push controls in the web UI's header. Off by default:
+  # pull and push act on whatever git repository contains this project —
+  # possibly your whole code repo. Push publishes committed work only;
+  # uncommitted edits never leave the machine.
+  # git_controls: true

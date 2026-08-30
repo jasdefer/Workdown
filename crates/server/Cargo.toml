@@ -21,10 +21,11 @@ mime_guess = "2"
 rust-embed = "8"
 serde.workspace = true
 serde_json.workspace = true
-# Runtime needs `net` (the `TcpListener`) and `sync` (the broadcast
-# channel behind live updates). The runtime itself is built by the CLI;
-# `macros`/`rt` stay test-only — see dev-dependencies.
-tokio = { workspace = true, features = ["net", "sync"] }
+# Runtime needs `net` (the `TcpListener`), `sync` (the broadcast
+# channel behind live updates), and `process`/`time` (the git sync
+# endpoints shell out to `git` under a timeout). The runtime itself is
+# built by the CLI; `macros`/`rt` stay test-only — see dev-dependencies.
+tokio = { workspace = true, features = ["net", "sync", "process", "time"] }
 # Adapts a broadcast receiver into the `Stream` axum's SSE response
 # consumes (`wrappers::BroadcastStream`, gated behind the `sync` feature).
 tokio-stream = { version = "0.1", features = ["sync"] }

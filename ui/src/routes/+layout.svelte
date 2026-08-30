@@ -5,6 +5,8 @@
 	import type { Snippet } from 'svelte';
 	import type { LayoutData } from './$types';
 	import favicon from '$lib/assets/favicon.svg';
+	import GitSync from '$lib/git/GitSync.svelte';
+	import { gitStore } from '$lib/stores/git.svelte';
 	import { timerStore } from '$lib/stores/timer.svelte';
 	import TimerPill from '$lib/timer/TimerPill.svelte';
 	import TimerToast from '$lib/timer/TimerToast.svelte';
@@ -29,6 +31,9 @@
 		const source = new EventSource('/api/events');
 		source.onmessage = () => {
 			void invalidateAll();
+			// Every file change moves the git dirty count; recount it
+			// (locally — no remote traffic) alongside the page refetch.
+			void gitStore.refresh();
 		};
 		// Timer changes arrive as a *named* event so the generic handler
 		// above never fires for them: a timer action refetches the timer
@@ -36,7 +41,15 @@
 		source.addEventListener('timer', () => {
 			void timerStore.reload();
 		});
+		// Repository movement (a commit, fetch, or branch switch — often
+		// made in a terminal, which touches only `.git` and therefore
+		// never fires the file-change ping) also travels named: it
+		// refreshes the git pill alone, not the page.
+		source.addEventListener('git', () => {
+			void gitStore.refresh();
+		});
 		void timerStore.load();
+		void gitStore.load();
 		return () => {
 			source.close();
 		};
@@ -63,6 +76,7 @@
 			     issues. -->
 		</div>
 		<div class="header-actions">
+			<GitSync />
 			<TimerPill />
 			<a class="new-item" href="/items/new">+ New item</a>
 			<ThemeToggle />

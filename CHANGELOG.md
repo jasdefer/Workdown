@@ -7,6 +7,22 @@ its source — internal refactors are deliberately absent.
 
 ## 0.2.4 - 2026-08-30
 
+### Added
+
+- Git sync controls in the web UI, for teams whose item repo is shared:
+  a header pill showing the branch, ahead/behind counts and uncommitted
+  files, with Pull and Push buttons. Pull rebases, reports how many
+  commits came in ("Already up to date" vs "Pulled 3 commits") and backs
+  out cleanly on conflict; it refuses to run over uncommitted changes or
+  a rebase in progress, so it can never damage work it didn't create.
+  Push publishes committed work only — uncommitted edits never leave the
+  machine. The pill stays live on its own: the server watches the
+  repository, so a commit or fetch made in a terminal shows up without
+  reloading, and when the remote is unreachable the pill still shows the
+  local state plus a retryable hint. Opt-in via
+  `serve.git_controls: true` in `config.yaml`, since the buttons act on
+  whatever git repository contains the project.
+
 ### Changed
 
 - **Breaking:** a rollup field must now name the relation it climbs. `over` is

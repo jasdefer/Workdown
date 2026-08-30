@@ -109,9 +109,57 @@ async fn run_serve(resolution: PortResolution, state: AppState, open: bool) -> R
         }
     };
 
+    // With the git controls opted in, also watch the repository's git
+    // directory: a commit or fetch made in a terminal moves nothing the
+    // file watcher sees, and this is what keeps the pill truthful
+    // without it. Same guard-holding rule, same failure posture — a
+    // repo that can't be watched degrades to no live git updates.
+    let _git_watch_guard = if git_controls_enabled(&state) {
+        start_git_watch(&state).await
+    } else {
+        None
+    };
+
     let router = workdown_server::router(state);
     workdown_server::serve(listener, router).await?;
     Ok(ExitCode::SUCCESS)
+}
+
+fn git_controls_enabled(state: &AppState) -> bool {
+    state
+        .config
+        .serve
+        .as_ref()
+        .is_some_and(|serve| serve.git_controls)
+}
+
+/// Resolve the git directory and start the watcher on it. `None` (with
+/// a warning where it matters) on any failure: the controls still work,
+/// they just won't refresh on terminal-side git activity.
+async fn start_git_watch(state: &AppState) -> Option<workdown_server::watcher::WatchGuard> {
+    let git_directory = match workdown_server::git::git_directory(&state.project_root).await {
+        Ok(Some(directory)) => directory,
+        // Not a repository: the status endpoint already answers
+        // `not_a_repo` and the UI hides the controls — nothing to watch.
+        Ok(None) => return None,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "git live updates disabled: could not locate the git directory",
+            );
+            return None;
+        }
+    };
+    match workdown_server::watcher::start_git_watch(&git_directory, state.git_events.clone()) {
+        Ok(guard) => Some(guard),
+        Err(error) => {
+            tracing::warn!(
+                error = %format!("{error:#}"),
+                "git live updates disabled: could not start the git watcher",
+            );
+            None
+        }
+    }
 }
 
 // ── Port resolution ───────────────────────────────────────────────────
@@ -215,7 +263,10 @@ defaults:
 
     #[test]
     fn flag_wins_over_config() {
-        let config = config_with(Some(ServeConfig { port: Some(7000) }));
+        let config = config_with(Some(ServeConfig {
+            port: Some(7000),
+            ..ServeConfig::default()
+        }));
         let resolution = resolve_port(&config, Some(8080));
         assert_eq!(resolution.start_port, 8080);
         assert!(resolution.explicit);
@@ -223,7 +274,10 @@ defaults:
 
     #[test]
     fn config_used_when_no_flag() {
-        let config = config_with(Some(ServeConfig { port: Some(7000) }));
+        let config = config_with(Some(ServeConfig {
+            port: Some(7000),
+            ..ServeConfig::default()
+        }));
         let resolution = resolve_port(&config, None);
         assert_eq!(resolution.start_port, 7000);
         assert!(!resolution.explicit);
@@ -239,7 +293,10 @@ defaults:
 
     #[test]
     fn empty_serve_section_uses_default() {
-        let config = config_with(Some(ServeConfig { port: None }));
+        let config = config_with(Some(ServeConfig {
+            port: None,
+            ..ServeConfig::default()
+        }));
         let resolution = resolve_port(&config, None);
         assert_eq!(resolution.start_port, DEFAULT_PORT);
         assert!(!resolution.explicit);

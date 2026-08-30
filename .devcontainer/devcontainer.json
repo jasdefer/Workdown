@@ -19,6 +19,12 @@
       ]
     }
   },
+  "forwardPorts": [3141],
+  "portsAttributes": {
+    "3141": {
+      "label": "workdown serve"
+    }
+  },
   "mounts": [
     "source=workdown-target,target=${containerWorkspaceFolder}/target,type=volume",
     "source=workdown-node-modules,target=${containerWorkspaceFolder}/ui/node_modules,type=volume"
