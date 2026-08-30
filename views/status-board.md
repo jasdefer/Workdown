@@ -3,6 +3,10 @@
 Cards grouped into columns by `status`.
 
 ## to_do
+- [Put the project name in the browser tab title](../workdown-items/browser-tab-project-title.md)
+- [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md)
+- [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md)
+- [Let the web app commit, so the git loop is not broken in the middle](../workdown-items/commit-from-web-ui.md)
 - [Decide which field types may declare compute and pull](../workdown-items/compute-type-support-mismatch.md)
 - [Read config.yaml per request so it hot-reloads like everything else](../workdown-items/config-hot-reload.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
@@ -13,6 +17,9 @@ Cards grouped into columns by `status`.
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md)
+- [Apply the same-origin check to every mutating endpoint, not just the git ones](../workdown-items/same-origin-guard-everywhere.md)
+- [See and edit the schema in the web app](../workdown-items/schema-editor-web.md)
+- [Decide how much of the schema the web app edits, and what a breaking save does](../workdown-items/schema-editor-web-design.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
 - [A view over tags](../workdown-items/tags-view.md)
 - [Decide what our tests are for, and restructure them accordingly](../workdown-items/testing-strategy.md)
@@ -24,7 +31,7 @@ Cards grouped into columns by `status`.
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
-- [Git sync controls in the web UI](../workdown-items/git-sync-controls.md)
+_(no cards)_
 
 ## done
 - [Commands fail when the work-items directory is missing](../workdown-items/add-missing-items-directory.md)
@@ -67,6 +74,7 @@ Cards grouped into columns by `status`.
 - [Consolidate duplication and tighten types before more foundation work](../workdown-items/foundation-cleanup.md)
 - [Gantt duration input mode](../workdown-items/gantt-duration-mode.md)
 - [Gantt predecessor input mode](../workdown-items/gantt-predecessor-mode.md)
+- [Git sync controls in the web UI](../workdown-items/git-sync-controls.md)
 - [Clicking an item in the graph view does not open it](../workdown-items/graph-item-open.md)
 - [Optional --install-hooks for pre-commit render](../workdown-items/init-install-hooks.md)
 - [Item mutations](../workdown-items/item-mutations.md)

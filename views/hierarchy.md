@@ -2,10 +2,13 @@
 
 Hierarchical outline following `parent` upward to roots.
 
+- [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md) — status: to_do
+  - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md) — status: to_do
+- [Let the web app commit, so the git loop is not broken in the middle](../workdown-items/commit-from-web-ui.md) — status: to_do
 - [Decide which field types may declare compute and pull](../workdown-items/compute-type-support-mismatch.md) — status: to_do
 - [Read config.yaml per request so it hot-reloads like everything else](../workdown-items/config-hot-reload.md) — status: to_do
-- [Git sync controls in the web UI](../workdown-items/git-sync-controls.md) — status: in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md) — status: to_do
+  - [Put the project name in the browser tab title](../workdown-items/browser-tab-project-title.md) — status: to_do
   - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md) — status: to_do
   - [A view over tags](../workdown-items/tags-view.md) — status: to_do
   - [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md) — status: to_do
@@ -15,6 +18,9 @@ Hierarchical outline following `parent` upward to roots.
   - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — status: to_do
 - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md) — status: to_do
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md) — status: to_do
+- [Apply the same-origin check to every mutating endpoint, not just the git ones](../workdown-items/same-origin-guard-everywhere.md) — status: to_do
+- [See and edit the schema in the web app](../workdown-items/schema-editor-web.md) — status: to_do
+  - [Decide how much of the schema the web app edits, and what a breaking save does](../workdown-items/schema-editor-web-design.md) — status: to_do
 - [Derived field expressions](../workdown-items/schema-expressions.md) — status: to_do
   - [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md) — status: to_do
   - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md) — status: to_do

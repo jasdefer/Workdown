@@ -7,6 +7,9 @@
 | [aggregate-rollup](../workdown-items/aggregate-rollup.md) | done | [renderers](../workdown-items/renderers.md) |  |
 | [app-shell-navigation](../workdown-items/app-shell-navigation.md) | done | [server](../workdown-items/server.md) | [first-view-end-to-end](../workdown-items/first-view-end-to-end.md) |
 | [assorted-small-fixes](../workdown-items/assorted-small-fixes.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
+| [browser-tab-project-title](../workdown-items/browser-tab-project-title.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
+| [burndown-chart](../workdown-items/burndown-chart.md) | to_do |  |  |
+| [burndown-chart-design](../workdown-items/burndown-chart-design.md) | to_do | [burndown-chart](../workdown-items/burndown-chart.md) |  |
 | [chart-renderer-sharing](../workdown-items/chart-renderer-sharing.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [view-order-in-extractor](../workdown-items/view-order-in-extractor.md) |
 | [ci-workspace-coverage](../workdown-items/ci-workspace-coverage.md) | done |  |  |
 | [cli-add-audit](../workdown-items/cli-add-audit.md) | done | [item-mutations](../workdown-items/item-mutations.md) |  |
@@ -20,6 +23,7 @@
 | [code-quality](../workdown-items/code-quality.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) |  |
 | [color-display-slot](../workdown-items/color-display-slot.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [color-field-type](../workdown-items/color-field-type.md), [view-display-config](../workdown-items/view-display-config.md) |
 | [color-field-type](../workdown-items/color-field-type.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [mutations-slice](../workdown-items/mutations-slice.md) |
+| [commit-from-web-ui](../workdown-items/commit-from-web-ui.md) | to_do |  |  |
 | [compute-type-support-mismatch](../workdown-items/compute-type-support-mismatch.md) | to_do |  |  |
 | [computed-fields](../workdown-items/computed-fields.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [project-constants](../workdown-items/project-constants.md) |
 | [conditional-field-value](../workdown-items/conditional-field-value.md) | done | [polish](../workdown-items/polish.md) | [expression-predicates](../workdown-items/expression-predicates.md), [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
@@ -48,7 +52,7 @@
 | [foundation-cleanup](../workdown-items/foundation-cleanup.md) | done | [foundation](../workdown-items/foundation.md) |  |
 | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) | done | [renderers](../workdown-items/renderers.md) | [render-gantt](../workdown-items/render-gantt.md), [duration-field-type](../workdown-items/duration-field-type.md) |
 | [gantt-predecessor-mode](../workdown-items/gantt-predecessor-mode.md) | done | [renderers](../workdown-items/renderers.md) | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) |
-| [git-sync-controls](../workdown-items/git-sync-controls.md) | in_progress |  |  |
+| [git-sync-controls](../workdown-items/git-sync-controls.md) | done |  |  |
 | [github-render-action](../workdown-items/github-render-action.md) | removed | [polish](../workdown-items/polish.md) |  |
 | [graph-item-open](../workdown-items/graph-item-open.md) | done |  |  |
 | [init-install-hooks](../workdown-items/init-install-hooks.md) | done | [polish](../workdown-items/polish.md) |  |
@@ -92,6 +96,9 @@
 | [resource-label-display](../workdown-items/resource-label-display.md) | removed | [polish](../workdown-items/polish.md) | [resource-option-lists](../workdown-items/resource-option-lists.md) |
 | [resource-option-lists](../workdown-items/resource-option-lists.md) | done | [polish](../workdown-items/polish.md) | [mutations-slice](../workdown-items/mutations-slice.md), [schema-metadata-api](../workdown-items/schema-metadata-api.md) |
 | [rules-current-date-reference](../workdown-items/rules-current-date-reference.md) | done | [polish](../workdown-items/polish.md) | [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
+| [same-origin-guard-everywhere](../workdown-items/same-origin-guard-everywhere.md) | to_do |  |  |
+| [schema-editor-web](../workdown-items/schema-editor-web.md) | to_do |  |  |
+| [schema-editor-web-design](../workdown-items/schema-editor-web-design.md) | to_do | [schema-editor-web](../workdown-items/schema-editor-web.md) |  |
 | [schema-expressions](../workdown-items/schema-expressions.md) | to_do |  |  |
 | [schema-metadata-api](../workdown-items/schema-metadata-api.md) | done | [view-authoring](../workdown-items/view-authoring.md) |  |
 | [schema-property-table](../workdown-items/schema-property-table.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |

@@ -4,10 +4,14 @@ Directed graph of items connected through `depends_on`, nested by `parent`.
 
 ```mermaid
 flowchart TD
+    subgraph burndown-chart ["A chart that shows progress over time (burndown or similar)"]
+        burndown-chart-design["Decide where the burndown's time axis comes from"]
+    end
+    commit-from-web-ui["Let the web app commit, so the git loop is not broken in the middle"]
     compute-type-support-mismatch["Decide which field types may declare compute and pull"]
     config-hot-reload["Read config.yaml per request so it hot-reloads like everything else"]
-    git-sync-controls["Git sync controls in the web UI"]
     subgraph misc-work ["Miscellaneous improvements"]
+        browser-tab-project-title["Put the project name in the browser tab title"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
         tags-view["A view over tags"]
         typed-date-filter-comparison["Compare dates in filters as dates, not as text"]
@@ -19,6 +23,10 @@ flowchart TD
     end
     project-load-cache["Cache the project load in the server (when it starts to hurt)"]
     recording-dot-extraction["Extract the recording indicator the six item-presenting views each rebuilt"]
+    same-origin-guard-everywhere["Apply the same-origin check to every mutating endpoint, not just the git ones"]
+    subgraph schema-editor-web ["See and edit the schema in the web app"]
+        schema-editor-web-design["Decide how much of the schema the web app edits, and what a breaking save does"]
+    end
     subgraph schema-expressions ["Derived field expressions"]
         expression-comparison-corner-cases["Integer precision and NaN in comparison evaluation"]
         expression-logical-combinators["`and` / `or` / `not` in the expression grammar"]

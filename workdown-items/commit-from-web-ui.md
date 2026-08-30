@@ -1,76 +1,66 @@
 ---
 id: commit-from-web-ui
 status: to_do
-title: Commit changed items from the web app, with a proposed message
+title: Let the web app commit, so the git loop is not broken in the middle
 ---
 
 ## In plain words
 
-The web app can now pull and push, but it cannot commit — so the loop
-is still broken in the middle. You move a card, the file changes, the
-pill says "3 local", you press Push and nothing happens, because there
-is no commit to push. The next step is a terminal. This item adds the
-missing piece: a commit action with a message box that is already
-filled in with a sensible sentence you can overwrite.
+The web app can pull and push, but it cannot commit — so the loop stops
+halfway. You move a card, the file changes, the pill says "3 local",
+you press Push and nothing happens, because there is no commit to
+push. The next step is a terminal.
 
-**Example:** you drag two items to `in_progress` and change one
-assignee. The box opens pre-filled with what actually changed —
-`fix-login-bug: status backlog → in_progress` — you adjust the wording
-if you want, press Commit, and Push now has something to send.
+This item says only that the gap should close. **How** it closes is not
+decided here.
 
 Follow-up to [[git-sync-controls]], deliberately left out of PR #53 to
-keep it focused.
+keep that one focused.
 
-## Where the idea comes from
+## Why it is worth doing
 
-Christian raised it in the PR under "Deferred follow-up (for
-discussion)" and asked for design feedback before building:
+Everything else about working from the board is self-contained: you
+drag, it saves, other tabs update. The moment you want that work to
+leave your machine, you drop out of the app for one command and come
+back. For the audience this was built for — teams sharing an item repo,
+where the whole point was that people forget the git step — that is the
+exact step they forget.
 
-> A **Commit** action in the UI, with a generated, editable message
-> derived from the frontmatter diff (`fix-login-bug: status backlog →
-> in_progress`) shown in a confirm dialog.
+## What is not decided
 
-The point worth keeping is that the message is **proposed, not
-demanded**. An empty text box makes every commit a small chore and
-produces "update" as a message; a generated one derived from the diff
-is usually right as-is and still fully editable.
+- **Where the message comes from.** A plain text box is the obvious
+  first version and is cheap. Christian's proposal in the PR was a box
+  pre-filled from what actually changed (`fix-login-bug: status backlog
+  → in_progress`), still fully editable, on the grounds that these
+  commits are usually mechanical and a blank box tends to produce
+  "update". Both are defensible; nothing here picks one.
+- **How much a commit covers.** Everything changed at once, or a
+  selection. Selection means building staging into the UI.
+- **Files outside the items directory.** The repository may be a whole
+  code repo — that is why `git_controls` is opt-in at all. A commit
+  from the board must never sweep up unrelated source changes. This is
+  the one where a wrong answer does damage.
+- **Commit and push as one gesture or two.**
+- **Body edits.** A changed Markdown body is a real change that
+  produces no frontmatter difference. Whatever the message does, it has
+  to be honest about those.
 
-## The decision this needs first
+## The question underneath
 
 `CLAUDE.md` states: *"No auto-commit. CLI and UI mutations update the
 working tree only. Staging and committing stay a user action — never
 implicit."*
 
-A button a person presses is an explicit action, so this does not break
-the rule as written. But together with the pull and push already
-shipped, it puts the whole git cycle in the web app while the CLI has
-none of it — the same precedent question [[schema-editor-web]] raises
-about `views.yaml`. Worth answering on purpose rather than by accident
-a third time.
-
-## Open questions
-
-- **Scope of a commit.** All changed work items at once, or a
-  selection. Selection means staging in the UI, which is a much bigger
-  surface; all-at-once is honest and small, but only if the app is
-  clear that it commits everything under the items directory.
-- **Files outside the items directory.** The repository may be a whole
-  code repo (the reason `git_controls` is opt-in at all). A commit from
-  the board must never sweep up unrelated source changes — scoping the
-  commit to the work-items path is probably the only safe default.
-- **What the generated message says for more than one item.** One line
-  per item does not fit a subject line; a summary subject plus a body
-  listing the items probably does.
-- **Commit and push in one gesture, or two.** Two is more predictable
-  and matches what shipped; one is what people will ask for.
-- **Where the diff comes from.** Frontmatter changes are the readable
-  part, but a body edit is also a change and produces no field diff.
-  The message needs to say something honest about those too.
+A button a person presses is explicit, so this does not break the rule
+as written. But with pull and push already shipped, it puts the whole
+git cycle in the web app while the CLI has none of it — the same
+precedent question [[schema-editor-web]] raises about `views.yaml`.
+Worth answering deliberately rather than by accident a third time.
 
 ## Notes
 
-- The same opt-in flag and the same-origin guard from
-  [[git-sync-controls]] apply — this is another mutating,
-  network-adjacent endpoint.
-- A commit is not undoable from the UI, so the confirm step is part of
-  the feature, not polish.
+- The opt-in flag and the origin check from [[git-sync-controls]] apply
+  — this is another mutating endpoint. See
+  [[same-origin-guard-everywhere]].
+- A commit is not undoable from the UI, so a confirmation step is part
+  of the feature, not polish.
