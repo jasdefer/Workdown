@@ -1,6 +1,7 @@
 ---
 id: compute-type-support-mismatch
 status: to_do
+parent: schema-expressions
 title: Decide which field types may declare compute and pull
 ---
 
