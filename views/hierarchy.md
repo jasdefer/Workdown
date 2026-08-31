@@ -8,8 +8,7 @@ Hierarchical outline following `parent` upward to roots.
 - [The full git loop, without leaving the board](../workdown-items/full-git-loop.md) — status: to_do
   - [Let the web app commit, so the git loop is not broken in the middle](../workdown-items/commit-from-web-ui.md) — status: to_do
   - [Switch on git controls and the effort timer in this repo's own config](../workdown-items/dogfood-git-controls-config.md) — status: to_do
-- [Miscellaneous improvements](../workdown-items/misc-work.md) — status: to_do
-  - [Put the project name in the browser tab title](../workdown-items/browser-tab-project-title.md) — status: to_do
+- [Miscellaneous improvements](../workdown-items/misc-work.md) — status: in_progress
   - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md) — status: to_do
   - [A view over tags](../workdown-items/tags-view.md) — status: to_do
   - [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md) — status: to_do

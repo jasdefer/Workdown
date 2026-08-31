@@ -7,7 +7,7 @@
 | [aggregate-rollup](../workdown-items/aggregate-rollup.md) | done | [renderers](../workdown-items/renderers.md) |  |
 | [app-shell-navigation](../workdown-items/app-shell-navigation.md) | done | [server](../workdown-items/server.md) | [first-view-end-to-end](../workdown-items/first-view-end-to-end.md) |
 | [assorted-small-fixes](../workdown-items/assorted-small-fixes.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
-| [browser-tab-project-title](../workdown-items/browser-tab-project-title.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
+| [browser-tab-project-title](../workdown-items/browser-tab-project-title.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [burndown-chart](../workdown-items/burndown-chart.md) | to_do |  |  |
 | [burndown-chart-design](../workdown-items/burndown-chart-design.md) | to_do | [burndown-chart](../workdown-items/burndown-chart.md) |  |
 | [chart-renderer-sharing](../workdown-items/chart-renderer-sharing.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [view-order-in-extractor](../workdown-items/view-order-in-extractor.md) |
@@ -63,7 +63,7 @@
 | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | done |  |  |
 | [message-style-consistency](../workdown-items/message-style-consistency.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) |
 | [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
-| [misc-work](../workdown-items/misc-work.md) | to_do |  |  |
+| [misc-work](../workdown-items/misc-work.md) | in_progress |  |  |
 | [multi-project-design](../workdown-items/multi-project-design.md) | to_do | [multi-project-support](../workdown-items/multi-project-support.md) |  |
 | [multi-project-support](../workdown-items/multi-project-support.md) | to_do |  |  |
 | [mutations-slice](../workdown-items/mutations-slice.md) | done | [server](../workdown-items/server.md) | [first-view-end-to-end](../workdown-items/first-view-end-to-end.md) |

@@ -13,7 +13,6 @@ flowchart TD
         dogfood-git-controls-config["Switch on git controls and the effort timer in this repo's own config"]
     end
     subgraph misc-work ["Miscellaneous improvements"]
-        browser-tab-project-title["Put the project name in the browser tab title"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
         tags-view["A view over tags"]
         typed-date-filter-comparison["Compare dates in filters as dates, not as text"]

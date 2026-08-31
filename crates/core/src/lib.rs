@@ -16,6 +16,7 @@ pub mod mutation_data;
 pub mod operations;
 pub mod parser;
 pub mod project;
+pub mod project_data;
 pub mod query;
 pub mod resolve;
 pub mod resources_check;

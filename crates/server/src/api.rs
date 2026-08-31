@@ -16,6 +16,7 @@ use crate::state::AppState;
 pub mod events;
 pub mod git;
 pub mod items;
+pub mod project;
 pub mod schema;
 pub mod timer;
 pub mod views;
@@ -26,6 +27,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .merge(views::router())
         .merge(schema::router())
+        .merge(project::router())
         .merge(items::router())
         .merge(events::router())
         .merge(timer::router())

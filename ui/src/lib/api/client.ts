@@ -20,6 +20,7 @@ import type { GitPullResult } from './generated/GitPullResult';
 import type { GitStatus } from './generated/GitStatus';
 import type { FieldMutationResult } from './generated/FieldMutationResult';
 import type { ItemDetail } from './generated/ItemDetail';
+import type { ProjectIdentity } from './generated/ProjectIdentity';
 import type { SchemaData } from './generated/SchemaData';
 import type { SetViewFilter } from './generated/SetViewFilter';
 import type { StartTimer } from './generated/StartTimer';
@@ -146,6 +147,12 @@ export const api = {
 	deleteView: (id: string) =>
 		request<ViewMutationResult>('DELETE', `/api/views/${encodeURIComponent(id)}`),
 	getSchema: () => request<SchemaData>('GET', '/api/schema'),
+	/**
+	 * The project's identity — name and description. Answered from the
+	 * config the server read at start, so it survives a project that
+	 * can't load (every other read then answers 422).
+	 */
+	getProject: () => request<ProjectIdentity>('GET', '/api/project'),
 	getItem: (id: string) => request<ItemDetail>('GET', `/api/items/${encodeURIComponent(id)}`),
 	setField: (id: string, field: string, mutation: FieldMutation) =>
 		request<FieldMutationResult>(

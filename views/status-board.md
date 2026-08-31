@@ -3,7 +3,6 @@
 Cards grouped into columns by `status`.
 
 ## to_do
-- [Put the project name in the browser tab title](../workdown-items/browser-tab-project-title.md)
 - [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md)
 - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md)
 - [Let the web app commit, so the git loop is not broken in the middle](../workdown-items/commit-from-web-ui.md)
@@ -14,7 +13,6 @@ Cards grouped into columns by `status`.
 - [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md)
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
 - [The full git loop, without leaving the board](../workdown-items/full-git-loop.md)
-- [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
@@ -32,7 +30,7 @@ Cards grouped into columns by `status`.
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
-_(no cards)_
+- [Miscellaneous improvements](../workdown-items/misc-work.md)
 
 ## done
 - [Commands fail when the work-items directory is missing](../workdown-items/add-missing-items-directory.md)
@@ -40,6 +38,7 @@ _(no cards)_
 - [Compute schema-declared aggregate fields up the parent chain](../workdown-items/aggregate-rollup.md)
 - [App shell navigation (views menu + future link slots)](../workdown-items/app-shell-navigation.md)
 - [Grab bag of small consistency fixes from the review](../workdown-items/assorted-small-fixes.md)
+- [Put the project name in the browser tab title](../workdown-items/browser-tab-project-title.md)
 - [Make the terminal chart renderers share what they each rebuilt](../workdown-items/chart-renderer-sharing.md)
 - [Run the whole workspace in CI](../workdown-items/ci-workspace-coverage.md)
 - [Audit workdown add for UI-driven creation](../workdown-items/cli-add-audit.md)

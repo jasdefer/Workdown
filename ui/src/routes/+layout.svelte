@@ -2,6 +2,7 @@
 	import '../app.css';
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
+	import { page } from '$app/state';
 	import type { Snippet } from 'svelte';
 	import type { LayoutData } from './$types';
 	import favicon from '$lib/assets/favicon.svg';
@@ -10,6 +11,7 @@
 	import { timerStore } from '$lib/stores/timer.svelte';
 	import TimerPill from '$lib/timer/TimerPill.svelte';
 	import TimerToast from '$lib/timer/TimerToast.svelte';
+	import { documentTitle, pageLabel } from '$lib/ui/documentTitle';
 	import ThemeToggle from '$lib/ui/ThemeToggle.svelte';
 	import ViewNav from '$lib/ui/ViewNav.svelte';
 
@@ -19,6 +21,15 @@
 	}
 
 	let { data, children }: Props = $props();
+
+	// The tab title without the timer's decoration: the project's name,
+	// then whatever this route is. Both halves come from data already at
+	// hand — the fetched project identity and the views index the switcher
+	// uses — so the title never waits on a fetch of its own.
+	const baseTitle = $derived(
+		documentTitle(data.project?.name, pageLabel(page.route.id, page.params, data.views))
+	);
+	const projectDescription = $derived(data.project?.description ?? null);
 
 	// One live-update pipe per tab. The server pushes a contentless ping
 	// on any work-item or config file change (editor save, CLI mutation,
@@ -57,11 +68,16 @@
 </script>
 
 <svelte:head>
-	<!-- The store's title carries the pomodoro countdown and flips to an
-	     alarm form at zero — the "visible in the tab itself" channel of
-	     the timer notifications; plain "Workdown" whenever nothing
-	     counts down. -->
-	<title>{timerStore.documentTitle}</title>
+	<!-- `Project — Page`, project first: two workdown servers on two
+	     ports are told apart by the half of the title a narrow tab still
+	     shows. The timer store decorates it with the pomodoro countdown
+	     and an alarm form at zero — the "visible in the tab itself"
+	     channel of the timer notifications. Interpolated, so a project
+	     name is text and never markup. -->
+	<title>{timerStore.documentTitle(baseTitle)}</title>
+	{#if projectDescription !== null}
+		<meta name="description" content={projectDescription} />
+	{/if}
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
