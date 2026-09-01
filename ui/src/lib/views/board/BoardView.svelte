@@ -12,6 +12,7 @@
 	import type { BoardData } from '$lib/api/generated/BoardData';
 	import type { FieldMutation } from '$lib/api/generated/FieldMutation';
 	import EmptyHint from '$lib/views/EmptyHint.svelte';
+	import { boardDragDisabledReason, boardDragEnabled } from './dragPolicy';
 	import Column from './Column.svelte';
 
 	interface Props {
@@ -21,6 +22,9 @@
 	let { data }: Props = $props();
 
 	let actionError = $state<string | null>(null);
+
+	const dragEnabled = $derived(boardDragEnabled(data.field_type));
+	const dragDisabledReason = $derived(boardDragDisabledReason(data.field_type));
 
 	const visibleColumns = $derived(
 		data.columns.filter((column) => column.value !== null || column.cards.length > 0)
@@ -33,6 +37,12 @@
 	// refetch the view so computed columns/aggregates reflect the move;
 	// the page's DiagnosticBanner then surfaces any save-with-warning.
 	async function moveCard(cardId: string, toValue: string | null): Promise<void> {
+		// Second guard, after the cards' own `draggable={false}`. The drag
+		// payload is a bare MIME string, so a card dragged from a board in
+		// another tab can be dropped onto this one — that path bypasses
+		// this board's drag sources entirely but still lands here, and here
+		// is where the write happens.
+		if (!dragEnabled) return;
 		actionError = null;
 		const mutation: FieldMutation =
 			toValue === null ? { op: 'unset' } : { op: 'replace', value: toValue };
@@ -49,6 +59,10 @@
 	<p class="board-error" role="alert">{actionError}</p>
 {/if}
 
+{#if dragDisabledReason}
+	<p class="board-note">{dragDisabledReason}</p>
+{/if}
+
 {#if totalCards === 0}
 	<EmptyHint />
 {/if}
@@ -58,6 +72,7 @@
 		<Column
 			{column}
 			field={data.field}
+			{dragEnabled}
 			onmove={(cardId: string, toValue: string | null) => {
 				void moveCard(cardId, toValue);
 			}}
@@ -73,6 +88,14 @@
 		flex: 1;
 		min-height: 0;
 		padding-bottom: var(--space-2);
+	}
+
+	/* Why the cards don't drag. Without it a board that quietly ignores
+	   every drag reads as broken rather than as read-only. */
+	.board-note {
+		margin: 0 0 var(--space-2);
+		color: var(--color-fg-muted);
+		font-size: var(--text-sm);
 	}
 
 	.board-error {

@@ -56,11 +56,15 @@ fn render_card(card: &Card, item_link_base: &str) -> String {
 mod tests {
     use super::super::test_fixtures::card;
     use super::*;
+    use workdown_core::model::schema::FieldType;
     use workdown_core::view_data::{BoardColumn, BoardData, Card};
 
     fn board(field: &str, columns: Vec<BoardColumn>) -> BoardData {
         BoardData {
             field: field.to_owned(),
+            // Only the web UI reads the type (to decide whether cards
+            // drag); the Markdown renderer is read-only either way.
+            field_type: FieldType::Choice,
             columns,
         }
     }
