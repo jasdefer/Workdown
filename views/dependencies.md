@@ -13,8 +13,8 @@ flowchart TD
         dogfood-git-controls-config["Switch on git controls and the effort timer in this repo's own config"]
     end
     subgraph misc-work ["Miscellaneous improvements"]
+        board-drop-multichoice["Dragging a card on a multichoice board wipes its other values"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
-        tags-view["A view over tags"]
         typed-date-filter-comparison["Compare dates in filters as dates, not as text"]
     end
     subgraph multi-project-support ["Multi-project support"]

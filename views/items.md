@@ -7,6 +7,7 @@
 | [aggregate-rollup](../workdown-items/aggregate-rollup.md) | done | [renderers](../workdown-items/renderers.md) |  |
 | [app-shell-navigation](../workdown-items/app-shell-navigation.md) | done | [server](../workdown-items/server.md) | [first-view-end-to-end](../workdown-items/first-view-end-to-end.md) |
 | [assorted-small-fixes](../workdown-items/assorted-small-fixes.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
+| [board-drop-multichoice](../workdown-items/board-drop-multichoice.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
 | [browser-tab-project-title](../workdown-items/browser-tab-project-title.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [burndown-chart](../workdown-items/burndown-chart.md) | to_do |  |  |
 | [burndown-chart-design](../workdown-items/burndown-chart-design.md) | to_do | [burndown-chart](../workdown-items/burndown-chart.md) |  |
@@ -109,7 +110,7 @@
 | [stateful-test-gaps](../workdown-items/stateful-test-gaps.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [status-transition-dates](../workdown-items/status-transition-dates.md) | to_do |  |  |
 | [store-diagnostics-consistency](../workdown-items/store-diagnostics-consistency.md) | done | [polish](../workdown-items/polish.md) |  |
-| [tags-view](../workdown-items/tags-view.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
+| [tags-view](../workdown-items/tags-view.md) | removed | [misc-work](../workdown-items/misc-work.md) |  |
 | [testing-strategy](../workdown-items/testing-strategy.md) | to_do |  |  |
 | [testing-strategy-design](../workdown-items/testing-strategy-design.md) | to_do | [testing-strategy](../workdown-items/testing-strategy.md) |  |
 | [time-tracking](../workdown-items/time-tracking.md) | done |  |  |

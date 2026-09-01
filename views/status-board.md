@@ -3,6 +3,7 @@
 Cards grouped into columns by `status`.
 
 ## to_do
+- [Dragging a card on a multichoice board wipes its other values](../workdown-items/board-drop-multichoice.md)
 - [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md)
 - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md)
 - [Let the web app commit, so the git loop is not broken in the middle](../workdown-items/commit-from-web-ui.md)
@@ -22,7 +23,6 @@ Cards grouped into columns by `status`.
 - [Decide how much of the schema the web app edits, and what a breaking save does](../workdown-items/schema-editor-web-design.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md)
-- [A view over tags](../workdown-items/tags-view.md)
 - [Decide what our tests are for, and restructure them accordingly](../workdown-items/testing-strategy.md)
 - [Work out the testing approach and break the milestone into items](../workdown-items/testing-strategy-design.md)
 - [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md)
@@ -152,6 +152,7 @@ Cards grouped into columns by `status`.
 - [Mapped fields — derive a value by lookup table](../workdown-items/field-value-map.md)
 - [Reusable GitHub Action to keep rendered views in sync](../workdown-items/github-render-action.md)
 - [Show a resource entry's label where views display its id](../workdown-items/resource-label-display.md)
+- [A view over tags](../workdown-items/tags-view.md)
 
 ## No status
 _(no cards)_
