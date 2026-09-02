@@ -112,6 +112,74 @@ pub async fn push(root: &Path) -> Result<GitOutput, GitError> {
     run(root, &["push"], NETWORK_TIMEOUT).await
 }
 
+/// First push of a branch that has no upstream yet: create it on
+/// `remote` and record that as the upstream (`-u`), so the next status
+/// has real ahead/behind numbers and later pushes are plain `push`.
+pub async fn publish(root: &Path, remote: &str, branch: &str) -> Result<GitOutput, GitError> {
+    run(root, &["push", "-u", remote, branch], NETWORK_TIMEOUT).await
+}
+
+/// The remote a first publish goes to, by a rule one step friendlier
+/// than bare `git push`: `remote.pushDefault` when it names an existing
+/// remote; otherwise the only remote when there is exactly one (the
+/// step git itself never takes, editors do); otherwise `origin` if it
+/// exists. `None` when nothing applies — several remotes and no
+/// default is the terminal's job.
+///
+/// One spawn: `git config --get-regexp '^remote\.'` lists every
+/// remote's settings and the push default together.
+pub async fn publish_remote(root: &Path) -> Result<Option<String>, GitError> {
+    let output = run(
+        root,
+        &["config", "--get-regexp", "^remote\\."],
+        LOCAL_TIMEOUT,
+    )
+    .await?;
+    // `--get-regexp` exits 1 when nothing matches — a repository with
+    // no remotes at all, which is an answer, not a failure.
+    if !output.success && !output.stderr.trim().is_empty() {
+        return Err(GitError::Failed {
+            command: "config --get-regexp ^remote.".to_owned(),
+            stderr: output.stderr,
+        });
+    }
+    Ok(resolve_publish_remote(&output.stdout))
+}
+
+/// The resolution rule behind [`publish_remote`], on the `key value`
+/// lines `git config --get-regexp` prints.
+fn resolve_publish_remote(config_lines: &str) -> Option<String> {
+    let mut push_default = None;
+    let mut remotes: Vec<String> = Vec::new();
+    for line in config_lines.lines() {
+        let (key, value) = line.split_once(' ').unwrap_or((line, ""));
+        if key == "remote.pushDefault" || key == "remote.pushdefault" {
+            push_default = Some(value.trim().to_owned());
+            continue;
+        }
+        // `remote.<name>.url` — the one key every remote has. Names may
+        // contain dots, so peel the fixed prefix and suffix rather than
+        // splitting on every dot.
+        if let Some(name) = key
+            .strip_prefix("remote.")
+            .and_then(|rest| rest.strip_suffix(".url"))
+        {
+            if !remotes.iter().any(|known| known.as_str() == name) {
+                remotes.push(name.to_owned());
+            }
+        }
+    }
+    if let Some(default) = push_default {
+        if remotes.contains(&default) {
+            return Some(default);
+        }
+    }
+    if remotes.len() == 1 {
+        return remotes.pop();
+    }
+    remotes.into_iter().find(|name| name == "origin")
+}
+
 /// Back out of a rebase the *endpoint* started. Callers must know the
 /// rebase is their own — the pull endpoint refuses to run while one is
 /// already in progress precisely so this can never destroy a rebase
@@ -154,6 +222,9 @@ pub struct RepoSnapshot {
     /// Whether the branch's upstream ref resolves; without one, push
     /// can't succeed and ahead/behind are meaningless zeros.
     pub has_upstream: bool,
+    /// `false` on an unborn branch (fresh `git init`, nothing committed
+    /// yet) — there is nothing to publish then.
+    pub has_commits: bool,
     pub ahead: u32,
     pub behind: u32,
     pub dirty_count: u32,
@@ -195,11 +266,14 @@ fn is_not_a_repository(stderr: &str) -> bool {
 /// - `# branch.head <name>` — `(detached)` maps to `HEAD`, matching
 ///   the wire contract for a detached head. On an unborn branch (fresh
 ///   `git init`, nothing committed) this still names the real branch.
+/// - `# branch.oid (initial)` — the branch is unborn; anything else is
+///   a commit hash, so `has_commits` is true.
 /// - `# branch.ab +<ahead> -<behind>` — present exactly when the
 ///   upstream ref resolves, which is what `has_upstream` means.
 fn parse_porcelain_status(stdout: &str) -> RepoSnapshot {
     let mut branch = String::from("HEAD");
     let mut has_upstream = false;
+    let mut has_commits = true;
     let mut ahead = 0;
     let mut behind = 0;
     let mut dirty_count = 0;
@@ -209,6 +283,8 @@ fn parse_porcelain_status(stdout: &str) -> RepoSnapshot {
             if name != "(detached)" {
                 branch = name.to_owned();
             }
+        } else if let Some(oid) = line.strip_prefix("# branch.oid ") {
+            has_commits = oid != "(initial)";
         } else if let Some(counts) = line.strip_prefix("# branch.ab ") {
             has_upstream = true;
             for count in counts.split_whitespace() {
@@ -226,6 +302,7 @@ fn parse_porcelain_status(stdout: &str) -> RepoSnapshot {
     RepoSnapshot {
         branch,
         has_upstream,
+        has_commits,
         ahead,
         behind,
         dirty_count,
@@ -249,6 +326,7 @@ mod tests {
             RepoSnapshot {
                 branch: "main".into(),
                 has_upstream: true,
+                has_commits: true,
                 ahead: 0,
                 behind: 0,
                 dirty_count: 0,
@@ -271,6 +349,7 @@ mod tests {
             RepoSnapshot {
                 branch: "feature".into(),
                 has_upstream: true,
+                has_commits: true,
                 ahead: 2,
                 behind: 3,
                 dirty_count: 2,
@@ -293,11 +372,43 @@ mod tests {
             RepoSnapshot {
                 branch: "main".into(),
                 has_upstream: false,
+                has_commits: false,
                 ahead: 0,
                 behind: 0,
                 dirty_count: 1,
             }
         );
+    }
+
+    #[test]
+    fn resolves_publish_remote_by_default_then_sole_then_origin() {
+        // pushDefault wins when it names a real remote…
+        assert_eq!(
+            resolve_publish_remote(
+                "remote.pushDefault fork\nremote.origin.url a\nremote.fork.url b\n"
+            ),
+            Some("fork".into())
+        );
+        // …and is ignored when it names one that no longer exists.
+        assert_eq!(
+            resolve_publish_remote("remote.pushDefault gone\nremote.origin.url a\n"),
+            Some("origin".into())
+        );
+        // The only remote is used whatever it is called.
+        assert_eq!(
+            resolve_publish_remote("remote.upstream.url a\nremote.upstream.fetch x\n"),
+            Some("upstream".into())
+        );
+        // Several remotes: origin if present, otherwise no answer.
+        assert_eq!(
+            resolve_publish_remote("remote.fork.url b\nremote.origin.url a\n"),
+            Some("origin".into())
+        );
+        assert_eq!(
+            resolve_publish_remote("remote.fork.url b\nremote.upstream.url a\n"),
+            None
+        );
+        assert_eq!(resolve_publish_remote(""), None);
     }
 
     #[test]

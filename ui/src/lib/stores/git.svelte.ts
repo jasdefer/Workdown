@@ -12,7 +12,7 @@
 
 import { api } from '$lib/api/client';
 import type { GitStatus } from '$lib/api/generated/GitStatus';
-import { pullMessage } from '$lib/git/gitPill';
+import { pullMessage, pushMessage } from '$lib/git/gitPill';
 
 export interface GitMessage {
 	kind: 'ok' | 'error';
@@ -138,7 +138,10 @@ export const gitStore = {
 	push(): Promise<void> {
 		return runOperation(
 			() => api.gitPush(),
-			(data) => ({ status: data, toast: 'Pushed' }),
+			(data) => ({
+				status: data.status,
+				toast: pushMessage(data.published, data.status.state === 'ready' ? data.status.branch : '')
+			}),
 			'Push failed.'
 		);
 	},

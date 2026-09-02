@@ -16,6 +16,15 @@ pub struct GitPullResult {
     pub status: GitStatus,
 }
 
+/// What a push accomplished: whether it *published* the branch (first
+/// push, upstream created and recorded) or pushed to an existing
+/// upstream — the toast says which — plus the fresh status.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ts_rs::TS)]
+pub struct GitPushResult {
+    pub published: bool,
+    pub status: GitStatus,
+}
+
 /// What the git controls should show — one tagged state per situation
 /// the widget must distinguish. `Disabled` (the default) keeps the
 /// widget entirely hidden; nothing else about the repository is
@@ -32,8 +41,10 @@ pub enum GitStatus {
     Ready {
         /// Current branch name (`HEAD` when detached).
         branch: String,
-        /// Whether the branch tracks an upstream; without one, push
-        /// can't succeed and ahead/behind are meaningless zeros.
+        /// Whether the branch tracks an upstream. Without one the
+        /// branch is unpublished: ahead/behind are meaningless zeros,
+        /// pull has nowhere to pull from, and push *publishes* (creates
+        /// the remote branch and records it as upstream).
         has_upstream: bool,
         /// Commits on the branch that the upstream doesn't have.
         ahead: u32,

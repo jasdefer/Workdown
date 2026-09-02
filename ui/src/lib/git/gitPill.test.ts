@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pillModel, pullMessage } from './gitPill';
+import { pillModel, pullMessage, pushMessage } from './gitPill';
 import type { GitStatus } from '$lib/api/generated/GitStatus';
 
 const ready = (overrides: Partial<Extract<GitStatus, { state: 'ready' }>> = {}): GitStatus => ({
@@ -39,7 +39,9 @@ describe('pillModel', () => {
 	it('enables pull only with an upstream, a clean tree, and no operation running', () => {
 		expect(pillModel(ready(), false).canPull).toBe(true);
 		expect(pillModel(ready(), true).canPull).toBe(false);
-		expect(pillModel(ready({ has_upstream: false }), false).canPull).toBe(false);
+		const unpublished = pillModel(ready({ has_upstream: false }), false);
+		expect(unpublished.canPull).toBe(false);
+		expect(unpublished.pullTitle).toBe('Not published yet — nothing to pull from');
 		// Pull never touches uncommitted work — the button goes off and
 		// the tooltip carries the way out.
 		const dirty = pillModel(ready({ dirty_count: 1 }), false);
@@ -57,26 +59,55 @@ describe('pillModel', () => {
 		expect(unreachable.remoteHint).toBe('could not resolve host');
 	});
 
-	it('enables push only with an upstream and commits to publish', () => {
+	it('enables push only with commits to publish and no operation running', () => {
 		expect(pillModel(ready({ ahead: 1 }), false).canPush).toBe(true);
 		expect(pillModel(ready(), false).canPush).toBe(false);
 		expect(pillModel(ready({ ahead: 1 }), true).canPush).toBe(false);
-		expect(pillModel(ready({ ahead: 1, has_upstream: false }), false).canPush).toBe(false);
 	});
 
 	it('explains why push is unavailable', () => {
 		expect(pillModel(ready(), false).pushTitle).toBe('Nothing to push — no local commits');
-		expect(pillModel(ready({ has_upstream: false }), false).pushTitle).toBe(
-			'No upstream branch configured'
-		);
 		expect(pillModel(ready({ ahead: 2 }), false).pushTitle).toBe('Push 2 commits');
 		expect(pillModel(ready({ ahead: 1 }), false).pushTitle).toBe('Push 1 commit');
+		expect(pillModel(ready({ ahead: 1 }), false).pushLabel).toBe('Push');
+	});
+
+	it('turns push into publish on a branch that has no upstream', () => {
+		// Nothing has left the machine, so "in sync" would be a lie; the
+		// button offers the way out instead of greying out. Ahead/behind
+		// carry no information without an upstream, so no arrows.
+		const model = pillModel(ready({ branch: 'feature', has_upstream: false }), false);
+		expect(model.summary).toBe('not published');
+		expect(model.pushLabel).toBe('Publish');
+		expect(model.pushTitle).toBe('Publish feature');
+		expect(model.canPush).toBe(true);
+		expect(pillModel(ready({ has_upstream: false }), true).canPush).toBe(false);
+		expect(pillModel(ready({ has_upstream: false, dirty_count: 2 }), false).summary).toBe(
+			'not published · 2 local'
+		);
+	});
+
+	it('offers nothing on a detached head', () => {
+		// `HEAD` is the wire contract for "no branch": nothing to publish,
+		// nothing to pull from — and again not "in sync".
+		const model = pillModel(ready({ branch: 'HEAD', has_upstream: false }), false);
+		expect(model.summary).toBe('detached');
+		expect(model.pushLabel).toBe('Push');
+		expect(model.canPush).toBe(false);
+		expect(model.canPull).toBe(false);
+		expect(model.pushTitle).toBe('Detached HEAD — check out a branch first');
+		expect(model.pullTitle).toBe('Detached HEAD — check out a branch first');
 	});
 
 	it('tells whether the pull actually brought something in', () => {
 		expect(pullMessage(0)).toBe('Already up to date');
 		expect(pullMessage(1)).toBe('Pulled 1 commit');
 		expect(pullMessage(3)).toBe('Pulled 3 commits');
+	});
+
+	it('tells whether the push published the branch or pushed to its upstream', () => {
+		expect(pushMessage(false, 'main')).toBe('Pushed');
+		expect(pushMessage(true, 'feature')).toBe('Published feature');
 	});
 
 	it('reminds about uncommitted changes without blocking push', () => {

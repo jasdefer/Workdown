@@ -551,13 +551,213 @@ async fn push_publishes_local_commits() {
     .await;
 
     assert_eq!(status, StatusCode::OK, "body: {body}");
-    assert_eq!(body["data"]["ahead"], 0);
+    assert_eq!(body["data"]["published"], false);
+    assert_eq!(body["data"]["status"]["ahead"], 0);
     let remote = directory.path().join("remote.git");
     assert_eq!(
         git_stdout(&remote, &["rev-parse", "main"]),
         git_stdout(&work, &["rev-parse", "HEAD"]),
         "the remote's main must now hold the local commit"
     );
+}
+
+/// Switch `work` to a brand-new branch with one commit on it and no
+/// upstream — the state the pill shows as "not published".
+fn create_unpublished_branch(work: &Path, name: &str) {
+    run_git(work, &["switch", "-c", name]);
+    fs::write(
+        work.join("workdown-items/item-b.md"),
+        "---\ntitle: Item B\nstatus: open\n---\n",
+    )
+    .unwrap();
+    run_git(work, &["add", "-A"]);
+    run_git(work, &["commit", "-m", "add item-b on branch"]);
+}
+
+#[tokio::test]
+async fn push_on_unpublished_branch_creates_it_on_the_remote_and_sets_upstream() {
+    let (directory, work) = init_synced_repo();
+    create_unpublished_branch(&work, "feature");
+
+    let (status, body) = post_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/push",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["data"]["published"], true);
+    // The fresh status already tracks the new upstream — from here on
+    // the button reads "Push" and ahead/behind are real numbers.
+    assert_eq!(body["data"]["status"]["has_upstream"], true);
+    assert_eq!(body["data"]["status"]["ahead"], 0);
+    assert_eq!(body["data"]["status"]["behind"], 0);
+    let remote = directory.path().join("remote.git");
+    assert_eq!(
+        git_stdout(&remote, &["rev-parse", "feature"]),
+        git_stdout(&work, &["rev-parse", "HEAD"]),
+        "the remote must now have the branch at the local commit"
+    );
+    assert_eq!(
+        git_stdout(&work, &["rev-parse", "--abbrev-ref", "feature@{upstream}"]),
+        "origin/feature"
+    );
+}
+
+#[tokio::test]
+async fn publish_uses_the_only_remote_whatever_it_is_called() {
+    let (directory, work) = init_synced_repo();
+    run_git(&work, &["remote", "rename", "origin", "upstream"]);
+    create_unpublished_branch(&work, "feature");
+
+    let (status, body) = post_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/push",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(
+        git_stdout(&work, &["rev-parse", "--abbrev-ref", "feature@{upstream}"]),
+        "upstream/feature"
+    );
+    let remote = directory.path().join("remote.git");
+    assert_eq!(
+        git_stdout(&remote, &["rev-parse", "feature"]),
+        git_stdout(&work, &["rev-parse", "HEAD"])
+    );
+}
+
+#[tokio::test]
+async fn publish_prefers_push_default_over_origin() {
+    let (directory, work) = init_synced_repo();
+    // A second bare remote, made the configured push default.
+    let fork = directory.path().join("fork.git");
+    fs::create_dir_all(&fork).unwrap();
+    run_git(&fork, &["init", "--bare", "--initial-branch=main", "."]);
+    run_git(&work, &["remote", "add", "fork", fork.to_str().unwrap()]);
+    run_git(&work, &["config", "remote.pushDefault", "fork"]);
+    create_unpublished_branch(&work, "feature");
+
+    let (status, body) = post_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/push",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(
+        git_stdout(&work, &["rev-parse", "--abbrev-ref", "feature@{upstream}"]),
+        "fork/feature"
+    );
+    assert_eq!(
+        git_stdout(&fork, &["rev-parse", "feature"]),
+        git_stdout(&work, &["rev-parse", "HEAD"])
+    );
+    // origin never saw the branch.
+    let origin = directory.path().join("remote.git");
+    assert!(
+        git_stdout(&origin, &["branch", "--list", "feature"]).is_empty(),
+        "origin must not have received the branch"
+    );
+}
+
+#[tokio::test]
+async fn publish_falls_back_to_origin_among_several_remotes() {
+    let (directory, work) = init_synced_repo();
+    let fork = directory.path().join("fork.git");
+    fs::create_dir_all(&fork).unwrap();
+    run_git(&fork, &["init", "--bare", "--initial-branch=main", "."]);
+    run_git(&work, &["remote", "add", "fork", fork.to_str().unwrap()]);
+    create_unpublished_branch(&work, "feature");
+
+    let (status, body) = post_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/push",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(
+        git_stdout(&work, &["rev-parse", "--abbrev-ref", "feature@{upstream}"]),
+        "origin/feature"
+    );
+}
+
+#[tokio::test]
+async fn publish_refused_when_no_remote_can_be_chosen() {
+    let (directory, work) = init_synced_repo();
+    // Two remotes, neither called origin, no push default: the rule has
+    // no answer and the click says so instead of guessing.
+    let fork = directory.path().join("fork.git");
+    fs::create_dir_all(&fork).unwrap();
+    run_git(&fork, &["init", "--bare", "--initial-branch=main", "."]);
+    run_git(&work, &["remote", "rename", "origin", "upstream"]);
+    run_git(&work, &["remote", "add", "fork", fork.to_str().unwrap()]);
+    create_unpublished_branch(&work, "feature");
+
+    let (status, body) = post_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/push",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    let error = body["error"].as_str().unwrap();
+    assert!(error.contains("no remote"), "unexpected error: {error}");
+    assert!(
+        git_stdout(&work, &["branch", "-r", "--list", "*/feature"]).is_empty(),
+        "nothing must have been pushed anywhere"
+    );
+}
+
+#[tokio::test]
+async fn publish_refused_on_a_branch_with_no_commits() {
+    let directory = TempDir::new().unwrap();
+    let remote = directory.path().join("remote.git");
+    let work = directory.path().join("work");
+    fs::create_dir_all(&remote).unwrap();
+    fs::create_dir_all(&work).unwrap();
+    run_git(&remote, &["init", "--bare", "--initial-branch=main", "."]);
+    run_git(&work, &["init", "--initial-branch=main", "."]);
+    run_git(
+        &work,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
+    write_project_files(&work, &project_config(true));
+
+    let (status, body) = post_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/push",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    let error = body["error"].as_str().unwrap();
+    assert!(error.contains("no commits"), "unexpected error: {error}");
+}
+
+#[tokio::test]
+async fn publish_refused_on_a_detached_head() {
+    let (_directory, work) = init_synced_repo();
+    run_git(&work, &["checkout", "--detach"]);
+
+    let (status, body) = post_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/push",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    let error = body["error"].as_str().unwrap();
+    assert!(error.contains("detached"), "unexpected error: {error}");
 }
 
 #[tokio::test]

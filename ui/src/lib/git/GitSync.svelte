@@ -5,8 +5,11 @@
   (`↓behind ↑ahead · N local`, or `in sync`), a Pull button that is
   enabled only while the tree is clean — pull never touches uncommitted
   work — and a Push button that is enabled only when local commits
-  exist; the tooltips and the dirty hint say why either is off. When
-  the remote couldn't be reached, a hint appears whose click retries.
+  exist; the tooltips and the dirty hint say why either is off. On a
+  branch with no upstream the summary reads `not published` and the
+  same button reads `Publish`: the first push also creates the remote
+  branch, which the server handles. When the remote couldn't be
+  reached, a hint appears whose click retries.
 
   Staleness is the server's problem, not this component's: it watches
   the repository's git directory and pings the git-named live-update
@@ -51,7 +54,7 @@
 			disabled={!model.canPush}
 			title={model.pushTitle}
 		>
-			Push
+			{model.pushLabel}
 		</button>
 		{#if gitStore.message !== null}
 			<button

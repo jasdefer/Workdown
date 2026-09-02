@@ -19,7 +19,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use serde::Deserialize;
 
-use workdown_core::git_data::{GitPullResult, GitStatus};
+use workdown_core::git_data::{GitPullResult, GitPushResult, GitStatus};
 
 use crate::envelope::ApiResponse;
 use crate::git::{self, GitError, RepoSnapshot};
@@ -263,7 +263,7 @@ async fn pull_inner(state: &AppState) -> Result<ApiResponse<GitPullResult>, GitE
     }))
 }
 
-async fn git_push(State(state): State<AppState>, headers: HeaderMap) -> ApiResponse<GitStatus> {
+async fn git_push(State(state): State<AppState>, headers: HeaderMap) -> ApiResponse<GitPushResult> {
     if !git_controls_enabled(&state) {
         return refuse_disabled();
     }
@@ -277,13 +277,59 @@ async fn git_push(State(state): State<AppState>, headers: HeaderMap) -> ApiRespo
     }
 }
 
-async fn push_inner(state: &AppState) -> Result<ApiResponse<GitStatus>, GitError> {
-    let pushed = git::push(&state.project_root).await?;
+/// Push, or — on a branch with no upstream — *publish*: the same
+/// gesture from the user's side ("get my commits onto the remote"),
+/// with git's first-time bookkeeping (create the remote branch, record
+/// it as upstream) handled here instead of in a terminal. The server
+/// decides which from the repository's present state, not from what
+/// the pill believed when it was clicked.
+async fn push_inner(state: &AppState) -> Result<ApiResponse<GitPushResult>, GitError> {
+    let root = &state.project_root;
+    let Some(local) = git::snapshot(root).await? else {
+        return Ok(ApiResponse::failed(
+            StatusCode::CONFLICT,
+            "the project is not inside a git repository".to_owned(),
+        ));
+    };
+    let published = !local.has_upstream;
+    let pushed = if published {
+        // Refusals about what there is to publish, before any network.
+        if local.branch == "HEAD" {
+            return Ok(ApiResponse::failed(
+                StatusCode::CONFLICT,
+                "detached HEAD — there is no branch to publish; check one out in a terminal first"
+                    .to_owned(),
+            ));
+        }
+        if !local.has_commits {
+            return Ok(ApiResponse::failed(
+                StatusCode::CONFLICT,
+                "the branch has no commits yet — nothing to publish".to_owned(),
+            ));
+        }
+        let Some(remote) = git::publish_remote(root).await? else {
+            return Ok(ApiResponse::failed(
+                StatusCode::CONFLICT,
+                "no remote to publish to — add one (or set remote.pushDefault) in a terminal"
+                    .to_owned(),
+            ));
+        };
+        git::publish(root, &remote, &local.branch).await?
+    } else {
+        git::push(root).await?
+    };
     if !pushed.success {
         return Ok(ApiResponse::failed(
             StatusCode::CONFLICT,
-            format!("push failed: {}", pushed.stderr.trim()),
+            format!(
+                "{} failed: {}",
+                if published { "publish" } else { "push" },
+                pushed.stderr.trim()
+            ),
         ));
     }
-    Ok(ApiResponse::ok(fresh_status(state).await?))
+    Ok(ApiResponse::ok(GitPushResult {
+        published,
+        status: fresh_status(state).await?,
+    }))
 }
