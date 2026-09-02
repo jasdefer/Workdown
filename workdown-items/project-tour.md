@@ -1,7 +1,7 @@
 ---
 id: project-tour
 title: Animated project tour in the web UI
-status: to_do
+status: in_progress
 tags: [web-ui]
 ---
 
@@ -29,10 +29,10 @@ skipped, never shown empty.
 |---|---|---|---|
 | Title | what this is | `project.name`, `project.description` (already served for the browser tab) | never |
 | Swarm | scale — cards in a 3D cloud, one slow camera pass | all items; card content via `defaults.display` roles | never |
-| Numbers | size and health | the first `metric` view's rows; fallback: item count + count per `board_field` | never (fallback) |
-| Structure | how work is organized | `defaults.tree_field` | field unset |
-| Grouping | where things stand, who owns what | `defaults.board_field`; one more scene per further `board` view with a distinct field, capped at two | field unset |
-| Dependencies | what blocks what; most-depended-upon item highlighted | `defaults.graph_field` | field unset |
+| Numbers | size and health | the first `metric` view's rows; fallback: item count + the first board's column counts | never (fallback) |
+| Structure | how work is organized | the first `tree` view | no tree view |
+| Grouping | where things stand, who owns what | the first `board` view; one more scene for a second board on a distinct field | no board view |
+| Dependencies | what blocks what; most-depended-upon item highlighted | the first `graph` view | no graph view, or no edges after its filter |
 | Timeline | when; a "today" marker | the first `gantt` view (start + end/duration already resolved by the server) | no gantt view |
 | Landing | "now go explore" | the first view in `views.yaml`, the same one `/` redirects to | never |
 
@@ -44,15 +44,16 @@ reading. `prefers-reduced-motion` replaces flights with cross-fades.
 
 - A `/tour` route in the web UI, reached from one header link next to
   `+ New item`. No auto-play on first visit.
-- Zero Rust changes: items, display resolution, per-view data and the
-  config roles all come from existing endpoints.
+- Zero Rust changes: items, display resolution and per-view data all
+  come from existing endpoints.
 - Everything lives in `ui/src/lib/tour/` plus `ui/src/routes/tour/`;
   nothing outside those folders learns about the tour except the header
   link. The tour imports from the rest of the UI (card styling, API
   client, display resolution); nothing imports from it.
-- Layouts are pure functions (`items → Map<id, {x, y, z}>`) with unit
-  tests, the same shape as `timerMath.ts`. Tree via d3-hierarchy, graph
-  via dagre (both already dependencies), the rest hand-rolled.
+- Layouts are pure functions (`ViewData → Map<id, {x, y, z}>`) with unit
+  tests, the same shape as `timerMath.ts`. Graph via dagre (already in
+  the tree through cytoscape-dagre, now a declared dependency), the rest
+  hand-rolled.
 
 ## Out of scope
 
@@ -95,11 +96,39 @@ Recorded 2026-09-02 after reviewing a standalone motion prototype
    fly-through, 1.6 s per reorganisation with a ~25 ms stagger, tilted
    entries (tree 28°, columns −22°) that settle to front-on.
 
-## Open questions
+## Decisions taken during implementation
 
-- Reuse `board/Card.svelte` (drag-and-drop, click-to-open baked in)
-  behind a static mode, or a slim `TourCard` sharing its styles.
-  Decide on sight of how coupled it is.
-- The card-count threshold for the scale guard.
-- Whether the numbers scene shows every metric view's rows or the first
-  view's only.
+Recorded 2026-09-02 while building on `feature/project-tour`.
+
+8. **`views.yaml` alone, not the `config.yaml` roles.** The browser
+   never sees `defaults.board_field` and friends; the tour derives each
+   scene from the first view of a kind and fetches that view's data.
+   This is decision 4 taken to its end: a scene is always a real view,
+   so its `where` clause applies too (this repo's dependency graph
+   hides done items and has no edges left, so that scene is skipped).
+9. **Hand-rolled tree, not d3-hierarchy.** A tidy tree gives every leaf
+   its own column and is thousands of pixels wide; siblings that are all
+   leaves stack vertically under their parent instead.
+10. **Tall board columns wrap into blocks** of sub-columns sized about
+    3:2 (rows = ⌈√(1.5·n)⌉). A single column of 114 done items fitted
+    the camera as an unreadable sliver; a block still reads as "this
+    pile is the big one".
+11. **The camera is fitted, not hand-posed.** Each layout's bounds are
+    framed into 86% of the width and 62% of the height (room for caption
+    and controls); the tilted enter pose is an offset from that fit.
+12. **Title-scene cards at 35% opacity**, numbers at 18%: with 145 real
+    items the cloud fought the title in a way 47 fake cards did not.
+
+## Open questions, resolved
+
+- `board/Card.svelte` carries drag-and-drop, the timer dot and the
+  Markdown body; the tour renders its own two-line card inline (title,
+  then subtitle or id) and borrows only the `.tinted` recipe.
+- Scale guard threshold: 150 cards; above it, the tree's leaves are dots.
+- The numbers scene shows the first metric view's rows only.
+
+## Follow-ups
+
+- Tune timings and camera offsets on a few real projects.
+- The tour is built once for the viewport size at mount; a window
+  resize mid-tour keeps the old framing until the page is reloaded.

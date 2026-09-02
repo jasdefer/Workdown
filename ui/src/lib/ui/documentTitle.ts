@@ -51,6 +51,8 @@ export function pageLabel(
 			return 'New view';
 		case '/items/new':
 			return 'New item';
+		case '/tour':
+			return 'Tour';
 		case '/items/[id]': {
 			const id = params.id;
 			return id === undefined ? null : prettifyId(id);

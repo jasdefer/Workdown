@@ -7,6 +7,18 @@ its source — internal refactors are deliberately absent.
 
 ### Added
 
+- A **project tour** in the web UI: `▶ Tour` in the header (or `/tour`)
+  plays a one-minute animated overview for newcomers. Every work item
+  appears as a card, and one set of cards flies through a sequence of
+  layouts — a scattered cloud, the headline numbers, the hierarchy, the
+  board columns, the dependency graph, the timeline — and settles into
+  the first view in `views.yaml`, where the real app takes over. The tour
+  has no configuration of its own: each scene comes from the first view
+  of a kind (`metric` for the numbers, `tree`, `board`, `graph`, `gantt`),
+  shows exactly what that view shows, and is skipped when the kind is
+  not configured — a project without dates simply has no timeline scene.
+  Space pauses, ←/→ step, and `prefers-reduced-motion` trades the flights
+  for cross-fades.
 - The browser tab now reads `Project — Page` — the project's name from
   `config.yaml`, then the current view or item — so two workdown servers
   on two ports can be told apart in the tab strip, the window switcher

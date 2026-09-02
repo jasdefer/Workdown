@@ -20,6 +20,7 @@
 		"cytoscape": "^3.28.0",
 		"cytoscape-dagre": "^2.5.0",
 		"d3-hierarchy": "^3.1.2",
+		"dagre": "^0.8.5",
 		"dompurify": "^3.2.4",
 		"marked": "^15.0.6"
 	},
@@ -31,6 +32,7 @@
 		"@types/cytoscape": "^3.21.0",
 		"@types/cytoscape-dagre": "^2.3.0",
 		"@types/d3-hierarchy": "^3.1.7",
+		"@types/dagre": "^0.7.54",
 		"@types/dompurify": "^3.0.5",
 		"@types/node": "^25.9.1",
 		"eslint": "^9.18.0",
