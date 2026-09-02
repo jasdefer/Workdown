@@ -92,9 +92,15 @@
 			     issues. -->
 		</div>
 		<div class="header-actions">
+			<a
+				class="header-link tour-link"
+				href="/tour"
+				title="Animated project overview"
+				aria-current={page.route.id === '/tour' ? 'page' : undefined}>▶ Tour</a
+			>
 			<GitSync />
 			<TimerPill />
-			<a class="new-item" href="/items/new">+ New item</a>
+			<a class="header-link" href="/items/new">+ New item</a>
 			<ThemeToggle />
 		</div>
 	</header>
@@ -149,13 +155,19 @@
 		flex-shrink: 0;
 	}
 
-	.new-item {
+	/* The quiet text links in the actions row: the tour and the new-item
+	   form. Same weight as the theme toggle, so they read as utilities. */
+	.header-link {
 		font-size: var(--text-sm);
 		color: var(--color-fg-muted);
 		text-decoration: none;
 	}
 
-	.new-item:hover {
+	.header-link:hover {
+		color: var(--color-fg);
+	}
+
+	.tour-link[aria-current='page'] {
 		color: var(--color-fg);
 	}
 

@@ -30,6 +30,7 @@ describe('pageLabel', () => {
 
 	it('gives the fixed routes their fixed words', () => {
 		expect(pageLabel('/items/new', {}, views)).toBe('New item');
+		expect(pageLabel('/tour', {}, views)).toBe('Tour');
 		expect(pageLabel('/views/new', {}, views)).toBe('New view');
 		expect(pageLabel('/views/[id]/edit', { id: 'roadmap' }, views)).toBe('Edit view');
 	});

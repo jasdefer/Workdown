@@ -31,6 +31,7 @@ Cards grouped into columns by `status`.
 
 ## in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
+- [Animated project tour in the web UI](../workdown-items/project-tour.md)
 
 ## done
 - [Commands fail when the work-items directory is missing](../workdown-items/add-missing-items-directory.md)
