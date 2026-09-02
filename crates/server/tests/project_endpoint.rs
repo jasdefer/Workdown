@@ -37,14 +37,43 @@ fn fixture_state() -> AppState {
     state_from_config(&config_yaml)
 }
 
-async fn get_project(state: AppState) -> (StatusCode, Value) {
+/// A `config.yaml` from the given `project:` block and one of the two
+/// file layouts below. Only the project block varies per test, so it is
+/// the only thing a test spells out.
+fn config_yaml(project_block: &str, layout: &str) -> String {
+    format!("{project_block}\n{layout}\n{DEFAULTS}")
+}
+
+const DEFAULTS: &str = r#"defaults:
+  board_field: status
+  tree_field: parent
+  graph_field: depends_on
+"#;
+
+/// The fixture project's real layout — the project loads.
+const FIXTURE_LAYOUT: &str = r#"paths:
+  work_items: workdown-items
+  templates: .workdown/templates
+  resources: .workdown/resources.yaml
+  views: .workdown/views.yaml
+
+schema: .workdown/schema.yaml
+"#;
+
+/// Paths that exist nowhere under the fixture root — the project cannot
+/// load, and every endpoint that needs it answers 422.
+const MISSING_LAYOUT: &str = r#"paths:
+  work_items: nowhere
+  templates: nowhere
+  resources: nowhere/resources.yaml
+  views: nowhere/views.yaml
+
+schema: nowhere/schema.yaml
+"#;
+
+async fn get(state: AppState, uri: &str) -> (StatusCode, Value) {
     let response = router(state)
-        .oneshot(
-            Request::builder()
-                .uri("/api/project")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
         .await
         .unwrap();
     let status = response.status();
@@ -55,6 +84,10 @@ async fn get_project(state: AppState) -> (StatusCode, Value) {
         status,
         serde_json::from_slice(&bytes).expect("body parses as JSON"),
     )
+}
+
+async fn get_project(state: AppState) -> (StatusCode, Value) {
+    get(state, "/api/project").await
 }
 
 #[tokio::test]
@@ -85,9 +118,10 @@ async fn get_project_reports_a_blank_description_as_null() {
     // `description: ""` (what `workdown init` writes) and no key at all
     // read the same to a human; both arrive as `null` so the client has
     // one case to handle.
-    let state = state_from_config(
-        "project:\n  name: Unnamed Ambitions\n  description: \"   \"\n\npaths:\n  work_items: workdown-items\n  templates: .workdown/templates\n  resources: .workdown/resources.yaml\n  views: .workdown/views.yaml\n\nschema: .workdown/schema.yaml\n\ndefaults:\n  board_field: status\n  tree_field: parent\n  graph_field: depends_on\n",
-    );
+    let state = state_from_config(&config_yaml(
+        "project:\n  name: Unnamed Ambitions\n  description: \"   \"\n",
+        FIXTURE_LAYOUT,
+    ));
     let (status, envelope) = get_project(state).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(envelope["data"]["name"], "Unnamed Ambitions");
@@ -97,12 +131,16 @@ async fn get_project_reports_a_blank_description_as_null() {
 #[tokio::test]
 async fn get_project_answers_while_the_project_is_unloadable() {
     // Config alone backs this endpoint, so a project that can't load
-    // (every other endpoint answering 422) still has a named tab. The
-    // fixture root here holds no work items or schema at all.
-    let state = state_from_config(
-        "project:\n  name: Broken But Named\n\npaths:\n  work_items: nowhere\n  templates: nowhere\n  resources: nowhere/resources.yaml\n  views: nowhere/views.yaml\n\nschema: nowhere/schema.yaml\n\ndefaults:\n  board_field: status\n  tree_field: parent\n  graph_field: depends_on\n",
-    );
-    let (status, envelope) = get_project(state).await;
+    // still has a named tab. The config points every path at a directory
+    // that does not exist under the fixture root; the views endpoint
+    // confirms that is enough to make the project unloadable before the
+    // project endpoint is asked to answer anyway.
+    let config_yaml = config_yaml("project:\n  name: Broken But Named\n", MISSING_LAYOUT);
+
+    let (views_status, _) = get(state_from_config(&config_yaml), "/api/views").await;
+    assert_eq!(views_status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    let (status, envelope) = get_project(state_from_config(&config_yaml)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(envelope["data"]["name"], "Broken But Named");
 }

@@ -5,6 +5,25 @@ tagged version into the top of that version's GitHub release page, so
 entries are written for people using workdown, not for people reading
 its source — internal refactors are deliberately absent.
 
+### Added
+
+- The browser tab now reads `Project — Page` — the project's name from
+  `config.yaml`, then the current view or item — so two workdown servers
+  on two ports can be told apart in the tab strip, the window switcher
+  and bookmarks. The pomodoro countdown still decorates the title while
+  a timer runs. The name comes from the server's boot-time config, so
+  the tab stays named even while a broken schema has every view failing
+  to load; a renamed project shows up after the next `workdown serve`.
+
+### Fixed
+
+- Dragging a card on a board grouped by a `multichoice` field discarded
+  the item's other values and wrote a bare scalar where a list is
+  required, leaving the item failing validation. Such a card sits in
+  every column its values name, so a drop has no single meaning; those
+  boards are now read-only, say so above the columns, and values are
+  edited in the item panel instead.
+
 ## 0.2.5 - 2026-08-30
 
 ### Added

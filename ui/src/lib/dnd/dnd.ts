@@ -28,30 +28,30 @@ export interface DraggableOptions {
 }
 
 /** Drag source. */
-export const draggable: Action<HTMLElement, DraggableOptions> = (node, options) => {
-	let payload = options;
+export const draggable: Action<HTMLElement, DraggableOptions> = (node, initial) => {
+	let options = initial;
 
 	function onDragStart(event: DragEvent): void {
 		if (!event.dataTransfer) return;
-		event.dataTransfer.setData(MIME, payload.id);
+		event.dataTransfer.setData(MIME, options.id);
 		event.dataTransfer.effectAllowed = 'move';
 		node.style.opacity = '0.4';
 	}
 	function onDragEnd(): void {
 		node.style.opacity = '';
 	}
-	function apply(): void {
-		node.draggable = payload.enabled ?? true;
+	function syncDraggableAttribute(): void {
+		node.draggable = options.enabled ?? true;
 	}
 
-	apply();
+	syncDraggableAttribute();
 	node.addEventListener('dragstart', onDragStart);
 	node.addEventListener('dragend', onDragEnd);
 
 	return {
 		update(next: DraggableOptions) {
-			payload = next;
-			apply();
+			options = next;
+			syncDraggableAttribute();
 		},
 		destroy() {
 			node.removeEventListener('dragstart', onDragStart);

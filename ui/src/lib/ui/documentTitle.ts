@@ -27,6 +27,11 @@ const SEPARATOR = ' — ';
  * in the URL, or a fixed word. Nothing waits on a second fetch — an
  * item page is titled from its prettified id, exactly as the page's own
  * heading is.
+ *
+ * The cases mirror `src/routes/` by hand — SvelteKit derives the route
+ * ids from that directory layout, and nothing ties the two together.
+ * When a route is added or renamed, add or rename its case here too;
+ * a route this switch doesn't know silently gets the project-only title.
  */
 export function pageLabel(
 	routeId: string | null,

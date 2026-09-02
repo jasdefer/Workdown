@@ -56,12 +56,16 @@ does have something to tell the caller who attempted it.
 
 ### Cold-load per request, no cache
 
-Every request re-reads and re-derives the whole project through
-`core::load_project`; nothing is cached (`crates/server/src/state.rs`).
-No cache means no invalidation and no stale-read bugs, and it keeps
-`$today`-derived values honest across midnight (ADR-010). The cost is
-accepted at present project sizes; `project-load-cache` holds the
-trigger to revisit.
+Every request that needs the project re-reads and re-derives the whole
+of it through `core::load_project`; nothing is cached
+(`crates/server/src/state.rs`). No cache means no invalidation and no
+stale-read bugs, and it keeps `$today`-derived values honest across
+midnight (ADR-010). The cost is accepted at present project sizes;
+`project-load-cache` holds the trigger to revisit. The one endpoint
+that does not load the project is `GET /api/project`
+(`crates/server/src/api/project.rs`): it answers from the boot-time
+config alone, on purpose, so the browser tab keeps the project's name
+while a broken schema has every other read answering 422.
 
 ### Config is read once at boot; everything else hot-reloads
 
@@ -71,9 +75,11 @@ restart — and the watcher pings browsers on any `.yaml` change,
 `config.yaml` included, so the edit provokes a refetch served with the
 *old* config, with nothing to say so (`crates/server/src/watcher.rs`).
 Recorded, not defended: only the timer's effort-field hint mentions the
-restart (`crates/server/src/api/timer.rs`), and while the port and
-watched directories are genuinely boot-bound, the rest could be read per
-request as the cold-load rule predicts — see `config-hot-reload`.
+restart (`crates/server/src/api/timer.rs`), the project's name in the
+browser tab lags a `config.yaml` edit the same way
+(`crates/server/src/api/project.rs`), and while the port and watched
+directories are genuinely boot-bound, the rest could be read per request
+as the cold-load rule predicts — see `config-hot-reload`.
 
 ### One live-update channel per refresh scope
 

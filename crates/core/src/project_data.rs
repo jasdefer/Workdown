@@ -22,8 +22,10 @@ pub struct ProjectIdentity {
     /// treat it as text, never as markup.
     pub name: String,
     /// `project.description`, or `None` when the project left it blank.
-    /// Empty and absent are the same thing to a reader, so the blank
-    /// case is normalised here rather than in every client.
+    /// For an optional field, empty and absent are the same thing to a
+    /// reader, so the blank case is folded into `None` here. `name` is
+    /// required and stays a plain string; what a blank *name* falls back
+    /// to is the client's call (`ui/src/lib/ui/documentTitle.ts`).
     pub description: Option<String>,
 }
 
