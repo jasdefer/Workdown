@@ -5,6 +5,8 @@ tagged version into the top of that version's GitHub release page, so
 entries are written for people using workdown, not for people reading
 its source — internal refactors are deliberately absent.
 
+## 0.2.6 - 2026-09-02
+
 ### Added
 
 - A **project tour** in the web UI: `▶ Tour` in the header (or `/tour`)

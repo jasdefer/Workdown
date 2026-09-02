@@ -2526,7 +2526,7 @@ dependencies = [
 
 [[package]]
 name = "workdown"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2548,7 +2548,7 @@ dependencies = [
 
 [[package]]
 name = "workdown-core"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "chrono",
  "csv",
@@ -2569,7 +2569,7 @@ dependencies = [
 
 [[package]]
 name = "workdown-server"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "axum",
@@ -2596,7 +2596,7 @@ checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
 
 [[package]]
 name = "xtask"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "clap",
