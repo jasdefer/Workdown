@@ -15,6 +15,7 @@ Hierarchical outline following `parent` upward to roots.
 - [Multi-project support](../workdown-items/multi-project-support.md) — status: to_do
   - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — status: to_do
 - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md) — status: to_do
+- [Animated project tour in the web UI](../workdown-items/project-tour.md) — status: to_do
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md) — status: to_do
 - [Apply the same-origin check to every mutating endpoint, not just the git ones](../workdown-items/same-origin-guard-everywhere.md) — status: to_do
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md) — status: to_do
