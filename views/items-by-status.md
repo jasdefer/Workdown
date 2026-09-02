@@ -132,8 +132,8 @@ to_do
 </text>
 <polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="765,130 765,135 "/>
 <rect x="197" y="102" width="554" height="27" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="197" y="75" width="5" height="27" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="197" y="47" width="109" height="28" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="197" y="75" width="14" height="27" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="197" y="47" width="104" height="28" opacity="1" fill="#E69F00" stroke="none"/>
 </svg>
 
 ## Values
@@ -141,6 +141,6 @@ to_do
 | status | count |
 | --- | --- |
 | done | 117 |
-| in_progress | 1 |
-| to_do | 23 |
+| in_progress | 3 |
+| to_do | 22 |
 

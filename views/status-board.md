@@ -5,16 +5,15 @@ Cards grouped into columns by `status`.
 ## to_do
 - [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md)
 - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md)
-- [Let the web app commit, so the git loop is not broken in the middle](../workdown-items/commit-from-web-ui.md)
 - [Decide which field types may declare compute and pull](../workdown-items/compute-type-support-mismatch.md)
 - [Read config.yaml per request so it hot-reloads like everything else](../workdown-items/config-hot-reload.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
 - [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md)
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
-- [The full git loop, without leaving the board](../workdown-items/full-git-loop.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
+- [Let Push publish an unpublished branch instead of greying out](../workdown-items/publish-branch-from-push.md)
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md)
 - [Apply the same-origin check to every mutating endpoint, not just the git ones](../workdown-items/same-origin-guard-everywhere.md)
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md)
@@ -28,6 +27,8 @@ Cards grouped into columns by `status`.
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
+- [Let the web app commit, so the git loop is not broken in the middle](../workdown-items/commit-from-web-ui.md)
+- [The full git loop, without leaving the board](../workdown-items/full-git-loop.md)
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 
 ## done

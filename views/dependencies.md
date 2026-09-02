@@ -10,6 +10,7 @@ flowchart TD
     config-hot-reload["Read config.yaml per request so it hot-reloads like everything else"]
     subgraph full-git-loop ["The full git loop, without leaving the board"]
         commit-from-web-ui["Let the web app commit, so the git loop is not broken in the middle"]
+        publish-branch-from-push["Let Push publish an unpublished branch instead of greying out"]
     end
     subgraph misc-work ["Miscellaneous improvements"]
         evaluation-date-single-read["One clock read per invocation, writes included"]

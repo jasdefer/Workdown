@@ -5,8 +5,9 @@ Hierarchical outline following `parent` upward to roots.
 - [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md) — status: to_do
   - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md) — status: to_do
 - [Read config.yaml per request so it hot-reloads like everything else](../workdown-items/config-hot-reload.md) — status: to_do
-- [The full git loop, without leaving the board](../workdown-items/full-git-loop.md) — status: to_do
-  - [Let the web app commit, so the git loop is not broken in the middle](../workdown-items/commit-from-web-ui.md) — status: to_do
+- [The full git loop, without leaving the board](../workdown-items/full-git-loop.md) — status: in_progress
+  - [Let the web app commit, so the git loop is not broken in the middle](../workdown-items/commit-from-web-ui.md) — status: in_progress
+  - [Let Push publish an unpublished branch instead of greying out](../workdown-items/publish-branch-from-push.md) — status: to_do
 - [Miscellaneous improvements](../workdown-items/misc-work.md) — status: in_progress
   - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md) — status: to_do
   - [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md) — status: to_do

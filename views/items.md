@@ -24,7 +24,7 @@
 | [code-quality](../workdown-items/code-quality.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) |  |
 | [color-display-slot](../workdown-items/color-display-slot.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [color-field-type](../workdown-items/color-field-type.md), [view-display-config](../workdown-items/view-display-config.md) |
 | [color-field-type](../workdown-items/color-field-type.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [mutations-slice](../workdown-items/mutations-slice.md) |
-| [commit-from-web-ui](../workdown-items/commit-from-web-ui.md) | to_do | [full-git-loop](../workdown-items/full-git-loop.md) |  |
+| [commit-from-web-ui](../workdown-items/commit-from-web-ui.md) | in_progress | [full-git-loop](../workdown-items/full-git-loop.md) |  |
 | [compute-type-support-mismatch](../workdown-items/compute-type-support-mismatch.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) |  |
 | [computed-fields](../workdown-items/computed-fields.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [project-constants](../workdown-items/project-constants.md) |
 | [conditional-field-value](../workdown-items/conditional-field-value.md) | done | [polish](../workdown-items/polish.md) | [expression-predicates](../workdown-items/expression-predicates.md), [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
@@ -52,7 +52,7 @@
 | [first-view-end-to-end](../workdown-items/first-view-end-to-end.md) | done | [server](../workdown-items/server.md) | [walking-skeleton](../workdown-items/walking-skeleton.md), [ui-foundation](../workdown-items/ui-foundation.md) |
 | [foundation](../workdown-items/foundation.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) |  |
 | [foundation-cleanup](../workdown-items/foundation-cleanup.md) | done | [foundation](../workdown-items/foundation.md) |  |
-| [full-git-loop](../workdown-items/full-git-loop.md) | to_do |  |  |
+| [full-git-loop](../workdown-items/full-git-loop.md) | in_progress |  |  |
 | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) | done | [renderers](../workdown-items/renderers.md) | [render-gantt](../workdown-items/render-gantt.md), [duration-field-type](../workdown-items/duration-field-type.md) |
 | [gantt-predecessor-mode](../workdown-items/gantt-predecessor-mode.md) | done | [renderers](../workdown-items/renderers.md) | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) |
 | [git-sync-controls](../workdown-items/git-sync-controls.md) | done | [full-git-loop](../workdown-items/full-git-loop.md) |  |
@@ -75,6 +75,7 @@
 | [project-constants](../workdown-items/project-constants.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [project-load-cache](../workdown-items/project-load-cache.md) | to_do |  |  |
 | [project-tour](../workdown-items/project-tour.md) | done |  |  |
+| [publish-branch-from-push](../workdown-items/publish-branch-from-push.md) | to_do | [full-git-loop](../workdown-items/full-git-loop.md) |  |
 | [pull-fields](../workdown-items/pull-fields.md) | done | [schema-expressions](../workdown-items/schema-expressions.md) | [computed-fields](../workdown-items/computed-fields.md), [aggregate-rollup](../workdown-items/aggregate-rollup.md) |
 | [query-value-consolidation](../workdown-items/query-value-consolidation.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [readme-visualization-update](../workdown-items/readme-visualization-update.md) | done | [polish](../workdown-items/polish.md) |  |
