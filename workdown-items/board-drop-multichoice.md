@@ -1,5 +1,5 @@
 ---
-status: to_do
+status: done
 tags: [bug]
 parent: misc-work
 title: Dragging a card on a multichoice board wipes its other values
@@ -35,3 +35,27 @@ that value rather than replace the whole field. How a value gets
 it to the item editor); until that is settled, disabling the drop on
 multi-valued boards is the safe stop-gap and fixes the data loss on
 its own.
+
+## Outcome (verified 2026-09-02)
+
+Done, by the stop-gap this item named as sufficient — landed in the item
+audit PR (#55), not in the tour PR that followed it.
+
+`boardDragEnabled` (`ui/src/lib/views/board/dragPolicy.ts`) returns false
+for `multichoice`, so the cards on such a board are not drag sources
+(`Card.svelte` passes it to `use:draggable`) and `moveCard` re-checks it
+before writing — a second guard, because a card dragged from another
+tab's board carries only a bare MIME string and lands in the drop handler
+without passing this board's drag sources at all. In place of the
+affordance the board prints why it is off, so a board that ignores every
+drag does not read as broken. `dragPolicy.test.ts` covers both halves.
+
+The `{ op: 'replace', value: <string> }` write can no longer reach a
+multi-valued field from a board, so the data loss — and the invalid
+bare-value-where-a-list-is-required file it left behind — is gone.
+
+Deliberately *not* done: making the drop append instead. This item left
+that open on its own terms — the gesture cannot say whether it means add,
+swap or discard, and how a value gets *removed* was never settled — so
+the board is read-only rather than guessing. If appending is ever wanted
+it needs its own item, with the removal affordance decided alongside it.
