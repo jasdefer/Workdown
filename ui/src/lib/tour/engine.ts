@@ -12,7 +12,14 @@
 // as a swarm, not a slab) while the camera moves to the scene's `enter`
 // pose. `hold`: cards rest, the camera eases from `enter` to `hold`, and
 // after the scene's hold time the next scene begins. Every duration is
-// scaled by `speed`; reduced motion shortens the flights to a cross-fade.
+// scaled by `speed`; reduced motion shortens the flights to a cross-fade
+// and leaves the camera still for the whole scene.
+//
+// Time is virtual: `now` accumulates only the frames that elapse while
+// playing. A pause therefore freezes every tween at once — cards, camera
+// and the hold countdown alike — without any of them testing `isPlaying`
+// for itself. Stepping while paused has no time to tween in, so it
+// composes the scene at rest instead (`snapToSettled`).
 
 import {
 	easeInOutCubic,
@@ -41,6 +48,16 @@ export interface EngineOptions {
 /** Where every card starts: far behind the stage, invisible. */
 const OFFSTAGE: Position = { x: 0, y: 0, z: -3000, opacity: 0 };
 
+/**
+ * The pose a scene reads correctly at with no motion at all. A
+ * fly-through's `hold` is the far end of the flight, where the depth fade
+ * has already swallowed half the cloud, so a still frame of one has to
+ * sit at its `enter` pose instead.
+ */
+function restPose(scene: Scene): CameraPose {
+	return scene.flythrough ? scene.camera.enter : scene.camera.hold;
+}
+
 interface CardState {
 	id: string;
 	element: HTMLElement;
@@ -61,9 +78,12 @@ export class TourEngine {
 		easing: Easing;
 	};
 	private sceneIndex = -1;
-	private phase: 'idle' | 'transition' | 'hold' = 'idle';
+	private phase: 'idle' | 'transition' | 'hold' | 'finished' = 'idle';
 	private phaseStartedAt = 0;
+	/** Tour time: advances only while playing, so it paces every tween. */
 	private now = 0;
+	/** Raw frame timestamp, advancing whether playing or not. */
+	private lastFrameAt = 0;
 	private frameHandle: number | null = null;
 	private isPlaying = true;
 	private speedFactor = 1;
@@ -100,7 +120,7 @@ export class TourEngine {
 
 	start(): void {
 		if (this.scenes.length === 0) return;
-		this.now = performance.now();
+		this.lastFrameAt = performance.now();
 		this.enterScene(0);
 		this.frameHandle = requestAnimationFrame(this.frame);
 	}
@@ -112,8 +132,6 @@ export class TourEngine {
 
 	setPlaying(playing: boolean): void {
 		this.isPlaying = playing;
-		// Resuming restarts the hold clock so a long pause doesn't skip ahead at once.
-		if (playing && this.phase === 'hold') this.phaseStartedAt = this.now;
 	}
 
 	setSpeed(factor: number): void {
@@ -144,6 +162,16 @@ export class TourEngine {
 		this.camera.easing = easing;
 	}
 
+	/** Place the camera with no tween, leaving nothing to lerp back from. */
+	private jumpCamera(to: CameraPose): void {
+		this.camera.from = { ...to };
+		this.camera.to = { ...to };
+		this.camera.current = { ...to };
+		this.camera.startedAt = this.now;
+		this.camera.durationMs = 1;
+		this.world.style.transform = poseTransform(to);
+	}
+
 	private enterScene(index: number): void {
 		const scene = this.scenes[index];
 		if (scene === undefined) return;
@@ -159,10 +187,11 @@ export class TourEngine {
 			if (this.options.reducedMotion) card.from = { ...card.to, opacity: 0 };
 			card.delayMs = this.options.reducedMotion ? 0 : (position % 12) * 25 * this.speedFactor;
 		});
-		// Reduced motion also skips the tilt: enter straight at the hold pose.
-		const enter = this.options.reducedMotion ? scene.camera.hold : scene.camera.enter;
+		// Reduced motion also skips the tilt: enter straight at the rest pose.
+		const enter = this.options.reducedMotion ? restPose(scene) : scene.camera.enter;
 		this.moveCamera(enter, this.transitionMs(), easeInOutCubic);
 		this.hooks.onSceneStart(index);
+		if (!this.isPlaying) this.snapToSettled();
 	}
 
 	private settle(): void {
@@ -170,18 +199,53 @@ export class TourEngine {
 		if (scene === undefined) return;
 		this.phase = 'hold';
 		this.phaseStartedAt = this.now;
-		this.moveCamera(
-			scene.camera.hold,
-			scene.holdMs * this.speedFactor,
-			scene.flythrough ? linear : easeInOutCubic
-		);
+		// Reduced motion entered at the rest pose and stays there: drifting
+		// through the hold is the very flight it is meant to replace.
+		if (!this.options.reducedMotion) {
+			this.moveCamera(
+				scene.camera.hold,
+				scene.holdMs * this.speedFactor,
+				scene.flythrough ? linear : easeInOutCubic
+			);
+		}
+		this.hooks.onSettled(this.sceneIndex);
+	}
+
+	/**
+	 * Compose the current scene at rest with no tween: cards on their
+	 * marks, camera at the rest pose, caption up. Stepping while paused
+	 * lands here, having no virtual time to animate in.
+	 */
+	private snapToSettled(): void {
+		const scene = this.scenes[this.sceneIndex];
+		if (scene === undefined) return;
+		this.phase = 'hold';
+		this.phaseStartedAt = this.now;
+		this.jumpCamera(restPose(scene));
+		for (const card of this.cards) {
+			card.current = { ...card.to };
+			card.from = { ...card.to };
+			card.delayMs = 0;
+			this.paint(card, scene);
+		}
 		this.hooks.onSettled(this.sceneIndex);
 	}
 
 	private readonly frame = (time: number): void => {
-		this.now = time;
+		// Only playing frames move the tour clock; see the header.
+		const elapsed = time - this.lastFrameAt;
+		this.lastFrameAt = time;
+		if (this.isPlaying) this.now += elapsed;
+
 		const scene = this.scenes[this.sceneIndex];
 		if (scene === undefined) return;
+
+		// The camera moves first: a fly-through's card opacity is a function
+		// of the gap between card and camera, so `paint` needs this frame's
+		// pose rather than the previous one's.
+		const cameraT = Math.min(1, (this.now - this.camera.startedAt) / this.camera.durationMs);
+		this.camera.current = lerpPose(this.camera.from, this.camera.to, this.camera.easing(cameraT));
+		this.world.style.transform = poseTransform(this.camera.current);
 
 		if (this.phase === 'transition') {
 			const duration = this.transitionMs();
@@ -193,33 +257,20 @@ export class TourEngine {
 				);
 				if (t < 1) allSettled = false;
 				card.current = lerpPosition(card.from, card.to, easeInOutCubic(t));
-				this.paint(card);
+				this.paint(card, scene);
 			}
 			if (allSettled) this.settle();
+		} else if (scene.flythrough) {
+			// The cards are at rest but their fade is not: the camera is still flying.
+			for (const card of this.cards) this.paint(card, scene);
 		}
 
-		const cameraT = Math.min(1, (this.now - this.camera.startedAt) / this.camera.durationMs);
-		this.camera.current = lerpPose(this.camera.from, this.camera.to, this.camera.easing(cameraT));
-		this.world.style.transform = poseTransform(this.camera.current);
-
-		if (scene.flythrough) {
-			for (const card of this.cards) {
-				card.element.style.opacity = flythroughOpacity(
-					card.current.z,
-					this.camera.current.tz,
-					card.current.opacity
-				).toFixed(3);
-			}
-		}
-
-		if (
-			this.phase === 'hold' &&
-			this.isPlaying &&
-			this.now - this.phaseStartedAt > scene.holdMs * this.speedFactor
-		) {
+		if (this.phase === 'hold' && this.now - this.phaseStartedAt > scene.holdMs * this.speedFactor) {
 			if (this.sceneIndex + 1 < this.scenes.length) {
 				this.enterScene(this.sceneIndex + 1);
 			} else {
+				// Terminal: the phase, not `isPlaying`, is what keeps this to once.
+				this.phase = 'finished';
 				this.isPlaying = false;
 				this.hooks.onFinished();
 			}
@@ -227,9 +278,18 @@ export class TourEngine {
 		this.frameHandle = requestAnimationFrame(this.frame);
 	};
 
-	private paint(card: CardState): void {
+	/**
+	 * The one place a card's style is written. The fly-through fade is
+	 * applied here rather than stored, so `current.opacity` stays the
+	 * card's logical opacity and the next scene tweens from what the
+	 * viewer actually sees.
+	 */
+	private paint(card: CardState, scene: Scene): void {
 		const { x, y, z, opacity } = card.current;
 		card.element.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, ${z.toFixed(1)}px)`;
-		card.element.style.opacity = opacity.toFixed(3);
+		const visible = scene.flythrough
+			? flythroughOpacity(z, this.camera.current.tz, opacity)
+			: opacity;
+		card.element.style.opacity = visible.toFixed(3);
 	}
 }

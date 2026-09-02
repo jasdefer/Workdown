@@ -37,13 +37,14 @@ skipped, never shown empty.
 | Landing | "now go explore" | the first view in `views.yaml`, the same one `/` redirects to | never |
 
 Controls: auto-play with pause, ←/→ step, progress dots, one caption
-per scene. The camera never moves while a caption is on screen for
-reading. `prefers-reduced-motion` replaces flights with cross-fades.
+per scene; a caption is read over slow camera motion, not over a still
+frame (decision 14). `prefers-reduced-motion` replaces flights with
+cross-fades and holds the camera still for the whole scene.
 
 ## Objective
 
 - A `/tour` route in the web UI, reached from one header link next to
-  `+ New item`. No auto-play on first visit.
+  `+ New item`. It plays on arrival (decision 13).
 - Zero Rust changes: items, display resolution and per-view data all
   come from existing endpoints.
 - Everything lives in `ui/src/lib/tour/` plus `ui/src/routes/tour/`;
@@ -118,6 +119,19 @@ Recorded 2026-09-02 while building on `feature/project-tour`.
     and controls); the tilted enter pose is an offset from that fit.
 12. **Title-scene cards at 35% opacity**, numbers at 18%: with 145 real
     items the cloud fought the title in a way 47 fake cards did not.
+13. **The tour plays on arrival**, reversing the objective's "no
+    auto-play on first visit". The tour is reached by an explicit header
+    link, so opening it is already the decision to watch it, and a stage
+    that waits for a second click reads as broken. Space pauses, and a
+    pause freezes the tour clock rather than one tween: cards, camera
+    and the scene countdown all stop together, and stepping while paused
+    composes the scene at rest instead of holding it mid-flight.
+14. **The camera keeps moving under a caption**, reversing "the camera
+    never moves while a caption is on screen for reading". The slow ease
+    from the tilted entry to the front-on hold pose is exactly what the
+    caption is read over, and the 7 s fly-through is nothing but camera
+    motion under a caption. The still camera survives in reduced motion,
+    which enters each scene at its rest pose and stays there.
 
 ## Open questions, resolved
 

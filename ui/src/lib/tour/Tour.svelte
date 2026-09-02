@@ -59,9 +59,13 @@
 			today: new Date()
 		});
 		tour = built;
+		// Unmounting before the tick below resolves would otherwise run the
+		// cleanup while `engine` is still null, and the engine created after
+		// it would animate detached nodes forever.
+		let destroyed = false;
 		// The card elements exist only after this state change renders.
 		void tick().then(() => {
-			if (world === null || built.cards.length === 0) return;
+			if (destroyed || world === null || built.cards.length === 0) return;
 			const cardElements = new Map<string, HTMLElement>();
 			for (const card of built.cards) {
 				const element = elements[card.id];
@@ -89,6 +93,7 @@
 			engine.start();
 		});
 		return () => {
+			destroyed = true;
 			engine?.destroy();
 		};
 	});
