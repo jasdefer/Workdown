@@ -1,8 +1,8 @@
 ---
 id: commit-from-web-ui
-status: to_do
-parent: full-git-loop
 title: Let the web app commit, so the git loop is not broken in the middle
+status: in_progress
+parent: full-git-loop
 ---
 
 ## In plain words
@@ -75,6 +75,28 @@ handles badly.
 - **Body edits.** A changed Markdown body is a real change that
   produces no frontmatter difference. Whatever the message does, it has
   to be honest about those.
+
+## Observed on this repo (2026-09-02)
+
+Git controls were switched on in this repo's own config
+([[dogfood-git-controls-config]]). First reading of the pill's data,
+taken from `GET /api/git` on the maintainer's machine:
+
+- Branch `enhance-git`, **no upstream**, ahead 0, behind 0, **11 local**.
+- The 11 dirty files were three unrelated pieces of work from three
+  sessions: re-rendered `views/*.md`, two item edits from an earlier
+  session, and the config change plus item rewrite that switched the
+  feature on. The pill shows one number for all of them.
+- With no upstream, Push has nothing to push to. The endpoint reports
+  `has_upstream: false`; whether a board commit followed by Push should
+  set the upstream, or refuse until a terminal does it, is a question
+  the design has to answer for every fresh branch.
+
+What this says for the design: "commit everything dirty" is wrong on
+the very first real reading. `views/` is generated output, the config
+change is not item work, and the two item edits belong to a different
+change than the config. Whatever the commit covers, the pill has to
+show *which* files, not just how many.
 
 ## The question underneath
 

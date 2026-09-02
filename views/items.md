@@ -7,7 +7,7 @@
 | [aggregate-rollup](../workdown-items/aggregate-rollup.md) | done | [renderers](../workdown-items/renderers.md) |  |
 | [app-shell-navigation](../workdown-items/app-shell-navigation.md) | done | [server](../workdown-items/server.md) | [first-view-end-to-end](../workdown-items/first-view-end-to-end.md) |
 | [assorted-small-fixes](../workdown-items/assorted-small-fixes.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
-| [board-drop-multichoice](../workdown-items/board-drop-multichoice.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
+| [board-drop-multichoice](../workdown-items/board-drop-multichoice.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [browser-tab-project-title](../workdown-items/browser-tab-project-title.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [burndown-chart](../workdown-items/burndown-chart.md) | to_do |  |  |
 | [burndown-chart-design](../workdown-items/burndown-chart-design.md) | to_do | [burndown-chart](../workdown-items/burndown-chart.md) |  |
@@ -36,7 +36,7 @@
 | [diagnostic-scope-routing](../workdown-items/diagnostic-scope-routing.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [diagnostic-variant-cleanup](../workdown-items/diagnostic-variant-cleanup.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [display-defaults-validation](../workdown-items/display-defaults-validation.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [view-display-config](../workdown-items/view-display-config.md) |
-| [dogfood-git-controls-config](../workdown-items/dogfood-git-controls-config.md) | to_do | [full-git-loop](../workdown-items/full-git-loop.md) |  |
+| [dogfood-git-controls-config](../workdown-items/dogfood-git-controls-config.md) | done | [full-git-loop](../workdown-items/full-git-loop.md) |  |
 | [duration-delta-absent-value](../workdown-items/duration-delta-absent-value.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [duration-field-type](../workdown-items/duration-field-type.md) | done | [renderers](../workdown-items/renderers.md) |  |
 | [effort-field-config](../workdown-items/effort-field-config.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [config-field-role-validation](../workdown-items/config-field-role-validation.md) |
@@ -74,7 +74,7 @@
 | [pomodoro-timer](../workdown-items/pomodoro-timer.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [effort-timer](../workdown-items/effort-timer.md) |
 | [project-constants](../workdown-items/project-constants.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [project-load-cache](../workdown-items/project-load-cache.md) | to_do |  |  |
-| [project-tour](../workdown-items/project-tour.md) | in_progress |  |  |
+| [project-tour](../workdown-items/project-tour.md) | done |  |  |
 | [pull-fields](../workdown-items/pull-fields.md) | done | [schema-expressions](../workdown-items/schema-expressions.md) | [computed-fields](../workdown-items/computed-fields.md), [aggregate-rollup](../workdown-items/aggregate-rollup.md) |
 | [query-value-consolidation](../workdown-items/query-value-consolidation.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [readme-visualization-update](../workdown-items/readme-visualization-update.md) | done | [polish](../workdown-items/polish.md) |  |

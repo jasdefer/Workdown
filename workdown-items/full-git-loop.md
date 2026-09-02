@@ -1,7 +1,7 @@
 ---
 id: full-git-loop
-status: to_do
 title: The full git loop, without leaving the board
+status: in_progress
 ---
 
 ## In plain words

@@ -3,13 +3,11 @@
 Cards grouped into columns by `status`.
 
 ## to_do
-- [Dragging a card on a multichoice board wipes its other values](../workdown-items/board-drop-multichoice.md)
 - [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md)
 - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md)
 - [Let the web app commit, so the git loop is not broken in the middle](../workdown-items/commit-from-web-ui.md)
 - [Decide which field types may declare compute and pull](../workdown-items/compute-type-support-mismatch.md)
 - [Read config.yaml per request so it hot-reloads like everything else](../workdown-items/config-hot-reload.md)
-- [Switch on git controls and the effort timer in this repo's own config](../workdown-items/dogfood-git-controls-config.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
 - [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md)
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
@@ -31,7 +29,6 @@ Cards grouped into columns by `status`.
 
 ## in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
-- [Animated project tour in the web UI](../workdown-items/project-tour.md)
 
 ## done
 - [Commands fail when the work-items directory is missing](../workdown-items/add-missing-items-directory.md)
@@ -39,6 +36,7 @@ Cards grouped into columns by `status`.
 - [Compute schema-declared aggregate fields up the parent chain](../workdown-items/aggregate-rollup.md)
 - [App shell navigation (views menu + future link slots)](../workdown-items/app-shell-navigation.md)
 - [Grab bag of small consistency fixes from the review](../workdown-items/assorted-small-fixes.md)
+- [Dragging a card on a multichoice board wipes its other values](../workdown-items/board-drop-multichoice.md)
 - [Put the project name in the browser tab title](../workdown-items/browser-tab-project-title.md)
 - [Make the terminal chart renderers share what they each rebuilt](../workdown-items/chart-renderer-sharing.md)
 - [Run the whole workspace in CI](../workdown-items/ci-workspace-coverage.md)
@@ -62,6 +60,7 @@ Cards grouped into columns by `status`.
 - [Make diagnostic source-routing structural, not enumerative](../workdown-items/diagnostic-scope-routing.md)
 - [Collapse parallel View* slot variants and unify their validation helpers](../workdown-items/diagnostic-variant-cleanup.md)
 - [Validate `defaults.display` in config.yaml against the schema](../workdown-items/display-defaults-validation.md)
+- [Switch on git controls in this repo's own config](../workdown-items/dogfood-git-controls-config.md)
 - [Duration delta starts from zero on an absent field](../workdown-items/duration-delta-absent-value.md)
 - [Add `duration` field type](../workdown-items/duration-field-type.md)
 - [Project-level effort field in config.yaml](../workdown-items/effort-field-config.md)
@@ -89,6 +88,7 @@ Cards grouped into columns by `status`.
 - [Polish & dogfood](../workdown-items/polish.md)
 - [Pomodoro mode for the effort timer](../workdown-items/pomodoro-timer.md)
 - [Project-level constants in resources.yaml](../workdown-items/project-constants.md)
+- [Animated project tour in the web UI](../workdown-items/project-tour.md)
 - [Pull fields — cross-item derivation over forward links](../workdown-items/pull-fields.md)
 - [Deduplicate the filter engine's comparison and formatting logic](../workdown-items/query-value-consolidation.md)
 - [README: document the visualization workflow](../workdown-items/readme-visualization-update.md)

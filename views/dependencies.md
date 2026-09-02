@@ -10,10 +10,8 @@ flowchart TD
     config-hot-reload["Read config.yaml per request so it hot-reloads like everything else"]
     subgraph full-git-loop ["The full git loop, without leaving the board"]
         commit-from-web-ui["Let the web app commit, so the git loop is not broken in the middle"]
-        dogfood-git-controls-config["Switch on git controls and the effort timer in this repo's own config"]
     end
     subgraph misc-work ["Miscellaneous improvements"]
-        board-drop-multichoice["Dragging a card on a multichoice board wipes its other values"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
         typed-date-filter-comparison["Compare dates in filters as dates, not as text"]
     end
@@ -21,7 +19,6 @@ flowchart TD
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]
     end
     project-load-cache["Cache the project load in the server (when it starts to hurt)"]
-    project-tour["Animated project tour in the web UI"]
     recording-dot-extraction["Extract the recording indicator the six item-presenting views each rebuilt"]
     same-origin-guard-everywhere["Apply the same-origin check to every mutating endpoint, not just the git ones"]
     subgraph schema-editor-web ["See and edit the schema in the web app"]
