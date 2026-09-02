@@ -1,5 +1,5 @@
 ---
-status: to_do
+status: done
 parent: misc-work
 title: Collapse the metric-row duplicates of the generic view checks
 tags: [tech-debt]
@@ -34,3 +34,26 @@ both code copies also allow `duration`.
 - Fix the stale aggregate/type doc table while touching it.
 - No behavior change; the existing tests on both paths must pass
   unchanged.
+
+## Outcome (verified 2026-08-31)
+
+Done, and — like [[value-coercion-layering]] — inside the
+[[maintenance-review-2026-08]] PR (`03508c8`) rather than as its own
+change, which is why it stayed open. The line numbers above refer to the
+old combined file; `views_check.rs` is now code only (825 lines) with its
+tests in a sibling `views_check/tests.rs`.
+
+The fix took the shape this item proposed. `ViewMetricRow*` diagnostic
+kinds no longer exist anywhere in the crate; a metric row is now located
+by a `SlotLocus` carrying `metric_index: Option<usize>`
+(`crates/core/src/model/diagnostic.rs:271`), and `check_metric_row`
+(`views_check.rs:709`) calls the very same `check_aggregate_value_slot`
+and `check_where_clauses` an ordinary view calls. One path, the locus
+supplied by the caller — so the rule is enforced once and a row-specific
+variant cannot drift from it.
+
+The stale doc table went one better than "fix it while touching it": it
+was removed rather than corrected. Which types each aggregate accepts now
+lives in `view_slots::aggregate_value_types`, read by both the checker and
+the web UI's create form, so the form offers exactly the fields the check
+accepts and there is no prose copy left to go out of date.

@@ -14,14 +14,23 @@
 
 	interface Props {
 		card: Card;
+		/**
+		 * Whether the card is a drag source. Defaults to off: the board is
+		 * the only view with a drop target, so it is the only caller that
+		 * turns this on — and even it leaves it off when the grouping field
+		 * is multi-valued. The gantt, graph and treemap views reuse this
+		 * component with nothing to drop onto.
+		 */
+		dragEnabled?: boolean;
 	}
 
-	let { card }: Props = $props();
+	let { card, dragEnabled = false }: Props = $props();
 
 	const displayTitle = $derived(cardLabel(card));
 
 	// Click (when not a drag) opens the detail panel via `?item=`. The
-	// card is draggable, so it can't be an anchor — navigate in JS.
+	// card can be draggable, so it can't be an anchor — navigate in JS.
+	// Opening the item works either way; only the drag is switched off.
 	function open(): void {
 		openItem(card.id);
 	}
@@ -31,7 +40,7 @@
 	class="card"
 	class:tinted={card.background !== null}
 	style:--item-color={card.background}
-	use:draggable={card.id}
+	use:draggable={{ id: card.id, enabled: dragEnabled }}
 	role="button"
 	tabindex="0"
 	onclick={open}

@@ -1,6 +1,6 @@
 ---
-status: to_do
 title: Miscellaneous improvements
+status: in_progress
 ---
 
 ## In plain words

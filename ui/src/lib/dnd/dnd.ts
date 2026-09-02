@@ -14,27 +14,44 @@ import type { Action } from 'svelte/action';
 
 const MIME = 'application/x-workdown-id';
 
-/** Drag source. Parameter is the work-item id to carry. */
-export const draggable: Action<HTMLElement, string> = (node, id) => {
-	let payload = id;
+/**
+ * Drag source parameter: the work-item id to carry, and whether the
+ * element is a drag source at all. `enabled: false` leaves the element
+ * in place but inert — no grab cursor, no drag ghost, no drop. A `use:`
+ * directive can't be applied conditionally, so the switch lives here
+ * rather than at the call site.
+ */
+export interface DraggableOptions {
+	id: string;
+	/** Defaults to true. */
+	enabled?: boolean;
+}
+
+/** Drag source. */
+export const draggable: Action<HTMLElement, DraggableOptions> = (node, initial) => {
+	let options = initial;
 
 	function onDragStart(event: DragEvent): void {
 		if (!event.dataTransfer) return;
-		event.dataTransfer.setData(MIME, payload);
+		event.dataTransfer.setData(MIME, options.id);
 		event.dataTransfer.effectAllowed = 'move';
 		node.style.opacity = '0.4';
 	}
 	function onDragEnd(): void {
 		node.style.opacity = '';
 	}
+	function syncDraggableAttribute(): void {
+		node.draggable = options.enabled ?? true;
+	}
 
-	node.draggable = true;
+	syncDraggableAttribute();
 	node.addEventListener('dragstart', onDragStart);
 	node.addEventListener('dragend', onDragEnd);
 
 	return {
-		update(next: string) {
-			payload = next;
+		update(next: DraggableOptions) {
+			options = next;
+			syncDraggableAttribute();
 		},
 		destroy() {
 			node.removeEventListener('dragstart', onDragStart);

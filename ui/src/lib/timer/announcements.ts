@@ -7,10 +7,6 @@
 import type { TimerPhase } from '$lib/api/generated/TimerPhase';
 import { formatCountdown } from './timerMath';
 
-/** The tab title when no pomodoro phase runs — the layout's static
- * default, owned here so the title logic has one home. */
-export const BASE_TITLE = 'Workdown';
-
 /**
  * The identity of a counting-down phase: its kind plus the moment it
  * started, unique for as long as the phase exists and never reused.
@@ -74,16 +70,20 @@ export function createCrossingDetector(): (
  * phase runs — glanceable from a background tab before zero, not only
  * at it — flipping to an alarm form once the phase is over. The break
  * carries its word, as in the pill: a bare `4:12` would read as work.
+ *
+ * `base` is the title the page would have without a timer — the project
+ * and page from `$lib/ui/documentTitle`. The countdown decorates it and
+ * never replaces it: whichever project's tab is counting down stays
+ * identifiable.
  */
 export function tabTitle(
-	countdown: { kind: 'work' | 'break'; remainingSeconds: number } | null
+	countdown: { kind: 'work' | 'break'; remainingSeconds: number } | null,
+	base: string
 ): string {
-	if (countdown === null) return BASE_TITLE;
+	if (countdown === null) return base;
 	if (countdown.remainingSeconds <= 0) {
-		return countdown.kind === 'work'
-			? `⏰ Interval over · ${BASE_TITLE}`
-			: `⏰ Break over · ${BASE_TITLE}`;
+		return countdown.kind === 'work' ? `⏰ Interval over · ${base}` : `⏰ Break over · ${base}`;
 	}
 	const clock = formatCountdown(countdown.remainingSeconds);
-	return countdown.kind === 'work' ? `${clock} · ${BASE_TITLE}` : `Break ${clock} · ${BASE_TITLE}`;
+	return countdown.kind === 'work' ? `${clock} · ${base}` : `Break ${clock} · ${base}`;
 }

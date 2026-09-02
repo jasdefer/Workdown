@@ -42,6 +42,7 @@ use workdown_core::mutation_data::{
     CreateItem, CreateItemResult, CreateView, FieldMutation, FieldMutationResult, SetViewFilter,
     UpdateView, ViewDefinition, ViewMutationResult,
 };
+use workdown_core::project_data::ProjectIdentity;
 use workdown_core::query::clause::{Clause, Condition};
 use workdown_core::query::types::Operator;
 use workdown_core::schema_data::{
@@ -196,6 +197,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Git sync contracts (GET /api/git, POST /api/git/pull, POST /api/git/push).
     exports.add::<GitStatus>();
     exports.add::<GitPullResult>();
+
+    // Project identity (GET /api/project).
+    exports.add::<ProjectIdentity>();
 
     // Single-item read projection (GET /api/items/:id).
     exports.add::<ItemDetail>();

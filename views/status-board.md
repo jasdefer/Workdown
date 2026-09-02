@@ -3,16 +3,17 @@
 Cards grouped into columns by `status`.
 
 ## to_do
-- [Put the project name in the browser tab title](../workdown-items/browser-tab-project-title.md)
+- [Dragging a card on a multichoice board wipes its other values](../workdown-items/board-drop-multichoice.md)
 - [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md)
 - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md)
 - [Let the web app commit, so the git loop is not broken in the middle](../workdown-items/commit-from-web-ui.md)
 - [Decide which field types may declare compute and pull](../workdown-items/compute-type-support-mismatch.md)
 - [Read config.yaml per request so it hot-reloads like everything else](../workdown-items/config-hot-reload.md)
+- [Switch on git controls and the effort timer in this repo's own config](../workdown-items/dogfood-git-controls-config.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
 - [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md)
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
-- [Miscellaneous improvements](../workdown-items/misc-work.md)
+- [The full git loop, without leaving the board](../workdown-items/full-git-loop.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
@@ -21,17 +22,15 @@ Cards grouped into columns by `status`.
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md)
 - [Decide how much of the schema the web app edits, and what a breaking save does](../workdown-items/schema-editor-web-design.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
-- [A view over tags](../workdown-items/tags-view.md)
+- [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md)
 - [Decide what our tests are for, and restructure them accordingly](../workdown-items/testing-strategy.md)
 - [Work out the testing approach and break the milestone into items](../workdown-items/testing-strategy-design.md)
 - [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md)
-- [Move value coercion out of the store to break the parser↔store cycle](../workdown-items/value-coercion-layering.md)
-- [Collapse the metric-row duplicates of the generic view checks](../workdown-items/views-check-metric-row-dedup.md)
 - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md)
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
-_(no cards)_
+- [Miscellaneous improvements](../workdown-items/misc-work.md)
 
 ## done
 - [Commands fail when the work-items directory is missing](../workdown-items/add-missing-items-directory.md)
@@ -39,6 +38,7 @@ _(no cards)_
 - [Compute schema-declared aggregate fields up the parent chain](../workdown-items/aggregate-rollup.md)
 - [App shell navigation (views menu + future link slots)](../workdown-items/app-shell-navigation.md)
 - [Grab bag of small consistency fixes from the review](../workdown-items/assorted-small-fixes.md)
+- [Put the project name in the browser tab title](../workdown-items/browser-tab-project-title.md)
 - [Make the terminal chart renderers share what they each rebuilt](../workdown-items/chart-renderer-sharing.md)
 - [Run the whole workspace in CI](../workdown-items/ci-workspace-coverage.md)
 - [Audit workdown add for UI-driven creation](../workdown-items/cli-add-audit.md)
@@ -122,6 +122,7 @@ _(no cards)_
 - [Show which item is being timed in the views](../workdown-items/timer-recording-indicator.md)
 - [UI foundation — conventions and scaffolding before the first view](../workdown-items/ui-foundation.md)
 - [Decide where the required-field check belongs in the load pipeline](../workdown-items/validation-phase-boundaries.md)
+- [Move value coercion out of the store to break the parser↔store cycle](../workdown-items/value-coercion-layering.md)
 - [Author and edit views from the UI](../workdown-items/view-authoring.md)
 - [Create a new view from the UI](../workdown-items/view-creation.md)
 - [Design ViewData and extractors](../workdown-items/view-data-intermediate.md)
@@ -132,6 +133,7 @@ _(no cards)_
 - [Sort and group view items in one place, not per renderer](../workdown-items/view-order-in-extractor.md)
 - [View & item presentation](../workdown-items/view-presentation.md)
 - [Persist view definitions to views.yaml](../workdown-items/view-write-backend.md)
+- [Collapse the metric-row duplicates of the generic view checks](../workdown-items/views-check-metric-row-dedup.md)
 - [Add views path to config; ship default views.yaml](../workdown-items/views-config-path.md)
 - [Cross-file validation for views.yaml](../workdown-items/views-cross-file-validation.md)
 - [Editor-only JSON Schema for views.yaml](../workdown-items/views-json-schema.md)
@@ -150,6 +152,7 @@ _(no cards)_
 - [Mapped fields — derive a value by lookup table](../workdown-items/field-value-map.md)
 - [Reusable GitHub Action to keep rendered views in sync](../workdown-items/github-render-action.md)
 - [Show a resource entry's label where views display its id](../workdown-items/resource-label-display.md)
+- [A view over tags](../workdown-items/tags-view.md)
 
 ## No status
 _(no cards)_

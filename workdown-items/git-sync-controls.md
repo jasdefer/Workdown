@@ -1,5 +1,6 @@
 ---
 title: Git sync controls in the web UI
+parent: full-git-loop
 status: done
 ---
 
@@ -59,12 +60,17 @@ and reworked per the decisions below.
 
 ## Deferred
 
+Each of these now has an item; the milestone is [[full-git-loop]].
+
 - A **Commit** action in the UI with a generated, editable message —
   flagged in the PR for design feedback before building.
+  → [[commit-from-web-ui]]
 - An origin guard for the other mutating endpoints (items, timer) —
   worth doing across the board; this PR guards only its own surface.
+  → [[same-origin-guard-everywhere]]
 - Dogfooding: enable `serve.git_controls: true` in this repo's own
   `.workdown/config.yaml` only after the next release ships and
   binaries are updated — a 0.2.3 binary hard-fails on the unknown key
   (same release-ordering rule as `defaults.effort_field`, still
-  pending for the same reason).
+  pending for the same reason). Unblocked by 0.2.5.
+  → [[dogfood-git-controls-config]]

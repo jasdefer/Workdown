@@ -54,7 +54,8 @@ The contents below are the outcome of an initial brainstorm. Treat them as **ini
 
 - **Reads** (views, queries, web app) do not require a local checkout. `git fetch` followed by reading blobs from the remote ref is enough. Users who only consume cross-repo views never need to clone sub-repos.
 - **Writes** (CLI edits to a sub-repo item from the master) require a local checkout. The CLI edits the file at the known local path; the user is responsible for committing and pushing in that sub-repo.
-- **The CLI and web app never commit or push.** Mutations are working-tree edits only. The user controls when changes land in git.
+- **No mutation commits as a side effect.** CLI and web-app edits touch the working tree only; history changes on a gesture the user makes, never implicitly.
+  *Corrected 2026-08-31:* this bullet used to read "the CLI and web app never commit or push", which 0.2.5 made untrue — the web UI ships Pull and Push buttons. Those are explicit gestures, so the principle held while the sentence did not. How far the app's ownership of the git cycle reaches is being settled in [[full-git-loop]]; whatever that lands on governs this milestone too.
 
 ### Addressing and references
 

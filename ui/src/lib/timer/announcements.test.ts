@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { TimerPhase } from '$lib/api/generated/TimerPhase';
 import {
-	BASE_TITLE,
 	countdownKey,
 	createCrossingDetector,
 	tabTitle,
@@ -128,24 +127,32 @@ describe('createCrossingDetector', () => {
 });
 
 describe('tabTitle', () => {
-	it('is the plain title when nothing counts down', () => {
-		expect(tabTitle(null)).toBe(BASE_TITLE);
+	// The page's own title, as `documentTitle` builds it — the countdown
+	// decorates this, never replaces it.
+	const base = 'Acme Backlog — Status Board';
+
+	it('is the page title untouched when nothing counts down', () => {
+		expect(tabTitle(null, base)).toBe(base);
 	});
 
-	it('carries the work countdown', () => {
-		expect(tabTitle({ kind: 'work', remainingSeconds: 1122 })).toBe('18:42 · Workdown');
+	it('carries the work countdown ahead of the page title', () => {
+		expect(tabTitle({ kind: 'work', remainingSeconds: 1122 }, base)).toBe(`18:42 · ${base}`);
 	});
 
 	it('names the break beside its countdown', () => {
-		expect(tabTitle({ kind: 'break', remainingSeconds: 252 })).toBe('Break 4:12 · Workdown');
+		expect(tabTitle({ kind: 'break', remainingSeconds: 252 }, base)).toBe(`Break 4:12 · ${base}`);
 	});
 
 	it('flips to the alarm form at zero', () => {
-		expect(tabTitle({ kind: 'work', remainingSeconds: 0 })).toBe('⏰ Interval over · Workdown');
-		expect(tabTitle({ kind: 'break', remainingSeconds: 0 })).toBe('⏰ Break over · Workdown');
+		expect(tabTitle({ kind: 'work', remainingSeconds: 0 }, base)).toBe(
+			`⏰ Interval over · ${base}`
+		);
+		expect(tabTitle({ kind: 'break', remainingSeconds: 0 }, base)).toBe(`⏰ Break over · ${base}`);
 	});
 
 	it('keeps the alarm form through overrun', () => {
-		expect(tabTitle({ kind: 'work', remainingSeconds: -452 })).toBe('⏰ Interval over · Workdown');
+		expect(tabTitle({ kind: 'work', remainingSeconds: -452 }, base)).toBe(
+			`⏰ Interval over · ${base}`
+		);
 	});
 });

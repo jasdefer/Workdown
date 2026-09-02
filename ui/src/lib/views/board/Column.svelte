@@ -13,11 +13,13 @@
 		column: BoardColumn;
 		/** Board field name, used to name the synthetic no-value column. */
 		field: string;
+		/** Whether this board's cards are drag sources at all. */
+		dragEnabled: boolean;
 		/** Move a dropped card to this column's value (the board field). */
 		onmove: (cardId: string, toValue: string | null) => void;
 	}
 
-	let { column, field, onmove }: Props = $props();
+	let { column, field, dragEnabled, onmove }: Props = $props();
 </script>
 
 <section
@@ -33,7 +35,7 @@
 	</header>
 	<div class="cards">
 		{#each column.cards as card (card.id)}
-			<Card {card} />
+			<Card {card} {dragEnabled} />
 		{/each}
 	</div>
 </section>

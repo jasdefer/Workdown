@@ -1,8 +1,8 @@
 ---
 id: browser-tab-project-title
-status: to_do
-parent: misc-work
 title: Put the project name in the browser tab title
+status: done
+parent: misc-work
 ---
 
 ## In plain words
@@ -18,8 +18,8 @@ From GitHub issue #52.
 
 ## The problem in detail
 
-`ui/src/app.html` has no `<title>` element and no route sets one, so
-the browser falls back to the URL. Two servers on two ports are
+The root layout's `<title>` is the constant "Workdown" whenever no
+timer counts down (see the note below), so two servers on two ports are
 indistinguishable in the tab strip, in the window switcher, and in
 whatever the user later bookmarks.
 
@@ -48,10 +48,38 @@ So this is two small changes, not one:
   item does fixes this too.
 - `project.name` is free-form user text and lands in the DOM as a title.
   Set it as text, never as markup.
+- The tab is not quite title-less any more: [[timer-notifications]]
+  shipped a `<title>` in the root layout showing the pomodoro countdown,
+  and the plain word "Workdown" whenever nothing counts down. So this
+  work replaces that constant rather than introducing the element, and
+  the countdown has to keep decorating whatever the new title is.
 
-## Open question
+## Decisions taken
 
-Whether the endpoint is scoped narrowly ("project identity") or becomes
-the general read-only config endpoint the web app will eventually want
-anyway. Worth about five minutes' thought before writing it, since the
-first shape tends to stick.
+1. **A narrow `GET /api/project`**, not a general config endpoint —
+   `{ name, description }` and nothing else. `paths.*` is local
+   filesystem layout the browser has no business knowing, and a
+   "here is the config" shape invites shipping it. Further shell needs
+   join this contract field by field.
+2. **Answered from the boot-time config alone**, not from a project
+   load. That is what keeps the tab named while a broken schema has
+   every other read answering 422.
+3. **Fetched in the root layout's `load`, in parallel with the views
+   index.** The fallback before it lands (and if it never does) is the
+   tool's own name, `Workdown`.
+4. **`Project — Page`, project first.** The complaint is two servers on
+   two ports; a narrow tab shows only the first few characters, and the
+   window switcher and any bookmark inherit the same order.
+5. **Every page label comes from data already at hand** — the views
+   index for a view's name, the URL's id prettified for an item (the
+   same label the item page's own heading shows), fixed words for the
+   new/edit routes, and no label at all for `/` and the error page. No
+   page waits on a second fetch to be named.
+6. **`description` is carried and used** as `<meta name="description">`.
+   No crawler will read a localhost app, but it costs one line and
+   bookmark tooling sometimes picks it up.
+7. **No static `<title>` in `app.html`.** The HTML spec gives the tab
+   the *first* title element in the document, so a static fallback there
+   would shadow the layout's dynamic one for the tab's whole life. The
+   fallback lives inside the rendered title instead, and the layout's
+   `load` awaits the fetch before the first render anyway.

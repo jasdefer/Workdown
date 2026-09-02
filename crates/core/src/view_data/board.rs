@@ -9,7 +9,7 @@
 
 use serde::Serialize;
 
-use crate::model::schema::{FieldTypeConfig, Schema};
+use crate::model::schema::{FieldType, FieldTypeConfig, Schema};
 use crate::model::views::{View, ViewKind};
 use crate::model::{FieldValue, WorkItem};
 use crate::store::Store;
@@ -20,6 +20,13 @@ use super::filter::filtered_items;
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct BoardData {
     pub field: String,
+    /// The grouping field's type. The web UI reads it to decide whether
+    /// cards may be dragged between columns: a `multichoice` field puts one
+    /// card in several columns at once, so a drop carries no unambiguous
+    /// meaning and the board is presented read-only. Reported as the plain
+    /// fact rather than as a `draggable` flag — which affordance follows
+    /// from the type is the UI's call, not this layer's.
+    pub field_type: FieldType,
     pub columns: Vec<BoardColumn>,
 }
 
@@ -76,6 +83,7 @@ pub fn extract_board(view: &View, store: &Store, schema: &Schema) -> BoardData {
     columns.push(synthetic);
     BoardData {
         field: field.clone(),
+        field_type: field_def.field_type(),
         columns,
     }
 }
@@ -325,6 +333,39 @@ mod tests {
         let synthetic = data.columns.last().unwrap();
         assert_eq!(synthetic.value, None);
         assert_eq!(synthetic.cards.len(), 1);
+    }
+
+    #[test]
+    fn field_type_reports_the_grouping_field_type() {
+        // The web UI reads `field_type` to decide whether cards may be
+        // dragged. Cover all three groupable types so a board that *is*
+        // draggable can't silently start reporting itself as one that
+        // isn't, or the reverse.
+        let cases = [
+            (
+                FieldTypeConfig::Choice {
+                    values: vec!["open".into()],
+                },
+                FieldType::Choice,
+            ),
+            (
+                FieldTypeConfig::Multichoice {
+                    values: vec!["alpha".into()],
+                },
+                FieldType::Multichoice,
+            ),
+            (FieldTypeConfig::String { pattern: None }, FieldType::String),
+        ];
+
+        for (type_config, expected) in cases {
+            let schema = make_schema(vec![("group", type_config)]);
+            let store = make_store(&schema, vec![]);
+            let view = board_view("group");
+
+            let data = extract_board(&view, &store, &schema);
+
+            assert_eq!(data.field_type, expected);
+        }
     }
 
     #[test]

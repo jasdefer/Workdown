@@ -1,5 +1,5 @@
 ---
-status: to_do
+status: done
 parent: misc-work
 title: Move value coercion out of the store to break the parser↔store cycle
 tags: [tech-debt]
@@ -34,3 +34,22 @@ logic — the store is merely its heaviest user.
   store depend downward on the model instead of on each other.
 - Pure relocation — no behavior change, no signature redesign beyond
   what the move forces.
+
+## Outcome (verified 2026-08-31)
+
+Done — the move landed inside the [[maintenance-review-2026-08]] PR
+(`03508c8`) rather than as its own change, which is why this item was
+never closed. `crates/core/src/store/coerce.rs` is now
+`crates/core/src/coerce.rs`; `parser/schema.rs:10` imports
+`crate::coerce::{coerce_value, yaml_type_name}`, and the parser has no
+dependency on `store` at all any more. The motivating case holds: a
+schema-only tool would pull in the parser it needs and none of the item
+store.
+
+One smaller edge remains, recorded rather than reopened: `coerce.rs:24`
+imports `crate::parser::RawWorkItem` for `coerce_fields`, while the
+parser imports `coerce_value` back — so `parser` and `coerce` are now
+mutually dependent where `parser` and `store` used to be. It is a much
+smaller knot (one struct, one function) and `coerce_value` itself is
+parser-free, so splitting the raw-item entry point off would settle it
+if it ever gets in the way.

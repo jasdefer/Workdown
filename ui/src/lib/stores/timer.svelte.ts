@@ -190,11 +190,12 @@ export const timerStore = {
 		return anchoredElapsedSeconds(phase.elapsed_seconds, anchorMs, nowMs);
 	},
 	/** What the browser tab says: the pomodoro countdown while one
-	 * runs, the alarm form past zero, the plain name otherwise. The
-	 * root layout binds this to the document title, so a background
-	 * tab is glanceable before zero, not only at it. */
-	get documentTitle(): string {
-		return tabTitle(currentCountdown());
+	 * runs, the alarm form past zero, and `base` — the project and page
+	 * title — underneath in every case. The root layout binds this to
+	 * the document title, so a background tab is glanceable before zero,
+	 * not only at it. */
+	documentTitle(base: string): string {
+		return tabTitle(currentCountdown(), base);
 	},
 	/** The mode the split button would start: this tab's selection, or
 	 * the server's sticky last-started mode. */
