@@ -123,7 +123,11 @@ changes sitting next to the items are invisible to the button.
 **Rendered view output is out of scope.** The `views/*.md` files that
 `workdown render` writes are generated, and no config path names them.
 They are not committed by the button. If they later get a config path,
-they inherit the rule above automatically.
+they inherit the rule above automatically. Precise wording of the rule:
+the button itself never stages anything outside the workdown paths.
+Hooks the user installed may add to the commit as they always do — a
+repo with the `install-hooks` pre-commit hook gets its re-rendered
+views in the button's commit, which is what that hook is for.
 
 **No selection.** Everything in scope goes in one commit. Building
 staging into the UI is not worth it for mechanical changes; the scope
@@ -148,24 +152,57 @@ paths, only on an explicit confirmed gesture. The "no implicit commit"
 rule in `CLAUDE.md` and ADR-006 stays true as written; ADR-006 gets a
 short note recording this.
 
-### Message shape
+### Message shape (revised 2026-09-04, second round)
+
+A commit message is read later, as one line in a list, by someone
+scanning history. A body that repeats the diff field by field is
+noise: anyone who wants that detail opens the diff. So the generated
+part is a good **subject line**, and a body appears only when the
+subject cannot carry the content. The *why* cannot be generated and is
+left to the person, who can type it into the editable message.
+
+What the generator adds that the diff does not show: names the way a
+person would say them. The diff shows `implement-login.md` and
+`in_progress`; the message uses the item's title and the choice's
+label from the schema.
 
 ```
-Update 3 work items, 1 added
-
-implement-login: status to_do → in_progress
-fix-bug: assignee → alice, description edited
-new-onboarding-task: added
-schema.yaml edited
+Implement login: Status → In progress
+Move 2 items to In progress
+Assign 3 items to Alice
+Update 4 work items
+Edit schema.yaml
 ```
 
-Summary line first: counts by kind (changed, added, deleted items;
-definition files touched). Then one line per item with its field
-changes, in the order `id: field old → new`. Definition files
-(`schema.yaml`, `views.yaml`, `resources.yaml`, `config.yaml`,
-templates) get a one-line "edited"/"added"/"deleted". The detail list is
-capped at about ten lines; the rest is summarized by count. The whole
-thing is editable before it is committed.
+Grouping rule:
+
+- One item, one field: `<Title>: <Field label> → <new value label>`.
+- Several items, same field, same new value: collapse into one line
+  with the count.
+- Anything mixed: a count (`Update 4 work items`, `Update 3 work
+  items, 1 added`). Only then does a body follow, one line per item
+  (`<Title>: <field> → <new>`), capped at about ten lines with the rest
+  summarized by count.
+- A changed body with no frontmatter difference: "description edited".
+- Definition files (`schema.yaml`, `views.yaml`, `resources.yaml`,
+  `config.yaml`, templates): one line each, "edited"/"added"/"deleted".
+  No field-level comparison; it buys little.
+
+The generator knows field names and choice labels from the schema and
+nothing else. It may say "Status → In progress"; it may never say
+"Started", because no field is privileged except `id`.
+
+### Where the summary comes from
+
+Not from parsing diff text. Git's unified diff is line-oriented, so a
+multi-line list value or a reordered field would produce misleading
+pairs. Git supplies which files changed and the old text of each one
+(the `HEAD` blob); the working tree supplies the new text. One function
+in the core crate takes old text, new text and the schema, parses both
+frontmatters with the parser the tool already has, and compares field
+by field. Added and deleted items fall out of the same comparison with
+one side empty. The server calls that function in-process; no CLI
+round trip, no journal, no bookkeeping anywhere.
 
 ### Mechanics that follow from the decisions
 
@@ -174,22 +211,39 @@ thing is editable before it is committed.
   up. Both the add and the commit are limited to the in-scope paths.
   Everything else stays staged or dirty exactly as it was.
 - **Behind the remote.** The sequence is commit, then pull with rebase,
-  then push. If the rebase conflicts, abort it (the helper exists from
-  [[git-sync-controls]]), keep the commit local, and say so. Pull still
-  refuses over uncommitted changes, and out-of-scope dirty files count
-  — so on a code repo with unrelated edits the button commits, cannot
-  pull, and stops with a clear message. Acceptable: the audience is
-  shared item repos, where the tree is clean after the commit by
-  construction.
+  then push. **The pull step is skipped when the branch is not
+  behind**; only a branch that actually has remote commits to
+  integrate pays for it. Pull still refuses over uncommitted changes,
+  and out-of-scope dirty files count — so on a code repo with
+  unrelated edits *and* a branch that is behind, the button commits,
+  cannot pull, and stops with a clear message naming the files outside
+  workdown. Acceptable: the audience is shared item repos, where the
+  tree is clean after the commit by construction.
+- **Conflicts on rebase.** Git merges by line and treats changes on
+  touching lines as one contested block, so two people editing
+  *different* fields of the *same* item within one sync window conflict
+  whenever those fields sit on neighbouring lines (verified 2026-09-04
+  in a scratch repo: `status` and `assignee` on adjacent lines
+  conflict; with a line between them they merge). Different items
+  never conflict. Decided: this is rare enough to accept, and a
+  terminal or git GUI resolves it in a minute. The button aborts the
+  rebase (helper from [[git-sync-controls]]), keeps the commit local,
+  and the message says three things plainly: the commit is safe and
+  local; it could not be combined with a teammate's change to item X;
+  resolve in a terminal and press Push. Nothing is lost.
 - **Missing identity.** If `user.name` or `user.email` is unset, refuse
   with a clear message. Never invent one.
 - **Hooks and signing.** Already non-interactive from
   [[git-sync-controls]]; a signing prompt fails fast rather than
   hanging. That failure needs a readable message, not raw stderr.
-- **The pill shows in-scope changes.** "11 local" that mixed config,
-  rendered views and item edits is what made the first reading
-  confusing. The status reports the in-scope count (and which files),
-  separately from anything else dirty in the repository.
+- **The pill number is the number of things the button will commit.**
+  "11 local" that mixed config, rendered views and item edits is what
+  made the first reading confusing. The dirty count is computed over
+  the workdown paths only; files outside them do not count at all and
+  are not shown on the pill. They are named only where they matter:
+  in the confirmation dialog and in the "cannot pull" message. Count
+  items rather than files, and name definition files separately
+  ("3 items · schema" rather than "4 local").
 - **Opt-in and origin guard.** Same as pull and push:
   `serve.git_controls` must be on, and the endpoint is same-origin
   guarded. See [[same-origin-guard-everywhere]].
@@ -210,10 +264,113 @@ That question is bigger than this feature and belongs to the milestone,
 proposes is recorded above under "The CLI stays commit-free"; the
 milestone should carry it as its own decision.
 
+## Considered, not part of this item
+
+- **Commit per board gesture** instead of a batch, with Push as the
+  review moment listing the messages about to leave. Messages would be
+  trivially meaningful because each commit *is* one gesture. Loses on
+  three points: edits made in an editor or via the CLI would never be
+  committed and would block pull; a drag and drag-back produces two
+  commits; a commit nobody asked for stretches "explicit". Batch stays.
+- **Field-wise merge for work items.** The app knows the file format
+  and git does not; merging frontmatter by field would dissolve the
+  adjacent-line conflicts above and leave only true same-field
+  disagreements, which could become a "keep which?" dialog. Good UX,
+  separate deliverable, only worth filing if the conflicts turn out
+  not to be rare.
+- **`workdown changes` CLI command** exposing the same summary function
+  for the working tree against `HEAD`, and a `prepare-commit-msg` hook
+  prefilling terminal commits with it, so history reads the same
+  whether the commit came from the board or the shell. The hook slot
+  exists from [[init-install-hooks]]. Cheap follow-up once the function
+  exists in core.
+
 ## Notes
 
 - A commit is not undoable from the UI, so the confirmation dialog is
   part of the feature, not polish.
+- **Verified 2026-09-04:** a path-scoped `git commit -- <items>` with a
+  pre-commit hook that re-renders and stages a views file does include
+  the hook's file in the commit, and leaves an unrelated dirty source
+  file untouched. The hook rule above needs no special handling. (A
+  leftover status entry in the scratch test was a CRLF artifact of the
+  Windows setup; content was identical.)
+- **Verified 2026-09-04:** schema choices carry no labels. `status` is
+  a plain value list (`in_progress`), so the message prettifies raw
+  values the way the title fallback prettifies filenames. No new
+  schema concept.
+
+## Implementation decisions (2026-09-04)
+
+Recorded from the decision sheet at the end of the design session. The
+maintainer left before confirming 2, 3 and 6 individually; the
+recommended option is recorded for each and may be revisited before
+that step is built. Non-Rust wording on purpose.
+
+1. **Two requests: preview, then commit.** The dialog opens with a
+   read-only "what would happen" request returning the in-scope file
+   list and the generated message. Confirming sends a second request
+   carrying the final message. The preview is harmless and repeatable.
+2. **Stale preview is refused.** The confirmation carries the file list
+   the user saw. If the in-scope set differs when the commit request
+   arrives (another tab, an editor), the server refuses with a
+   conflict status and the dialog reloads the preview. The dialog is
+   the review moment; committing files the user did not see defeats
+   it.
+3. **Commit, pull, push are one server action.** Not three browser
+   calls. The server holds the git lock across all steps, owns the
+   skip-pull-when-not-behind rule, and returns a per-step report the
+   dialog renders as a checklist: committed (hash), pulled N / skipped,
+   pushed / stopped with reason. The existing pull and push endpoints
+   stay for their own buttons.
+4. **Scope is computed once and passed to every git call.** The path
+   list comes from the config (`paths.*`, `schema`, `config.yaml`
+   itself), expressed relative to the *repository* root, because a
+   workdown project may live in a subfolder of a larger repository.
+   Status, add and commit all receive the same list. No filtering
+   after the fact.
+5. **Naming reuses existing behaviour.** Item name: the field the
+   config's title display role points to, falling back to the
+   prettified filename, as the board does. Field names and choice
+   values: prettified from raw text with the existing slug prettifier.
+   No new config.
+6. **Button rule in the pill.** In-scope changes present: "Commit &
+   push" is the primary button; Pull is disabled with the existing
+   "commit first" hint. Clean and ahead: Push. Clean and behind: Pull.
+   Clean and in sync: branch only.
+7. **Failures are worded, raw output on demand.** Known cases mapped to
+   sentences: no `user.name`/`user.email`, signing prompt, hook
+   failure, rebase conflict (three-part wording above), push rejected.
+   Git's raw output sits behind a "details" toggle.
+8. **The message generator is a pure function in the core crate.**
+   Input: per file, old text (from `HEAD`) or none, new text (working
+   tree) or none, plus schema and the title role. Output: the message.
+   Testable without git or a server; reusable by a later `workdown
+   changes` command. Server tests use the existing fixture repositories
+   for scope filtering, stale-preview refusal, stop-at-pull with
+   outside files dirty, and missing identity.
+
+No new config key is introduced, so there is no release-ordering
+problem this time.
+
+### Build order
+
+1. Core: the summary function with unit tests (grouping rule, body
+   edits, added/deleted, definition files, cap).
+2. Server: scope list from config; status endpoint counts in-scope only
+   and reports items vs definition files; pill shows the new number.
+3. Server: preview endpoint (files + message).
+4. Server: commit-pull-push endpoint with per-step report, stale-set
+   refusal, worded failures; same-origin guard and git lock as the
+   other git endpoints.
+5. UI: dialog (file list, editable message, checklist result) and the
+   button rule.
+6. Docs: short note in ADR-006; [[full-git-loop]] records "the CLI
+   stays commit-free" as its own decision; `docs/architecture.md` if
+   the mutations exit gains a stage.
+7. Dogfood on this repo before release: the pill must show the
+   in-scope count, and the button must stop cleanly at pull when
+   `views/` is dirty and the branch is behind.
 - Status changes are also where [[status-transition-dates]] wants to
   write a date. If both land, one board gesture produces a field write
   *and* a commit — worth designing so the date is part of the same
