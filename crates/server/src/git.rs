@@ -214,6 +214,79 @@ pub async fn rebase_in_progress(root: &Path) -> Result<bool, GitError> {
     Ok(git_directory.join("rebase-merge").exists() || git_directory.join("rebase-apply").exists())
 }
 
+/// Where the project root sits inside the repository, as a
+/// repository-relative directory: empty at the top, `sub/dir/` (with
+/// git's trailing slash) below. `None` when `root` is not inside a git
+/// work tree.
+pub async fn repository_prefix(root: &Path) -> Result<Option<String>, GitError> {
+    let output = run(root, &["rev-parse", "--show-prefix"], LOCAL_TIMEOUT).await?;
+    if !output.success {
+        if is_not_a_repository(&output.stderr) {
+            return Ok(None);
+        }
+        return Err(GitError::Failed {
+            command: "rev-parse --show-prefix".to_owned(),
+            stderr: output.stderr,
+        });
+    }
+    Ok(Some(output.stdout.trim().to_owned()))
+}
+
+/// The absolute path of the repository's working tree root — where the
+/// repository-relative paths `git status` reports are resolved against.
+/// `None` when `root` is not inside a git work tree.
+pub async fn top_level(root: &Path) -> Result<Option<PathBuf>, GitError> {
+    let output = run(root, &["rev-parse", "--show-toplevel"], LOCAL_TIMEOUT).await?;
+    if !output.success {
+        if is_not_a_repository(&output.stderr) {
+            return Ok(None);
+        }
+        return Err(GitError::Failed {
+            command: "rev-parse --show-toplevel".to_owned(),
+            stderr: output.stderr,
+        });
+    }
+    Ok(Some(PathBuf::from(output.stdout.trim())))
+}
+
+/// A file's text as committed at `HEAD`, by repository-relative path.
+/// `None` when `HEAD` has no such file — the file is new, or the branch
+/// is unborn and there is no `HEAD` at all. Read as the blob is stored,
+/// so line endings are the repository's, not the working tree's; the
+/// summary normalizes both sides before comparing.
+pub async fn show_at_head(root: &Path, repository_path: &str) -> Result<Option<String>, GitError> {
+    let spec = format!("HEAD:{repository_path}");
+    let output = run(root, &["show", &spec], LOCAL_TIMEOUT).await?;
+    if !output.success {
+        return Ok(None);
+    }
+    Ok(Some(output.stdout))
+}
+
+/// What happened to one path in the working tree, relative to `HEAD`,
+/// as `git status` reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChangeState {
+    /// Untracked, or staged as new.
+    Added,
+    Modified,
+    Deleted,
+    /// Staged rename or copy: `from` is the path at `HEAD`.
+    Renamed {
+        from: String,
+    },
+    /// Conflicted — a merge or rebase left it unresolved.
+    Unmerged,
+}
+
+/// One entry of `git status`: the repository-relative path and what
+/// happened to it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangedPath {
+    pub path: String,
+    pub state: ChangeState,
+}
+
 /// The purely local half of the `Ready` status, read in one spawn.
 #[derive(Debug, PartialEq, Eq)]
 pub struct RepoSnapshot {
@@ -227,17 +300,27 @@ pub struct RepoSnapshot {
     pub has_commits: bool,
     pub ahead: u32,
     pub behind: u32,
-    pub dirty_count: u32,
+    /// Every uncommitted change in the repository — staged, unstaged,
+    /// untracked — wherever it is. The pull refusal needs the whole
+    /// picture; the pill shows only the in-scope part (see
+    /// [`scoped_changes`]).
+    pub dirty: Vec<ChangedPath>,
 }
 
-/// Read branch, upstream, ahead/behind and the dirty count — one
-/// `git status --porcelain=v2 --branch` invocation answers all of it,
+/// Read branch, upstream, ahead/behind and the dirty files — one
+/// `git status --porcelain=v2 --branch -z` invocation answers all of it,
 /// including "not a repository" (`None`). Ahead/behind are as of the
 /// last fetch; only a fetch contacts the remote.
 pub async fn snapshot(root: &Path) -> Result<Option<RepoSnapshot>, GitError> {
     let output = run(
         root,
-        &["status", "--porcelain=v2", "--branch"],
+        &[
+            "status",
+            "--porcelain=v2",
+            "--branch",
+            "-z",
+            "--untracked-files=all",
+        ],
         LOCAL_TIMEOUT,
     )
     .await?;
@@ -253,14 +336,46 @@ pub async fn snapshot(root: &Path) -> Result<Option<RepoSnapshot>, GitError> {
     Ok(Some(parse_porcelain_status(&output.stdout)))
 }
 
+/// The uncommitted changes matching `pathspecs` — the git-controls
+/// scope, anchored at the repository root. Git decides membership by
+/// its own pathspec rules, the same ones a later `add`/`commit` with
+/// the same list will apply; nothing is filtered afterwards.
+/// `--untracked-files=all` lists a new directory's files one by one
+/// instead of collapsing them into the directory, so every new item
+/// counts as one.
+pub async fn scoped_changes(
+    root: &Path,
+    pathspecs: &[String],
+) -> Result<Vec<ChangedPath>, GitError> {
+    if pathspecs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut args: Vec<&str> = vec![
+        "status",
+        "--porcelain=v2",
+        "-z",
+        "--untracked-files=all",
+        "--",
+    ];
+    args.extend(pathspecs.iter().map(String::as_str));
+    let output = run(root, &args, LOCAL_TIMEOUT).await?;
+    if !output.success {
+        return Err(GitError::Failed {
+            command: "status -- <scope>".to_owned(),
+            stderr: output.stderr,
+        });
+    }
+    Ok(parse_porcelain_entries(&output.stdout).1)
+}
+
 /// The one git message this module matches on — pinned to English by
 /// `LC_ALL=C` in [`run`].
 fn is_not_a_repository(stderr: &str) -> bool {
     stderr.contains("not a git repository")
 }
 
-/// Parse `git status --porcelain=v2 --branch` output. Header lines
-/// (`# branch.…`) carry the branch facts; every non-header line is one
+/// Parse `git status --porcelain=v2 --branch -z` output. Header lines
+/// (`# branch.…`) carry the branch facts; every other entry is one
 /// changed, untracked, or unmerged file.
 ///
 /// - `# branch.head <name>` — `(detached)` maps to `HEAD`, matching
@@ -276,9 +391,9 @@ fn parse_porcelain_status(stdout: &str) -> RepoSnapshot {
     let mut has_commits = true;
     let mut ahead = 0;
     let mut behind = 0;
-    let mut dirty_count = 0;
 
-    for line in stdout.lines() {
+    let (headers, dirty) = parse_porcelain_entries(stdout);
+    for line in headers {
         if let Some(name) = line.strip_prefix("# branch.head ") {
             if name != "(detached)" {
                 branch = name.to_owned();
@@ -294,8 +409,6 @@ fn parse_porcelain_status(stdout: &str) -> RepoSnapshot {
                     behind = value.parse().unwrap_or(0);
                 }
             }
-        } else if !line.starts_with('#') && !line.is_empty() {
-            dirty_count += 1;
         }
     }
 
@@ -305,7 +418,91 @@ fn parse_porcelain_status(stdout: &str) -> RepoSnapshot {
         has_commits,
         ahead,
         behind,
-        dirty_count,
+        dirty,
+    }
+}
+
+/// Split NUL-terminated porcelain v2 output into its header lines and
+/// its file entries. `-z` is what makes paths safe to read back: without
+/// it, git quotes paths with spaces or non-ASCII characters, and a
+/// rename's two paths share one line separated by a tab.
+///
+/// Entry shapes (fields are space-separated, the path is last):
+/// - `1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>` — an ordinary change;
+/// - `2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <Xscore> <path>` followed
+///   by the original path as its own NUL-terminated token;
+/// - `u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>` — unmerged;
+/// - `? <path>` — untracked; `! <path>` — ignored (not requested here).
+fn parse_porcelain_entries(stdout: &str) -> (Vec<&str>, Vec<ChangedPath>) {
+    let mut headers = Vec::new();
+    let mut changes = Vec::new();
+    let mut tokens = stdout.split('\0').filter(|token| !token.is_empty());
+    while let Some(token) = tokens.next() {
+        if token.starts_with('#') {
+            headers.push(token);
+        } else if let Some(path) = token.strip_prefix("? ") {
+            changes.push(ChangedPath {
+                path: path.to_owned(),
+                state: ChangeState::Added,
+            });
+        } else if token.starts_with("1 ") {
+            if let Some((status, path)) = split_fields(token, 8) {
+                changes.push(ChangedPath {
+                    path: path.to_owned(),
+                    state: ordinary_state(status),
+                });
+            }
+        } else if token.starts_with("2 ") {
+            let from = tokens.next().unwrap_or_default();
+            if let Some((_status, path)) = split_fields(token, 9) {
+                changes.push(ChangedPath {
+                    path: path.to_owned(),
+                    state: ChangeState::Renamed {
+                        from: from.to_owned(),
+                    },
+                });
+            }
+        } else if token.starts_with("u ") {
+            if let Some((_status, path)) = split_fields(token, 10) {
+                changes.push(ChangedPath {
+                    path: path.to_owned(),
+                    state: ChangeState::Unmerged,
+                });
+            }
+        }
+        // `!` (ignored) and anything unknown: nothing to report.
+    }
+    (headers, changes)
+}
+
+/// The `<XY>` field and the path of an entry whose path follows
+/// `fixed_fields` space-separated fields (the entry type included).
+fn split_fields(token: &str, fixed_fields: usize) -> Option<(&str, &str)> {
+    let mut rest = token;
+    let mut status = "";
+    for index in 0..fixed_fields {
+        let (field, remainder) = rest.split_once(' ')?;
+        if index == 1 {
+            status = field;
+        }
+        rest = remainder;
+    }
+    Some((status, rest))
+}
+
+/// What an ordinary entry's `<XY>` (index, work tree) means for the
+/// file as a whole: gone from the work tree is deleted, new in the
+/// index is added, everything else is modified.
+fn ordinary_state(status: &str) -> ChangeState {
+    let mut letters = status.chars();
+    let index = letters.next().unwrap_or('.');
+    let work_tree = letters.next().unwrap_or('.');
+    if work_tree == 'D' || (index == 'D' && work_tree == '.') {
+        ChangeState::Deleted
+    } else if index == 'A' {
+        ChangeState::Added
+    } else {
+        ChangeState::Modified
     }
 }
 
@@ -313,47 +510,98 @@ fn parse_porcelain_status(stdout: &str) -> RepoSnapshot {
 mod tests {
     use super::*;
 
+    fn joined(entries: &[&str]) -> String {
+        entries.iter().map(|entry| format!("{entry}\0")).collect()
+    }
+
     #[test]
     fn parses_synced_branch_with_upstream() {
-        let stdout = "\
-# branch.oid 1234567890abcdef1234567890abcdef12345678
-# branch.head main
-# branch.upstream origin/main
-# branch.ab +0 -0
-";
+        let stdout = joined(&[
+            "# branch.oid 1234567890abcdef1234567890abcdef12345678",
+            "# branch.head main",
+            "# branch.upstream origin/main",
+            "# branch.ab +0 -0",
+        ]);
         assert_eq!(
-            parse_porcelain_status(stdout),
+            parse_porcelain_status(&stdout),
             RepoSnapshot {
                 branch: "main".into(),
                 has_upstream: true,
                 has_commits: true,
                 ahead: 0,
                 behind: 0,
-                dirty_count: 0,
+                dirty: vec![],
             }
         );
     }
 
     #[test]
     fn parses_ahead_behind_and_dirty_files() {
-        let stdout = "\
-# branch.oid 1234567890abcdef1234567890abcdef12345678
-# branch.head feature
-# branch.upstream origin/feature
-# branch.ab +2 -3
-1 .M N... 100644 100644 100644 0123456 0123456 workdown-items/item-a.md
-? workdown-items/item-d.md
-";
+        let stdout = joined(&[
+            "# branch.oid 1234567890abcdef1234567890abcdef12345678",
+            "# branch.head feature",
+            "# branch.upstream origin/feature",
+            "# branch.ab +2 -3",
+            "1 .M N... 100644 100644 100644 0123456 0123456 workdown-items/item-a.md",
+            "? workdown-items/item d.md",
+        ]);
         assert_eq!(
-            parse_porcelain_status(stdout),
+            parse_porcelain_status(&stdout),
             RepoSnapshot {
                 branch: "feature".into(),
                 has_upstream: true,
                 has_commits: true,
                 ahead: 2,
                 behind: 3,
-                dirty_count: 2,
+                dirty: vec![
+                    ChangedPath {
+                        path: "workdown-items/item-a.md".into(),
+                        state: ChangeState::Modified,
+                    },
+                    ChangedPath {
+                        path: "workdown-items/item d.md".into(),
+                        state: ChangeState::Added,
+                    },
+                ],
             }
+        );
+    }
+
+    #[test]
+    fn classifies_every_entry_shape() {
+        let stdout = joined(&[
+            "1 A. N... 000000 100644 100644 0000000 0123456 new-staged.md",
+            "1 AM N... 000000 100644 100644 0000000 0123456 new-staged-then-edited.md",
+            "1 .D N... 100644 100644 000000 0123456 0123456 gone-from-tree.md",
+            "1 D. N... 100644 000000 000000 0123456 0000000 staged-delete.md",
+            "1 MM N... 100644 100644 100644 0123456 0123456 edited-twice.md",
+            "2 R. N... 100644 100644 100644 0123456 0123456 R100 renamed-to.md",
+            "renamed-from.md",
+            "u UU N... 100644 100644 100644 100644 0123456 0123456 0123456 conflicted.md",
+            "? untracked.md",
+        ]);
+        let (_headers, changes) = parse_porcelain_entries(&stdout);
+        let states: Vec<(&str, &ChangeState)> = changes
+            .iter()
+            .map(|change| (change.path.as_str(), &change.state))
+            .collect();
+        assert_eq!(
+            states,
+            vec![
+                ("new-staged.md", &ChangeState::Added),
+                ("new-staged-then-edited.md", &ChangeState::Added),
+                ("gone-from-tree.md", &ChangeState::Deleted),
+                ("staged-delete.md", &ChangeState::Deleted),
+                ("edited-twice.md", &ChangeState::Modified),
+                (
+                    "renamed-to.md",
+                    &ChangeState::Renamed {
+                        from: "renamed-from.md".into()
+                    }
+                ),
+                ("conflicted.md", &ChangeState::Unmerged),
+                ("untracked.md", &ChangeState::Added),
+            ]
         );
     }
 
@@ -362,20 +610,23 @@ mod tests {
         // An unborn branch (fresh init) and a branch with an unresolvable
         // upstream both omit `branch.ab` — either way push has nowhere to
         // go and ahead/behind carry no information.
-        let stdout = "\
-# branch.oid (initial)
-# branch.head main
-? workdown-items/item-a.md
-";
+        let stdout = joined(&[
+            "# branch.oid (initial)",
+            "# branch.head main",
+            "? workdown-items/item-a.md",
+        ]);
         assert_eq!(
-            parse_porcelain_status(stdout),
+            parse_porcelain_status(&stdout),
             RepoSnapshot {
                 branch: "main".into(),
                 has_upstream: false,
                 has_commits: false,
                 ahead: 0,
                 behind: 0,
-                dirty_count: 1,
+                dirty: vec![ChangedPath {
+                    path: "workdown-items/item-a.md".into(),
+                    state: ChangeState::Added,
+                }],
             }
         );
     }
@@ -413,10 +664,10 @@ mod tests {
 
     #[test]
     fn detached_head_reads_as_head() {
-        let stdout = "\
-# branch.oid 1234567890abcdef1234567890abcdef12345678
-# branch.head (detached)
-";
-        assert_eq!(parse_porcelain_status(stdout).branch, "HEAD");
+        let stdout = joined(&[
+            "# branch.oid 1234567890abcdef1234567890abcdef12345678",
+            "# branch.head (detached)",
+        ]);
+        assert_eq!(parse_porcelain_status(&stdout).branch, "HEAD");
     }
 }

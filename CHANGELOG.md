@@ -9,6 +9,13 @@ its source — internal refactors are deliberately absent.
 
 ### Changed
 
+- The git pill counts **only workdown files**: work items under
+  `paths.work_items` as a number, and changed definition files by role
+  (`3 items · schema` instead of `4 local`). Source files, rendered
+  views and anything else in the repository that `config.yaml` does not
+  name no longer show up in the pill — they are named only where they
+  matter, in the message when a pull has to refuse because of them.
+
 - The git pill's Push button now **publishes** a branch that has never
   been pushed instead of greying out with "No upstream branch
   configured". On such a branch the summary reads `not published`

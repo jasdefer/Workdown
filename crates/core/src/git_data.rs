@@ -25,6 +25,47 @@ pub struct GitPushResult {
     pub status: GitStatus,
 }
 
+/// What a commit from the web app would do right now — the review the
+/// confirmation dialog shows before anything is staged. Read-only and
+/// repeatable; the confirmation sends `files` back so the server can
+/// refuse when the set has moved in the meantime.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ts_rs::TS)]
+pub struct GitCommitPreview {
+    /// The in-scope files the commit would cover, in git's order.
+    pub files: Vec<GitChangedFile>,
+    /// The generated commit message — subject, and a body after a blank
+    /// line when the subject cannot carry it all. The dialog's editable
+    /// starting point.
+    pub message: String,
+    /// Uncommitted files outside the workdown paths, repository-relative.
+    /// Never committed from here, but named: a pull after the commit
+    /// refuses over them, and the pill does not show them.
+    pub outside: Vec<String>,
+}
+
+/// One file a commit would cover.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ts_rs::TS)]
+pub struct GitChangedFile {
+    /// Project-relative path, forward slashes.
+    pub path: String,
+    /// The config key the file falls under, as the pill names it:
+    /// `items`, `schema`, `views`, `resources`, `templates`, `config`.
+    pub role: String,
+    pub change: GitChangeKind,
+}
+
+/// What happened to a file, as `git status` sees it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+pub enum GitChangeKind {
+    Added,
+    Modified,
+    Deleted,
+    Renamed,
+    /// Left conflicted by a merge or rebase — git will not commit it.
+    Unmerged,
+}
+
 /// What the git controls should show — one tagged state per situation
 /// the widget must distinguish. `Disabled` (the default) keeps the
 /// widget entirely hidden; nothing else about the repository is
@@ -51,9 +92,16 @@ pub enum GitStatus {
         /// Commits on the upstream that the branch doesn't have — as of
         /// the last fetch; only `?fetch=true` contacts the remote.
         behind: u32,
-        /// Files with uncommitted changes (staged, unstaged, or
-        /// untracked) — `git status --porcelain` line count.
-        dirty_count: u32,
+        /// Work items with uncommitted changes (edited, added, or
+        /// deleted) — files under the config's `paths.work_items`.
+        /// Counted over the workdown paths only: a source change sitting
+        /// next to the items in a code repository is not the pill's
+        /// business and does not appear here.
+        dirty_items: u32,
+        /// Definition files with uncommitted changes, named by role in
+        /// a fixed order (`schema`, `views`, `resources`, `templates`,
+        /// `config`) rather than by filename. Empty when none changed.
+        dirty_definitions: Vec<String>,
         /// Why the requested remote contact failed, when it did — the
         /// local numbers above are still served (`behind` is then as of
         /// the last successful fetch). `None` when the fetch succeeded

@@ -304,8 +304,11 @@ milestone should carry it as its own decision.
 
 Recorded from the decision sheet at the end of the design session. The
 maintainer left before confirming 2, 3 and 6 individually; the
-recommended option is recorded for each and may be revisited before
-that step is built. Non-Rust wording on purpose.
+recommended option was recorded for each. *2026-09-07: 3 and 6
+confirmed as written. 2 confirmed after a walk-through: a teammate's
+edit lands while the dialog is open, the confirm is refused, the dialog
+reloads the preview and keeps the typed message. The comparison is on
+the file list only, not on contents.* Non-Rust wording on purpose.
 
 1. **Two requests: preview, then commit.** The dialog opens with a
    read-only "what would happen" request returning the in-scope file
@@ -357,9 +360,38 @@ problem this time.
 
 1. Core: the summary function with unit tests (grouping rule, body
    edits, added/deleted, definition files, cap).
+   *Built 2026-09-07 (`change_summary.rs`, uncommitted). Wording the
+   spec left open, settled in the tests: labels come out Title Case
+   from the existing prettifier ("In Progress"); the collapsed line for
+   a non-choice field is "Set Assignee to Alice on 3 items", since the
+   verb may follow the type but never the field name; one item with
+   several field changes lists them in the subject instead of falling
+   back to a count; a file whose text changed with no nameable
+   difference (equivalent spelling, unreadable frontmatter on one side)
+   is "edited"; values of resource-backed fields are prettified like
+   choices; the prettifier now splits on underscores too, which cannot
+   affect `$filename_pretty` because ids never contain one.*
 2. Server: scope list from config; status endpoint counts in-scope only
    and reports items vs definition files; pill shows the new number.
+   *Built 2026-09-07 (uncommitted). `git_scope.rs` turns the config
+   paths into repository-relative entries with a role each and hands
+   git `:(top)`-anchored pathspecs, so a project in a subfolder works
+   and membership is git's decision. The wire status replaces
+   `dirty_count` with `dirty_items` and `dirty_definitions` (role
+   names in a fixed order: schema, views, resources, templates,
+   config). Status now parses `git status -z`, so paths with spaces
+   survive and renames are read as one entry. The pull refusal names
+   the files outside the workdown paths when nothing in scope is
+   dirty, since the pill reads clean in that case.*
 3. Server: preview endpoint (files + message).
+   *Built 2026-09-07 (uncommitted). `GET /api/git/commit-preview`
+   answers files (project-relative path, role, change kind), the
+   generated message, and the dirty files outside the scope. Old text
+   comes from `git show HEAD:<path>` (the original path for a rename),
+   new text from the working tree; line endings are normalized before
+   comparing, so an autocrlf checkout does not read as "description
+   edited". Origin-guarded like the POSTs, since it returns file
+   contents. The UI client has the call; the dialog is step 5.*
 4. Server: commit-pull-push endpoint with per-step report, stale-set
    refusal, worded failures; same-origin guard and git lock as the
    other git endpoints.

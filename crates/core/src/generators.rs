@@ -152,9 +152,11 @@ fn resolve_max_plus_one(store: &Store, field_name: &str) -> i64 {
     max.unwrap_or(0) + 1
 }
 
-/// Convert a slug like `"my-cool-task"` into `"My Cool Task"`.
+/// Convert a slug like `"my-cool-task"` into `"My Cool Task"`. Underscores
+/// separate words too, so choice values written `in_progress` read as
+/// `"In Progress"` where a label is wanted.
 pub(crate) fn prettify_slug(slug: &str) -> String {
-    slug.split('-')
+    slug.split(['-', '_'])
         .map(|word| {
             let mut characters = word.chars();
             match characters.next() {
@@ -192,6 +194,11 @@ mod tests {
     #[test]
     fn prettify_with_digits() {
         assert_eq!(prettify_slug("task-42"), "Task 42");
+    }
+
+    #[test]
+    fn prettify_underscore_separated_value() {
+        assert_eq!(prettify_slug("in_progress"), "In Progress");
     }
 
     // ── resolve_max_plus_one ─────────────────────────────────────────

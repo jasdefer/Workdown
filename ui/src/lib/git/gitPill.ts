@@ -65,6 +65,10 @@ export function pillModel(status: GitStatus | null, busy: boolean): GitPillModel
 	// so nothing to publish or pull.
 	const detached = status.branch === 'HEAD';
 	const unpublished = !status.has_upstream && !detached;
+	// Uncommitted work *inside the workdown paths* — what a commit from
+	// here would cover. Dirty files elsewhere in the repository are not
+	// the pill's business and never reach it.
+	const hasLocal = status.dirty_items > 0 || status.dirty_definitions.length > 0;
 
 	const parts: string[] = [];
 	if (detached) {
@@ -82,7 +86,10 @@ export function pillModel(status: GitStatus | null, busy: boolean): GitPillModel
 		];
 		if (arrows.length > 0) parts.push(arrows.join(' '));
 	}
-	if (status.dirty_count > 0) parts.push(`${String(status.dirty_count)} local`);
+	// Items are counted, definition files are named by role — `3 items ·
+	// schema` says what changed better than one number over all files.
+	if (status.dirty_items > 0) parts.push(pluralize(status.dirty_items, 'item'));
+	if (status.dirty_definitions.length > 0) parts.push(status.dirty_definitions.join(', '));
 	const summary = parts.length > 0 ? parts.join(' · ') : 'in sync';
 
 	// Pull never runs over uncommitted work — no stashing, no chance of
@@ -93,7 +100,7 @@ export function pillModel(status: GitStatus | null, busy: boolean): GitPillModel
 		pullTitle = 'Detached HEAD — check out a branch first';
 	} else if (unpublished) {
 		pullTitle = 'Not published yet — nothing to pull from';
-	} else if (status.dirty_count > 0) {
+	} else if (hasLocal) {
 		pullTitle = 'Commit your local changes first — pull never touches uncommitted work';
 	} else {
 		pullTitle = 'Pull the latest changes from the remote';
@@ -116,18 +123,13 @@ export function pillModel(status: GitStatus | null, busy: boolean): GitPillModel
 		pushTitle = `Push ${pluralize(status.ahead, 'commit')}`;
 	}
 
-	const dirtyHint =
-		status.dirty_count > 0
-			? `${pluralize(status.dirty_count, 'uncommitted file')} ${
-					status.dirty_count === 1 ? 'stays local — commit it' : 'stay local — commit them'
-				} to publish`
-			: null;
+	const dirtyHint = hasLocal ? 'Uncommitted changes stay local — commit them to publish' : null;
 
 	return {
 		visible: true,
 		branch: status.branch,
 		summary,
-		canPull: status.has_upstream && status.dirty_count === 0 && !busy,
+		canPull: status.has_upstream && !hasLocal && !busy,
 		canPush: (unpublished || status.ahead > 0) && !busy,
 		pullTitle,
 		pushLabel,

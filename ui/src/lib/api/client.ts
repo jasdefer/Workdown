@@ -16,6 +16,7 @@ import type { CreateItemResult } from './generated/CreateItemResult';
 import type { CreateView } from './generated/CreateView';
 import type { Diagnostic } from './generated/Diagnostic';
 import type { FieldMutation } from './generated/FieldMutation';
+import type { GitCommitPreview } from './generated/GitCommitPreview';
 import type { GitPullResult } from './generated/GitPullResult';
 import type { GitPushResult } from './generated/GitPushResult';
 import type { GitStatus } from './generated/GitStatus';
@@ -171,6 +172,11 @@ export const api = {
 		request<GitStatus>('GET', `/api/git${fetch ? '?fetch=true' : ''}`),
 	gitPull: () => request<GitPullResult>('POST', '/api/git/pull'),
 	gitPush: () => request<GitPushResult>('POST', '/api/git/push'),
+	/**
+	 * What a commit from here would cover and say — the confirmation
+	 * dialog's contents. Read-only; asking again is free.
+	 */
+	getGitCommitPreview: () => request<GitCommitPreview>('GET', '/api/git/commit-preview'),
 	getTimer: () => request<TimerState>('GET', '/api/timer'),
 	/**
 	 * Start the timer on an item. `confirmed` is the second leg of the

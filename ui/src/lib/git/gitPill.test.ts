@@ -8,7 +8,8 @@ const ready = (overrides: Partial<Extract<GitStatus, { state: 'ready' }>> = {}):
 	has_upstream: true,
 	ahead: 0,
 	behind: 0,
-	dirty_count: 0,
+	dirty_items: 0,
+	dirty_definitions: [],
 	fetch_error: null,
 	...overrides
 });
@@ -30,10 +31,14 @@ describe('pillModel', () => {
 	it('summarises counts, mentioning only what is non-zero', () => {
 		expect(pillModel(ready({ behind: 2 }), false).summary).toBe('↓2');
 		expect(pillModel(ready({ ahead: 1 }), false).summary).toBe('↑1');
-		expect(pillModel(ready({ ahead: 1, behind: 2, dirty_count: 3 }), false).summary).toBe(
-			'↓2 ↑1 · 3 local'
+		expect(pillModel(ready({ ahead: 1, behind: 2, dirty_items: 3 }), false).summary).toBe(
+			'↓2 ↑1 · 3 items'
 		);
-		expect(pillModel(ready({ dirty_count: 1 }), false).summary).toBe('1 local');
+		expect(pillModel(ready({ dirty_items: 1 }), false).summary).toBe('1 item');
+		expect(pillModel(ready({ dirty_definitions: ['schema'] }), false).summary).toBe('schema');
+		expect(
+			pillModel(ready({ dirty_items: 2, dirty_definitions: ['schema', 'views'] }), false).summary
+		).toBe('2 items · schema, views');
 	});
 
 	it('enables pull only with an upstream, a clean tree, and no operation running', () => {
@@ -44,7 +49,7 @@ describe('pillModel', () => {
 		expect(unpublished.pullTitle).toBe('Not published yet — nothing to pull from');
 		// Pull never touches uncommitted work — the button goes off and
 		// the tooltip carries the way out.
-		const dirty = pillModel(ready({ dirty_count: 1 }), false);
+		const dirty = pillModel(ready({ dirty_items: 1 }), false);
 		expect(dirty.canPull).toBe(false);
 		expect(dirty.pullTitle).toBe(
 			'Commit your local changes first — pull never touches uncommitted work'
@@ -82,8 +87,8 @@ describe('pillModel', () => {
 		expect(model.pushTitle).toBe('Publish feature');
 		expect(model.canPush).toBe(true);
 		expect(pillModel(ready({ has_upstream: false }), true).canPush).toBe(false);
-		expect(pillModel(ready({ has_upstream: false, dirty_count: 2 }), false).summary).toBe(
-			'not published · 2 local'
+		expect(pillModel(ready({ has_upstream: false, dirty_items: 2 }), false).summary).toBe(
+			'not published · 2 items'
 		);
 	});
 
@@ -111,12 +116,14 @@ describe('pillModel', () => {
 	});
 
 	it('reminds about uncommitted changes without blocking push', () => {
-		const model = pillModel(ready({ ahead: 1, dirty_count: 2 }), false);
+		const model = pillModel(ready({ ahead: 1, dirty_items: 2 }), false);
 		expect(model.canPush).toBe(true);
-		expect(model.dirtyHint).toBe('2 uncommitted files stay local — commit them to publish');
-		expect(pillModel(ready({ dirty_count: 1 }), false).dirtyHint).toBe(
-			'1 uncommitted file stays local — commit it to publish'
+		expect(model.dirtyHint).toBe('Uncommitted changes stay local — commit them to publish');
+		// A changed definition file alone is also uncommitted work.
+		expect(pillModel(ready({ dirty_definitions: ['schema'] }), false).dirtyHint).toBe(
+			'Uncommitted changes stay local — commit them to publish'
 		);
+		expect(pillModel(ready({ dirty_definitions: ['schema'] }), false).canPull).toBe(false);
 		expect(pillModel(ready(), false).dirtyHint).toBe(null);
 	});
 });

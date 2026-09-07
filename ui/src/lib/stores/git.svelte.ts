@@ -6,7 +6,7 @@
 // can run at a time. The first load fetches from the remote so
 // `behind` starts truthful; afterwards two live-update signals keep it
 // current without touching the network: the generic file-change ping
-// moves `dirty_count` (item edits, timer writes, CLI mutations), and
+// moves the local counts (item edits, timer writes, CLI mutations), and
 // the git-named ping fires when the repository itself moves (a commit
 // or fetch in a terminal — the server watches `.git` for exactly this).
 

@@ -151,7 +151,8 @@ async fn status_reports_clean_synced_repo() {
     assert_eq!(data["has_upstream"], true);
     assert_eq!(data["ahead"], 0);
     assert_eq!(data["behind"], 0);
-    assert_eq!(data["dirty_count"], 0);
+    assert_eq!(data["dirty_items"], 0);
+    assert_eq!(data["dirty_definitions"], serde_json::json!([]));
     assert_eq!(data["fetch_error"], Value::Null);
 }
 
@@ -173,7 +174,7 @@ async fn status_on_repo_with_no_commits_names_the_real_branch() {
     assert_eq!(data["state"], "ready");
     assert_eq!(data["branch"], "main");
     assert_eq!(data["has_upstream"], false);
-    assert!(data["dirty_count"].as_u64().unwrap() > 0);
+    assert!(data["dirty_items"].as_u64().unwrap() > 0);
 }
 
 #[tokio::test]
@@ -223,7 +224,328 @@ async fn status_with_fetch_counts_ahead_behind_and_dirty() {
     assert_eq!(data["state"], "ready");
     assert_eq!(data["ahead"], 1);
     assert_eq!(data["behind"], 1, "behind requires the fetch to have run");
-    assert_eq!(data["dirty_count"], 2);
+    assert_eq!(data["dirty_items"], 2);
+    assert_eq!(data["dirty_definitions"], serde_json::json!([]));
+}
+
+#[tokio::test]
+async fn status_counts_only_changes_inside_the_workdown_paths() {
+    let (_directory, work) = init_synced_repo();
+
+    // In scope: one edited item, one new item, one deleted item, the
+    // schema. Out of scope: a source file and a rendered view — the
+    // kind of neighbours the items have in a code repository.
+    fs::write(
+        work.join("workdown-items/item-a.md"),
+        "---\ntitle: Item A\nstatus: done\n---\n",
+    )
+    .unwrap();
+    fs::write(
+        work.join("workdown-items/item-new.md"),
+        "---\ntitle: New\nstatus: open\n---\n",
+    )
+    .unwrap();
+    fs::write(
+        work.join(".workdown/schema.yaml"),
+        format!("{SCHEMA}  extra:\n    type: string\n"),
+    )
+    .unwrap();
+    fs::create_dir_all(work.join("src")).unwrap();
+    fs::write(work.join("src/main.rs"), "fn main() {}\n").unwrap();
+    fs::create_dir_all(work.join("views")).unwrap();
+    fs::write(work.join("views/board.md"), "# Board\n").unwrap();
+
+    let (status, body) = get_json(state_for(work.clone(), &project_config(true)), "/api/git").await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let data = &body["data"];
+    assert_eq!(
+        data["dirty_items"], 2,
+        "edited + new; src/ and views/ do not count"
+    );
+    assert_eq!(data["dirty_definitions"], serde_json::json!(["schema"]));
+}
+
+#[tokio::test]
+async fn status_names_definition_roles_in_a_fixed_order() {
+    let (_directory, work) = init_synced_repo();
+
+    // Touch config, templates and views — reported by role, in the
+    // pill's order, whatever order the files were changed in.
+    fs::write(
+        work.join(".workdown/config.yaml"),
+        format!("{}# touched\n", project_config(true)),
+    )
+    .unwrap();
+    fs::write(
+        work.join(".workdown/templates/bug.md"),
+        "---\ntitle: Bug\n---\n",
+    )
+    .unwrap();
+    fs::write(work.join(".workdown/views.yaml"), "views: []\n").unwrap();
+
+    let (_status, body) =
+        get_json(state_for(work.clone(), &project_config(true)), "/api/git").await;
+
+    assert_eq!(body["data"]["dirty_items"], 0);
+    assert_eq!(
+        body["data"]["dirty_definitions"],
+        serde_json::json!(["views", "templates", "config"])
+    );
+}
+
+/// A repository whose root is a code project, with workdown living in
+/// `tracker/` beneath it. Paths in the config are relative to `tracker/`,
+/// but git reports paths relative to the repository root — the scope
+/// has to bridge the two. Returns the guard, the repository, the project.
+fn init_repo_with_project_in_subfolder() -> (TempDir, PathBuf, PathBuf) {
+    let directory = TempDir::new().unwrap();
+    let repository = directory.path().join("repo");
+    let project = repository.join("tracker");
+    fs::create_dir_all(&project).unwrap();
+    run_git(&repository, &["init", "--initial-branch=main", "."]);
+    run_git(&repository, &["config", "user.name", "Test"]);
+    run_git(&repository, &["config", "user.email", "test@example.com"]);
+    run_git(&repository, &["config", "commit.gpgsign", "false"]);
+    run_git(&repository, &["config", "core.autocrlf", "false"]);
+    write_project_files(&project, &project_config(true));
+    fs::write(repository.join("README.md"), "# Code\n").unwrap();
+    run_git(&repository, &["add", "-A"]);
+    run_git(&repository, &["commit", "-m", "initial"]);
+    (directory, repository, project)
+}
+
+#[tokio::test]
+async fn status_scopes_by_the_project_folder_inside_a_larger_repository() {
+    let (_directory, repository, project) = init_repo_with_project_in_subfolder();
+
+    // One item edited inside the project, one file edited at the top.
+    fs::write(
+        project.join("workdown-items/item-a.md"),
+        "---\ntitle: Item A\nstatus: done\n---\n",
+    )
+    .unwrap();
+    fs::write(repository.join("README.md"), "# Code, edited\n").unwrap();
+    // And a look-alike directory at the top that must not be mistaken
+    // for the project's items.
+    fs::create_dir_all(repository.join("workdown-items")).unwrap();
+    fs::write(
+        repository.join("workdown-items/stray.md"),
+        "---\ntitle: Stray\n---\n",
+    )
+    .unwrap();
+
+    let (status, body) = get_json(
+        state_for(project.clone(), &project_config(true)),
+        "/api/git",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["data"]["state"], "ready");
+    assert_eq!(
+        body["data"]["dirty_items"], 1,
+        "only tracker/workdown-items counts"
+    );
+    assert_eq!(body["data"]["dirty_definitions"], serde_json::json!([]));
+}
+
+async fn get_json_from_origin(state: AppState, uri: &str, origin: &str) -> (StatusCode, Value) {
+    let app = router(state);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(uri)
+                .header("origin", origin)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    (status, value)
+}
+
+#[tokio::test]
+async fn commit_preview_lists_in_scope_files_and_words_the_message() {
+    let (_directory, work) = init_synced_repo();
+
+    // An edited item, a new item, and a source file the button must
+    // never touch — named as outside, not listed as a file.
+    fs::write(
+        work.join("workdown-items/item-a.md"),
+        "---\ntitle: Item A\nstatus: done\n---\n",
+    )
+    .unwrap();
+    fs::write(
+        work.join("workdown-items/item-new.md"),
+        "---\ntitle: Brand new\nstatus: open\n---\n",
+    )
+    .unwrap();
+    fs::create_dir_all(work.join("src")).unwrap();
+    fs::write(work.join("src/main.rs"), "fn main() {}\n").unwrap();
+
+    let (status, body) = get_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit-preview",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let data = &body["data"];
+    assert_eq!(
+        data["files"],
+        serde_json::json!([
+            { "path": "workdown-items/item-a.md", "role": "items", "change": "modified" },
+            { "path": "workdown-items/item-new.md", "role": "items", "change": "added" },
+        ])
+    );
+    // No title display role in this config, so items are named by their
+    // prettified id; the choice value is prettified the same way.
+    assert_eq!(
+        data["message"],
+        "Update 1 work item, 1 added\n\nItem A: Status → Done\nItem New: added"
+    );
+    assert_eq!(data["outside"], serde_json::json!(["src/main.rs"]));
+}
+
+#[tokio::test]
+async fn commit_preview_reads_deleted_items_from_head() {
+    let (_directory, work) = init_synced_repo();
+    fs::remove_file(work.join("workdown-items/item-a.md")).unwrap();
+
+    let (status, body) = get_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit-preview",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["data"]["files"][0]["change"], "deleted");
+    assert_eq!(body["data"]["message"], "Delete Item A");
+}
+
+#[tokio::test]
+async fn commit_preview_mixes_items_and_definition_files() {
+    let (_directory, work) = init_synced_repo();
+    fs::write(
+        work.join("workdown-items/item-a.md"),
+        "---\ntitle: Item A\nstatus: done\n---\n",
+    )
+    .unwrap();
+    fs::write(
+        work.join(".workdown/schema.yaml"),
+        format!("{SCHEMA}  extra:\n    type: string\n"),
+    )
+    .unwrap();
+
+    let (_status, body) = get_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit-preview",
+    )
+    .await;
+
+    let data = &body["data"];
+    assert_eq!(data["files"][0]["role"], "schema");
+    assert_eq!(data["files"][1]["role"], "items");
+    assert_eq!(
+        data["message"],
+        "Update 1 work item, edit .workdown/schema.yaml\n\nItem A: Status → Done\nedit .workdown/schema.yaml"
+    );
+}
+
+#[tokio::test]
+async fn commit_preview_on_a_clean_tree_has_nothing_to_say() {
+    let (_directory, work) = init_synced_repo();
+
+    let (status, body) = get_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit-preview",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["data"]["files"], serde_json::json!([]));
+    assert_eq!(body["data"]["message"], "No changes");
+    assert_eq!(body["data"]["outside"], serde_json::json!([]));
+}
+
+#[tokio::test]
+async fn commit_preview_in_a_subfolder_uses_project_relative_paths() {
+    let (_directory, repository, project) = init_repo_with_project_in_subfolder();
+    fs::write(
+        project.join("workdown-items/item-a.md"),
+        "---\ntitle: Item A\nstatus: done\n---\n",
+    )
+    .unwrap();
+    fs::write(repository.join("README.md"), "# Code, edited\n").unwrap();
+
+    let (status, body) = get_json(
+        state_for(project.clone(), &project_config(true)),
+        "/api/git/commit-preview",
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let data = &body["data"];
+    assert_eq!(data["files"][0]["path"], "workdown-items/item-a.md");
+    assert_eq!(data["message"], "Item A: Status → Done");
+    // Outside files are repository-relative: they can be anywhere.
+    assert_eq!(data["outside"], serde_json::json!(["README.md"]));
+}
+
+#[tokio::test]
+async fn commit_preview_refused_when_disabled_and_for_foreign_origins() {
+    let (_directory, work) = init_synced_repo();
+
+    let (status, _body) = get_json(
+        state_for(work.clone(), &project_config(false)),
+        "/api/git/commit-preview",
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let (status, _body) = get_json_from_origin(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit-preview",
+        "https://evil.example",
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let (status, _body) = get_json_from_origin(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit-preview",
+        "http://localhost:3141",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn pull_refused_over_changes_outside_the_workdown_paths_names_them() {
+    let (_directory, work) = init_synced_repo();
+
+    // Nothing in scope is dirty — the pill reads clean — but the
+    // repository is not, and pull never runs over uncommitted work.
+    fs::create_dir_all(work.join("src")).unwrap();
+    fs::write(work.join("src/main.rs"), "fn main() {}\n").unwrap();
+
+    let (status, body) = post_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/pull",
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    let error = body["error"].as_str().unwrap();
+    assert!(error.contains("outside the workdown paths"), "got: {error}");
+    assert!(error.contains("src/main.rs"), "got: {error}");
 }
 
 #[tokio::test]

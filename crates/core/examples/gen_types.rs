@@ -26,7 +26,9 @@ use std::path::Path;
 use ts_rs::TS;
 
 use strum::VariantArray;
-use workdown_core::git_data::{GitPullResult, GitPushResult, GitStatus};
+use workdown_core::git_data::{
+    GitChangeKind, GitChangedFile, GitCommitPreview, GitPullResult, GitPushResult, GitStatus,
+};
 use workdown_core::item_data::ItemDetail;
 use workdown_core::model::diagnostic::{
     CollectionDiagnostic, CollectionDiagnosticKind, ConfigDiagnostic, ConfigDiagnosticKind,
@@ -198,6 +200,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<GitStatus>();
     exports.add::<GitPullResult>();
     exports.add::<GitPushResult>();
+    exports.add::<GitCommitPreview>();
+    exports.add::<GitChangedFile>();
+    exports.add::<GitChangeKind>();
 
     // Project identity (GET /api/project).
     exports.add::<ProjectIdentity>();
