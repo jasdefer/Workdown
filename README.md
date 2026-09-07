@@ -80,6 +80,24 @@ defaults:
 
 The key is never inferred and unset means "this project records no effort" — the timer is simply absent. The running timer lives in the serve process (shared by every tab, gone when the server stops); only a stop writes to a file.
 
+### Git sync
+
+For teams sharing an item repository, the web UI can close the git loop without a terminal. Opt in per project:
+
+```yaml
+# .workdown/config.yaml
+serve:
+  git_controls: true
+```
+
+A pill in the header then shows the branch and what is pending — `↓2 ↑1 · 3 items · schema`, or `in sync` — and offers the one button the moment needs:
+
+- **Commit & push** appears whenever workdown files have uncommitted changes. It opens a dialog listing exactly what will be committed, with a message generated from the change itself (`Implement login: Status → In Progress`, `Move 2 items to Done`), editable before confirming. Confirming commits those files, pulls with rebase if the branch is behind, and pushes, then shows the three steps as a checklist. If a pull cannot complete, the commit stays safe and local and the dialog says what to do next.
+- **Pull** appears when the branch is behind and the tree is clean. It never runs over uncommitted work.
+- **Push** (or **Publish**, on a branch that has never been pushed) appears when local commits are waiting.
+
+The commit covers only the paths `config.yaml` names — work items, templates, resources, views, schema — plus `config.yaml` itself. Nothing else in the repository is ever staged from the browser, so the controls are safe to switch on in a code repository that keeps its items next to the source; source changes simply do not appear in the pill. The buttons run your own `git`, so credentials, hooks and signing behave as they do in a terminal. The CLI stays commit-free: `workdown add` and `workdown set` only ever touch the working tree.
+
 ## Work item format
 
 Each work item is a single Markdown file. YAML frontmatter holds structured fields; the body is freeform Markdown.
