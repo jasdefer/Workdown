@@ -7,6 +7,22 @@ its source — internal refactors are deliberately absent.
 
 ## Unreleased
 
+### Added
+
+- **Commit from the board.** With `serve.git_controls` on, the git pill
+  shows a **Commit & push** button whenever workdown files have
+  uncommitted changes. It opens a dialog listing exactly what will be
+  committed — work items and definition files under the paths
+  `config.yaml` names, nothing else in the repository — with a commit
+  message generated from the change itself (`Implement login: Status →
+  In Progress`, `Move 2 items to Done`, `Update 3 work items, 1 added`),
+  editable before confirming. Confirming commits those files, pulls with
+  rebase only if the branch is behind, and pushes, then shows the three
+  steps as a checklist. If the set of changes moved while the dialog was
+  open, the commit is refused and the list reloads. A pull that cannot
+  complete leaves the commit safe and local and says what to do next.
+  The CLI stays commit-free.
+
 ### Changed
 
 - The git pill counts **only workdown files**: work items under

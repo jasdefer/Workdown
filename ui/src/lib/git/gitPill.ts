@@ -26,6 +26,16 @@ export interface GitPillModel {
 	/** Reminder that uncommitted edits are not published by push;
 	 * `null` when the tree is clean. */
 	dirtyHint: string | null;
+	/** The button rule: which of the three buttons are on the pill at
+	 * all. Uncommitted workdown changes put "Commit & push" first and
+	 * keep Pull (disabled, with its hint) beside it; a clean tree shows
+	 * Pull only when behind and Push only when ahead or unpublished; a
+	 * clean, synced branch shows no button. */
+	showCommit: boolean;
+	showPull: boolean;
+	showPush: boolean;
+	canCommit: boolean;
+	commitTitle: string;
 	/** The last remote contact's failure, when there was one — shown as
 	 * a retry affordance; `null` while the remote answers. */
 	remoteHint: string | null;
@@ -41,7 +51,12 @@ const HIDDEN: GitPillModel = {
 	pushLabel: 'Push',
 	pushTitle: '',
 	dirtyHint: null,
-	remoteHint: null
+	remoteHint: null,
+	showCommit: false,
+	showPull: false,
+	showPush: false,
+	canCommit: false,
+	commitTitle: ''
 };
 
 /** The pull toast: whether anything actually came in, and how much. */
@@ -125,6 +140,12 @@ export function pillModel(status: GitStatus | null, busy: boolean): GitPillModel
 
 	const dirtyHint = hasLocal ? 'Uncommitted changes stay local — commit them to publish' : null;
 
+	// The button rule. A detached head keeps both sync buttons visible
+	// and off, so their tooltips can say why.
+	const showCommit = hasLocal && !detached;
+	const showPull = detached || hasLocal || (status.has_upstream && status.behind > 0);
+	const showPush = detached || (!hasLocal && (unpublished || status.ahead > 0));
+
 	return {
 		visible: true,
 		branch: status.branch,
@@ -135,6 +156,11 @@ export function pillModel(status: GitStatus | null, busy: boolean): GitPillModel
 		pushLabel,
 		pushTitle,
 		dirtyHint,
-		remoteHint: status.fetch_error
+		remoteHint: status.fetch_error,
+		showCommit,
+		showPull,
+		showPush,
+		canCommit: showCommit && !busy,
+		commitTitle: 'Review the changes, commit them, and push'
 	};
 }

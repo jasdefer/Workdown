@@ -526,6 +526,418 @@ async fn commit_preview_refused_when_disabled_and_for_foreign_origins() {
     assert_eq!(status, StatusCode::OK);
 }
 
+async fn post_json_body(state: AppState, uri: &str, body: Value) -> (StatusCode, Value) {
+    let app = router(state);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(uri)
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    (status, value)
+}
+
+/// Edit item-a in `work` and return the commit request the dialog would
+/// send for it: the generated message and the one-file list.
+async fn edit_item_a_and_preview(work: &Path) -> Value {
+    fs::write(
+        work.join("workdown-items/item-a.md"),
+        "---\ntitle: Item A\nstatus: done\n---\n",
+    )
+    .unwrap();
+    let (_status, preview) = get_json(
+        state_for(work.to_path_buf(), &project_config(true)),
+        "/api/git/commit-preview",
+    )
+    .await;
+    let files: Vec<Value> = preview["data"]["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|file| file["path"].clone())
+        .collect();
+    serde_json::json!({ "message": preview["data"]["message"], "files": files })
+}
+
+fn commit_count(dir: &Path) -> usize {
+    git_stdout(dir, &["rev-list", "--count", "HEAD"])
+        .parse()
+        .unwrap()
+}
+
+#[tokio::test]
+async fn commit_commits_the_scope_and_pushes() {
+    let (directory, work) = init_synced_repo();
+    let request = edit_item_a_and_preview(&work).await;
+
+    let (status, body) = post_json_body(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit",
+        request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let data = &body["data"];
+    assert_eq!(data["commit"].as_str().unwrap().len(), 7);
+    assert_eq!(
+        data["pull"]["outcome"], "skipped",
+        "not behind, nothing to pull"
+    );
+    assert_eq!(data["push"]["outcome"], "pushed");
+    assert_eq!(data["push"]["published"], false);
+    assert_eq!(data["status"]["dirty_items"], 0);
+    assert_eq!(data["status"]["ahead"], 0);
+    // The message landed verbatim, and the remote has the commit.
+    assert_eq!(
+        git_stdout(&work, &["log", "-1", "--format=%s"]),
+        "Item A: Status → Done"
+    );
+    let remote = directory.path().join("remote.git");
+    assert_eq!(
+        git_stdout(&remote, &["log", "-1", "--format=%s", "main"]),
+        "Item A: Status → Done"
+    );
+}
+
+#[tokio::test]
+async fn commit_leaves_files_outside_the_scope_exactly_as_they_were() {
+    let (_directory, work) = init_synced_repo();
+    // An untracked source file, and one the user staged themselves.
+    fs::create_dir_all(work.join("src")).unwrap();
+    fs::write(work.join("src/main.rs"), "fn main() {}\n").unwrap();
+    fs::write(work.join("src/staged.rs"), "// staged\n").unwrap();
+    run_git(&work, &["add", "src/staged.rs"]);
+    let request = edit_item_a_and_preview(&work).await;
+
+    let (status, body) = post_json_body(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit",
+        request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    // The commit holds the item only; the staged file is still staged,
+    // the untracked one still untracked.
+    assert_eq!(
+        git_stdout(&work, &["show", "--name-only", "--format=", "HEAD"]),
+        "workdown-items/item-a.md"
+    );
+    let porcelain = git_stdout(&work, &["status", "--porcelain"]);
+    assert!(porcelain.contains("A  src/staged.rs"), "got: {porcelain}");
+    assert!(porcelain.contains("?? src/main.rs"), "got: {porcelain}");
+    // Not behind, so the pull was skipped and the push went through
+    // despite the dirty files outside.
+    assert_eq!(body["data"]["pull"]["outcome"], "skipped");
+    assert_eq!(body["data"]["push"]["outcome"], "pushed");
+}
+
+#[tokio::test]
+async fn commit_refuses_a_stale_file_list_and_commits_nothing() {
+    let (_directory, work) = init_synced_repo();
+    let request = edit_item_a_and_preview(&work).await;
+    let before = commit_count(&work);
+    // Between preview and confirm, another change lands in scope.
+    fs::write(
+        work.join("workdown-items/item-late.md"),
+        "---\ntitle: Late\nstatus: open\n---\n",
+    )
+    .unwrap();
+
+    let (status, body) = post_json_body(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit",
+        request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("moved since the preview"),
+        "got: {}",
+        body["error"]
+    );
+    assert_eq!(commit_count(&work), before);
+    assert_eq!(git_stdout(&work, &["diff", "--cached", "--name-only"]), "");
+}
+
+#[tokio::test]
+async fn commit_pulls_when_behind_then_pushes() {
+    let (directory, work) = init_synced_repo();
+    let other = clone_remote(&directory, "other");
+    fs::write(
+        other.join("workdown-items/item-b.md"),
+        "---\ntitle: Item B\nstatus: open\n---\n",
+    )
+    .unwrap();
+    run_git(&other, &["add", "-A"]);
+    run_git(&other, &["commit", "-m", "add item-b"]);
+    run_git(&other, &["push"]);
+    let request = edit_item_a_and_preview(&work).await;
+
+    let (status, body) = post_json_body(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit",
+        request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(
+        body["data"]["pull"],
+        serde_json::json!({ "outcome": "pulled", "commits": 1 })
+    );
+    assert_eq!(body["data"]["push"]["outcome"], "pushed");
+    assert!(work.join("workdown-items/item-b.md").exists());
+    assert_eq!(body["data"]["status"]["ahead"], 0);
+    assert_eq!(body["data"]["status"]["behind"], 0);
+}
+
+#[tokio::test]
+async fn commit_stops_at_pull_over_outside_files_when_behind() {
+    let (directory, work) = init_synced_repo();
+    let other = clone_remote(&directory, "other");
+    fs::write(
+        other.join("workdown-items/item-b.md"),
+        "---\ntitle: Item B\nstatus: open\n---\n",
+    )
+    .unwrap();
+    run_git(&other, &["add", "-A"]);
+    run_git(&other, &["commit", "-m", "add item-b"]);
+    run_git(&other, &["push"]);
+    fs::create_dir_all(work.join("src")).unwrap();
+    fs::write(work.join("src/main.rs"), "fn main() {}\n").unwrap();
+    let request = edit_item_a_and_preview(&work).await;
+
+    let (status, body) = post_json_body(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit",
+        request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let data = &body["data"];
+    assert_eq!(data["pull"]["outcome"], "stopped");
+    let reason = data["pull"]["reason"].as_str().unwrap();
+    assert!(reason.contains("src/main.rs"), "got: {reason}");
+    assert!(reason.contains("safe and local"), "got: {reason}");
+    assert_eq!(data["push"]["outcome"], "skipped");
+    assert_eq!(data["status"]["ahead"], 1);
+    assert_eq!(data["status"]["behind"], 1);
+}
+
+#[tokio::test]
+async fn commit_with_a_conflicting_pull_keeps_the_commit_and_aborts_the_rebase() {
+    let (directory, work) = init_synced_repo();
+    // The teammate changes the same item's status; we change its title.
+    // Adjacent lines — git sees one contested block.
+    let other = clone_remote(&directory, "other");
+    fs::write(
+        other.join("workdown-items/item-a.md"),
+        "---\ntitle: Item A\nstatus: done\n---\n",
+    )
+    .unwrap();
+    run_git(&other, &["add", "-A"]);
+    run_git(&other, &["commit", "-m", "finish item-a"]);
+    run_git(&other, &["push"]);
+    fs::write(
+        work.join("workdown-items/item-a.md"),
+        "---\ntitle: Item A, renamed\nstatus: open\n---\n",
+    )
+    .unwrap();
+    let (_status, preview) = get_json(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit-preview",
+    )
+    .await;
+    let request = serde_json::json!({
+        "message": preview["data"]["message"],
+        "files": ["workdown-items/item-a.md"],
+    });
+
+    let (status, body) = post_json_body(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit",
+        request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    let data = &body["data"];
+    assert_eq!(data["pull"]["outcome"], "stopped");
+    let reason = data["pull"]["reason"].as_str().unwrap();
+    assert!(reason.contains("safe and local"), "got: {reason}");
+    assert!(reason.contains("workdown-items/item-a.md"), "got: {reason}");
+    assert!(reason.contains("press Push"), "got: {reason}");
+    assert_eq!(data["push"]["outcome"], "skipped");
+    // No rebase left behind; our commit is HEAD; the tree is clean.
+    assert!(!work.join(".git/rebase-merge").exists());
+    assert!(!work.join(".git/rebase-apply").exists());
+    assert_eq!(
+        git_stdout(&work, &["log", "-1", "--format=%s"]),
+        "Item A: Title → Item A, renamed"
+    );
+    assert_eq!(git_stdout(&work, &["status", "--porcelain"]), "");
+}
+
+#[tokio::test]
+async fn commit_publishes_an_unpublished_branch() {
+    let (directory, work) = init_synced_repo();
+    create_unpublished_branch(&work, "feature");
+    let request = edit_item_a_and_preview(&work).await;
+
+    let (status, body) = post_json_body(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit",
+        request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["data"]["pull"]["outcome"], "skipped");
+    assert_eq!(
+        body["data"]["push"],
+        serde_json::json!({ "outcome": "pushed", "published": true })
+    );
+    let remote = directory.path().join("remote.git");
+    assert_eq!(
+        git_stdout(&remote, &["log", "-1", "--format=%s", "feature"]),
+        "Item A: Status → Done"
+    );
+    assert_eq!(body["data"]["status"]["has_upstream"], true);
+}
+
+#[tokio::test]
+async fn commit_refused_without_an_identity() {
+    let (_directory, work) = init_synced_repo();
+    // An empty local value shadows any global identity the machine has.
+    run_git(&work, &["config", "user.email", ""]);
+    // Keep git from inventing an identity from the host name.
+    run_git(&work, &["config", "user.useConfigOnly", "true"]);
+    let request = edit_item_a_and_preview(&work).await;
+    let before = commit_count(&work);
+
+    let (status, body) = post_json_body(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit",
+        request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    assert!(
+        body["error"].as_str().unwrap().contains("user.email"),
+        "got: {}",
+        body["error"]
+    );
+    assert_eq!(commit_count(&work), before);
+}
+
+#[tokio::test]
+async fn commit_refused_for_an_empty_message_or_a_clean_tree() {
+    let (_directory, work) = init_synced_repo();
+
+    let (status, body) = post_json_body(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit",
+        serde_json::json!({ "message": "Anything", "files": [] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("nothing to commit"));
+
+    let mut request = edit_item_a_and_preview(&work).await;
+    request["message"] = Value::String("   \n".to_owned());
+    let (status, body) = post_json_body(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit",
+        request,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    assert!(body["error"].as_str().unwrap().contains("message is empty"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn commit_rejected_by_a_hook_is_worded_and_leaves_nothing_staged() {
+    use std::os::unix::fs::PermissionsExt;
+    let (_directory, work) = init_synced_repo();
+    let hook = work.join(".git/hooks/pre-commit");
+    fs::write(
+        &hook,
+        "#!/bin/sh\necho 'items must have owners' >&2\nexit 1\n",
+    )
+    .unwrap();
+    fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
+    let request = edit_item_a_and_preview(&work).await;
+    let before = commit_count(&work);
+
+    let (status, body) = post_json_body(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit",
+        request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    let error = body["error"].as_str().unwrap();
+    let (sentence, details) = error
+        .split_once("\n\n")
+        .expect("sentence, blank line, details");
+    assert!(sentence.contains("commit failed"), "got: {sentence}");
+    assert!(details.contains("items must have owners"), "got: {details}");
+    assert_eq!(commit_count(&work), before);
+    assert_eq!(git_stdout(&work, &["diff", "--cached", "--name-only"]), "");
+}
+
+#[tokio::test]
+async fn commit_refused_when_disabled_and_for_foreign_origins() {
+    let (_directory, work) = init_synced_repo();
+    let request = edit_item_a_and_preview(&work).await;
+
+    let (status, _body) = post_json_body(
+        state_for(work.clone(), &project_config(false)),
+        "/api/git/commit",
+        request.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let app = router(state_for(work.clone(), &project_config(true)));
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/git/commit")
+                .header("origin", "https://evil.example")
+                .header("content-type", "application/json")
+                .body(Body::from(request.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
 #[tokio::test]
 async fn pull_refused_over_changes_outside_the_workdown_paths_names_them() {
     let (_directory, work) = init_synced_repo();

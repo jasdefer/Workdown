@@ -17,6 +17,8 @@ import type { CreateView } from './generated/CreateView';
 import type { Diagnostic } from './generated/Diagnostic';
 import type { FieldMutation } from './generated/FieldMutation';
 import type { GitCommitPreview } from './generated/GitCommitPreview';
+import type { GitCommitRequest } from './generated/GitCommitRequest';
+import type { GitCommitResult } from './generated/GitCommitResult';
 import type { GitPullResult } from './generated/GitPullResult';
 import type { GitPushResult } from './generated/GitPushResult';
 import type { GitStatus } from './generated/GitStatus';
@@ -177,6 +179,12 @@ export const api = {
 	 * dialog's contents. Read-only; asking again is free.
 	 */
 	getGitCommitPreview: () => request<GitCommitPreview>('GET', '/api/git/commit-preview'),
+	/**
+	 * Commit the workdown paths with `message`, then pull if behind and
+	 * push — one server action. `files` is the list the dialog showed; a
+	 * 409 means the set moved and the preview must be reloaded.
+	 */
+	gitCommit: (body: GitCommitRequest) => request<GitCommitResult>('POST', '/api/git/commit', body),
 	getTimer: () => request<TimerState>('GET', '/api/timer'),
 	/**
 	 * Start the timer on an item. `confirmed` is the second leg of the

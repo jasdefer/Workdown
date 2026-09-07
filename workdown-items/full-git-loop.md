@@ -40,6 +40,31 @@ own a piece of it and none of which owns the policy:
 Answering that once, deliberately, is this milestone's job. The
 individual features are downstream of it.
 
+## Decision (2026-09-07)
+
+**How much of a user's repository may workdown touch, and on whose
+gesture?** Answered as follows; ADR-006 carries a note pointing here.
+
+- **The web app may commit, the CLI may not.** `workdown add`, `set`,
+  `unset`, `move`, `rename` and `body` touch the working tree only, as
+  they always have. The web app's git pill may pull, push, and commit.
+- **Only on an explicit, confirmed gesture.** Nothing is staged or
+  committed until the user has seen the file list and the message in
+  the dialog and pressed the button. No board gesture ever commits on
+  its own.
+- **Only the workdown paths.** The commit covers the paths
+  `config.yaml` names (`paths.*`, `schema`) plus `config.yaml` itself.
+  No other file in the repository is ever staged by the app, whatever
+  the user has dirty next to the items. Files outside those paths are
+  named where they matter (a pull that has to refuse) and nowhere else.
+- **The user's own `git`.** The app shells out to the `git` on the
+  machine, so credentials, hooks and signing behave as in a terminal;
+  a hook may add to a commit as it always does.
+
+The "no auto-commit" rule in ADR-006 stays true as written. The "UI is
+a shell around the CLI" principle gains its one exception: the git
+surface has no `workdown` subcommand twin, the terminal is that twin.
+
 ## Scope
 
 - [[commit-from-web-ui]] — the missing step, and the design work that

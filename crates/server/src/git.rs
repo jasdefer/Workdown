@@ -263,6 +263,86 @@ pub async fn show_at_head(root: &Path, repository_path: &str) -> Result<Option<S
     Ok(Some(output.stdout))
 }
 
+/// Bound for a commit: hooks run inside it (a pre-commit hook that
+/// re-renders views takes a moment), so longer than plumbing, shorter
+/// than the network.
+const COMMIT_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// The identity commits would be recorded under — `user.name` and
+/// `user.email` — or `None` when either is unset. Never guessed: git
+/// itself may invent one from the hostname, and a browser button must
+/// not put a made-up author into shared history.
+pub async fn identity(root: &Path) -> Result<Option<(String, String)>, GitError> {
+    let name = config_value(root, "user.name").await?;
+    let email = config_value(root, "user.email").await?;
+    Ok(name.zip(email))
+}
+
+/// One git config value, `None` when unset (`--get` exits 1 then).
+async fn config_value(root: &Path, key: &str) -> Result<Option<String>, GitError> {
+    let output = run(root, &["config", "--get", key], LOCAL_TIMEOUT).await?;
+    if !output.success {
+        return Ok(None);
+    }
+    let value = output.stdout.trim();
+    Ok((!value.is_empty()).then(|| value.to_owned()))
+}
+
+/// A pathspec naming exactly one repository-relative path: anchored at
+/// the top, no glob interpretation, so `[` or `*` in a filename cannot
+/// widen it.
+pub fn literal_pathspec(repository_path: &str) -> String {
+    format!(":(top,literal){repository_path}")
+}
+
+/// Stage every change — modified, added, deleted — matching `pathspecs`,
+/// and nothing else. Whatever the user staged outside them stays as it
+/// was. Callers pass the changed files themselves (see
+/// [`literal_pathspec`]): `add` refuses a pathspec that matches nothing,
+/// so a directory or file the project does not have cannot be listed.
+pub async fn stage(root: &Path, pathspecs: &[String]) -> Result<GitOutput, GitError> {
+    let mut args: Vec<&str> = vec!["add", "--all", "--"];
+    args.extend(pathspecs.iter().map(String::as_str));
+    run(root, &args, LOCAL_TIMEOUT).await
+}
+
+/// Put the index back to `HEAD` for `pathspecs` — the undo of [`stage`]
+/// after a commit that did not happen, so the button leaves no
+/// half-staged state behind. Working-tree files are untouched.
+pub async fn unstage(root: &Path, pathspecs: &[String]) -> Result<GitOutput, GitError> {
+    let mut args: Vec<&str> = vec!["reset", "--quiet", "--"];
+    args.extend(pathspecs.iter().map(String::as_str));
+    run(root, &args, LOCAL_TIMEOUT).await
+}
+
+/// Commit the working-tree state of `pathspecs` with `message`.
+/// Path-scoped on purpose: a plain `git commit` would sweep up anything
+/// the user staged in a terminal; with pathspecs, git records exactly
+/// these paths and leaves the rest of the index alone. Hooks run as
+/// they always do and may add to the commit (a pre-commit hook that
+/// re-renders and stages views, for one).
+pub async fn commit(
+    root: &Path,
+    message: &str,
+    pathspecs: &[String],
+) -> Result<GitOutput, GitError> {
+    let mut args: Vec<&str> = vec!["commit", "--quiet", "-m", message, "--"];
+    args.extend(pathspecs.iter().map(String::as_str));
+    run(root, &args, COMMIT_TIMEOUT).await
+}
+
+/// The abbreviated hash of `HEAD`.
+pub async fn head_short_hash(root: &Path) -> Result<String, GitError> {
+    let output = run(root, &["rev-parse", "--short", "HEAD"], LOCAL_TIMEOUT).await?;
+    if !output.success {
+        return Err(GitError::Failed {
+            command: "rev-parse --short HEAD".to_owned(),
+            stderr: output.stderr,
+        });
+    }
+    Ok(output.stdout.trim().to_owned())
+}
+
 /// What happened to one path in the working tree, relative to `HEAD`,
 /// as `git status` reports it.
 #[derive(Debug, Clone, PartialEq, Eq)]

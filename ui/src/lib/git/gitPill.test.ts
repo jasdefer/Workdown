@@ -126,4 +126,44 @@ describe('pillModel', () => {
 		expect(pillModel(ready({ dirty_definitions: ['schema'] }), false).canPull).toBe(false);
 		expect(pillModel(ready(), false).dirtyHint).toBe(null);
 	});
+
+	it('shows Commit & push first while workdown changes are uncommitted', () => {
+		// Pull stays beside it, off, with its "commit first" hint; Push is
+		// not offered — the commit button pushes.
+		const dirty = pillModel(ready({ dirty_items: 2, ahead: 1 }), false);
+		expect(dirty.showCommit).toBe(true);
+		expect(dirty.canCommit).toBe(true);
+		expect(dirty.showPull).toBe(true);
+		expect(dirty.canPull).toBe(false);
+		expect(dirty.showPush).toBe(false);
+		expect(pillModel(ready({ dirty_definitions: ['views'] }), false).showCommit).toBe(true);
+		expect(pillModel(ready({ dirty_items: 1 }), true).canCommit).toBe(false);
+	});
+
+	it('shows only the sync button the clean tree needs', () => {
+		const synced = pillModel(ready(), false);
+		expect([synced.showCommit, synced.showPull, synced.showPush]).toEqual([false, false, false]);
+		const ahead = pillModel(ready({ ahead: 2 }), false);
+		expect([ahead.showCommit, ahead.showPull, ahead.showPush]).toEqual([false, false, true]);
+		const behind = pillModel(ready({ behind: 1 }), false);
+		expect([behind.showCommit, behind.showPull, behind.showPush]).toEqual([false, true, false]);
+		const both = pillModel(ready({ ahead: 1, behind: 1 }), false);
+		expect([both.showPull, both.showPush]).toEqual([true, true]);
+		const unpublished = pillModel(ready({ has_upstream: false }), false);
+		expect([unpublished.showCommit, unpublished.showPull, unpublished.showPush]).toEqual([
+			false,
+			false,
+			true
+		]);
+	});
+
+	it('keeps the sync buttons visible but off on a detached head', () => {
+		const detached = pillModel(
+			ready({ branch: 'HEAD', has_upstream: false, dirty_items: 1 }),
+			false
+		);
+		expect(detached.showCommit).toBe(false);
+		expect(detached.showPull).toBe(true);
+		expect(detached.showPush).toBe(true);
+	});
 });
