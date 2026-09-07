@@ -1,7 +1,7 @@
 ---
 id: commit-from-web-ui
 title: Let the web app commit, so the git loop is not broken in the middle
-status: in_progress
+status: done
 parent: full-git-loop
 ---
 

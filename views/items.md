@@ -24,7 +24,7 @@
 | [code-quality](../workdown-items/code-quality.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) |  |
 | [color-display-slot](../workdown-items/color-display-slot.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [color-field-type](../workdown-items/color-field-type.md), [view-display-config](../workdown-items/view-display-config.md) |
 | [color-field-type](../workdown-items/color-field-type.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [mutations-slice](../workdown-items/mutations-slice.md) |
-| [commit-from-web-ui](../workdown-items/commit-from-web-ui.md) | in_progress | [full-git-loop](../workdown-items/full-git-loop.md) |  |
+| [commit-from-web-ui](../workdown-items/commit-from-web-ui.md) | done | [full-git-loop](../workdown-items/full-git-loop.md) |  |
 | [compute-type-support-mismatch](../workdown-items/compute-type-support-mismatch.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) |  |
 | [computed-fields](../workdown-items/computed-fields.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [project-constants](../workdown-items/project-constants.md) |
 | [conditional-field-value](../workdown-items/conditional-field-value.md) | done | [polish](../workdown-items/polish.md) | [expression-predicates](../workdown-items/expression-predicates.md), [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
@@ -72,6 +72,7 @@
 | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | done |  |  |
 | [polish](../workdown-items/polish.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [view-authoring](../workdown-items/view-authoring.md) |
 | [pomodoro-timer](../workdown-items/pomodoro-timer.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [effort-timer](../workdown-items/effort-timer.md) |
+| [prepare-commit-msg-hook](../workdown-items/prepare-commit-msg-hook.md) | to_do | [full-git-loop](../workdown-items/full-git-loop.md) | [commit-from-web-ui](../workdown-items/commit-from-web-ui.md) |
 | [project-constants](../workdown-items/project-constants.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [project-load-cache](../workdown-items/project-load-cache.md) | to_do |  |  |
 | [project-tour](../workdown-items/project-tour.md) | done |  |  |

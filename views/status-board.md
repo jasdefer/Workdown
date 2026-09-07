@@ -12,6 +12,7 @@ Cards grouped into columns by `status`.
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
+- [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
 - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md)
 - [Apply the same-origin check to every mutating endpoint, not just the git ones](../workdown-items/same-origin-guard-everywhere.md)
@@ -26,7 +27,6 @@ Cards grouped into columns by `status`.
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
-- [Let the web app commit, so the git loop is not broken in the middle](../workdown-items/commit-from-web-ui.md)
 - [The full git loop, without leaving the board](../workdown-items/full-git-loop.md)
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 
@@ -51,6 +51,7 @@ Cards grouped into columns by `status`.
 - [Code-quality cleanup](../workdown-items/code-quality.md)
 - [`color:` display role — choose which color field tints a view](../workdown-items/color-display-slot.md)
 - [Add `color` field type with background tinting](../workdown-items/color-field-type.md)
+- [Let the web app commit, so the git loop is not broken in the middle](../workdown-items/commit-from-web-ui.md)
 - [Computed fields — same-item cross-field expressions](../workdown-items/computed-fields.md)
 - [`when:` — derive a field value by first matching condition](../workdown-items/conditional-field-value.md)
 - [Validate the field-role keys in config.yaml against the schema](../workdown-items/config-field-role-validation.md)
