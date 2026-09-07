@@ -17,7 +17,9 @@
   `commitDialog.ts` (unit-tested).
 -->
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { gitStore } from '$lib/stores/git.svelte';
+	import { pluralize } from '$lib/views/format';
 	import { changeLabel, checklist, groupFiles, splitDetails } from './commitDialog';
 
 	let dialog = $state<HTMLDialogElement>();
@@ -49,9 +51,21 @@
 		if (preview !== null && !seeded) {
 			message = preview.message;
 			seeded = true;
-			textarea?.focus();
+			void tick().then(() => {
+				fitTextarea();
+				textarea?.focus();
+			});
 		}
 	});
+
+	/** Size the message box to its content: a generated body with ten
+	 * lines should be readable without scrolling inside the box, while
+	 * the CSS `max-height` keeps a long one from swallowing the dialog. */
+	function fitTextarea(): void {
+		if (textarea === undefined) return;
+		textarea.style.height = 'auto';
+		textarea.style.height = `${String(textarea.scrollHeight + 2)}px`;
+	}
 
 	function close(): void {
 		gitStore.closeCommitDialog();
@@ -122,10 +136,19 @@
 						</ul>
 					{/if}
 					{#if preview.outside.length > 0}
-						<p class="outside">
-							Not included (outside the workdown paths): {preview.outside.join(', ')}. If the branch
-							is behind, the pull will stop over these.
-						</p>
+						<details class="outside" open={preview.outside.length <= 5}>
+							<summary>
+								Not included: {pluralize(preview.outside.length, 'file')} outside the workdown paths
+							</summary>
+							<ul>
+								{#each preview.outside as path (path)}
+									<li class="path">{path}</li>
+								{/each}
+							</ul>
+							<p class="muted">
+								These stay uncommitted. If the branch is behind, the pull step will stop over them.
+							</p>
+						</details>
 					{/if}
 				</div>
 				<label class="message-label" for="commit-dialog-message">Commit message</label>
@@ -133,7 +156,8 @@
 					id="commit-dialog-message"
 					bind:this={textarea}
 					bind:value={message}
-					rows="4"
+					oninput={fitTextarea}
+					rows="6"
 					spellcheck="false"
 				></textarea>
 			{/if}
@@ -176,7 +200,13 @@
 
 <style>
 	dialog {
-		width: min(38rem, calc(100vw - 2rem));
+		/* The global reset zeroes every margin, which takes away the user
+		   agent's `margin: auto` that centers a modal dialog — so center
+		   it explicitly. */
+		position: fixed;
+		inset: 0;
+		margin: auto;
+		width: min(44rem, calc(100vw - 2rem));
 		max-height: calc(100vh - 2rem);
 		padding: 0;
 		background-color: var(--color-card);
@@ -195,6 +225,15 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-3);
+		max-height: calc(100vh - 2rem);
+		overflow: auto;
+	}
+
+	/* The file lists scroll on their own past a screenful, so a big
+	   batch never pushes the message box out of view. */
+	.files > ul {
+		max-height: 30vh;
+		overflow: auto;
 	}
 
 	.title {
@@ -246,7 +285,25 @@
 	.outside {
 		margin: var(--space-2) 0 0;
 		font-size: var(--text-sm);
+	}
+
+	.outside summary {
 		color: var(--color-warning-fg);
+	}
+
+	.outside ul {
+		margin-top: var(--space-1);
+		max-height: 10rem;
+		overflow: auto;
+	}
+
+	.outside li {
+		padding: 0.1rem 0;
+		font-size: var(--text-sm);
+	}
+
+	.outside .muted {
+		margin-top: var(--space-1);
 	}
 
 	.message-label {
@@ -266,6 +323,10 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-sm);
 		resize: vertical;
+		line-height: 1.45;
+		min-height: 7rem;
+		max-height: 45vh;
+		overflow-y: auto;
 	}
 
 	.checklist li {
