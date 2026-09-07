@@ -20,7 +20,6 @@ flowchart TD
     end
     project-load-cache["Cache the project load in the server (when it starts to hurt)"]
     recording-dot-extraction["Extract the recording indicator the six item-presenting views each rebuilt"]
-    same-origin-guard-everywhere["Apply the same-origin check to every mutating endpoint, not just the git ones"]
     subgraph schema-editor-web ["See and edit the schema in the web app"]
         schema-editor-web-design["Decide how much of the schema the web app edits, and what a breaking save does"]
     end

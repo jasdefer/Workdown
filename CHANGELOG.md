@@ -27,6 +27,16 @@ its source — internal refactors are deliberately absent.
   the files it covers. Other uncommitted files in the repository are
   noted on stderr and never described.
 
+### Fixed
+
+- Every mutating API endpoint now refuses requests from a foreign
+  browser origin, not just the git ones. A bodiless POST such as
+  `/api/timer/stop` is a request browsers send without asking the server
+  first, so another website open in the same browser could stop a
+  running timer while `workdown serve` was up — a blind nuisance write,
+  no data leak. The check is one layer over the whole API; scripts and
+  `curl`, which send no `Origin`, are unaffected.
+
 ### Changed
 
 - The git pill counts **only workdown files**: work items under

@@ -102,7 +102,7 @@
 | [resource-label-display](../workdown-items/resource-label-display.md) | removed | [polish](../workdown-items/polish.md) | [resource-option-lists](../workdown-items/resource-option-lists.md) |
 | [resource-option-lists](../workdown-items/resource-option-lists.md) | done | [polish](../workdown-items/polish.md) | [mutations-slice](../workdown-items/mutations-slice.md), [schema-metadata-api](../workdown-items/schema-metadata-api.md) |
 | [rules-current-date-reference](../workdown-items/rules-current-date-reference.md) | done | [polish](../workdown-items/polish.md) | [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
-| [same-origin-guard-everywhere](../workdown-items/same-origin-guard-everywhere.md) | to_do |  |  |
+| [same-origin-guard-everywhere](../workdown-items/same-origin-guard-everywhere.md) | done |  |  |
 | [schema-editor-web](../workdown-items/schema-editor-web.md) | to_do |  |  |
 | [schema-editor-web-design](../workdown-items/schema-editor-web-design.md) | to_do | [schema-editor-web](../workdown-items/schema-editor-web.md) |  |
 | [schema-expressions](../workdown-items/schema-expressions.md) | to_do |  |  |

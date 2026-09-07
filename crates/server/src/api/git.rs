@@ -15,7 +15,7 @@
 //! `fetch_error` field says what the remote contact hit.
 
 use axum::extract::{Query, State};
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
@@ -65,38 +65,13 @@ fn refuse_disabled<T: serde::Serialize>() -> ApiResponse<T> {
     )
 }
 
-/// Same-origin check for anything with side effects beyond this
-/// machine's repository reads. The server binds to 127.0.0.1, but any
-/// website open in the same browser can still fire cross-origin
-/// requests at localhost ports — a browser sends the page's `Origin`
-/// on such requests, so a foreign one is refused outright. Non-browser
-/// clients (curl, scripts) send no `Origin` and pass. Applied to the
-/// POSTs and to `GET /api/git?fetch=true`, which contacts the remote
-/// (and can invoke a credential helper) even though it is a read.
+/// The POSTs here are covered by the same-origin layer over the whole
+/// API ([`crate::origin::guard_mutations`]). Two *reads* need the same
+/// guard and apply it themselves: `GET /api/git?fetch=true` contacts the
+/// remote (and can invoke a credential helper), and the commit preview
+/// returns file contents.
 fn refuse_foreign_origin<T: serde::Serialize>(headers: &HeaderMap) -> Option<ApiResponse<T>> {
-    let foreign = headers
-        .get(header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|origin| {
-            !matches!(origin_host(origin), Some("127.0.0.1" | "localhost" | "::1"))
-        });
-    if foreign {
-        return Some(ApiResponse::failed(
-            StatusCode::FORBIDDEN,
-            "cross-origin request refused".to_owned(),
-        ));
-    }
-    None
-}
-
-/// The host part of an `Origin` header value (`scheme://host[:port]`).
-fn origin_host(origin: &str) -> Option<&str> {
-    let rest = origin.split_once("//")?.1;
-    if let Some(bracketed) = rest.strip_prefix('[') {
-        // IPv6 literal: `[::1]:3141`.
-        return bracketed.split(']').next();
-    }
-    rest.split(':').next()
+    crate::origin::is_foreign_origin(headers).then(crate::origin::refusal)
 }
 
 /// Read the repository for this server's project — snapshot, scope and
@@ -172,12 +147,9 @@ async fn status_inner(
     }))
 }
 
-async fn git_pull(State(state): State<AppState>, headers: HeaderMap) -> ApiResponse<GitPullResult> {
+async fn git_pull(State(state): State<AppState>) -> ApiResponse<GitPullResult> {
     if !git_controls_enabled(&state) {
         return refuse_disabled();
-    }
-    if let Some(refusal) = refuse_foreign_origin(&headers) {
-        return refusal;
     }
     let _network = state.git_lock.lock().await;
     match pull_inner(&state).await {
@@ -274,12 +246,9 @@ async fn pull_inner(state: &AppState) -> Result<ApiResponse<GitPullResult>, GitE
     }))
 }
 
-async fn git_push(State(state): State<AppState>, headers: HeaderMap) -> ApiResponse<GitPushResult> {
+async fn git_push(State(state): State<AppState>) -> ApiResponse<GitPushResult> {
     if !git_controls_enabled(&state) {
         return refuse_disabled();
-    }
-    if let Some(refusal) = refuse_foreign_origin(&headers) {
-        return refusal;
     }
     let _network = state.git_lock.lock().await;
     match push_inner(&state).await {
@@ -424,14 +393,10 @@ async fn git_commit_preview(
 /// did: the commit is real, and the report says how far it got.
 async fn git_commit(
     State(state): State<AppState>,
-    headers: HeaderMap,
     Json(request): Json<GitCommitRequest>,
 ) -> ApiResponse<GitCommitResult> {
     if !git_controls_enabled(&state) {
         return refuse_disabled();
-    }
-    if let Some(refusal) = refuse_foreign_origin(&headers) {
-        return refusal;
     }
     let _network = state.git_lock.lock().await;
     match commit_inner(&state, request).await {
