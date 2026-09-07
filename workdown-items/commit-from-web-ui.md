@@ -283,7 +283,7 @@ milestone should carry it as its own decision.
   prefilling terminal commits with it, so history reads the same
   whether the commit came from the board or the shell. The hook slot
   exists from [[init-install-hooks]]. Cheap follow-up once the function
-  exists in core.
+  exists in core. *Filed 2026-09-07 as [[prepare-commit-msg-hook]].*
 
 ## Notes
 

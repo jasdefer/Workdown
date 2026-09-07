@@ -72,6 +72,7 @@
 | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | done |  |  |
 | [polish](../workdown-items/polish.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [view-authoring](../workdown-items/view-authoring.md) |
 | [pomodoro-timer](../workdown-items/pomodoro-timer.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [effort-timer](../workdown-items/effort-timer.md) |
+| [prepare-commit-msg-hook](../workdown-items/prepare-commit-msg-hook.md) | to_do | [full-git-loop](../workdown-items/full-git-loop.md) | [commit-from-web-ui](../workdown-items/commit-from-web-ui.md) |
 | [project-constants](../workdown-items/project-constants.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
 | [project-load-cache](../workdown-items/project-load-cache.md) | to_do |  |  |
 | [project-tour](../workdown-items/project-tour.md) | done |  |  |

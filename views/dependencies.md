@@ -10,6 +10,7 @@ flowchart TD
     config-hot-reload["Read config.yaml per request so it hot-reloads like everything else"]
     subgraph full-git-loop ["The full git loop, without leaving the board"]
         commit-from-web-ui["Let the web app commit, so the git loop is not broken in the middle"]
+        prepare-commit-msg-hook["Prefill terminal commits with the generated message"]
     end
     subgraph misc-work ["Miscellaneous improvements"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
@@ -35,4 +36,5 @@ flowchart TD
     subgraph testing-strategy ["Decide what our tests are for, and restructure them accordingly"]
         testing-strategy-design["Work out the testing approach and break the milestone into items"]
     end
+    prepare-commit-msg-hook --> commit-from-web-ui
 ```

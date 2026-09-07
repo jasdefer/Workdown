@@ -133,7 +133,7 @@ to_do
 <polyline fill="none" opacity="1" stroke="#000000" stroke-width="1" points="760,130 760,135 "/>
 <rect x="197" y="102" width="554" height="27" opacity="1" fill="#E69F00" stroke="none"/>
 <rect x="197" y="75" width="14" height="27" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="197" y="47" width="99" height="28" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="197" y="47" width="103" height="28" opacity="1" fill="#E69F00" stroke="none"/>
 </svg>
 
 ## Values
@@ -142,5 +142,5 @@ to_do
 | --- | --- |
 | done | 118 |
 | in_progress | 3 |
-| to_do | 21 |
+| to_do | 22 |
 
