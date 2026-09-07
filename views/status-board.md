@@ -12,7 +12,6 @@ Cards grouped into columns by `status`.
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
-- [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
 - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md)
 - [Apply the same-origin check to every mutating endpoint, not just the git ones](../workdown-items/same-origin-guard-everywhere.md)

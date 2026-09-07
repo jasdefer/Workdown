@@ -7,7 +7,6 @@ Hierarchical outline following `parent` upward to roots.
 - [Read config.yaml per request so it hot-reloads like everything else](../workdown-items/config-hot-reload.md) — status: to_do
 - [The full git loop, without leaving the board](../workdown-items/full-git-loop.md) — status: in_progress
   - [Let the web app commit, so the git loop is not broken in the middle](../workdown-items/commit-from-web-ui.md) — status: in_progress
-  - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md) — status: to_do
 - [Miscellaneous improvements](../workdown-items/misc-work.md) — status: in_progress
   - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md) — status: to_do
   - [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md) — status: to_do

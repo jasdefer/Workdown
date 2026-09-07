@@ -131,6 +131,8 @@ Because rendered views are plain files in the repository, they change in the sam
 
 Rendered views go stale the moment an item changes. `workdown install-hooks` (or `workdown init --install-hooks`) installs a git pre-commit hook that re-renders and stages them whenever a commit touches work items or workdown configuration — pass `--check` to have it fail the commit instead of staging. It never overwrites a pre-commit hook it didn't write.
 
+`workdown changes` prints the commit message the web app would generate for the uncommitted workdown changes — `Implement login: Status → In Progress`, `Move 2 items to Done`, `Update 3 work items, 1 added` — worded from item titles and the schema, never from filenames. Only the paths `config.yaml` names count; other files in the repository are noted on stderr and not described. Pass `--files` to list the files first. The message is the same one the board's **Commit & push** dialog proposes.
+
 This repository manages its own development with workdown: [`workdown-items/`](workdown-items/) holds the real work items, [`views/`](views/) their rendered views.
 
 ## Configuration

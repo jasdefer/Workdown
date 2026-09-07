@@ -22,6 +22,10 @@ its source — internal refactors are deliberately absent.
   open, the commit is refused and the list reloads. A pull that cannot
   complete leaves the commit safe and local and says what to do next.
   The CLI stays commit-free.
+- **`workdown changes`** prints that same generated message for the
+  uncommitted workdown changes from a terminal, with `--files` to list
+  the files it covers. Other uncommitted files in the repository are
+  noted on stderr and never described.
 
 ### Changed
 

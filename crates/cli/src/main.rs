@@ -140,6 +140,12 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
             commands::install_hooks::run_install_hooks_command(&config, root, &cli.config, *check)
         }
 
+        cli::Command::Changes { files } => {
+            let config = load_project_config(cli)?;
+            tracing::info!("describing uncommitted workdown changes");
+            commands::changes::run_changes_command(&config, root, &cli.config, *files)
+        }
+
         cli::Command::Serve { port, open, as_of } => {
             let config = load_project_config(cli)?;
             tracing::info!("starting workdown serve");
