@@ -397,6 +397,68 @@ pub fn unstage(root: &Path, pathspecs: &[String]) -> Result<GitOutput, GitError>
     run(root, &args, LOCAL_TIMEOUT)
 }
 
+/// The repository-relative paths the commit at `HEAD` changed. `--root`
+/// makes the very first commit answer too.
+pub fn head_commit_paths(root: &Path) -> Result<Vec<String>, GitError> {
+    let output = run(
+        root,
+        &[
+            "diff-tree",
+            "--root",
+            "-r",
+            "--no-commit-id",
+            "--name-only",
+            "-z",
+            "HEAD",
+        ],
+        LOCAL_TIMEOUT,
+    )?;
+    if !output.success {
+        return Err(GitError::Failed {
+            command: "diff-tree HEAD".to_owned(),
+            stderr: output.stderr,
+        });
+    }
+    Ok(output
+        .stdout
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .map(str::to_owned)
+        .collect())
+}
+
+/// After a path-scoped [`commit`]: make the index agree with `HEAD` for
+/// every file the commit contains that the caller did not stage itself.
+///
+/// Git builds a path-scoped commit from a *temporary* index, and a
+/// pre-commit hook's `git add` lands there — so whatever the hook added
+/// (a re-rendered views directory, say) is in the commit, but the real
+/// index still holds that file as it was before. `git status` then shows
+/// it staged and modified although the working tree matches the commit,
+/// the next pull refuses over it, and a later plain `git commit` would
+/// record the stale content. Pointing those entries at `HEAD` — the same
+/// `reset` [`unstage`] uses — leaves the index as if the hook had never
+/// touched it. `own_paths` are the repository-relative paths the caller
+/// staged; everything the user had staged elsewhere stays as it was.
+pub fn absorb_hook_additions(root: &Path, own_paths: &[String]) -> Result<(), GitError> {
+    let added_by_hooks: Vec<String> = head_commit_paths(root)?
+        .into_iter()
+        .filter(|path| !own_paths.contains(path))
+        .map(|path| literal_pathspec(&path))
+        .collect();
+    if added_by_hooks.is_empty() {
+        return Ok(());
+    }
+    let reset = unstage(root, &added_by_hooks)?;
+    if !reset.success {
+        return Err(GitError::Failed {
+            command: "reset -- <hook additions>".to_owned(),
+            stderr: reset.stderr,
+        });
+    }
+    Ok(())
+}
+
 /// Commit the working-tree state of `pathspecs` with `message`.
 /// Path-scoped on purpose: a plain `git commit` would sweep up anything
 /// the user staged in a terminal; with pathspecs, git records exactly

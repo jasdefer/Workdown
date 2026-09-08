@@ -501,7 +501,11 @@ fn commit_inner(
         ));
     }
 
-    let pathspecs = confirmed_pathspecs(&local);
+    let paths = confirmed_paths(&local);
+    let pathspecs: Vec<String> = paths
+        .iter()
+        .map(|path| git::literal_pathspec(path))
+        .collect();
     let staged = git::stage(root, &pathspecs)?;
     if !staged.success {
         return Err(refuse(with_details(
@@ -516,6 +520,10 @@ fn commit_inner(
         let _ = git::unstage(root, &pathspecs);
         return Err(refuse(commit_failure(&committed)));
     }
+    // A pre-commit hook may have added files to the commit (a
+    // re-rendered views directory, for one); the real index still holds
+    // them as they were, which would block the next pull.
+    git::absorb_hook_additions(root, &paths)?;
     let commit = git::head_short_hash(root)?;
 
     let pull = pull_step(state, local.snapshot.has_upstream)?;
@@ -567,20 +575,20 @@ fn ensure_nothing_conflicted(local: &LocalState) -> Result<(), GitActionError> {
     )))
 }
 
-/// The pathspecs to stage and commit: exactly the files git listed for
-/// the scope — the set the user just confirmed — as literal paths.
-/// `git add` (unlike `git status`) refuses a pathspec that matches
-/// nothing, which a scope entry for a file the project does not have
-/// (no resources.yaml, say) would be; the changed files themselves
-/// always exist on one side. A rename contributes both of its paths.
-fn confirmed_pathspecs(local: &LocalState) -> Vec<String> {
+/// The repository-relative paths to stage and commit: exactly the files
+/// git listed for the scope — the set the user just confirmed. `git add`
+/// (unlike `git status`) refuses a pathspec that matches nothing, which
+/// a scope entry for a file the project does not have (no
+/// resources.yaml, say) would be; the changed files themselves always
+/// exist on one side. A rename contributes both of its paths.
+fn confirmed_paths(local: &LocalState) -> Vec<String> {
     local
         .in_scope
         .iter()
         .flat_map(|change| {
-            let mut paths = vec![git::literal_pathspec(&change.path)];
+            let mut paths = vec![change.path.clone()];
             if let ChangeState::Renamed { from } = &change.state {
-                paths.push(git::literal_pathspec(from));
+                paths.push(from.clone());
             }
             paths
         })

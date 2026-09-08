@@ -292,9 +292,10 @@ milestone should carry it as its own decision.
 - **Verified 2026-09-04:** a path-scoped `git commit -- <items>` with a
   pre-commit hook that re-renders and stages a views file does include
   the hook's file in the commit, and leaves an unrelated dirty source
-  file untouched. The hook rule above needs no special handling. (A
-  leftover status entry in the scratch test was a CRLF artifact of the
-  Windows setup; content was identical.)
+  file untouched. (The note here originally read "the hook rule needs
+  no special handling" and put a leftover status entry down to CRLF.
+  Wrong on both counts — see the Outcome section: the entry was the
+  real index, left stale by the temporary index git commits from.)
 - **Verified 2026-09-04:** schema choices carry no labels. `status` is
   a plain value list (`in_progress`), so the message prettifies raw
   values the way the title fallback prettifies filenames. No new
@@ -384,6 +385,21 @@ pinned to exactly the confirmed set. The scope list itself is
 `Config::workdown_paths` in core — the one definition, shared with the
 pre-commit hook installer — and the server computes it once per
 process.
+
+**Hook additions and the index (found 2026-09-08, first board commit
+on this repository).** Git builds a path-scoped commit from a
+*temporary* index, and a pre-commit hook's `git add` lands there. So
+the re-rendered views were in the commit and in the working tree, but
+the real index still held the previous render: `git status` showed six
+views as staged and modified, the pill's Pull would have refused over
+them, and a later plain terminal commit would have recorded the stale
+render. Reproduced in a scratch repository, so it is git's behaviour
+and not this repository's. Fix: after the commit, the endpoint resets
+the index entries of every path the commit contains that it did not
+stage itself (`workdown_git::absorb_hook_additions`), which is exactly
+the set a hook added. Files the user had staged elsewhere are not
+touched. Covered by the integration test
+`commit_absorbs_what_a_pre_commit_hook_added_and_leaves_the_index_clean`.
 
 **Wire.** The status replaces `dirty_count` with `dirty_items` and
 `dirty_definitions` (role names in a fixed order: schema, views,

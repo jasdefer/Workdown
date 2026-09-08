@@ -76,9 +76,19 @@ subcommand twin, the terminal is that twin. The read-only half has one:
   use.
 - [[git-sync-controls]] — done, parented here retroactively so the
   shipped half and the unshipped half sit together.
+- [[publish-branch-from-push]] — found while dogfooding: Push on a
+  branch that has never been pushed publishes it instead of greying out.
+- [[shared-git-crate]] — came out of the PR #57 review: one git layer
+  in its own crate, shared by the server and the CLI.
+
+Closed 2026-09-08 with the first commit made from the board, on this
+repository, with the generated message.
 
 ## Not in scope
 
+- [[prepare-commit-msg-hook]] — prefilling *terminal* commits with the
+  generated message. A nicety for the other side of the loop; kept out
+  from under this milestone so it can close.
 - [[same-origin-guard-everywhere]] stays standalone. It came out of the
   git PR review, but it is about `POST /timer/stop` and
   `POST /timer/break/end`; git is merely where the fix already exists.

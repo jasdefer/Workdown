@@ -2,7 +2,6 @@
 id: prepare-commit-msg-hook
 title: Prefill terminal commits with the generated message
 status: to_do
-parent: full-git-loop
 depends_on:
   - commit-from-web-ui
 ---
@@ -19,7 +18,10 @@ as one from the board — and stays editable, as in the dialog.
 
 Follow-up to [[commit-from-web-ui]], where it was listed under
 "considered, not part of this item" once the message generator
-existed in the core crate. It does now.
+existed in the core crate. It does now. Deliberately not a child of
+[[full-git-loop]]: that milestone closed on 2026-09-08 with the loop
+working from the board, and this item is a nicety for the terminal side
+that should not hold it open.
 
 ## What is needed
 

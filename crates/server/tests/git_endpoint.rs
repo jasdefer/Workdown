@@ -909,6 +909,54 @@ async fn commit_rejected_by_a_hook_is_worded_and_leaves_nothing_staged() {
     assert_eq!(git_stdout(&work, &["diff", "--cached", "--name-only"]), "");
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn commit_absorbs_what_a_pre_commit_hook_added_and_leaves_the_index_clean() {
+    use std::os::unix::fs::PermissionsExt;
+    let (_directory, work) = init_synced_repo();
+    // The hook plays `workdown install-hooks`: re-render something
+    // outside the scope and stage it into the commit being made.
+    fs::create_dir_all(work.join("rendered")).unwrap();
+    fs::write(work.join("rendered/board.md"), "render v1\n").unwrap();
+    run_git(&work, &["add", "--all"]);
+    run_git(&work, &["commit", "-qm", "rendered views"]);
+    let hook = work.join(".git/hooks/pre-commit");
+    fs::write(
+        &hook,
+        "#!/bin/sh\necho 'render v2' > rendered/board.md\ngit add -- rendered\n",
+    )
+    .unwrap();
+    fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
+    let request = edit_item_a_and_preview(&work).await;
+
+    let (status, body) = post_json_body(
+        state_for(work.clone(), &project_config(true)),
+        "/api/git/commit",
+        request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    // The hook's file is in the commit, alongside the item…
+    let committed = git_stdout(
+        &work,
+        &["diff-tree", "-r", "--no-commit-id", "--name-only", "HEAD"],
+    );
+    assert!(committed.contains("rendered/board.md"), "got: {committed}");
+    assert!(
+        committed.contains("workdown-items/item-a.md"),
+        "got: {committed}"
+    );
+    assert_eq!(
+        git_stdout(&work, &["show", "HEAD:rendered/board.md"]),
+        "render v2"
+    );
+    // …and nothing is left half-staged behind: git built the commit from
+    // a temporary index, and without the fix the real index would still
+    // hold `render v1` as a staged change.
+    assert_eq!(git_stdout(&work, &["status", "--porcelain"]), "");
+}
+
 #[tokio::test]
 async fn commit_refused_when_disabled_and_for_foreign_origins() {
     let (_directory, work) = init_synced_repo();
