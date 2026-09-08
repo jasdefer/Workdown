@@ -1,7 +1,7 @@
 ---
 id: testing-strategy
 title: Decide what our tests are for, and restructure them accordingly
-status: to_do
+status: in_progress
 ---
 
 ## In plain words

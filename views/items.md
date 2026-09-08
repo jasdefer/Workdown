@@ -115,8 +115,8 @@
 | [status-transition-dates](../workdown-items/status-transition-dates.md) | to_do |  |  |
 | [store-diagnostics-consistency](../workdown-items/store-diagnostics-consistency.md) | done | [polish](../workdown-items/polish.md) |  |
 | [tags-view](../workdown-items/tags-view.md) | removed | [misc-work](../workdown-items/misc-work.md) |  |
-| [testing-strategy](../workdown-items/testing-strategy.md) | to_do |  |  |
-| [testing-strategy-design](../workdown-items/testing-strategy-design.md) | to_do | [testing-strategy](../workdown-items/testing-strategy.md) |  |
+| [testing-strategy](../workdown-items/testing-strategy.md) | in_progress |  |  |
+| [testing-strategy-design](../workdown-items/testing-strategy-design.md) | in_progress | [testing-strategy](../workdown-items/testing-strategy.md) |  |
 | [time-tracking](../workdown-items/time-tracking.md) | done |  |  |
 | [timer-notifications](../workdown-items/timer-notifications.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [pomodoro-timer](../workdown-items/pomodoro-timer.md) |
 | [timer-recording-indicator](../workdown-items/timer-recording-indicator.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [effort-timer](../workdown-items/effort-timer.md) |

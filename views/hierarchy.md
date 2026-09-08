@@ -22,5 +22,5 @@ Hierarchical outline following `parent` upward to roots.
   - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md) — status: to_do
   - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md) — status: to_do
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md) — status: to_do
-- [Decide what our tests are for, and restructure them accordingly](../workdown-items/testing-strategy.md) — status: to_do
-  - [Work out the testing approach and break the milestone into items](../workdown-items/testing-strategy-design.md) — status: to_do
+- [Decide what our tests are for, and restructure them accordingly](../workdown-items/testing-strategy.md) — status: in_progress
+  - [Work out the testing approach and break the milestone into items](../workdown-items/testing-strategy-design.md) — status: in_progress
