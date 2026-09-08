@@ -8,6 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::model::config::PathRole;
+
 /// `POST /api/git/commit` — the confirmed gesture behind the dialog:
 /// stage the workdown paths, commit, pull if behind, push.
 #[derive(Debug, Clone, Deserialize, ts_rs::TS)]
@@ -113,9 +115,10 @@ pub struct GitCommitPreview {
 pub struct GitChangedFile {
     /// Project-relative path, forward slashes.
     pub path: String,
-    /// The config key the file falls under, as the pill names it:
-    /// `items`, `schema`, `views`, `resources`, `templates`, `config`.
-    pub role: String,
+    /// The config key the file falls under — on the wire, the word the
+    /// pill prints: `items`, `schema`, `views`, `resources`, `templates`,
+    /// `config`.
+    pub role: PathRole,
     pub change: GitChangeKind,
     /// `change` as a person reads it next to the path — [`GitChangeKind::label`],
     /// sent along so the dialog and `workdown changes` print the same
@@ -181,10 +184,10 @@ pub enum GitStatus {
         /// next to the items in a code repository is not the pill's
         /// business and does not appear here.
         dirty_items: u32,
-        /// Definition files with uncommitted changes, named by role in
-        /// a fixed order (`schema`, `views`, `resources`, `templates`,
+        /// Definition files with uncommitted changes, by role in a
+        /// fixed order (`schema`, `views`, `resources`, `templates`,
         /// `config`) rather than by filename. Empty when none changed.
-        dirty_definitions: Vec<String>,
+        dirty_definitions: Vec<PathRole>,
         /// Why the requested remote contact failed, when it did — the
         /// local numbers above are still served (`behind` is then as of
         /// the last successful fetch). `None` when the fetch succeeded

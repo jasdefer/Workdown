@@ -43,9 +43,8 @@ impl LocalState {
             .collect();
         let dirty_items = roles.iter().filter(|role| role.is_work_item()).count() as u32;
         let dirty_definitions = PathRole::DEFINITIONS
-            .iter()
+            .into_iter()
             .filter(|role| roles.contains(role))
-            .map(|role| role.label().to_owned())
             .collect();
         GitStatus::Ready {
             branch: self.snapshot.branch,
@@ -109,13 +108,16 @@ pub fn build_preview(
     let mut files = Vec::with_capacity(local.in_scope.len());
     let mut inputs = Vec::with_capacity(local.in_scope.len());
     for change in &local.in_scope {
-        // Git matched the path against the scope's own pathspecs, so a
-        // role is always found; the fallback only keeps an unexpected
-        // disagreement from dropping a file the commit would include.
+        // Git matched the path against the scope's own pathspecs, so the
+        // scope must be able to name its role; if it cannot, the two
+        // rules have drifted apart, and that is a bug to surface rather
+        // than a file to guess about.
         let role = local
             .scope
             .classify(&change.path)
-            .unwrap_or(PathRole::Config);
+            .ok_or_else(|| GitError::ScopeMismatch {
+                path: change.path.clone(),
+            })?;
         let project_path = local.scope.project_relative(&change.path);
         let (old_text, new_text, change_kind) = match &change.state {
             ChangeState::Added => (
@@ -146,7 +148,7 @@ pub fn build_preview(
         };
         files.push(GitChangedFile {
             path: project_path.clone(),
-            role: role.label().to_owned(),
+            role,
             change: change_kind,
             label: change_kind.label().to_owned(),
         });

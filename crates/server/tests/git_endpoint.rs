@@ -1,5 +1,6 @@
-//! Integration tests for the git sync endpoints (`GET /api/git`,
-//! `POST /api/git/pull`, `POST /api/git/push`).
+//! Integration tests for the git sync endpoints: `GET /api/git`,
+//! `POST /api/git/pull`, `POST /api/git/push` (push or publish),
+//! `GET /api/git/commit-preview` and `POST /api/git/commit`.
 //!
 //! Every repo these tests touch is a throwaway: a bare "remote" in a
 //! `TempDir` with one or two working clones next to it, so pull and
@@ -988,10 +989,11 @@ async fn commit_refused_when_disabled_and_for_foreign_origins() {
 
 #[tokio::test]
 async fn pull_refused_over_changes_outside_the_workdown_paths_names_them() {
-    let (_directory, work) = init_synced_repo();
+    let (directory, work) = init_synced_repo();
+    advance_remote(&directory);
 
     // Nothing in scope is dirty — the pill reads clean — but the
-    // repository is not, and pull never runs over uncommitted work.
+    // repository is not, and pull never rebases over uncommitted work.
     fs::create_dir_all(work.join("src")).unwrap();
     fs::write(work.join("src/main.rs"), "fn main() {}\n").unwrap();
 
@@ -1185,7 +1187,10 @@ async fn pull_conflict_aborts_and_leaves_tree_as_it_was() {
 
     assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
     let error = body["error"].as_str().unwrap();
-    assert!(error.contains("pull failed"), "unexpected error: {error}");
+    assert!(
+        error.contains("workdown-items/item-a.md") && error.contains("resolve"),
+        "unexpected error: {error}"
+    );
     // The rebase must not be left in progress …
     assert!(!work.join(".git/rebase-merge").exists());
     assert!(!work.join(".git/rebase-apply").exists());
@@ -1196,9 +1201,12 @@ async fn pull_conflict_aborts_and_leaves_tree_as_it_was() {
 
 #[tokio::test]
 async fn pull_refused_while_uncommitted_changes_exist() {
-    let (_directory, work) = init_synced_repo();
+    let (directory, work) = init_synced_repo();
+    advance_remote(&directory);
 
-    // One uncommitted edit — the state pull must never touch.
+    // One uncommitted edit — the state pull must never touch. (With
+    // nothing to integrate, pull would simply answer "up to date"; the
+    // refusal is about rebasing over uncommitted work.)
     let edited_content = "---\ntitle: Item A\nstatus: in_progress\n---\n";
     fs::write(work.join("workdown-items/item-a.md"), edited_content).unwrap();
 
@@ -1632,6 +1640,19 @@ fn git_stdout(dir: &Path, args: &[&str]) -> String {
         .expect("spawn git");
     assert!(output.status.success());
     String::from_utf8_lossy(&output.stdout).trim().to_owned()
+}
+
+/// A teammate pushes one commit (a new item), so `work` is one behind.
+fn advance_remote(directory: &TempDir) {
+    let other = clone_remote(directory, "teammate");
+    fs::write(
+        other.join("workdown-items/item-from-teammate.md"),
+        "---\ntitle: Item from teammate\nstatus: open\n---\n",
+    )
+    .unwrap();
+    run_git(&other, &["add", "-A"]);
+    run_git(&other, &["commit", "-m", "teammate: add item"]);
+    run_git(&other, &["push"]);
 }
 
 /// A second working clone of the same bare remote, for playing the

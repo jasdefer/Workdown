@@ -31,6 +31,7 @@ use workdown_core::git_data::{
     GitPullResult, GitPullStep, GitPushResult, GitPushStep, GitStatus,
 };
 use workdown_core::item_data::ItemDetail;
+use workdown_core::model::config::PathRole;
 use workdown_core::model::diagnostic::{
     CollectionDiagnostic, CollectionDiagnosticKind, ConfigDiagnostic, ConfigDiagnosticKind,
     Diagnostic, DiagnosticBody, FieldValueError, FileDiagnostic, FileDiagnosticKind,
@@ -197,7 +198,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<TimerStopResult>();
     exports.add::<TimerWrite>();
 
-    // Git sync contracts (GET /api/git, POST /api/git/pull, POST /api/git/push).
+    // Git sync contracts (GET /api/git, GET /api/git/commit-preview,
+    // POST /api/git/pull, POST /api/git/push, POST /api/git/commit).
     exports.add::<GitStatus>();
     exports.add::<GitPullResult>();
     exports.add::<GitPushResult>();
@@ -208,6 +210,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<GitCommitResult>();
     exports.add::<GitPullStep>();
     exports.add::<GitPushStep>();
+    exports.add::<PathRole>();
 
     // Project identity (GET /api/project).
     exports.add::<ProjectIdentity>();

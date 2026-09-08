@@ -33,13 +33,13 @@ Rust function:
    the same scope rule and the same summary function the button uses.
    Useful on its own: "what would the button say right now" from a
    terminal, and a way to see the message before `git commit`.
-   *Built 2026-09-07 in working-tree mode: the preview builder moved
-   from the HTTP handler into `workdown_server::git_preview`, and the
-   CLI calls it through a small tokio runtime, the way `serve` does.
-   Stdout carries the message alone; the note about files outside the
-   workdown paths goes to stderr, so a hook can pipe stdout into git's
-   message file. `--files` lists the covered files first. The `--staged`
-   mode below is still open.*
+   *Built 2026-09-07 in working-tree mode. The preview builder lives
+   in the shared git crate (`workdown_git::preview`, see
+   [[shared-git-crate]]) and the CLI calls it directly — no runtime,
+   no dependency on the server. Stdout carries the message alone; the
+   note about files outside the workdown paths goes to stderr, so a
+   hook can pipe stdout into git's message file. `--files` lists the
+   covered files first. The `--staged` mode below is still open.*
 2. **The hook.** `workdown install-hooks` already writes a pre-commit
    hook behind a marker comment ([[init-install-hooks]]). This item
    adds a `prepare-commit-msg` hook by the same mechanism: our marker,

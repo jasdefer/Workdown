@@ -34,7 +34,7 @@ pub fn run_changes_command(
 
     if list_files && !preview.files.is_empty() {
         for file in &preview.files {
-            println!("{:<10} {:<10} {}", file.label, file.role, file.path);
+            println!("{:<10} {:<10} {}", file.label, file.role.label(), file.path);
         }
         println!();
     }

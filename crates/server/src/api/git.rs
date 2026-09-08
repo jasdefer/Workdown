@@ -20,6 +20,12 @@
 //! of failing when only the remote is unreachable — the local numbers
 //! are still the truth, and the `fetch_error` field says what the remote
 //! contact hit.
+//!
+//! Facts and words are kept apart. The sections below produce facts —
+//! a `PullAttempt`, a `PushAttempt`, git's output — and never a
+//! sentence; every sentence a person reads comes from the `wording`
+//! module at the end of the file, so the voice of the git controls can
+//! be read and changed in one place.
 
 use std::path::Path;
 
@@ -36,7 +42,7 @@ use workdown_core::git_data::{
 use workdown_core::model::schema::Schema;
 use workdown_git::preview::{self, LocalState};
 use workdown_git::scope::GitScope;
-use workdown_git::{self as git, ChangeState, GitError, RepoSnapshot};
+use workdown_git::{self as git, ChangeState, GitError};
 
 use crate::envelope::ApiResponse;
 use crate::state::{load_state_project, AppState};
@@ -68,7 +74,8 @@ enum GitActionError {
     /// A refusal about repository state, worded for the user (`409`).
     /// Where git's own output matters, the message is the sentence, a
     /// blank line, then the raw output — the dialog shows the sentence
-    /// and keeps the rest behind a details toggle; see [`with_details`].
+    /// and keeps the rest behind a details toggle; see
+    /// `wording::with_details`.
     Refused(String),
     /// The remote could not be reached by an operation that needs it
     /// (`502`).
@@ -92,21 +99,35 @@ fn refuse(message: impl Into<String>) -> GitActionError {
     GitActionError::Refused(message.into())
 }
 
+impl GitActionError {
+    /// The sentence a person reads for this failure — the response's
+    /// `error`, or the details of a commit step that could not run.
+    fn message(&self) -> String {
+        match self {
+            GitActionError::Refused(message) | GitActionError::RemoteUnreachable(message) => {
+                message.clone()
+            }
+            GitActionError::Git(error) => error.to_string(),
+            GitActionError::ThreadFailed(cause) => wording::action_did_not_finish(cause),
+        }
+    }
+
+    fn status_code(&self) -> StatusCode {
+        match self {
+            GitActionError::Refused(_) => StatusCode::CONFLICT,
+            GitActionError::RemoteUnreachable(_) => StatusCode::BAD_GATEWAY,
+            GitActionError::Git(_) | GitActionError::ThreadFailed(_) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+        }
+    }
+}
+
 /// The one mapping from an action's outcome to its response.
 fn respond<T: serde::Serialize>(result: Result<T, GitActionError>) -> ApiResponse<T> {
     match result {
         Ok(data) => ApiResponse::ok(data),
-        Err(GitActionError::Refused(message)) => ApiResponse::failed(StatusCode::CONFLICT, message),
-        Err(GitActionError::RemoteUnreachable(message)) => {
-            ApiResponse::failed(StatusCode::BAD_GATEWAY, message)
-        }
-        Err(GitActionError::Git(error)) => {
-            ApiResponse::failed(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
-        }
-        Err(GitActionError::ThreadFailed(message)) => ApiResponse::failed(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("the git action did not finish: {message}"),
-        ),
+        Err(error) => ApiResponse::failed(error.status_code(), error.message()),
     }
 }
 
@@ -125,11 +146,7 @@ where
 
 /// Refusal for a mutating endpoint called without the opt-in flag.
 fn refuse_disabled<T: serde::Serialize>() -> ApiResponse<T> {
-    ApiResponse::failed(
-        StatusCode::NOT_FOUND,
-        "git controls are not enabled — set 'serve.git_controls: true' in config.yaml and restart"
-            .to_owned(),
-    )
+    ApiResponse::failed(StatusCode::NOT_FOUND, wording::controls_disabled())
 }
 
 /// The POSTs here are covered by the same-origin layer over the whole
@@ -140,8 +157,6 @@ fn refuse_disabled<T: serde::Serialize>() -> ApiResponse<T> {
 fn refuse_foreign_origin<T: serde::Serialize>(headers: &HeaderMap) -> Option<ApiResponse<T>> {
     crate::origin::is_foreign_origin(headers).then(crate::origin::refusal)
 }
-
-const NOT_A_REPOSITORY: &str = "the project is not inside a git repository";
 
 /// The git-controls scope for this server's project, computed on the
 /// first request that finds a repository and kept in the state from then
@@ -173,7 +188,7 @@ fn read_local(state: &AppState) -> Result<Option<LocalState>, GitError> {
 
 /// [`read_local`] for an action: not being in a repository is a refusal.
 fn require_local(state: &AppState) -> Result<LocalState, GitActionError> {
-    read_local(state)?.ok_or_else(|| refuse(NOT_A_REPOSITORY))
+    read_local(state)?.ok_or_else(|| refuse(wording::NOT_A_REPOSITORY))
 }
 
 /// Re-read the status after a mutation. `NotARepo` mid-request means
@@ -220,10 +235,10 @@ async fn git_status(
     } else {
         None
     };
-    respond(blocking(move || Ok(status_inner(&state, query.fetch)?)).await)
+    respond(blocking(move || status_inner(&state, query.fetch)).await)
 }
 
-fn status_inner(state: &AppState, with_fetch: bool) -> Result<GitStatus, GitError> {
+fn status_inner(state: &AppState, with_fetch: bool) -> Result<GitStatus, GitActionError> {
     let root = &state.project_root;
     let Some(local) = read_local(state)? else {
         return Ok(GitStatus::NotARepo);
@@ -256,33 +271,74 @@ async fn git_pull(State(state): State<AppState>) -> ApiResponse<GitPullResult> {
     respond(blocking(move || pull_inner(&state)).await)
 }
 
+/// The Pull button: one [`attempt_pull`], framed as a response. A pull
+/// that did not happen is the request's error — nothing else happened,
+/// so there is nothing else to report.
 fn pull_inner(state: &AppState) -> Result<GitPullResult, GitActionError> {
+    let pulled_commits = wording::pull_response(attempt_pull(state)?)?;
+    // The changed files also wake the file watcher, whose ping makes
+    // every open tab refetch its view — no manual event needed here.
+    Ok(GitPullResult {
+        pulled_commits,
+        status: fresh_status(state)?,
+    })
+}
+
+/// How a pull went — one sequence for the Pull button and the pull step
+/// of a commit, which only frame the outcome differently (as the
+/// response, or as one row of the commit's checklist). Every variant is
+/// a fact about the repository; the wording is the caller's.
+enum PullAttempt {
+    /// The branch tracks no upstream — nowhere to pull from.
+    NoUpstream,
+    /// A rebase is underway — the user's, possibly mid-conflict in a
+    /// terminal — and must never be disturbed from here.
+    RebaseInProgress,
+    /// The fetch could not reach the remote; `details` is git's output.
+    RemoteUnreachable {
+        details: String,
+    },
+    /// Nothing to integrate after the fetch.
+    NotBehind,
+    /// `behind` commits are waiting, but uncommitted work blocks a
+    /// rebase over them — pull never stashes. `outside` names the dirty
+    /// files outside the workdown paths, the ones the pill never shows.
+    Blocked {
+        behind: u32,
+        in_scope_dirty: bool,
+        outside: Vec<String>,
+    },
+    Pulled {
+        commits: u32,
+    },
+    /// git ran the pull and it did not complete — a conflict, usually.
+    /// Our rebase has been aborted, so the repository is as it was;
+    /// `conflicted` are the paths git named, `details` its output.
+    Failed {
+        conflicted: Vec<String>,
+        details: String,
+    },
+}
+
+/// Fetch, then `pull --rebase` if — and only if — the branch is behind.
+///
+/// The refusals that need no network come first, the rebase check
+/// before all others: mid-rebase git reports a detached head with no
+/// upstream, and "not published" would be the wrong thing to say about
+/// a repository the user is resolving in a terminal. Uncommitted work is
+/// judged *after* the fetch, because it only matters when there is
+/// something to rebase over — and nothing is ever stashed or rebased
+/// over from a browser button. A pull that fails is backed out: no
+/// rebase was underway before this call, so the abort only ever undoes
+/// ours, never one the user is resolving in a terminal.
+fn attempt_pull(state: &AppState) -> Result<PullAttempt, GitActionError> {
     let root = &state.project_root;
-    let local = require_local(state)?;
-    // Refusals about repository state, checked before any network:
-    // a rebase already underway is the *user's* (possibly mid-conflict
-    // in a terminal) and must never be aborted from here; uncommitted
-    // changes never get stashed or rebased over from a browser button.
     if git::rebase_in_progress(root)? {
-        return Err(refuse(
-            "a rebase is in progress in this repository — finish or abort it in a terminal first",
-        ));
+        return Ok(PullAttempt::RebaseInProgress);
     }
-    if !local.snapshot.dirty.is_empty() {
-        // Uncommitted work anywhere blocks the pull — but the pill only
-        // shows the in-scope part, so when everything dirty is *outside*
-        // the workdown paths the message has to name it: the user sees
-        // a clean pill and needs to know what the repository sees.
-        let message = if local.in_scope.is_empty() {
-            format!(
-                "there are uncommitted changes outside the workdown paths ({}) — pull never touches uncommitted work; commit or stash them in a terminal first",
-                local.outside_scope().join(", ")
-            )
-        } else {
-            "there are uncommitted changes — pull never touches uncommitted work; commit first"
-                .to_owned()
-        };
-        return Err(refuse(message));
+    let local = require_local(state)?;
+    if !local.snapshot.has_upstream {
+        return Ok(PullAttempt::NoUpstream);
     }
     // Fetch first, then read `behind`: after the fetch it is exactly
     // the number of commits the pull will integrate — the same number
@@ -291,41 +347,55 @@ fn pull_inner(state: &AppState) -> Result<GitPullResult, GitActionError> {
     // earlier status call had already fetched.)
     let fetched = git::fetch(root)?;
     if !fetched.success {
-        return Err(GitActionError::RemoteUnreachable(format!(
-            "fetch failed: {}",
-            fetched.stderr.trim()
-        )));
-    }
-    let current = require_local(state)?;
-    if current.snapshot.behind == 0 {
-        return Ok(GitPullResult {
-            pulled_commits: 0,
-            status: current.into_status(None),
+        return Ok(PullAttempt::RemoteUnreachable {
+            details: fetched.stderr.trim().to_owned(),
         });
     }
-    let pulled_commits = current.snapshot.behind;
+    let current = require_local(state)?;
+    let behind = current.snapshot.behind;
+    if behind == 0 {
+        return Ok(PullAttempt::NotBehind);
+    }
+    if !current.snapshot.dirty.is_empty() {
+        return Ok(PullAttempt::Blocked {
+            behind,
+            in_scope_dirty: !current.in_scope.is_empty(),
+            outside: current
+                .outside_scope()
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+        });
+    }
     let pulled = match git::pull(root) {
         Ok(output) => output,
         Err(error) => {
             // A timeout kills git mid-operation and can leave its rebase
-            // in progress. No rebase was underway before this request
-            // (checked above), so an abort here only ever backs out ours.
+            // in progress.
             let _ = git::abort_rebase(root);
             return Err(error.into());
         }
     };
     if !pulled.success {
-        // Same reasoning: this rebase is ours, back it out so the
-        // browser never strands the repository mid-rebase.
         let _ = git::abort_rebase(root);
-        return Err(refuse(format!("pull failed: {}", pulled.stderr.trim())));
+        let details = format!("{}\n{}", pulled.stdout.trim(), pulled.stderr.trim())
+            .trim()
+            .to_owned();
+        return Ok(PullAttempt::Failed {
+            conflicted: conflicted_paths(&details),
+            details,
+        });
     }
-    // The changed files also wake the file watcher, whose ping makes
-    // every open tab refetch its view — no manual event needed here.
-    Ok(GitPullResult {
-        pulled_commits,
-        status: fresh_status(state)?,
-    })
+    Ok(PullAttempt::Pulled { commits: behind })
+}
+
+/// The paths git names in its `CONFLICT (…): Merge conflict in <path>`
+/// lines.
+fn conflicted_paths(raw: &str) -> Vec<String> {
+    raw.lines()
+        .filter_map(|line| line.split("Merge conflict in ").nth(1))
+        .map(|path| path.trim().to_owned())
+        .collect()
 }
 
 // ── Push ────────────────────────────────────────────────────────────
@@ -339,64 +409,61 @@ async fn git_push(State(state): State<AppState>) -> ApiResponse<GitPushResult> {
     respond(blocking(move || push_inner(&state)).await)
 }
 
+/// The Push button: one [`attempt_push`], framed as a response.
+fn push_inner(state: &AppState) -> Result<GitPushResult, GitActionError> {
+    let published = wording::push_response(attempt_push(&state.project_root)?)?;
+    Ok(GitPushResult {
+        published,
+        status: fresh_status(state)?,
+    })
+}
+
+/// How a push or publish went — one sequence for the Push button and
+/// the push step of a commit. Every variant is a fact; the wording is
+/// the caller's.
+enum PushAttempt {
+    /// Pushed to the upstream, or — `published` — created the remote
+    /// branch and recorded it as upstream.
+    Pushed { published: bool },
+    /// Not attempted: the branch has no upstream and cannot be
+    /// published either.
+    Blocked(PublishBlocker),
+    /// git ran the push (`published`: as a first publish) and said no;
+    /// `details` is its output.
+    Rejected { published: bool, details: String },
+}
+
+/// Why a branch with no upstream cannot be published.
+enum PublishBlocker {
+    /// `HEAD` is detached — no branch to publish.
+    DetachedHead,
+    /// The branch is unborn (fresh `git init`) — nothing to publish.
+    NoCommits,
+    /// No remote to publish to by the rule in [`git::publish_remote`].
+    NoRemote,
+}
+
 /// Push, or — on a branch with no upstream — *publish*: the same
 /// gesture from the user's side ("get my commits onto the remote"),
 /// with git's first-time bookkeeping (create the remote branch, record
-/// it as upstream) handled here instead of in a terminal. The server
-/// decides which from the repository's present state, not from what
-/// the pill believed when it was clicked.
-fn push_inner(state: &AppState) -> Result<GitPushResult, GitActionError> {
-    let root = &state.project_root;
-    let Some(snapshot) = git::snapshot(root)? else {
-        return Err(refuse(NOT_A_REPOSITORY));
+/// it as upstream) handled here instead of in a terminal. Which of the
+/// two is decided from the repository's present state, not from what
+/// the pill believed when it was clicked. Refusals about what there is
+/// to publish come before any network.
+fn attempt_push(root: &Path) -> Result<PushAttempt, GitActionError> {
+    let Some(local) = git::snapshot(root)? else {
+        return Err(refuse(wording::NOT_A_REPOSITORY));
     };
-    match attempt_push(root, &snapshot)? {
-        PushAttempt::Pushed { published } => Ok(GitPushResult {
-            published,
-            status: fresh_status(state)?,
-        }),
-        PushAttempt::Refused(reason) => Err(refuse(reason)),
-        PushAttempt::Rejected { reason, details } => Err(refuse(format!("{reason}: {details}"))),
-    }
-}
-
-/// How a push or publish went — shared by the Push button and the
-/// push step of a commit.
-enum PushAttempt {
-    Pushed {
-        published: bool,
-    },
-    /// Not attempted: something about the branch rules it out, worded.
-    Refused(String),
-    /// Attempted, and git said no; `details` is its output.
-    Rejected {
-        reason: String,
-        details: String,
-    },
-}
-
-/// Push, or on a branch with no upstream publish it (create the remote
-/// branch, record it as upstream). Refusals about what there is to
-/// publish come before any network.
-fn attempt_push(root: &Path, local: &RepoSnapshot) -> Result<PushAttempt, GitError> {
     let published = !local.has_upstream;
     let pushed = if published {
         if local.branch == "HEAD" {
-            return Ok(PushAttempt::Refused(
-                "detached HEAD — there is no branch to publish; check one out in a terminal first"
-                    .to_owned(),
-            ));
+            return Ok(PushAttempt::Blocked(PublishBlocker::DetachedHead));
         }
         if !local.has_commits {
-            return Ok(PushAttempt::Refused(
-                "the branch has no commits yet — nothing to publish".to_owned(),
-            ));
+            return Ok(PushAttempt::Blocked(PublishBlocker::NoCommits));
         }
         let Some(remote) = git::publish_remote(root)? else {
-            return Ok(PushAttempt::Refused(
-                "no remote to publish to — add one (or set remote.pushDefault) in a terminal"
-                    .to_owned(),
-            ));
+            return Ok(PushAttempt::Blocked(PublishBlocker::NoRemote));
         };
         git::publish(root, &remote, &local.branch)?
     } else {
@@ -404,7 +471,7 @@ fn attempt_push(root: &Path, local: &RepoSnapshot) -> Result<PushAttempt, GitErr
     };
     if !pushed.success {
         return Ok(PushAttempt::Rejected {
-            reason: format!("{} failed", if published { "publish" } else { "push" }),
+            published,
             details: pushed.stderr.trim().to_owned(),
         });
     }
@@ -439,10 +506,10 @@ async fn git_commit_preview(
 
 fn preview_inner(state: &AppState, schema: &Schema) -> Result<GitCommitPreview, GitActionError> {
     let Some(scope) = scope(state)? else {
-        return Err(refuse(NOT_A_REPOSITORY));
+        return Err(refuse(wording::NOT_A_REPOSITORY));
     };
     preview::build_preview(&state.project_root, &scope, &state.config, schema)?
-        .ok_or_else(|| refuse(NOT_A_REPOSITORY))
+        .ok_or_else(|| refuse(wording::NOT_A_REPOSITORY))
 }
 
 // ── Commit & push ───────────────────────────────────────────────────
@@ -477,28 +544,22 @@ fn commit_inner(
     let root = &state.project_root;
     let local = require_local(state)?;
     if local.snapshot.branch == "HEAD" {
-        return Err(refuse(
-            "detached HEAD — a commit here has no branch to push; check one out in a terminal first",
-        ));
+        return Err(refuse(wording::COMMIT_ON_DETACHED_HEAD));
     }
     if git::rebase_in_progress(root)? {
-        return Err(refuse(
-            "a rebase is in progress in this repository — finish or abort it in a terminal first",
-        ));
+        return Err(refuse(wording::REBASE_IN_PROGRESS));
     }
     let message = request.message.trim();
     if message.is_empty() {
-        return Err(refuse("the commit message is empty"));
+        return Err(refuse(wording::EMPTY_MESSAGE));
     }
     if local.in_scope.is_empty() {
-        return Err(refuse("nothing to commit — no workdown files have changed"));
+        return Err(refuse(wording::NOTHING_TO_COMMIT));
     }
     ensure_confirmed_set(&local, &request.files)?;
     ensure_nothing_conflicted(&local)?;
     if git::identity(root)?.is_none() {
-        return Err(refuse(
-            "git has no identity to commit as — set user.name and user.email in a terminal first",
-        ));
+        return Err(refuse(wording::NO_IDENTITY));
     }
 
     let paths = confirmed_paths(&local);
@@ -508,17 +569,14 @@ fn commit_inner(
         .collect();
     let staged = git::stage(root, &pathspecs)?;
     if !staged.success {
-        return Err(refuse(with_details(
-            "the changes could not be staged",
-            &staged.stderr,
-        )));
+        return Err(refuse(wording::staging_failed(&staged.stderr)));
     }
     let committed = git::commit(root, message, &pathspecs)?;
     if !committed.success {
         // Leave the index as the user had it: our staging is undone,
         // their working tree was never touched.
         let _ = git::unstage(root, &pathspecs);
-        return Err(refuse(commit_failure(&committed)));
+        return Err(refuse(wording::commit_failed(&committed)));
     }
     // A pre-commit hook may have added files to the commit (a
     // re-rendered views directory, for one); the real index still holds
@@ -526,8 +584,12 @@ fn commit_inner(
     git::absorb_hook_additions(root, &paths)?;
     let commit = git::head_short_hash(root)?;
 
-    let pull = pull_step(state, local.snapshot.has_upstream)?;
-    let push = push_step(root, &pull)?;
+    // From here on the commit exists, so nothing is an error response
+    // any more: the same pull and push the buttons run, each framed as
+    // one row of the checklist — even git failing to run becomes a row
+    // that says the commit is safe and what to do next.
+    let pull = wording::pull_row(attempt_pull(state));
+    let push = push_step(root, &pull);
     Ok(GitCommitResult {
         commit,
         pull,
@@ -550,9 +612,7 @@ fn ensure_confirmed_set(local: &LocalState, confirmed: &[String]) -> Result<(), 
     current.sort();
     current.dedup();
     if shown != current {
-        return Err(refuse(
-            "the set of changed files has moved since the preview — review the new list before committing",
-        ));
+        return Err(refuse(wording::STALE_FILE_LIST));
     }
     Ok(())
 }
@@ -568,11 +628,7 @@ fn ensure_nothing_conflicted(local: &LocalState) -> Result<(), GitActionError> {
     if conflicted.is_empty() {
         return Ok(());
     }
-    Err(refuse(format!(
-        "{} still carr{} conflict markers — resolve in a terminal first",
-        conflicted.join(", "),
-        if conflicted.len() == 1 { "ies" } else { "y" }
-    )))
+    Err(refuse(wording::conflicted_files(&conflicted)))
 }
 
 /// The repository-relative paths to stage and commit: exactly the files
@@ -595,159 +651,281 @@ fn confirmed_paths(local: &LocalState) -> Vec<String> {
         .collect()
 }
 
-/// The pull step of a commit: skipped without an upstream (publish
-/// follows) or when not behind after a fetch; otherwise `pull --rebase`,
-/// which the whole-repository dirty rule still guards — a failed rebase
-/// is aborted so the repository is never left mid-rebase from here.
-fn pull_step(state: &AppState, has_upstream: bool) -> Result<GitPullStep, GitError> {
-    let root = &state.project_root;
-    if !has_upstream {
-        return Ok(GitPullStep::Skipped {
-            reason: "not published yet — the push step publishes the branch".to_owned(),
-        });
-    }
-    let stopped =
-        |reason: String, details: Option<String>| Ok(GitPullStep::Stopped { reason, details });
-    let fetched = git::fetch(root)?;
-    if !fetched.success {
-        return stopped(
-            "the remote could not be reached, so the branch could not be brought up to date — the commit is safe and local; press Push once the remote is back".to_owned(),
-            Some(fetched.stderr.trim().to_owned()),
-        );
-    }
-    let Some(current) = read_local(state)? else {
-        return stopped(
-            "the project is no longer inside a git repository".to_owned(),
-            None,
-        );
-    };
-    if current.snapshot.behind == 0 {
-        return Ok(GitPullStep::Skipped {
-            reason: "nothing to integrate — the branch is not behind".to_owned(),
-        });
-    }
-    if !current.snapshot.dirty.is_empty() {
-        // After the commit, anything still dirty is outside the scope by
-        // construction — the files the pill never showed.
-        let outside: Vec<&str> = current
-            .snapshot
-            .dirty
-            .iter()
-            .map(|change| change.path.as_str())
-            .collect();
-        return stopped(
-            format!(
-                "the branch is {} behind, but uncommitted changes outside the workdown paths ({}) block the pull — the commit is safe and local; commit or stash them in a terminal, then press Pull and Push",
-                plural_commits(current.snapshot.behind),
-                outside.join(", ")
-            ),
-            None,
-        );
-    }
-    let behind = current.snapshot.behind;
-    let pulled = match git::pull(root) {
-        Ok(output) => output,
-        Err(error) => {
-            // Same reasoning as the pull endpoint: no rebase was underway
-            // before this request, so an abort only backs out ours.
-            let _ = git::abort_rebase(root);
-            return stopped(
-                "the pull was interrupted — the commit is safe and local; pull in a terminal, then press Push".to_owned(),
-                Some(error.to_string()),
-            );
-        }
-    };
-    if !pulled.success {
-        let _ = git::abort_rebase(root);
-        let raw = format!("{}\n{}", pulled.stdout.trim(), pulled.stderr.trim());
-        return stopped(conflict_wording(&raw), Some(raw.trim().to_owned()));
-    }
-    Ok(GitPullStep::Pulled { commits: behind })
-}
-
 /// The push step of a commit: not attempted when the pull stopped;
-/// otherwise the same push-or-publish the Push button runs, worded for
-/// the checklist.
-fn push_step(root: &Path, pull: &GitPullStep) -> Result<GitPushStep, GitError> {
+/// otherwise the same [`attempt_push`] the Push button runs, framed as
+/// a checklist row.
+fn push_step(root: &Path, pull: &GitPullStep) -> GitPushStep {
     if let GitPullStep::Stopped { .. } = pull {
-        return Ok(GitPushStep::Skipped {
-            reason: "not attempted — the pull did not complete".to_owned(),
-        });
+        return wording::push_not_attempted();
     }
-    let Some(snapshot) = git::snapshot(root)? else {
-        return Ok(GitPushStep::Stopped {
-            reason: "the project is no longer inside a git repository".to_owned(),
-            details: None,
-        });
-    };
-    Ok(match attempt_push(root, &snapshot)? {
-        PushAttempt::Pushed { published } => GitPushStep::Pushed { published },
-        PushAttempt::Refused(reason) => GitPushStep::Stopped {
-            reason,
-            details: None,
-        },
-        PushAttempt::Rejected { reason, details } => GitPushStep::Stopped {
-            reason: format!(
-                "{reason} — the commit is safe and local; pull, resolve, and press Push"
-            ),
-            details: Some(details),
-        },
-    })
+    wording::push_row(attempt_push(root))
 }
 
-/// The three things a stuck pull must say: the commit is safe, what it
-/// could not be combined with, and the way out. Conflicted paths are
-/// read from git's `CONFLICT (…): Merge conflict in <path>` lines.
-fn conflict_wording(raw: &str) -> String {
-    let conflicted: Vec<&str> = raw
-        .lines()
-        .filter_map(|line| line.split("Merge conflict in ").nth(1))
-        .map(str::trim)
-        .collect();
-    if conflicted.is_empty() {
-        "the commit is safe and local, but the pull did not complete — see the details, pull in a terminal, then press Push".to_owned()
-    } else {
+// ── Wording ─────────────────────────────────────────────────────────
+
+/// Every sentence a person reads from this surface.
+///
+/// The sections above produce facts — a [`PullAttempt`], a
+/// [`PushAttempt`], git's output — and come here to turn them into a
+/// refusal, a checklist row or an error message. The same fact is
+/// worded twice where the frame differs: as the answer to a button
+/// press, where a pull that did not happen is the whole story, and as
+/// one row of the commit's checklist, where the commit already exists
+/// and the row must say so and name the way out.
+mod wording {
+    use super::{refuse, GitActionError, PublishBlocker, PullAttempt, PushAttempt};
+    use workdown_core::git_data::{GitPullStep, GitPushStep};
+    use workdown_git::GitOutput;
+
+    pub(super) const NOT_A_REPOSITORY: &str = "the project is not inside a git repository";
+    pub(super) const REBASE_IN_PROGRESS: &str =
+        "a rebase is in progress in this repository — finish or abort it in a terminal first";
+    pub(super) const COMMIT_ON_DETACHED_HEAD: &str =
+        "detached HEAD — a commit here has no branch to push; check one out in a terminal first";
+    pub(super) const EMPTY_MESSAGE: &str = "the commit message is empty";
+    pub(super) const NOTHING_TO_COMMIT: &str = "nothing to commit — no workdown files have changed";
+    pub(super) const STALE_FILE_LIST: &str =
+        "the set of changed files has moved since the preview — review the new list before committing";
+    pub(super) const NO_IDENTITY: &str =
+        "git has no identity to commit as — set user.name and user.email in a terminal first";
+
+    pub(super) fn controls_disabled() -> String {
+        "git controls are not enabled — set 'serve.git_controls: true' in config.yaml and restart"
+            .to_owned()
+    }
+
+    pub(super) fn action_did_not_finish(cause: &str) -> String {
+        format!("the git action did not finish: {cause}")
+    }
+
+    // ── The Pull and Push buttons ────────────────────────────────────
+
+    /// The Pull button's answer: how many commits came in, or the
+    /// refusal.
+    pub(super) fn pull_response(attempt: PullAttempt) -> Result<u32, GitActionError> {
+        match attempt {
+            PullAttempt::Pulled { commits } => Ok(commits),
+            PullAttempt::NotBehind => Ok(0),
+            PullAttempt::NoUpstream => Err(refuse(
+                "the branch is not published yet — there is nothing to pull from; publish it first",
+            )),
+            PullAttempt::RebaseInProgress => Err(refuse(REBASE_IN_PROGRESS)),
+            PullAttempt::RemoteUnreachable { details } => Err(GitActionError::RemoteUnreachable(
+                format!("fetch failed: {details}"),
+            )),
+            PullAttempt::Blocked {
+                in_scope_dirty: true,
+                ..
+            } => Err(refuse(
+                "there are uncommitted changes — pull never touches uncommitted work; commit first",
+            )),
+            // Everything dirty is *outside* the workdown paths: the pill
+            // reads clean, so the message has to say what the repository
+            // sees.
+            PullAttempt::Blocked { outside, .. } => Err(refuse(format!(
+                "there are uncommitted changes outside the workdown paths ({}) — pull never touches uncommitted work; commit or stash them in a terminal first",
+                outside.join(", ")
+            ))),
+            PullAttempt::Failed {
+                conflicted,
+                details,
+            } => {
+                let sentence = if conflicted.is_empty() {
+                    "the pull did not complete — see the details, then pull in a terminal".to_owned()
+                } else {
+                    format!(
+                        "the pull could not combine a teammate's change to {} with yours — resolve the conflict in a terminal",
+                        conflicted.join(", ")
+                    )
+                };
+                Err(refuse(with_details(&sentence, &details)))
+            }
+        }
+    }
+
+    /// The Push button's answer: whether the branch was published (as
+    /// opposed to pushed), or the refusal.
+    pub(super) fn push_response(attempt: PushAttempt) -> Result<bool, GitActionError> {
+        match attempt {
+            PushAttempt::Pushed { published } => Ok(published),
+            PushAttempt::Blocked(blocker) => Err(refuse(publish_blocker(blocker))),
+            PushAttempt::Rejected { published, details } => {
+                Err(refuse(format!("{}: {details}", push_failed(published))))
+            }
+        }
+    }
+
+    // ── The commit's checklist ───────────────────────────────────────
+
+    /// The pull step of a commit as a checklist row. The commit exists
+    /// by now, so every outcome — even git failing to run — becomes a
+    /// row that says the commit is safe and what to do next.
+    pub(super) fn pull_row(attempt: Result<PullAttempt, GitActionError>) -> GitPullStep {
+        let skipped = |reason: &str| GitPullStep::Skipped {
+            reason: reason.to_owned(),
+        };
+        let stopped =
+            |reason: String, details: Option<String>| GitPullStep::Stopped { reason, details };
+        match attempt {
+            Ok(PullAttempt::Pulled { commits }) => GitPullStep::Pulled { commits },
+            Ok(PullAttempt::NoUpstream) => {
+                skipped("not published yet — the push step publishes the branch")
+            }
+            Ok(PullAttempt::NotBehind) => {
+                skipped("nothing to integrate — the branch is not behind")
+            }
+            Ok(PullAttempt::RebaseInProgress) => stopped(
+                "a rebase started in this repository meanwhile — the commit is safe and local; finish or abort it in a terminal, then press Pull and Push".to_owned(),
+                None,
+            ),
+            Ok(PullAttempt::RemoteUnreachable { details }) => stopped(
+                "the remote could not be reached, so the branch could not be brought up to date — the commit is safe and local; press Push once the remote is back".to_owned(),
+                Some(details),
+            ),
+            // After the commit, anything still dirty is outside the scope
+            // by construction — unless an editor wrote a workdown file in
+            // the meantime, which the first sentence covers.
+            Ok(PullAttempt::Blocked {
+                behind,
+                in_scope_dirty,
+                outside,
+            }) => stopped(
+                if in_scope_dirty {
+                    format!(
+                        "the branch is {} behind, but workdown files changed again since the commit — the commit is safe and local; press Commit & push again",
+                        plural_commits(behind)
+                    )
+                } else {
+                    format!(
+                        "the branch is {} behind, but uncommitted changes outside the workdown paths ({}) block the pull — the commit is safe and local; commit or stash them in a terminal, then press Pull and Push",
+                        plural_commits(behind),
+                        outside.join(", ")
+                    )
+                },
+                None,
+            ),
+            // The three things a stuck pull must say: the commit is safe,
+            // what it could not be combined with, and the way out.
+            Ok(PullAttempt::Failed {
+                conflicted,
+                details,
+            }) => stopped(
+                if conflicted.is_empty() {
+                    "the commit is safe and local, but the pull did not complete — see the details, pull in a terminal, then press Push".to_owned()
+                } else {
+                    format!(
+                        "the commit is safe and local, but it could not be combined with a teammate's change to {} — resolve the conflict in a terminal, then press Push",
+                        conflicted.join(", ")
+                    )
+                },
+                Some(details),
+            ),
+            Err(error) => stopped(
+                "the pull could not run — the commit is safe and local; pull in a terminal, then press Push".to_owned(),
+                Some(error.message()),
+            ),
+        }
+    }
+
+    /// The push row when the pull row stopped: nothing was tried.
+    pub(super) fn push_not_attempted() -> GitPushStep {
+        GitPushStep::Skipped {
+            reason: "not attempted — the pull did not complete".to_owned(),
+        }
+    }
+
+    /// The push step of a commit as a checklist row; infallible for the
+    /// same reason as [`pull_row`].
+    pub(super) fn push_row(attempt: Result<PushAttempt, GitActionError>) -> GitPushStep {
+        let stopped =
+            |reason: String, details: Option<String>| GitPushStep::Stopped { reason, details };
+        match attempt {
+            Ok(PushAttempt::Pushed { published }) => GitPushStep::Pushed { published },
+            Ok(PushAttempt::Blocked(blocker)) => stopped(publish_blocker(blocker).to_owned(), None),
+            Ok(PushAttempt::Rejected { published, details }) => stopped(
+                format!(
+                    "{} — the commit is safe and local; pull, resolve, and press Push",
+                    push_failed(published)
+                ),
+                Some(details),
+            ),
+            Err(error) => stopped(
+                "the push could not run — the commit is safe and local; press Push".to_owned(),
+                Some(error.message()),
+            ),
+        }
+    }
+
+    // ── Commit refusals ──────────────────────────────────────────────
+
+    pub(super) fn conflicted_files(paths: &[&str]) -> String {
         format!(
-            "the commit is safe and local, but it could not be combined with a teammate's change to {} — resolve the conflict in a terminal, then press Push",
-            conflicted.join(", ")
+            "{} still carr{} conflict markers — resolve in a terminal first",
+            paths.join(", "),
+            if paths.len() == 1 { "ies" } else { "y" }
         )
     }
-}
 
-/// A commit that did not happen, worded from git's output where the
-/// cause is recognizable, with the raw output kept behind the sentence.
-/// A missing identity never reaches here: it is checked before staging.
-fn commit_failure(output: &git::GitOutput) -> String {
-    let raw = format!("{}\n{}", output.stdout.trim(), output.stderr.trim());
-    let lower = raw.to_lowercase();
-    let sentence = if lower.contains("gpg")
-        || lower.contains("signing")
-        || lower.contains("ssh-keygen")
-    {
-        "the commit could not be signed — the signing key or agent is not available to the server; commit from a terminal, or turn off commit.gpgsign"
-    } else if lower.contains("hook") {
-        "a git hook rejected the commit"
-    } else {
-        "the commit failed — a hook may have rejected it; see the details"
-    };
-    with_details(sentence, &raw)
-}
-
-/// `sentence`, then git's raw output after a blank line when there is
-/// any — the convention the dialog splits on.
-fn with_details(sentence: &str, raw: &str) -> String {
-    let raw = raw.trim();
-    if raw.is_empty() {
-        sentence.to_owned()
-    } else {
-        format!("{sentence}\n\n{raw}")
+    pub(super) fn staging_failed(stderr: &str) -> String {
+        with_details("the changes could not be staged", stderr)
     }
-}
 
-fn plural_commits(count: u32) -> String {
-    if count == 1 {
-        "1 commit".to_owned()
-    } else {
-        format!("{count} commits")
+    /// A commit that did not happen, worded from git's output where the
+    /// cause is recognizable, with the raw output kept behind the
+    /// sentence. A missing identity never reaches here: it is checked
+    /// before staging.
+    pub(super) fn commit_failed(output: &GitOutput) -> String {
+        let raw = format!("{}\n{}", output.stdout.trim(), output.stderr.trim());
+        let lower = raw.to_lowercase();
+        let sentence = if lower.contains("gpg")
+            || lower.contains("signing")
+            || lower.contains("ssh-keygen")
+        {
+            "the commit could not be signed — the signing key or agent is not available to the server; commit from a terminal, or turn off commit.gpgsign"
+        } else if lower.contains("hook") {
+            "a git hook rejected the commit"
+        } else {
+            "the commit failed — a hook may have rejected it; see the details"
+        };
+        with_details(sentence, &raw)
+    }
+
+    // ── Shared pieces ────────────────────────────────────────────────
+
+    /// Why a branch cannot be published — the same sentence for the
+    /// button and the checklist, since neither has anything to add.
+    fn publish_blocker(blocker: PublishBlocker) -> &'static str {
+        match blocker {
+            PublishBlocker::DetachedHead => {
+                "detached HEAD — there is no branch to publish; check one out in a terminal first"
+            }
+            PublishBlocker::NoCommits => "the branch has no commits yet — nothing to publish",
+            PublishBlocker::NoRemote => {
+                "no remote to publish to — add one (or set remote.pushDefault) in a terminal"
+            }
+        }
+    }
+
+    fn push_failed(published: bool) -> String {
+        format!("{} failed", if published { "publish" } else { "push" })
+    }
+
+    /// `sentence`, then git's raw output after a blank line when there
+    /// is any — the convention the dialog splits on.
+    fn with_details(sentence: &str, raw: &str) -> String {
+        let raw = raw.trim();
+        if raw.is_empty() {
+            sentence.to_owned()
+        } else {
+            format!("{sentence}\n\n{raw}")
+        }
+    }
+
+    fn plural_commits(count: u32) -> String {
+        if count == 1 {
+            "1 commit".to_owned()
+        } else {
+            format!("{count} commits")
+        }
     }
 }

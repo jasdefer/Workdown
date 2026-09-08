@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::calendar::WorkingCalendar;
 use super::views::DisplayConfig;
@@ -84,8 +84,15 @@ impl Config {
 /// The config key a workdown path came from. The role, not the
 /// filename, is what a surface names ("schema" whatever the file is
 /// called) and what tells a work item from a definition file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+///
+/// On the wire (the git status and commit preview) it serializes as
+/// [`PathRole::label`] — the same word the pill prints — so the
+/// generated TypeScript type is the vocabulary the browser compares
+/// against, and a test pins the two spellings together.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
 pub enum PathRole {
+    #[serde(rename = "items")]
     WorkItems,
     Templates,
     Resources,
@@ -106,7 +113,8 @@ impl PathRole {
     ];
 
     /// The short name surfaces use for this role — the git pill's
-    /// `3 items · schema`, the commit dialog's grouping.
+    /// `3 items · schema`, the commit dialog's grouping, the role
+    /// column of `workdown changes --files`.
     pub fn label(self) -> &'static str {
         match self {
             PathRole::WorkItems => "items",
@@ -208,4 +216,97 @@ pub struct ViewDefaults {
     /// hardcoded fallbacks.
     #[serde(default)]
     pub display: DisplayConfig,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::config::parse_config;
+
+    fn config(work_items: &str, views: &str) -> Config {
+        parse_config(&format!(
+            "\
+project:
+  name: Test
+  description: ''
+paths:
+  work_items: {work_items}
+  templates: .workdown/templates
+  resources: .workdown/resources.yaml
+  views: {views}
+schema: .workdown/schema.yaml
+defaults:
+  board_field: status
+  tree_field: parent
+  graph_field: parent
+"
+        ))
+        .expect("config parses")
+    }
+
+    fn roles_and_paths(paths: &[WorkdownPath]) -> Vec<(PathRole, &str)> {
+        paths
+            .iter()
+            .map(|entry| (entry.role, entry.path.to_str().expect("utf-8 path")))
+            .collect()
+    }
+
+    #[test]
+    fn workdown_paths_lists_every_role_in_a_fixed_order() {
+        let paths = config("workdown-items", ".workdown/views.yaml")
+            .workdown_paths(Path::new(".workdown/config.yaml"));
+        assert_eq!(
+            roles_and_paths(&paths),
+            vec![
+                (PathRole::WorkItems, "workdown-items"),
+                (PathRole::Templates, ".workdown/templates"),
+                (PathRole::Resources, ".workdown/resources.yaml"),
+                (PathRole::Views, ".workdown/views.yaml"),
+                (PathRole::Schema, ".workdown/schema.yaml"),
+                (PathRole::Config, ".workdown/config.yaml"),
+            ]
+        );
+    }
+
+    #[test]
+    fn workdown_paths_keeps_a_repeated_path_once_under_its_first_role() {
+        // Views and schema pointing at the same file is unusual but legal;
+        // the git scope and the hook installer must not list it twice.
+        let paths = config("workdown-items", ".workdown/schema.yaml")
+            .workdown_paths(Path::new(".workdown/config.yaml"));
+        let roles: Vec<PathRole> = paths.iter().map(|entry| entry.role).collect();
+        assert!(roles.contains(&PathRole::Views));
+        assert!(!roles.contains(&PathRole::Schema));
+        assert_eq!(paths.len(), 5);
+    }
+
+    #[test]
+    fn workdown_paths_carries_the_config_path_as_given() {
+        let paths = config("workdown-items", ".workdown/views.yaml")
+            .workdown_paths(Path::new("/elsewhere/config.yaml"));
+        let config_entry = paths
+            .iter()
+            .find(|entry| entry.role == PathRole::Config)
+            .expect("config entry");
+        assert_eq!(config_entry.path, PathBuf::from("/elsewhere/config.yaml"));
+    }
+
+    #[test]
+    fn a_role_serializes_as_its_label() {
+        // The wire spelling and the printed word are one vocabulary; a
+        // rename on either side must fail here, not in the browser.
+        for role in std::iter::once(PathRole::WorkItems).chain(PathRole::DEFINITIONS) {
+            let serialized = serde_json::to_string(&role).expect("serializes");
+            assert_eq!(serialized, format!("\"{}\"", role.label()), "{role:?}");
+        }
+    }
+
+    #[test]
+    fn definitions_are_every_role_but_work_items() {
+        for role in PathRole::DEFINITIONS {
+            assert!(!role.is_work_item(), "{role:?} is a definition role");
+        }
+        assert!(PathRole::WorkItems.is_work_item());
+        assert!(!PathRole::DEFINITIONS.contains(&PathRole::WorkItems));
+    }
 }

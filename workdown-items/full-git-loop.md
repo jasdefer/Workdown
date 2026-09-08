@@ -43,7 +43,8 @@ individual features are downstream of it.
 ## Decision (2026-09-07)
 
 **How much of a user's repository may workdown touch, and on whose
-gesture?** Answered as follows; ADR-006 carries a note pointing here.
+gesture?** Answered as follows; recorded as ADR-014, which ADR-006's
+note points to.
 
 - **The web app may commit, the CLI may not.** `workdown add`, `set`,
   `unset`, `move`, `rename` and `body` touch the working tree only, as
