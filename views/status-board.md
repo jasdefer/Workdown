@@ -26,7 +26,6 @@ Cards grouped into columns by `status`.
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
-- [The full git loop, without leaving the board](../workdown-items/full-git-loop.md)
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 
 ## done
@@ -72,6 +71,7 @@ Cards grouped into columns by `status`.
 - [First view end-to-end (board, read-only)](../workdown-items/first-view-end-to-end.md)
 - [Foundation](../workdown-items/foundation.md)
 - [Consolidate duplication and tighten types before more foundation work](../workdown-items/foundation-cleanup.md)
+- [The full git loop, without leaving the board](../workdown-items/full-git-loop.md)
 - [Gantt duration input mode](../workdown-items/gantt-duration-mode.md)
 - [Gantt predecessor input mode](../workdown-items/gantt-predecessor-mode.md)
 - [Git sync controls in the web UI](../workdown-items/git-sync-controls.md)

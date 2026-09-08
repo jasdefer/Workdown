@@ -8,9 +8,6 @@ flowchart TD
         burndown-chart-design["Decide where the burndown's time axis comes from"]
     end
     config-hot-reload["Read config.yaml per request so it hot-reloads like everything else"]
-    subgraph full-git-loop ["The full git loop, without leaving the board"]
-        prepare-commit-msg-hook["Prefill terminal commits with the generated message"]
-    end
     subgraph misc-work ["Miscellaneous improvements"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
         typed-date-filter-comparison["Compare dates in filters as dates, not as text"]
@@ -18,6 +15,7 @@ flowchart TD
     subgraph multi-project-support ["Multi-project support"]
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]
     end
+    prepare-commit-msg-hook["Prefill terminal commits with the generated message"]
     project-load-cache["Cache the project load in the server (when it starts to hurt)"]
     recording-dot-extraction["Extract the recording indicator the six item-presenting views each rebuilt"]
     subgraph schema-editor-web ["See and edit the schema in the web app"]

@@ -5,13 +5,12 @@ Hierarchical outline following `parent` upward to roots.
 - [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md) — status: to_do
   - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md) — status: to_do
 - [Read config.yaml per request so it hot-reloads like everything else](../workdown-items/config-hot-reload.md) — status: to_do
-- [The full git loop, without leaving the board](../workdown-items/full-git-loop.md) — status: in_progress
-  - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md) — status: to_do
 - [Miscellaneous improvements](../workdown-items/misc-work.md) — status: in_progress
   - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md) — status: to_do
   - [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md) — status: to_do
 - [Multi-project support](../workdown-items/multi-project-support.md) — status: to_do
   - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — status: to_do
+- [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md) — status: to_do
 - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md) — status: to_do
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md) — status: to_do
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md) — status: to_do

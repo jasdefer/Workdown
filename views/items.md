@@ -52,7 +52,7 @@
 | [first-view-end-to-end](../workdown-items/first-view-end-to-end.md) | done | [server](../workdown-items/server.md) | [walking-skeleton](../workdown-items/walking-skeleton.md), [ui-foundation](../workdown-items/ui-foundation.md) |
 | [foundation](../workdown-items/foundation.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) |  |
 | [foundation-cleanup](../workdown-items/foundation-cleanup.md) | done | [foundation](../workdown-items/foundation.md) |  |
-| [full-git-loop](../workdown-items/full-git-loop.md) | in_progress |  |  |
+| [full-git-loop](../workdown-items/full-git-loop.md) | done |  |  |
 | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) | done | [renderers](../workdown-items/renderers.md) | [render-gantt](../workdown-items/render-gantt.md), [duration-field-type](../workdown-items/duration-field-type.md) |
 | [gantt-predecessor-mode](../workdown-items/gantt-predecessor-mode.md) | done | [renderers](../workdown-items/renderers.md) | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) |
 | [git-sync-controls](../workdown-items/git-sync-controls.md) | done | [full-git-loop](../workdown-items/full-git-loop.md) |  |
