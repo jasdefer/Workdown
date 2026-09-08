@@ -10,7 +10,7 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use workdown_core::model::config::Config;
+use workdown_core::model::config::{Config, PathRole};
 use workdown_core::operations::install_hooks::{
     hook_script, install_pre_commit, manual_hook_line, HookMode, HookTemplate, InstallHooksError,
     InstallOutcome,
@@ -73,68 +73,38 @@ struct GitInfo {
     project_prefix: Option<String>,
 }
 
-/// Ask git for the hooks path and the project's prefix. Returns
-/// `Ok(None)` when the project root is not inside a git repository.
-///
-/// `rev-parse` prints one line per query, in argument order. The hooks
-/// path honors `core.hooksPath` and gitfile worktrees, which is why
-/// this shells out instead of assuming `.git/hooks`.
+/// Ask git for the hooks path and the project's prefix, through the
+/// shared git layer. Returns `Ok(None)` when the project root is not
+/// inside a git repository; a git that cannot run at all is an error
+/// that names the consequence.
 fn resolve_git_info(project_root: &Path) -> anyhow::Result<Option<GitInfo>> {
-    let result = std::process::Command::new("git")
-        .args(["rev-parse", "--show-prefix", "--git-path", "hooks"])
-        .current_dir(project_root)
-        .output();
-
-    let output = match result {
-        Ok(output) if output.status.success() => output,
-        Ok(_) => return Ok(None),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            anyhow::bail!("git is not on PATH — cannot locate the hooks directory")
-        }
-        Err(e) => return Err(e.into()),
+    let cannot_locate = |error: workdown_git::GitError| {
+        anyhow::anyhow!("{error} — cannot locate the hooks directory")
     };
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut lines = stdout.lines();
-    let prefix = lines.next().unwrap_or("").trim().to_owned();
-    let hooks = lines.next().unwrap_or("").trim().to_owned();
-    if hooks.is_empty() {
-        anyhow::bail!("git rev-parse returned no hooks path");
-    }
-
-    let hooks_path = PathBuf::from(&hooks);
-    let hooks_dir = if hooks_path.is_absolute() {
-        hooks_path
-    } else {
-        project_root.join(hooks_path)
+    let Some(hooks_dir) = workdown_git::hooks_directory(project_root).map_err(cannot_locate)?
+    else {
+        return Ok(None);
     };
-
+    let prefix = workdown_git::repository_prefix(project_root)
+        .map_err(cannot_locate)?
+        .unwrap_or_default();
     Ok(Some(GitInfo {
         hooks_dir,
         project_prefix: (!prefix.is_empty()).then_some(prefix),
     }))
 }
 
-/// The paths whose staged changes require a re-render: the work items
-/// directory plus every workdown configuration file, straight from the
-/// loaded config — no hardcoded names.
+/// The paths whose staged changes require a re-render: every workdown
+/// path from the config except the templates. Templates shape new items
+/// at `workdown add` time and never appear in a rendered view, so a
+/// commit that only touches them has nothing to re-render.
 fn watched_paths(config: &Config, config_path: &Path) -> Vec<String> {
-    let candidates = [
-        &config.paths.work_items,
-        &PathBuf::from(config_path),
-        &config.schema,
-        &config.paths.resources,
-        &config.paths.views,
-    ]
-    .map(|path| sh_path(path));
-
-    let mut paths: Vec<String> = Vec::new();
-    for candidate in candidates {
-        if !paths.contains(&candidate) {
-            paths.push(candidate);
-        }
-    }
-    paths
+    config
+        .workdown_paths(config_path)
+        .iter()
+        .filter(|workdown_path| workdown_path.role != PathRole::Templates)
+        .map(|workdown_path| sh_path(&workdown_path.path))
+        .collect()
 }
 
 /// The render output directory from `views.yaml`, or the render

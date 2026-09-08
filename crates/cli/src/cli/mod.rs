@@ -240,6 +240,21 @@ pub enum Command {
         #[arg(long)]
         check: bool,
     },
+    /// Print the commit message the web app's "Commit & push" button
+    /// would generate for the uncommitted workdown changes.
+    ///
+    /// Describes the working tree against HEAD, limited to the paths
+    /// config.yaml names (work items, templates, resources, views,
+    /// schema) plus config.yaml itself — item titles instead of
+    /// filenames, field names and values worded from the schema. Other
+    /// uncommitted files in the repository are counted in a note on
+    /// stderr and never described. Prints "No changes" on a clean tree.
+    Changes {
+        /// Also list the files the message covers, one per line,
+        /// before the message
+        #[arg(long)]
+        files: bool,
+    },
     /// Change a work item's id — moves the file and rewrites every
     /// incoming link/links reference.
     ///

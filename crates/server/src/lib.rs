@@ -11,7 +11,7 @@
 
 pub mod api;
 pub mod envelope;
-pub mod git;
+pub mod origin;
 pub mod state;
 pub mod timer;
 pub mod watcher;
@@ -63,7 +63,12 @@ struct UiAssets;
 ///    the client-side router can resolve them.
 pub fn router(state: AppState) -> Router {
     Router::new()
-        .nest("/api", api::router())
+        // Every mutating API route refuses a foreign `Origin` — one layer,
+        // so a new endpoint is guarded the day it lands.
+        .nest(
+            "/api",
+            api::router().layer(axum::middleware::from_fn(origin::guard_mutations)),
+        )
         .fallback(asset_handler)
         // Convert any handler panic into a 500 instead of dropping the
         // connection. view_data::extract panics on invariants the

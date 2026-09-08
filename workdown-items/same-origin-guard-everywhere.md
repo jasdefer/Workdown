@@ -1,10 +1,31 @@
 ---
 id: same-origin-guard-everywhere
-status: to_do
+status: done
 title: Apply the same-origin check to every mutating endpoint, not just the git ones
 tags:
 - security
 ---
+
+## Decisions taken (2026-09-07)
+
+1. **One layer, not per-handler calls.** The check moved to
+   `crates/server/src/origin.rs` and is applied as middleware over the
+   whole `/api` router for every method but GET, HEAD and OPTIONS. A
+   new mutating endpoint is guarded the day it lands. The git POST
+   handlers dropped their own copies.
+2. **Two reads keep their own check.** `GET /api/git?fetch=true`
+   contacts the remote and can invoke a credential helper;
+   `GET /api/git/commit-preview` returns file contents. Both call the
+   shared predicate from the handler, since a layer over reads in
+   general would gain nothing: the browser already withholds a
+   cross-origin read's response from the foreign page.
+3. **Refusal shape unchanged.** `403` with the envelope's
+   `cross-origin request refused`, the same answer the git endpoints
+   gave before. Clients without an `Origin` header pass.
+
+Tests: `crates/server/tests/origin_guard.rs` covers an item mutation,
+the two bodiless timer POSTs that motivated the item, the four view
+mutations, and reads passing under a foreign origin.
 
 ## In plain words
 

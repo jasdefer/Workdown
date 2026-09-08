@@ -5,8 +5,11 @@
   (`↓behind ↑ahead · N local`, or `in sync`), a Pull button that is
   enabled only while the tree is clean — pull never touches uncommitted
   work — and a Push button that is enabled only when local commits
-  exist; the tooltips and the dirty hint say why either is off. When
-  the remote couldn't be reached, a hint appears whose click retries.
+  exist; the tooltips and the dirty hint say why either is off. On a
+  branch with no upstream the summary reads `not published` and the
+  same button reads `Publish`: the first push also creates the remote
+  branch, which the server handles. When the remote couldn't be
+  reached, a hint appears whose click retries.
 
   Staleness is the server's problem, not this component's: it watches
   the repository's git directory and pings the git-named live-update
@@ -19,6 +22,7 @@
 -->
 <script lang="ts">
 	import { gitStore } from '$lib/stores/git.svelte';
+	import CommitDialog from './CommitDialog.svelte';
 	import { pillModel } from './gitPill';
 
 	const model = $derived(pillModel(gitStore.status, gitStore.busy));
@@ -37,22 +41,38 @@
 				remote unreachable ↻
 			</button>
 		{/if}
-		<button
-			class="action"
-			onclick={() => void gitStore.pull()}
-			disabled={!model.canPull}
-			title={model.pullTitle}
-		>
-			Pull
-		</button>
-		<button
-			class="action"
-			onclick={() => void gitStore.push()}
-			disabled={!model.canPush}
-			title={model.pushTitle}
-		>
-			Push
-		</button>
+		{#if model.showCommit}
+			<button
+				class="action primary"
+				onclick={() => {
+					gitStore.openCommitDialog();
+				}}
+				disabled={!model.canCommit}
+				title={model.commitTitle}
+			>
+				Commit &amp; push
+			</button>
+		{/if}
+		{#if model.showPull}
+			<button
+				class="action"
+				onclick={() => void gitStore.pull()}
+				disabled={!model.canPull}
+				title={model.pullTitle}
+			>
+				Pull
+			</button>
+		{/if}
+		{#if model.showPush}
+			<button
+				class="action"
+				onclick={() => void gitStore.push()}
+				disabled={!model.canPush}
+				title={model.pushTitle}
+			>
+				{model.pushLabel}
+			</button>
+		{/if}
 		{#if gitStore.message !== null}
 			<button
 				class="message {gitStore.message.kind}"
@@ -65,9 +85,24 @@
 			</button>
 		{/if}
 	</div>
+	{#if gitStore.dialogOpen}
+		<CommitDialog />
+	{/if}
 {/if}
 
 <style>
+	.action.primary {
+		background-color: var(--color-accent);
+		color: var(--color-accent-fg);
+		border-color: var(--color-accent);
+		font-weight: 600;
+	}
+
+	.action.primary:hover:enabled {
+		background-color: var(--color-accent);
+		opacity: 0.9;
+	}
+
 	.branch {
 		font-weight: 600;
 		max-width: 10rem;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pillModel, pullMessage } from './gitPill';
+import { pillModel, pullMessage, pushMessage } from './gitPill';
 import type { GitStatus } from '$lib/api/generated/GitStatus';
 
 const ready = (overrides: Partial<Extract<GitStatus, { state: 'ready' }>> = {}): GitStatus => ({
@@ -8,7 +8,8 @@ const ready = (overrides: Partial<Extract<GitStatus, { state: 'ready' }>> = {}):
 	has_upstream: true,
 	ahead: 0,
 	behind: 0,
-	dirty_count: 0,
+	dirty_items: 0,
+	dirty_definitions: [],
 	fetch_error: null,
 	...overrides
 });
@@ -30,19 +31,25 @@ describe('pillModel', () => {
 	it('summarises counts, mentioning only what is non-zero', () => {
 		expect(pillModel(ready({ behind: 2 }), false).summary).toBe('↓2');
 		expect(pillModel(ready({ ahead: 1 }), false).summary).toBe('↑1');
-		expect(pillModel(ready({ ahead: 1, behind: 2, dirty_count: 3 }), false).summary).toBe(
-			'↓2 ↑1 · 3 local'
+		expect(pillModel(ready({ ahead: 1, behind: 2, dirty_items: 3 }), false).summary).toBe(
+			'↓2 ↑1 · 3 items'
 		);
-		expect(pillModel(ready({ dirty_count: 1 }), false).summary).toBe('1 local');
+		expect(pillModel(ready({ dirty_items: 1 }), false).summary).toBe('1 item');
+		expect(pillModel(ready({ dirty_definitions: ['schema'] }), false).summary).toBe('schema');
+		expect(
+			pillModel(ready({ dirty_items: 2, dirty_definitions: ['schema', 'views'] }), false).summary
+		).toBe('2 items · schema, views');
 	});
 
 	it('enables pull only with an upstream, a clean tree, and no operation running', () => {
 		expect(pillModel(ready(), false).canPull).toBe(true);
 		expect(pillModel(ready(), true).canPull).toBe(false);
-		expect(pillModel(ready({ has_upstream: false }), false).canPull).toBe(false);
+		const unpublished = pillModel(ready({ has_upstream: false }), false);
+		expect(unpublished.canPull).toBe(false);
+		expect(unpublished.pullTitle).toBe('Not published yet — nothing to pull from');
 		// Pull never touches uncommitted work — the button goes off and
 		// the tooltip carries the way out.
-		const dirty = pillModel(ready({ dirty_count: 1 }), false);
+		const dirty = pillModel(ready({ dirty_items: 1 }), false);
 		expect(dirty.canPull).toBe(false);
 		expect(dirty.pullTitle).toBe(
 			'Commit your local changes first — pull never touches uncommitted work'
@@ -57,20 +64,44 @@ describe('pillModel', () => {
 		expect(unreachable.remoteHint).toBe('could not resolve host');
 	});
 
-	it('enables push only with an upstream and commits to publish', () => {
+	it('enables push only with commits to publish and no operation running', () => {
 		expect(pillModel(ready({ ahead: 1 }), false).canPush).toBe(true);
 		expect(pillModel(ready(), false).canPush).toBe(false);
 		expect(pillModel(ready({ ahead: 1 }), true).canPush).toBe(false);
-		expect(pillModel(ready({ ahead: 1, has_upstream: false }), false).canPush).toBe(false);
 	});
 
 	it('explains why push is unavailable', () => {
 		expect(pillModel(ready(), false).pushTitle).toBe('Nothing to push — no local commits');
-		expect(pillModel(ready({ has_upstream: false }), false).pushTitle).toBe(
-			'No upstream branch configured'
-		);
 		expect(pillModel(ready({ ahead: 2 }), false).pushTitle).toBe('Push 2 commits');
 		expect(pillModel(ready({ ahead: 1 }), false).pushTitle).toBe('Push 1 commit');
+		expect(pillModel(ready({ ahead: 1 }), false).pushLabel).toBe('Push');
+	});
+
+	it('turns push into publish on a branch that has no upstream', () => {
+		// Nothing has left the machine, so "in sync" would be a lie; the
+		// button offers the way out instead of greying out. Ahead/behind
+		// carry no information without an upstream, so no arrows.
+		const model = pillModel(ready({ branch: 'feature', has_upstream: false }), false);
+		expect(model.summary).toBe('not published');
+		expect(model.pushLabel).toBe('Publish');
+		expect(model.pushTitle).toBe('Publish feature');
+		expect(model.canPush).toBe(true);
+		expect(pillModel(ready({ has_upstream: false }), true).canPush).toBe(false);
+		expect(pillModel(ready({ has_upstream: false, dirty_items: 2 }), false).summary).toBe(
+			'not published · 2 items'
+		);
+	});
+
+	it('offers nothing on a detached head', () => {
+		// `HEAD` is the wire contract for "no branch": nothing to publish,
+		// nothing to pull from — and again not "in sync".
+		const model = pillModel(ready({ branch: 'HEAD', has_upstream: false }), false);
+		expect(model.summary).toBe('detached');
+		expect(model.pushLabel).toBe('Push');
+		expect(model.canPush).toBe(false);
+		expect(model.canPull).toBe(false);
+		expect(model.pushTitle).toBe('Detached HEAD — check out a branch first');
+		expect(model.pullTitle).toBe('Detached HEAD — check out a branch first');
 	});
 
 	it('tells whether the pull actually brought something in', () => {
@@ -79,13 +110,60 @@ describe('pillModel', () => {
 		expect(pullMessage(3)).toBe('Pulled 3 commits');
 	});
 
+	it('tells whether the push published the branch or pushed to its upstream', () => {
+		expect(pushMessage(false, 'main')).toBe('Pushed');
+		expect(pushMessage(true, 'feature')).toBe('Published feature');
+	});
+
 	it('reminds about uncommitted changes without blocking push', () => {
-		const model = pillModel(ready({ ahead: 1, dirty_count: 2 }), false);
+		const model = pillModel(ready({ ahead: 1, dirty_items: 2 }), false);
 		expect(model.canPush).toBe(true);
-		expect(model.dirtyHint).toBe('2 uncommitted files stay local — commit them to publish');
-		expect(pillModel(ready({ dirty_count: 1 }), false).dirtyHint).toBe(
-			'1 uncommitted file stays local — commit it to publish'
+		expect(model.dirtyHint).toBe('Uncommitted changes stay local — commit them to publish');
+		// A changed definition file alone is also uncommitted work.
+		expect(pillModel(ready({ dirty_definitions: ['schema'] }), false).dirtyHint).toBe(
+			'Uncommitted changes stay local — commit them to publish'
 		);
+		expect(pillModel(ready({ dirty_definitions: ['schema'] }), false).canPull).toBe(false);
 		expect(pillModel(ready(), false).dirtyHint).toBe(null);
+	});
+
+	it('shows Commit & push first while workdown changes are uncommitted', () => {
+		// Pull stays beside it, off, with its "commit first" hint; Push is
+		// not offered — the commit button pushes.
+		const dirty = pillModel(ready({ dirty_items: 2, ahead: 1 }), false);
+		expect(dirty.showCommit).toBe(true);
+		expect(dirty.canCommit).toBe(true);
+		expect(dirty.showPull).toBe(true);
+		expect(dirty.canPull).toBe(false);
+		expect(dirty.showPush).toBe(false);
+		expect(pillModel(ready({ dirty_definitions: ['views'] }), false).showCommit).toBe(true);
+		expect(pillModel(ready({ dirty_items: 1 }), true).canCommit).toBe(false);
+	});
+
+	it('shows only the sync button the clean tree needs', () => {
+		const synced = pillModel(ready(), false);
+		expect([synced.showCommit, synced.showPull, synced.showPush]).toEqual([false, false, false]);
+		const ahead = pillModel(ready({ ahead: 2 }), false);
+		expect([ahead.showCommit, ahead.showPull, ahead.showPush]).toEqual([false, false, true]);
+		const behind = pillModel(ready({ behind: 1 }), false);
+		expect([behind.showCommit, behind.showPull, behind.showPush]).toEqual([false, true, false]);
+		const both = pillModel(ready({ ahead: 1, behind: 1 }), false);
+		expect([both.showPull, both.showPush]).toEqual([true, true]);
+		const unpublished = pillModel(ready({ has_upstream: false }), false);
+		expect([unpublished.showCommit, unpublished.showPull, unpublished.showPush]).toEqual([
+			false,
+			false,
+			true
+		]);
+	});
+
+	it('keeps the sync buttons visible but off on a detached head', () => {
+		const detached = pillModel(
+			ready({ branch: 'HEAD', has_upstream: false, dirty_items: 1 }),
+			false
+		);
+		expect(detached.showCommit).toBe(false);
+		expect(detached.showPull).toBe(true);
+		expect(detached.showPush).toBe(true);
 	});
 });

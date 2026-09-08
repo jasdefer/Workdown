@@ -23,3 +23,10 @@ defaults:
     title: title
     # Tint cards and bars by the schema's condition-derived color field.
     color: color
+
+# Settings for `workdown serve` (the local web UI).
+serve:
+  # Git pull/push controls in the header. This repo is the tool's own
+  # item repo, so the whole-code-repo caveat from the default config
+  # applies knowingly: push publishes committed work only.
+  git_controls: true

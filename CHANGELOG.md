@@ -5,6 +5,58 @@ tagged version into the top of that version's GitHub release page, so
 entries are written for people using workdown, not for people reading
 its source — internal refactors are deliberately absent.
 
+## Unreleased
+
+### Added
+
+- **Commit from the board.** With `serve.git_controls` on, the git pill
+  shows a **Commit & push** button whenever workdown files have
+  uncommitted changes. It opens a dialog listing exactly what will be
+  committed — work items and definition files under the paths
+  `config.yaml` names, nothing else in the repository — with a commit
+  message generated from the change itself (`Implement login: Status →
+  In Progress`, `Move 2 items to Done`, `Update 3 work items, 1 added`),
+  editable before confirming. Confirming commits those files, pulls with
+  rebase only if the branch is behind, and pushes, then shows the three
+  steps as a checklist. If the set of changes moved while the dialog was
+  open, the commit is refused and the list reloads. A pull that cannot
+  complete leaves the commit safe and local and says what to do next.
+  The CLI stays commit-free.
+- **`workdown changes`** prints that same generated message for the
+  uncommitted workdown changes from a terminal, with `--files` to list
+  the files it covers. Other uncommitted files in the repository are
+  noted on stderr and never described.
+
+### Fixed
+
+- Every mutating API endpoint now refuses requests from a foreign
+  browser origin, not just the git ones. A bodiless POST such as
+  `/api/timer/stop` is a request browsers send without asking the server
+  first, so another website open in the same browser could stop a
+  running timer while `workdown serve` was up — a blind nuisance write,
+  no data leak. The check is one layer over the whole API; scripts and
+  `curl`, which send no `Origin`, are unaffected.
+
+### Changed
+
+- The git pill counts **only workdown files**: work items under
+  `paths.work_items` as a number, and changed definition files by role
+  (`3 items · schema` instead of `4 local`). Source files, rendered
+  views and anything else in the repository that `config.yaml` does not
+  name no longer show up in the pill — they are named only where they
+  matter, in the message when a pull has to refuse because of them.
+
+- The git pill's Push button now **publishes** a branch that has never
+  been pushed instead of greying out with "No upstream branch
+  configured". On such a branch the summary reads `not published`
+  (previously a false `in sync`), the button reads `Publish`, and one
+  click creates the branch on the remote and records it as the upstream
+  — the `git push -u origin <branch>` step that used to need a terminal.
+  The remote is picked the way editors do: `remote.pushDefault` if set,
+  otherwise the only remote, otherwise `origin`; with several remotes
+  and no default, the click says so and leaves it to the terminal. A
+  detached head reads `detached` with both buttons off.
+
 ## 0.2.6 - 2026-09-02
 
 ### Added

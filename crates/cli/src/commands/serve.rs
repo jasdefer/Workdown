@@ -137,7 +137,9 @@ fn git_controls_enabled(state: &AppState) -> bool {
 /// a warning where it matters) on any failure: the controls still work,
 /// they just won't refresh on terminal-side git activity.
 async fn start_git_watch(state: &AppState) -> Option<workdown_server::watcher::WatchGuard> {
-    let git_directory = match workdown_server::git::git_directory(&state.project_root).await {
+    // A blocking call on the async runtime, once, before any request is
+    // served: one local `rev-parse` at startup is not worth a thread.
+    let git_directory = match workdown_git::git_directory(&state.project_root) {
         Ok(Some(directory)) => directory,
         // Not a repository: the status endpoint already answers
         // `not_a_repo` and the UI hides the controls — nothing to watch.

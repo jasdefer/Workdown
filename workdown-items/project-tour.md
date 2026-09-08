@@ -1,8 +1,9 @@
 ---
 id: project-tour
 title: Animated project tour in the web UI
-status: in_progress
-tags: [web-ui]
+status: done
+tags:
+- web-ui
 ---
 
 ## In plain words

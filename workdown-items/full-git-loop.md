@@ -1,7 +1,7 @@
 ---
 id: full-git-loop
-status: to_do
 title: The full git loop, without leaving the board
+status: done
 ---
 
 ## In plain words
@@ -40,6 +40,34 @@ own a piece of it and none of which owns the policy:
 Answering that once, deliberately, is this milestone's job. The
 individual features are downstream of it.
 
+## Decision (2026-09-07)
+
+**How much of a user's repository may workdown touch, and on whose
+gesture?** Answered as follows; recorded as ADR-014, which ADR-006's
+note points to.
+
+- **The web app may commit, the CLI may not.** `workdown add`, `set`,
+  `unset`, `move`, `rename` and `body` touch the working tree only, as
+  they always have. The web app's git pill may pull, push, and commit.
+- **Only on an explicit, confirmed gesture.** Nothing is staged or
+  committed until the user has seen the file list and the message in
+  the dialog and pressed the button. No board gesture ever commits on
+  its own.
+- **Only the workdown paths.** The commit covers the paths
+  `config.yaml` names (`paths.*`, `schema`) plus `config.yaml` itself.
+  No other file in the repository is ever staged by the app, whatever
+  the user has dirty next to the items. Files outside those paths are
+  named where they matter (a pull that has to refuse) and nowhere else.
+- **The user's own `git`.** The app shells out to the `git` on the
+  machine, so credentials, hooks and signing behave as in a terminal;
+  a hook may add to a commit as it always does.
+
+The "no auto-commit" rule in ADR-006 stays true as written. The "UI is
+a shell around the CLI" principle gains its one exception: the
+mutating half of the git surface (commit, pull, push) has no `workdown`
+subcommand twin, the terminal is that twin. The read-only half has one:
+`workdown changes` prints the message the dialog would propose.
+
 ## Scope
 
 - [[commit-from-web-ui]] — the missing step, and the design work that
@@ -49,9 +77,19 @@ individual features are downstream of it.
   use.
 - [[git-sync-controls]] — done, parented here retroactively so the
   shipped half and the unshipped half sit together.
+- [[publish-branch-from-push]] — found while dogfooding: Push on a
+  branch that has never been pushed publishes it instead of greying out.
+- [[shared-git-crate]] — came out of the PR #57 review: one git layer
+  in its own crate, shared by the server and the CLI.
+
+Closed 2026-09-08 with the first commit made from the board, on this
+repository, with the generated message.
 
 ## Not in scope
 
+- [[prepare-commit-msg-hook]] — prefilling *terminal* commits with the
+  generated message. A nicety for the other side of the loop; kept out
+  from under this milestone so it can close.
 - [[same-origin-guard-everywhere]] stays standalone. It came out of the
   git PR review, but it is about `POST /timer/stop` and
   `POST /timer/break/end`; git is merely where the fix already exists.

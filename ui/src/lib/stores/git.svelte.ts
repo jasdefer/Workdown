@@ -6,13 +6,16 @@
 // can run at a time. The first load fetches from the remote so
 // `behind` starts truthful; afterwards two live-update signals keep it
 // current without touching the network: the generic file-change ping
-// moves `dirty_count` (item edits, timer writes, CLI mutations), and
+// moves the local counts (item edits, timer writes, CLI mutations), and
 // the git-named ping fires when the repository itself moves (a commit
 // or fetch in a terminal — the server watches `.git` for exactly this).
 
 import { api } from '$lib/api/client';
+import type { GitCommitPreview } from '$lib/api/generated/GitCommitPreview';
+import type { GitCommitResult } from '$lib/api/generated/GitCommitResult';
 import type { GitStatus } from '$lib/api/generated/GitStatus';
-import { pullMessage } from '$lib/git/gitPill';
+import { commitToast } from '$lib/git/commitDialog';
+import { pullMessage, pushMessage } from '$lib/git/gitPill';
 
 export interface GitMessage {
 	kind: 'ok' | 'error';
@@ -23,6 +26,18 @@ let status = $state<GitStatus | null>(null);
 let busy = $state(false);
 let message = $state<GitMessage | null>(null);
 let messageTimer: ReturnType<typeof setTimeout> | null = null;
+
+// The "Commit & push" dialog's state. The dialog is the review moment:
+// it opens on a preview (files + generated message) and, once confirmed,
+// shows the per-step result until closed. A `409` on confirm means the
+// set of changes moved (or the commit was refused for another reason
+// the message explains); the preview is reloaded so the list is current
+// again, and the user's typed message is kept by the component.
+let dialogOpen = $state(false);
+let preview = $state<GitCommitPreview | null>(null);
+let previewError = $state<string | null>(null);
+let commitResult = $state<GitCommitResult | null>(null);
+let commitError = $state<string | null>(null);
 
 // Response-ordering guards. `statusGeneration` is bumped whenever an
 // operation (pull/push) writes `status` directly, so a slower status
@@ -88,6 +103,17 @@ async function runOperation<T>(
 	}
 }
 
+async function loadPreview(): Promise<void> {
+	const result = await api.getGitCommitPreview();
+	if (result.data === undefined) {
+		previewError = result.error ?? 'Could not read the changes.';
+		preview = null;
+		return;
+	}
+	previewError = null;
+	preview = result.data;
+}
+
 export const gitStore = {
 	get status(): GitStatus | null {
 		return status;
@@ -97,6 +123,70 @@ export const gitStore = {
 	},
 	get message(): GitMessage | null {
 		return message;
+	},
+	get dialogOpen(): boolean {
+		return dialogOpen;
+	},
+	get preview(): GitCommitPreview | null {
+		return preview;
+	},
+	get previewError(): string | null {
+		return previewError;
+	},
+	get commitResult(): GitCommitResult | null {
+		return commitResult;
+	},
+	get commitError(): string | null {
+		return commitError;
+	},
+
+	/** Open the dialog on a fresh preview. */
+	openCommitDialog(): void {
+		dialogOpen = true;
+		preview = null;
+		previewError = null;
+		commitResult = null;
+		commitError = null;
+		void loadPreview();
+	},
+
+	/** Ask the server again what the commit would cover — after a stale
+	 * refusal, or on the dialog's own reload control. */
+	reloadPreview(): Promise<void> {
+		return loadPreview();
+	},
+
+	closeCommitDialog(): void {
+		dialogOpen = false;
+	},
+
+	/** Confirm: commit the previewed files with `text`, then pull if
+	 * behind and push — one server action. The result stays in the
+	 * dialog as a checklist; the toast summarises it for after closing. */
+	async commit(text: string): Promise<void> {
+		if (busy || preview === null) return;
+		busy = true;
+		commitError = null;
+		try {
+			const result = await api.gitCommit({
+				message: text,
+				files: preview.files.map((file) => file.path)
+			});
+			if (result.data === undefined) {
+				commitError = result.error ?? 'Commit failed.';
+				// Refused about repository state — most often the set of
+				// changes moved. Whatever the reason, the list should be
+				// current when the user reads the message.
+				if (result.status === 409) await loadPreview();
+				return;
+			}
+			commitResult = result.data;
+			statusGeneration += 1;
+			status = result.data.status;
+			show(commitToast(result.data));
+		} finally {
+			busy = false;
+		}
 	},
 
 	/** The initial fetch, remote included — called once from the root
@@ -138,7 +228,10 @@ export const gitStore = {
 	push(): Promise<void> {
 		return runOperation(
 			() => api.gitPush(),
-			(data) => ({ status: data, toast: 'Pushed' }),
+			(data) => ({
+				status: data.status,
+				toast: pushMessage(data.published, data.status.state === 'ready' ? data.status.branch : '')
+			}),
 			'Push failed.'
 		);
 	},

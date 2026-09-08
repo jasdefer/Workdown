@@ -51,6 +51,8 @@ Schema violations during mutations emit warnings but do not block the write. The
 
 All mutations (CLI and UI) update the working tree only. Staging and committing are always explicit user actions, never implicit. The repo is the source of truth, and the user controls when changes enter history.
 
+*Note (2026-09-07):* the rule stands as written, and the web UI now offers the explicit action itself — behind a confirmation dialog, limited to the workdown paths, with the CLI staying commit-free. That is also the one exception to "UI is a shell around the CLI" above. [ADR-014](014-git-surface.md) records the decision.
+
 ## Consequences
 
 - The workspace split means domain logic is testable without the CLI or server

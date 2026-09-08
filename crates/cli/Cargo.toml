@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 workdown-core = { path = "../core" }
+workdown-git = { path = "../git" }
 workdown-server = { path = "../server" }
 anyhow.workspace = true
 clap = { workspace = true, features = ["derive", "wrap_help", "env"] }
