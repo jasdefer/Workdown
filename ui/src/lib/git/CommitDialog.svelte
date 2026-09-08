@@ -20,7 +20,7 @@
 	import { tick } from 'svelte';
 	import { gitStore } from '$lib/stores/git.svelte';
 	import { pluralize } from '$lib/views/format';
-	import { changeLabel, checklist, groupFiles, splitDetails } from './commitDialog';
+	import { checklist, groupFiles, splitDetails } from './commitDialog';
 
 	let dialog = $state<HTMLDialogElement>();
 	let textarea = $state<HTMLTextAreaElement>();
@@ -119,7 +119,7 @@
 							{#each groups.items as file (file.path)}
 								<li>
 									<span class="path">{file.path}</span>
-									<span class="change">{changeLabel(file.change)}</span>
+									<span class="change">{file.label}</span>
 								</li>
 							{/each}
 						</ul>
@@ -130,7 +130,7 @@
 							{#each groups.definitions as file (file.path)}
 								<li>
 									<span class="path">{file.path}</span>
-									<span class="change">{file.role} · {changeLabel(file.change)}</span>
+									<span class="change">{file.role} · {file.label}</span>
 								</li>
 							{/each}
 						</ul>

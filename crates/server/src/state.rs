@@ -81,6 +81,15 @@ pub struct AppState {
     /// the same work tree. Like `timer`, shared state — same `Arc`
     /// reasoning.
     pub git_lock: Arc<tokio::sync::Mutex<()>>,
+    /// The paths the git controls may touch, filled on the first git
+    /// request that finds a repository and kept for the life of the
+    /// process: the project cannot move inside its repository while
+    /// the server runs, and asking git for the prefix on every status
+    /// ping would be a spawn for nothing. Shared like the other two
+    /// `Arc`s, so every cloned handler fills and reads the same cell.
+    /// Empty until a repository is found, so a project that is not in
+    /// git keeps answering `not_a_repo` and re-checks each time.
+    pub git_scope: Arc<std::sync::OnceLock<workdown_git::scope::GitScope>>,
 }
 
 /// Cold-load the project this request is about, mapping a load failure
@@ -131,6 +140,7 @@ impl AppState {
             evaluation_date_override,
             timer: Arc::new(TimerService::system()),
             git_lock: Arc::new(tokio::sync::Mutex::new(())),
+            git_scope: Arc::new(std::sync::OnceLock::new()),
         }
     }
 }

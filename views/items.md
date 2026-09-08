@@ -109,6 +109,7 @@
 | [schema-metadata-api](../workdown-items/schema-metadata-api.md) | done | [view-authoring](../workdown-items/view-authoring.md) |  |
 | [schema-property-table](../workdown-items/schema-property-table.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [server](../workdown-items/server.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md), [item-mutations](../workdown-items/item-mutations.md), [renderers](../workdown-items/renderers.md) |
+| [shared-git-crate](../workdown-items/shared-git-crate.md) | done | [full-git-loop](../workdown-items/full-git-loop.md) |  |
 | [stale-docs-refresh](../workdown-items/stale-docs-refresh.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [stateful-test-gaps](../workdown-items/stateful-test-gaps.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [status-transition-dates](../workdown-items/status-transition-dates.md) | to_do |  |  |

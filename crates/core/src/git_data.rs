@@ -38,9 +38,12 @@ pub struct GitCommitResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ts_rs::TS)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum GitPullStep {
-    /// Nothing to integrate: the branch was not behind, or has no
-    /// upstream yet (the push step publishes it).
-    Skipped,
+    /// Not needed; `reason` says why (the branch was not behind, or has
+    /// no upstream yet and the push step publishes it). Worded by the
+    /// server like every other step outcome, so the dialog only prints.
+    Skipped {
+        reason: String,
+    },
     Pulled {
         commits: u32,
     },
@@ -114,6 +117,10 @@ pub struct GitChangedFile {
     /// `items`, `schema`, `views`, `resources`, `templates`, `config`.
     pub role: String,
     pub change: GitChangeKind,
+    /// `change` as a person reads it next to the path — [`GitChangeKind::label`],
+    /// sent along so the dialog and `workdown changes` print the same
+    /// word without each keeping a table.
+    pub label: String,
 }
 
 /// What happened to a file, as `git status` sees it.
@@ -126,6 +133,20 @@ pub enum GitChangeKind {
     Renamed,
     /// Left conflicted by a merge or rebase — git will not commit it.
     Unmerged,
+}
+
+impl GitChangeKind {
+    /// One word for the file list: what happened to the file, in the
+    /// vocabulary the commit message uses ("edited", not "modified").
+    pub fn label(self) -> &'static str {
+        match self {
+            GitChangeKind::Added => "added",
+            GitChangeKind::Modified => "edited",
+            GitChangeKind::Deleted => "deleted",
+            GitChangeKind::Renamed => "renamed",
+            GitChangeKind::Unmerged => "conflicted",
+        }
+    }
 }
 
 /// What the git controls should show — one tagged state per situation

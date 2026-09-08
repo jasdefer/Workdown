@@ -400,8 +400,8 @@ async fn commit_preview_lists_in_scope_files_and_words_the_message() {
     assert_eq!(
         data["files"],
         serde_json::json!([
-            { "path": "workdown-items/item-a.md", "role": "items", "change": "modified" },
-            { "path": "workdown-items/item-new.md", "role": "items", "change": "added" },
+            { "path": "workdown-items/item-a.md", "role": "items", "change": "modified", "label": "edited" },
+            { "path": "workdown-items/item-new.md", "role": "items", "change": "added", "label": "added" },
         ])
     );
     // No title display role in this config, so items are named by their

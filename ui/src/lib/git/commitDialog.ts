@@ -2,7 +2,6 @@
 // the result checklist and the error box say — kept out of the
 // component so the wording is unit-testable.
 
-import type { GitChangeKind } from '$lib/api/generated/GitChangeKind';
 import type { GitChangedFile } from '$lib/api/generated/GitChangedFile';
 import type { GitCommitResult } from '$lib/api/generated/GitCommitResult';
 import { pluralize } from '$lib/views/format';
@@ -17,22 +16,6 @@ export function groupFiles(files: GitChangedFile[]): {
 		items: files.filter((file) => file.role === 'items'),
 		definitions: files.filter((file) => file.role !== 'items')
 	};
-}
-
-/** One word per change kind, as the file list shows it next to the path. */
-export function changeLabel(kind: GitChangeKind): string {
-	switch (kind) {
-		case 'added':
-			return 'added';
-		case 'modified':
-			return 'edited';
-		case 'deleted':
-			return 'deleted';
-		case 'renamed':
-			return 'renamed';
-		case 'unmerged':
-			return 'conflicted';
-	}
 }
 
 /** A server error is "sentence, blank line, git's raw output" when there
@@ -52,7 +35,8 @@ export interface ChecklistRow {
 	details: string | null;
 }
 
-/** The per-step report as three rows: committed, pull, push. */
+/** The per-step report as three rows: committed, pull, push. The server
+ * words every skipped and stopped step; this only frames them. */
 export function checklist(result: GitCommitResult): ChecklistRow[] {
 	const rows: ChecklistRow[] = [
 		{ label: `Committed ${result.commit}`, state: 'done', details: null }
@@ -61,7 +45,7 @@ export function checklist(result: GitCommitResult): ChecklistRow[] {
 	const pull = result.pull;
 	switch (pull.outcome) {
 		case 'skipped':
-			rows.push({ label: 'Pull skipped — nothing to integrate', state: 'skipped', details: null });
+			rows.push({ label: `Pull skipped — ${pull.reason}`, state: 'skipped', details: null });
 			break;
 		case 'pulled':
 			rows.push({

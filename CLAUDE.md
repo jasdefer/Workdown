@@ -25,7 +25,7 @@ workdown-items/
 
 ## Configuration Files (consumer project)
 
-- **`config.yaml`** — Entry point for the CLI. Defines project metadata, file paths (where work items live, where templates are, where resources are), and project-wide field roles: which field to use for board/tree/graph views, the optional `duration` field the web UI's effort timer writes to (`defaults.effort_field`, unset means no timer), plus display-role defaults (`defaults.display`) inherited by every view.
+- **`config.yaml`** — Entry point for the CLI. Defines project metadata, file paths (where work items live, where templates are, where resources are), and project-wide field roles: which field to use for board/tree/graph views, the optional `duration` field the web UI's effort timer writes to (`defaults.effort_field`, unset means no timer), plus display-role defaults (`defaults.display`) inherited by every view. A `serve:` section holds settings for the local web server: the port, and the opt-in `git_controls` flag that puts the git pill (commit & push behind a confirmation dialog, pull, push) in the web UI's header. The paths this file names, plus the file itself, are "the workdown paths" — the only files the git controls ever commit.
 - **`schema.yaml`** — User-editable. Defines fields, their types, validation rules, defaults, and aggregate/compute behavior. This is what makes each project's work items structured differently. Fields can reference resources via `resource: <name>`.
 - **`resources.yaml`** — User-editable. Named lists of entities (people, teams, sprints, etc.) that work item fields can reference. A field with `resource: people` only accepts values matching an `id` from the `people` section. The reserved `constants` section holds named typed scalars (a daily rate, work hours per day) that schema expressions reference as `$constants.<name>`.
 - **`views.yaml`** — User-editable. Declares persisted views rendered by `workdown render` (board, tree, graph, table, gantt, charts, etc.). Each view references schema fields.
@@ -82,6 +82,7 @@ crates/
       resources.schema.json # JSON Schema: formal definition of resources.yaml structure (not user-editable)
       views.schema.json     # JSON Schema: formal definition of views.yaml structure (not user-editable)
     tests/             # Integration tests for the core crate
+  git/                 # The git layer: runs the user's own `git`, scoped to the workdown paths (used by cli and server)
   cli/                 # CLI binary (clap)
   server/              # Local web server (`workdown serve`)
 docs/

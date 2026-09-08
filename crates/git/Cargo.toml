@@ -1,0 +1,15 @@
+[package]
+name = "workdown-git"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Workdown's git layer — the user's own `git`, scoped to the workdown paths"
+publish = false
+
+# Synchronous on purpose: waiting on an external process is blocking
+# work whoever calls it. The CLI calls these functions directly; the
+# server runs each action on a blocking thread. No tokio here.
+[dependencies]
+workdown-core = { path = "../core" }

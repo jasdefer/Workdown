@@ -1,23 +1,24 @@
 //! What a commit from workdown would cover and say — shared by the
-//! `GET /api/git/commit-preview` endpoint and the `workdown changes`
-//! command, so a terminal and the dialog describe the same change with
-//! the same words.
+//! server's `GET /api/git/commit-preview` endpoint and the `workdown
+//! changes` command, so a terminal and the dialog describe the same
+//! change with the same words.
 //!
-//! Reads the repository through [`crate::git`], limits every question to
-//! the [`crate::git_scope::GitScope`] the config defines, and hands the
-//! changed files' texts at `HEAD` and in the working tree to
+//! Reads the repository through the crate root, limits every question
+//! to the [`GitScope`] the config defines, and hands the changed files'
+//! texts at `HEAD` and in the working tree to
 //! `workdown_core::change_summary` for wording. No caching, no state:
 //! every call re-reads the repository, like every other project read.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use workdown_core::change_summary::{summarize_changes, ChangedFile, ChangedFileKind};
+use workdown_core::change_summary::{summarize_changes, ChangedFile};
 use workdown_core::git_data::{GitChangeKind, GitChangedFile, GitCommitPreview, GitStatus};
-use workdown_core::model::config::Config;
+use workdown_core::model::config::{Config, PathRole};
 use workdown_core::model::schema::Schema;
 
-use crate::git::{self, ChangeState, ChangedPath, GitError, RepoSnapshot};
-use crate::git_scope::{GitScope, ScopeRole};
+use crate::scope::GitScope;
+use crate::{scoped_changes, show_at_head, snapshot, top_level};
+use crate::{ChangeState, ChangedPath, GitError, RepoSnapshot};
 
 /// Everything a status answer is built from: the whole-repository
 /// snapshot, the git-controls scope, and the uncommitted changes inside
@@ -35,16 +36,13 @@ impl LocalState {
     /// in-scope changes only, counted by role: work items as a number,
     /// definition files by name.
     pub fn into_status(self, fetch_error: Option<String>) -> GitStatus {
-        let roles: Vec<ScopeRole> = self
+        let roles: Vec<PathRole> = self
             .in_scope
             .iter()
             .filter_map(|change| self.scope.classify(&change.path))
             .collect();
-        let dirty_items = roles
-            .iter()
-            .filter(|role| **role == ScopeRole::WorkItems)
-            .count() as u32;
-        let dirty_definitions = ScopeRole::DEFINITIONS
+        let dirty_items = roles.iter().filter(|role| role.is_work_item()).count() as u32;
+        let dirty_definitions = PathRole::DEFINITIONS
             .iter()
             .filter(|role| roles.contains(role))
             .map(|role| role.label().to_owned())
@@ -72,30 +70,22 @@ impl LocalState {
     }
 }
 
-/// Read the repository: snapshot, scope, in-scope changes. `None` when
-/// the project is not inside a git work tree. The scoped status is
-/// skipped when the whole repository is clean — nothing in scope can
-/// be dirty then.
-pub async fn read_local(
-    project_root: &Path,
-    config: &Config,
-    config_path: &Path,
-) -> Result<Option<LocalState>, GitError> {
-    let Some(snapshot) = git::snapshot(project_root).await? else {
+/// Read the repository: snapshot and the changes inside `scope`. `None`
+/// when the project is not inside a git work tree. The scoped status is
+/// skipped when the whole repository is clean — nothing in scope can be
+/// dirty then.
+pub fn read_local(project_root: &Path, scope: &GitScope) -> Result<Option<LocalState>, GitError> {
+    let Some(snapshot) = snapshot(project_root)? else {
         return Ok(None);
     };
-    let Some(prefix) = git::repository_prefix(project_root).await? else {
-        return Ok(None);
-    };
-    let scope = GitScope::from_config(&prefix, config, config_path, project_root);
     let in_scope = if snapshot.dirty.is_empty() {
         Vec::new()
     } else {
-        git::scoped_changes(project_root, &scope.pathspecs()).await?
+        scoped_changes(project_root, &scope.pathspecs())?
     };
     Ok(Some(LocalState {
         snapshot,
-        scope,
+        scope: scope.clone(),
         in_scope,
     }))
 }
@@ -104,16 +94,15 @@ pub async fn read_local(
 /// their change kind, the generated message, and the dirty files outside
 /// the scope. `None` when the project is not inside a git repository.
 /// Read-only and repeatable.
-pub async fn build_preview(
+pub fn build_preview(
     project_root: &Path,
+    scope: &GitScope,
     config: &Config,
-    config_path: &Path,
     schema: &Schema,
 ) -> Result<Option<GitCommitPreview>, GitError> {
-    let (Some(local), Some(top_level)) = (
-        read_local(project_root, config, config_path).await?,
-        git::top_level(project_root).await?,
-    ) else {
+    let (Some(local), Some(top_level)) =
+        (read_local(project_root, scope)?, top_level(project_root)?)
+    else {
         return Ok(None);
     };
 
@@ -123,12 +112,10 @@ pub async fn build_preview(
         // Git matched the path against the scope's own pathspecs, so a
         // role is always found; the fallback only keeps an unexpected
         // disagreement from dropping a file the commit would include.
-        let (role, kind) = local
+        let role = local
             .scope
             .classify(&change.path)
-            .map_or(("files", ChangedFileKind::Definition), |role| {
-                (role.label(), role.kind())
-            });
+            .unwrap_or(PathRole::Config);
         let project_path = local.scope.project_relative(&change.path);
         let (old_text, new_text, change_kind) = match &change.state {
             ChangeState::Added => (
@@ -137,34 +124,35 @@ pub async fn build_preview(
                 GitChangeKind::Added,
             ),
             ChangeState::Deleted => (
-                git::show_at_head(project_root, &change.path).await?,
+                show_at_head(project_root, &change.path)?,
                 None,
                 GitChangeKind::Deleted,
             ),
             ChangeState::Modified => (
-                git::show_at_head(project_root, &change.path).await?,
+                show_at_head(project_root, &change.path)?,
                 read_work_tree(&top_level, &change.path),
                 GitChangeKind::Modified,
             ),
             ChangeState::Renamed { from } => (
-                git::show_at_head(project_root, from).await?,
+                show_at_head(project_root, from)?,
                 read_work_tree(&top_level, &change.path),
                 GitChangeKind::Renamed,
             ),
             ChangeState::Unmerged => (
-                git::show_at_head(project_root, &change.path).await?,
+                show_at_head(project_root, &change.path)?,
                 read_work_tree(&top_level, &change.path),
                 GitChangeKind::Unmerged,
             ),
         };
         files.push(GitChangedFile {
             path: project_path.clone(),
-            role: role.to_owned(),
+            role: role.label().to_owned(),
             change: change_kind,
+            label: change_kind.label().to_owned(),
         });
         inputs.push(ChangedFile {
-            path: std::path::PathBuf::from(project_path),
-            kind,
+            path: PathBuf::from(project_path),
+            role,
             old_text,
             new_text,
         });

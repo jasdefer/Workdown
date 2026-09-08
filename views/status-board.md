@@ -117,6 +117,7 @@ Cards grouped into columns by `status`.
 - [Expose schema metadata so the UI can offer valid choices](../workdown-items/schema-metadata-api.md)
 - [Table-drive the "is this property allowed on this field type?" check](../workdown-items/schema-property-table.md)
 - [Interactive UI (workdown serve)](../workdown-items/server.md)
+- [One git layer for the server and the CLI, in its own crate](../workdown-items/shared-git-crate.md)
 - [Fix the documentation that is actively wrong](../workdown-items/stale-docs-refresh.md)
 - [Cover the browser-side paths that fail silently](../workdown-items/stateful-test-gaps.md)
 - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md)

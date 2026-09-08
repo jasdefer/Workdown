@@ -1,6 +1,6 @@
 //! Project configuration types, deserialized from `config.yaml`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -33,6 +33,41 @@ pub struct Config {
 }
 
 impl Config {
+    /// Every file and directory that belongs to workdown, with the role
+    /// each plays — the one definition of "the workdown paths".
+    /// `config_path` is where this config was read from, as the CLI was
+    /// given it (relative to the project root, or absolute); it is the
+    /// `Config` entry.
+    ///
+    /// The paths come back as written in `config.yaml`, in a fixed order
+    /// (work items, templates, resources, views, schema, config), with a
+    /// repeated path listed once under its first role. Consumers that
+    /// care about some roles only filter this list rather than naming
+    /// the config keys themselves: the git controls commit everything
+    /// here, the pre-commit hook re-renders on everything that can
+    /// change a rendered view.
+    pub fn workdown_paths(&self, config_path: &Path) -> Vec<WorkdownPath> {
+        let candidates = [
+            (PathRole::WorkItems, self.paths.work_items.as_path()),
+            (PathRole::Templates, self.paths.templates.as_path()),
+            (PathRole::Resources, self.paths.resources.as_path()),
+            (PathRole::Views, self.paths.views.as_path()),
+            (PathRole::Schema, self.schema.as_path()),
+            (PathRole::Config, config_path),
+        ];
+        let mut paths: Vec<WorkdownPath> = Vec::with_capacity(candidates.len());
+        for (role, path) in candidates {
+            if paths.iter().any(|known| known.path == path) {
+                continue;
+            }
+            paths.push(WorkdownPath {
+                role,
+                path: path.to_path_buf(),
+            });
+        }
+        paths
+    }
+
     /// Build the [`WorkingCalendar`] this project's views should use.
     ///
     /// Falls back to [`WorkingCalendar::default_business_week`] when
@@ -44,6 +79,59 @@ impl Config {
             None => WorkingCalendar::default_business_week(),
         }
     }
+}
+
+/// The config key a workdown path came from. The role, not the
+/// filename, is what a surface names ("schema" whatever the file is
+/// called) and what tells a work item from a definition file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PathRole {
+    WorkItems,
+    Templates,
+    Resources,
+    Views,
+    Schema,
+    Config,
+}
+
+impl PathRole {
+    /// The roles that are definition files rather than work items, in
+    /// the order surfaces name them.
+    pub const DEFINITIONS: [PathRole; 5] = [
+        PathRole::Schema,
+        PathRole::Views,
+        PathRole::Resources,
+        PathRole::Templates,
+        PathRole::Config,
+    ];
+
+    /// The short name surfaces use for this role — the git pill's
+    /// `3 items · schema`, the commit dialog's grouping.
+    pub fn label(self) -> &'static str {
+        match self {
+            PathRole::WorkItems => "items",
+            PathRole::Templates => "templates",
+            PathRole::Resources => "resources",
+            PathRole::Views => "views",
+            PathRole::Schema => "schema",
+            PathRole::Config => "config",
+        }
+    }
+
+    /// Whether files in this role are work items (parsed frontmatter,
+    /// named by title) rather than definition files (named by path).
+    pub fn is_work_item(self) -> bool {
+        self == PathRole::WorkItems
+    }
+}
+
+/// One entry of [`Config::workdown_paths`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkdownPath {
+    pub role: PathRole,
+    /// As written in `config.yaml` (or passed on the command line for
+    /// the config itself): relative to the project root, or absolute.
+    pub path: PathBuf,
 }
 
 /// Project-level metadata.

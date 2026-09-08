@@ -356,96 +356,52 @@ the file list only, not on contents.* Non-Rust wording on purpose.
 No new config key is introduced, so there is no release-ordering
 problem this time.
 
-### Build order
+## Outcome (2026-09-07, PR #57)
 
-1. Core: the summary function with unit tests (grouping rule, body
-   edits, added/deleted, definition files, cap).
-   *Built 2026-09-07 (`change_summary.rs`, uncommitted). Wording the
-   spec left open, settled in the tests: labels come out Title Case
-   from the existing prettifier ("In Progress"); the collapsed line for
-   a non-choice field is "Set Assignee to Alice on 3 items", since the
-   verb may follow the type but never the field name; one item with
-   several field changes lists them in the subject instead of falling
-   back to a count; a file whose text changed with no nameable
-   difference (equivalent spelling, unreadable frontmatter on one side)
-   is "edited"; values of resource-backed fields are prettified like
-   choices; the prettifier now splits on underscores too, which cannot
-   affect `$filename_pretty` because ids never contain one.*
-2. Server: scope list from config; status endpoint counts in-scope only
-   and reports items vs definition files; pill shows the new number.
-   *Built 2026-09-07 (uncommitted). `git_scope.rs` turns the config
-   paths into repository-relative entries with a role each and hands
-   git `:(top)`-anchored pathspecs, so a project in a subfolder works
-   and membership is git's decision. The wire status replaces
-   `dirty_count` with `dirty_items` and `dirty_definitions` (role
-   names in a fixed order: schema, views, resources, templates,
-   config). Status now parses `git status -z`, so paths with spaces
-   survive and renames are read as one entry. The pull refusal names
-   the files outside the workdown paths when nothing in scope is
-   dirty, since the pill reads clean in that case.*
-3. Server: preview endpoint (files + message).
-   *Built 2026-09-07 (uncommitted). `GET /api/git/commit-preview`
-   answers files (project-relative path, role, change kind), the
-   generated message, and the dirty files outside the scope. Old text
-   comes from `git show HEAD:<path>` (the original path for a rename),
-   new text from the working tree; line endings are normalized before
-   comparing, so an autocrlf checkout does not read as "description
-   edited". Origin-guarded like the POSTs, since it returns file
-   contents. The UI client has the call; the dialog is step 5.*
-4. Server: commit-pull-push endpoint with per-step report, stale-set
-   refusal, worded failures; same-origin guard and git lock as the
-   other git endpoints.
-   *Built 2026-09-07 (uncommitted). `POST /api/git/commit` takes the
-   message and the file list the dialog showed; refuses (409) on a
-   stale set, detached head, rebase in progress, empty message, clean
-   scope, conflicted files, or missing `user.name`/`user.email`. Once
-   the commit exists the answer is 200 with a per-step report: pull
-   skipped / pulled N / stopped, push pushed / skipped / stopped, each
-   stop with a sentence and git's raw output as `details`. A failed
-   commit unstages what the button staged. Worded errors follow the
-   convention "sentence, blank line, raw output", which the dialog
-   splits on. One deviation from implementation decision 4: `git add`
-   refuses a pathspec that matches nothing (a scope entry for a file
-   the project lacks, such as a missing resources.yaml), so add and
-   commit take the changed files git listed for the scope, as literal
-   `:(top,literal)` pathspecs, rather than the scope list itself.
-   Membership is still git's answer over the scope list; the commit is
-   pinned to exactly the confirmed set.*
-5. UI: dialog (file list, editable message, checklist result) and the
-   button rule.
-   *Built 2026-09-07 (uncommitted). `CommitDialog.svelte` is a centered
-   modal: work items and definition files with their change kind, the
-   outside files named as not included, the generated message in a
-   textarea seeded once (a reload after a refusal keeps the typed
-   text), Cancel / Reload / Commit & push; after confirming, a
-   three-row checklist with git's output behind a details toggle. The
-   pill follows implementation decision 6: dirty → Commit & push
-   primary with Pull disabled beside it; clean → Pull only when behind,
-   Push only when ahead or unpublished; synced → branch only; detached
-   keeps both sync buttons visible and off. Wording lives in
-   `commitDialog.ts` with unit tests.*
-6. Docs: short note in ADR-006; [[full-git-loop]] records "the CLI
-   stays commit-free" as its own decision; `docs/architecture.md` if
-   the mutations exit gains a stage.
-   *Done 2026-09-07 (uncommitted). ADR-006 gets a dated note under "No
-   auto-commit" that also names the git surface as the one exception to
-   "UI is a shell around the CLI". [[full-git-loop]] carries the
-   decision in four points. `docs/architecture.md` gains a bullet in the
-   serve section rather than a mutations stage: the git surface is its
-   own exit, not a fourth phase of `run_set`.*
-7. Dogfood on this repo before release: the pill must show the
-   in-scope count, and the button must stop cleanly at pull when
-   `views/` is dirty and the branch is behind.
-   *First half done 2026-09-07, served from the dev container against
-   this working tree with 16 dirty source files and 2 dirty items:
-   `GET /api/git` answered `dirty_items: 2, dirty_definitions: []`, and
-   the preview listed the two items, generated "Update 2 work items"
-   with both titles and "description edited", and named all 16 source
-   files under `outside`. The stop-at-pull case cannot be produced here
-   right now (the branch is not behind); it is covered by the
-   integration test `commit_stops_at_pull_over_outside_files_when_behind`
-   and should be walked through in the browser before release.*
-- Status changes are also where [[status-transition-dates]] wants to
-  write a date. If both land, one board gesture produces a field write
-  *and* a commit — worth designing so the date is part of the same
-  saved change rather than a second one arriving behind it.
+Built as designed above; what the design left open was settled as
+follows.
+
+**Wording the spec left open**, fixed by the generator's tests: labels
+come out Title Case from the existing prettifier ("In Progress"), which
+now splits on underscores too — safe for `$filename_pretty`, since ids
+are validated to letters, digits and hyphens. The collapsed line for a
+non-choice field is "Set Assignee to Alice on 3 items": the verb may
+follow the field's *type*, never its name. One item with several field
+changes lists them in the subject instead of falling back to a count. A
+file whose text changed with no nameable difference (equivalent
+spelling, unreadable frontmatter on one side) is plainly "edited".
+Values of resource-backed fields are prettified like choices. Line
+endings are normalized before comparing, so an autocrlf checkout does
+not read as "description edited".
+
+**One deviation from implementation decision 4.** `git add` refuses a
+pathspec that matches nothing, which a scope entry for a file the
+project lacks (no `resources.yaml`, say) would be. So add and commit
+take the changed files git listed for the scope, as literal
+`:(top,literal)` pathspecs, rather than the scope list itself.
+Membership is still git's answer over the scope list; the commit is
+pinned to exactly the confirmed set. The scope list itself is
+`Config::workdown_paths` in core — the one definition, shared with the
+pre-commit hook installer — and the server computes it once per
+process.
+
+**Wire.** The status replaces `dirty_count` with `dirty_items` and
+`dirty_definitions` (role names in a fixed order: schema, views,
+resources, templates, config). Status parses `git status -z`, so paths
+with spaces survive and renames are read as one entry. The pull
+refusal names the files outside the workdown paths when nothing in
+scope is dirty, since the pill reads clean in that case. Every step
+outcome in the commit report — skipped, stopped — is worded by the
+server; the dialog only frames it.
+
+**Follow-ups filed.** [[prepare-commit-msg-hook]] for the terminal
+side (`workdown changes` shipped with this item as its first half).
+The stop-at-pull case over dirty `views/` is covered by the integration
+test `commit_stops_at_pull_over_outside_files_when_behind` and was not
+reproducible in the browser on this repository at the time (the branch
+was not behind); worth one walk-through before release.
+
+**Also noted.** Status changes are where [[status-transition-dates]]
+wants to write a date. If both land, one board gesture produces a field
+write *and* a commit — worth designing so the date is part of the same
+saved change rather than a second one arriving behind it.

@@ -1,4 +1,5 @@
-//! Shelling out to the `git` CLI for the sync endpoints.
+//! Workdown's git layer: the user's own `git`, run as a child process,
+//! limited to the workdown paths.
 //!
 //! Deliberately the CLI and not a git library: the user's own `git`
 //! carries their credential setup (Git Credential Manager on Windows,
@@ -7,12 +8,26 @@
 //! non-interactive — `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never`
 //! make a missing credential fail fast instead of hanging a request on
 //! a prompt nobody can see — and bounded by a timeout.
+//!
+//! Synchronous on purpose. Waiting on an external process is blocking
+//! work however it is dressed; the CLI calls these functions directly,
+//! and the server runs each git action on a blocking thread. This crate
+//! is the one place git is spawned — the server's `/api/git` handlers,
+//! `workdown changes` and `workdown install-hooks` all come here.
+//!
+//! The crate root holds the git commands themselves. [`scope`] decides
+//! which paths the git controls may touch; [`preview`] turns the changes
+//! inside that scope into the file list and commit message the dialog
+//! and `workdown changes` show.
 
+pub mod preview;
+pub mod scope;
+
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use std::time::Duration;
-
-use tokio::process::Command;
+use std::process::{Command, Stdio};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 
 /// Bound for purely local plumbing (`rev-parse`, `status`).
 const LOCAL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -21,6 +36,15 @@ const LOCAL_TIMEOUT: Duration = Duration::from_secs(10);
 /// `push`) — generous, but a hung credential helper or a dead VPN
 /// must not pin a request forever.
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Bound for a commit: hooks run inside it (a pre-commit hook that
+/// re-renders views takes a moment), so longer than plumbing, shorter
+/// than the network.
+const COMMIT_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// How often [`run`] checks whether the child has exited while waiting
+/// for it. Short enough that plumbing calls add no noticeable latency.
+const EXIT_POLL_INTERVAL: Duration = Duration::from_millis(5);
 
 /// A finished git invocation: exit success plus captured output. A
 /// non-zero exit is a *result* (the caller decides what it means), not
@@ -58,13 +82,19 @@ impl std::fmt::Display for GitError {
     }
 }
 
+impl std::error::Error for GitError {}
+
 /// Run `git -C <root> <args…>` to completion, capturing output.
 ///
 /// `LC_ALL=C` pins git's messages to English so the few places that
 /// match on them (not-a-repository detection) hold on localized
 /// systems.
-pub async fn run(root: &Path, args: &[&str], timeout: Duration) -> Result<GitOutput, GitError> {
-    let child = Command::new("git")
+///
+/// The child is killed when `timeout` passes. Both pipes are drained on
+/// their own threads from the start, because a child that fills one pipe
+/// while this thread waits on the other would never exit.
+pub fn run(root: &Path, args: &[&str], timeout: Duration) -> Result<GitOutput, GitError> {
+    let mut child = Command::new("git")
         .arg("-C")
         .arg(root)
         .args(args)
@@ -74,26 +104,73 @@ pub async fn run(root: &Path, args: &[&str], timeout: Duration) -> Result<GitOut
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .output();
+        .spawn()
+        .map_err(GitError::Spawn)?;
+    let stdout = drain(child.stdout.take());
+    let stderr = drain(child.stderr.take());
 
-    let output = match tokio::time::timeout(timeout, child).await {
-        Err(_elapsed) => return Err(GitError::TimedOut),
-        Ok(Err(error)) => return Err(GitError::Spawn(error)),
-        Ok(Ok(output)) => output,
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() < deadline => thread::sleep(EXIT_POLL_INTERVAL),
+            Ok(None) => {
+                // Killing closes the pipes, which ends the drain threads.
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(GitError::TimedOut);
+            }
+            Err(error) => return Err(GitError::Spawn(error)),
+        }
     };
 
     Ok(GitOutput {
-        success: output.status.success(),
-        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        success: status.success(),
+        stdout: stdout.join().unwrap_or_default(),
+        stderr: stderr.join().unwrap_or_default(),
     })
 }
 
+/// Read a child's pipe to its end on a thread of its own, as text.
+fn drain<Pipe: Read + Send + 'static>(pipe: Option<Pipe>) -> JoinHandle<String> {
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        if let Some(mut pipe) = pipe {
+            let _ = pipe.read_to_end(&mut bytes);
+        }
+        String::from_utf8_lossy(&bytes).into_owned()
+    })
+}
+
+/// The one git message this crate matches on — pinned to English by
+/// `LC_ALL=C` in [`run`].
+fn is_not_a_repository(stderr: &str) -> bool {
+    stderr.contains("not a git repository")
+}
+
+/// One `git rev-parse <flag>` answer, trimmed. `None` when `root` is not
+/// inside a git work tree; any other refusal is an error, since
+/// `rev-parse` has no failure mode the caller can interpret.
+fn rev_parse(root: &Path, flag: &str) -> Result<Option<String>, GitError> {
+    let output = run(root, &["rev-parse", flag], LOCAL_TIMEOUT)?;
+    if !output.success {
+        if is_not_a_repository(&output.stderr) {
+            return Ok(None);
+        }
+        return Err(GitError::Failed {
+            command: format!("rev-parse {flag}"),
+            stderr: output.stderr,
+        });
+    }
+    Ok(Some(output.stdout.trim().to_owned()))
+}
+
+// ── Remote ──────────────────────────────────────────────────────────
+
 /// Update remote-tracking refs so ahead/behind reflect the remote's
 /// present, not its past. Changes no local files.
-pub async fn fetch(root: &Path) -> Result<GitOutput, GitError> {
-    run(root, &["fetch", "--quiet"], NETWORK_TIMEOUT).await
+pub fn fetch(root: &Path) -> Result<GitOutput, GitError> {
+    run(root, &["fetch", "--quiet"], NETWORK_TIMEOUT)
 }
 
 /// Integrate remote commits into the local branch. `--rebase` keeps
@@ -101,22 +178,22 @@ pub async fn fetch(root: &Path) -> Result<GitOutput, GitError> {
 /// refuses to run over uncommitted changes, so there is never a stash
 /// whose failed reapply could scatter conflict markers into item files
 /// behind a "success" answer.
-pub async fn pull(root: &Path) -> Result<GitOutput, GitError> {
-    run(root, &["pull", "--rebase"], NETWORK_TIMEOUT).await
+pub fn pull(root: &Path) -> Result<GitOutput, GitError> {
+    run(root, &["pull", "--rebase"], NETWORK_TIMEOUT)
 }
 
 /// Publish local commits to the upstream. Pushes only what is already
 /// committed — uncommitted edits never leave the machine, so the
 /// review gate (look at the diff, then commit) stays where it is.
-pub async fn push(root: &Path) -> Result<GitOutput, GitError> {
-    run(root, &["push"], NETWORK_TIMEOUT).await
+pub fn push(root: &Path) -> Result<GitOutput, GitError> {
+    run(root, &["push"], NETWORK_TIMEOUT)
 }
 
 /// First push of a branch that has no upstream yet: create it on
 /// `remote` and record that as the upstream (`-u`), so the next status
 /// has real ahead/behind numbers and later pushes are plain `push`.
-pub async fn publish(root: &Path, remote: &str, branch: &str) -> Result<GitOutput, GitError> {
-    run(root, &["push", "-u", remote, branch], NETWORK_TIMEOUT).await
+pub fn publish(root: &Path, remote: &str, branch: &str) -> Result<GitOutput, GitError> {
+    run(root, &["push", "-u", remote, branch], NETWORK_TIMEOUT)
 }
 
 /// The remote a first publish goes to, by a rule one step friendlier
@@ -128,13 +205,12 @@ pub async fn publish(root: &Path, remote: &str, branch: &str) -> Result<GitOutpu
 ///
 /// One spawn: `git config --get-regexp '^remote\.'` lists every
 /// remote's settings and the push default together.
-pub async fn publish_remote(root: &Path) -> Result<Option<String>, GitError> {
+pub fn publish_remote(root: &Path) -> Result<Option<String>, GitError> {
     let output = run(
         root,
         &["config", "--get-regexp", "^remote\\."],
         LOCAL_TIMEOUT,
-    )
-    .await?;
+    )?;
     // `--get-regexp` exits 1 when nothing matches — a repository with
     // no remotes at all, which is an answer, not a failure.
     if !output.success && !output.stderr.trim().is_empty() {
@@ -180,35 +256,52 @@ fn resolve_publish_remote(config_lines: &str) -> Option<String> {
     remotes.into_iter().find(|name| name == "origin")
 }
 
-/// Back out of a rebase the *endpoint* started. Callers must know the
+// ── Repository facts ────────────────────────────────────────────────
+
+/// Back out of a rebase the *caller* started. Callers must know the
 /// rebase is their own — the pull endpoint refuses to run while one is
 /// already in progress precisely so this can never destroy a rebase
 /// the user is resolving in a terminal.
-pub async fn abort_rebase(root: &Path) -> Result<GitOutput, GitError> {
-    run(root, &["rebase", "--abort"], LOCAL_TIMEOUT).await
+pub fn abort_rebase(root: &Path) -> Result<GitOutput, GitError> {
+    run(root, &["rebase", "--abort"], LOCAL_TIMEOUT)
 }
 
 /// The repository's git directory (usually `<repo>/.git`), or `None`
 /// when `root` is not inside a git work tree.
-pub async fn git_directory(root: &Path) -> Result<Option<PathBuf>, GitError> {
-    let output = run(root, &["rev-parse", "--absolute-git-dir"], LOCAL_TIMEOUT).await?;
+pub fn git_directory(root: &Path) -> Result<Option<PathBuf>, GitError> {
+    Ok(rev_parse(root, "--absolute-git-dir")?.map(PathBuf::from))
+}
+
+/// Where git runs hooks from — `core.hooksPath` honoured, gitfile work
+/// trees resolved, which is why this asks git instead of assuming
+/// `.git/hooks`. Absolute. `None` when `root` is not inside a git work
+/// tree.
+pub fn hooks_directory(root: &Path) -> Result<Option<PathBuf>, GitError> {
+    let output = run(root, &["rev-parse", "--git-path", "hooks"], LOCAL_TIMEOUT)?;
     if !output.success {
         if is_not_a_repository(&output.stderr) {
             return Ok(None);
         }
         return Err(GitError::Failed {
-            command: "rev-parse --absolute-git-dir".to_owned(),
+            command: "rev-parse --git-path hooks".to_owned(),
             stderr: output.stderr,
         });
     }
-    Ok(Some(PathBuf::from(output.stdout.trim())))
+    // `--git-path` answers relative to the directory git ran in when
+    // the hooks live inside the repository, absolute otherwise.
+    let path = PathBuf::from(output.stdout.trim());
+    Ok(Some(if path.is_absolute() {
+        path
+    } else {
+        root.join(path)
+    }))
 }
 
 /// Whether a rebase is underway in this repository — regardless of who
 /// started it. Checks the two marker directories git itself uses
 /// (merge-backend and apply-backend rebases).
-pub async fn rebase_in_progress(root: &Path) -> Result<bool, GitError> {
-    let Some(git_directory) = git_directory(root).await? else {
+pub fn rebase_in_progress(root: &Path) -> Result<bool, GitError> {
+    let Some(git_directory) = git_directory(root)? else {
         return Ok(false);
     };
     Ok(git_directory.join("rebase-merge").exists() || git_directory.join("rebase-apply").exists())
@@ -218,35 +311,15 @@ pub async fn rebase_in_progress(root: &Path) -> Result<bool, GitError> {
 /// repository-relative directory: empty at the top, `sub/dir/` (with
 /// git's trailing slash) below. `None` when `root` is not inside a git
 /// work tree.
-pub async fn repository_prefix(root: &Path) -> Result<Option<String>, GitError> {
-    let output = run(root, &["rev-parse", "--show-prefix"], LOCAL_TIMEOUT).await?;
-    if !output.success {
-        if is_not_a_repository(&output.stderr) {
-            return Ok(None);
-        }
-        return Err(GitError::Failed {
-            command: "rev-parse --show-prefix".to_owned(),
-            stderr: output.stderr,
-        });
-    }
-    Ok(Some(output.stdout.trim().to_owned()))
+pub fn repository_prefix(root: &Path) -> Result<Option<String>, GitError> {
+    rev_parse(root, "--show-prefix")
 }
 
 /// The absolute path of the repository's working tree root — where the
 /// repository-relative paths `git status` reports are resolved against.
 /// `None` when `root` is not inside a git work tree.
-pub async fn top_level(root: &Path) -> Result<Option<PathBuf>, GitError> {
-    let output = run(root, &["rev-parse", "--show-toplevel"], LOCAL_TIMEOUT).await?;
-    if !output.success {
-        if is_not_a_repository(&output.stderr) {
-            return Ok(None);
-        }
-        return Err(GitError::Failed {
-            command: "rev-parse --show-toplevel".to_owned(),
-            stderr: output.stderr,
-        });
-    }
-    Ok(Some(PathBuf::from(output.stdout.trim())))
+pub fn top_level(root: &Path) -> Result<Option<PathBuf>, GitError> {
+    Ok(rev_parse(root, "--show-toplevel")?.map(PathBuf::from))
 }
 
 /// A file's text as committed at `HEAD`, by repository-relative path.
@@ -254,39 +327,48 @@ pub async fn top_level(root: &Path) -> Result<Option<PathBuf>, GitError> {
 /// is unborn and there is no `HEAD` at all. Read as the blob is stored,
 /// so line endings are the repository's, not the working tree's; the
 /// summary normalizes both sides before comparing.
-pub async fn show_at_head(root: &Path, repository_path: &str) -> Result<Option<String>, GitError> {
+pub fn show_at_head(root: &Path, repository_path: &str) -> Result<Option<String>, GitError> {
     let spec = format!("HEAD:{repository_path}");
-    let output = run(root, &["show", &spec], LOCAL_TIMEOUT).await?;
+    let output = run(root, &["show", &spec], LOCAL_TIMEOUT)?;
     if !output.success {
         return Ok(None);
     }
     Ok(Some(output.stdout))
 }
 
-/// Bound for a commit: hooks run inside it (a pre-commit hook that
-/// re-renders views takes a moment), so longer than plumbing, shorter
-/// than the network.
-const COMMIT_TIMEOUT: Duration = Duration::from_secs(60);
-
 /// The identity commits would be recorded under — `user.name` and
 /// `user.email` — or `None` when either is unset. Never guessed: git
 /// itself may invent one from the hostname, and a browser button must
 /// not put a made-up author into shared history.
-pub async fn identity(root: &Path) -> Result<Option<(String, String)>, GitError> {
-    let name = config_value(root, "user.name").await?;
-    let email = config_value(root, "user.email").await?;
+pub fn identity(root: &Path) -> Result<Option<(String, String)>, GitError> {
+    let name = config_value(root, "user.name")?;
+    let email = config_value(root, "user.email")?;
     Ok(name.zip(email))
 }
 
 /// One git config value, `None` when unset (`--get` exits 1 then).
-async fn config_value(root: &Path, key: &str) -> Result<Option<String>, GitError> {
-    let output = run(root, &["config", "--get", key], LOCAL_TIMEOUT).await?;
+fn config_value(root: &Path, key: &str) -> Result<Option<String>, GitError> {
+    let output = run(root, &["config", "--get", key], LOCAL_TIMEOUT)?;
     if !output.success {
         return Ok(None);
     }
     let value = output.stdout.trim();
     Ok((!value.is_empty()).then(|| value.to_owned()))
 }
+
+/// The abbreviated hash of `HEAD`.
+pub fn head_short_hash(root: &Path) -> Result<String, GitError> {
+    let output = run(root, &["rev-parse", "--short", "HEAD"], LOCAL_TIMEOUT)?;
+    if !output.success {
+        return Err(GitError::Failed {
+            command: "rev-parse --short HEAD".to_owned(),
+            stderr: output.stderr,
+        });
+    }
+    Ok(output.stdout.trim().to_owned())
+}
+
+// ── Staging and committing ──────────────────────────────────────────
 
 /// A pathspec naming exactly one repository-relative path: anchored at
 /// the top, no glob interpretation, so `[` or `*` in a filename cannot
@@ -300,19 +382,19 @@ pub fn literal_pathspec(repository_path: &str) -> String {
 /// was. Callers pass the changed files themselves (see
 /// [`literal_pathspec`]): `add` refuses a pathspec that matches nothing,
 /// so a directory or file the project does not have cannot be listed.
-pub async fn stage(root: &Path, pathspecs: &[String]) -> Result<GitOutput, GitError> {
+pub fn stage(root: &Path, pathspecs: &[String]) -> Result<GitOutput, GitError> {
     let mut args: Vec<&str> = vec!["add", "--all", "--"];
     args.extend(pathspecs.iter().map(String::as_str));
-    run(root, &args, LOCAL_TIMEOUT).await
+    run(root, &args, LOCAL_TIMEOUT)
 }
 
 /// Put the index back to `HEAD` for `pathspecs` — the undo of [`stage`]
 /// after a commit that did not happen, so the button leaves no
 /// half-staged state behind. Working-tree files are untouched.
-pub async fn unstage(root: &Path, pathspecs: &[String]) -> Result<GitOutput, GitError> {
+pub fn unstage(root: &Path, pathspecs: &[String]) -> Result<GitOutput, GitError> {
     let mut args: Vec<&str> = vec!["reset", "--quiet", "--"];
     args.extend(pathspecs.iter().map(String::as_str));
-    run(root, &args, LOCAL_TIMEOUT).await
+    run(root, &args, LOCAL_TIMEOUT)
 }
 
 /// Commit the working-tree state of `pathspecs` with `message`.
@@ -321,27 +403,13 @@ pub async fn unstage(root: &Path, pathspecs: &[String]) -> Result<GitOutput, Git
 /// these paths and leaves the rest of the index alone. Hooks run as
 /// they always do and may add to the commit (a pre-commit hook that
 /// re-renders and stages views, for one).
-pub async fn commit(
-    root: &Path,
-    message: &str,
-    pathspecs: &[String],
-) -> Result<GitOutput, GitError> {
+pub fn commit(root: &Path, message: &str, pathspecs: &[String]) -> Result<GitOutput, GitError> {
     let mut args: Vec<&str> = vec!["commit", "--quiet", "-m", message, "--"];
     args.extend(pathspecs.iter().map(String::as_str));
-    run(root, &args, COMMIT_TIMEOUT).await
+    run(root, &args, COMMIT_TIMEOUT)
 }
 
-/// The abbreviated hash of `HEAD`.
-pub async fn head_short_hash(root: &Path) -> Result<String, GitError> {
-    let output = run(root, &["rev-parse", "--short", "HEAD"], LOCAL_TIMEOUT).await?;
-    if !output.success {
-        return Err(GitError::Failed {
-            command: "rev-parse --short HEAD".to_owned(),
-            stderr: output.stderr,
-        });
-    }
-    Ok(output.stdout.trim().to_owned())
-}
+// ── Status ──────────────────────────────────────────────────────────
 
 /// What happened to one path in the working tree, relative to `HEAD`,
 /// as `git status` reports it.
@@ -391,7 +459,7 @@ pub struct RepoSnapshot {
 /// `git status --porcelain=v2 --branch -z` invocation answers all of it,
 /// including "not a repository" (`None`). Ahead/behind are as of the
 /// last fetch; only a fetch contacts the remote.
-pub async fn snapshot(root: &Path) -> Result<Option<RepoSnapshot>, GitError> {
+pub fn snapshot(root: &Path) -> Result<Option<RepoSnapshot>, GitError> {
     let output = run(
         root,
         &[
@@ -402,8 +470,7 @@ pub async fn snapshot(root: &Path) -> Result<Option<RepoSnapshot>, GitError> {
             "--untracked-files=all",
         ],
         LOCAL_TIMEOUT,
-    )
-    .await?;
+    )?;
     if !output.success {
         if is_not_a_repository(&output.stderr) {
             return Ok(None);
@@ -423,10 +490,7 @@ pub async fn snapshot(root: &Path) -> Result<Option<RepoSnapshot>, GitError> {
 /// `--untracked-files=all` lists a new directory's files one by one
 /// instead of collapsing them into the directory, so every new item
 /// counts as one.
-pub async fn scoped_changes(
-    root: &Path,
-    pathspecs: &[String],
-) -> Result<Vec<ChangedPath>, GitError> {
+pub fn scoped_changes(root: &Path, pathspecs: &[String]) -> Result<Vec<ChangedPath>, GitError> {
     if pathspecs.is_empty() {
         return Ok(Vec::new());
     }
@@ -438,7 +502,7 @@ pub async fn scoped_changes(
         "--",
     ];
     args.extend(pathspecs.iter().map(String::as_str));
-    let output = run(root, &args, LOCAL_TIMEOUT).await?;
+    let output = run(root, &args, LOCAL_TIMEOUT)?;
     if !output.success {
         return Err(GitError::Failed {
             command: "status -- <scope>".to_owned(),
@@ -446,12 +510,6 @@ pub async fn scoped_changes(
         });
     }
     Ok(parse_porcelain_entries(&output.stdout).1)
-}
-
-/// The one git message this module matches on — pinned to English by
-/// `LC_ALL=C` in [`run`].
-fn is_not_a_repository(stderr: &str) -> bool {
-    stderr.contains("not a git repository")
 }
 
 /// Parse `git status --porcelain=v2 --branch -z` output. Header lines
@@ -749,5 +807,23 @@ mod tests {
             "# branch.head (detached)",
         ]);
         assert_eq!(parse_porcelain_status(&stdout).branch, "HEAD");
+    }
+
+    #[test]
+    fn a_command_that_outlives_its_timeout_is_killed() {
+        // `git -C <root> --version` needs no repository; a tiny timeout
+        // still has to end in `TimedOut` rather than a hang. Skipped
+        // silently when git is not installed — the other tests cover the
+        // parsing, and this one is about the deadline.
+        let Ok(result) = std::panic::catch_unwind(|| {
+            run(Path::new("."), &["--version"], Duration::from_nanos(1))
+        }) else {
+            return;
+        };
+        match result {
+            Err(GitError::TimedOut) | Err(GitError::Spawn(_)) => {}
+            Ok(output) => assert!(output.success, "git ran to completion inside the deadline"),
+            Err(other) => panic!("unexpected error: {other}"),
+        }
     }
 }

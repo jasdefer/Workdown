@@ -62,8 +62,10 @@ gesture?** Answered as follows; ADR-006 carries a note pointing here.
   a hook may add to a commit as it always does.
 
 The "no auto-commit" rule in ADR-006 stays true as written. The "UI is
-a shell around the CLI" principle gains its one exception: the git
-surface has no `workdown` subcommand twin, the terminal is that twin.
+a shell around the CLI" principle gains its one exception: the
+mutating half of the git surface (commit, pull, push) has no `workdown`
+subcommand twin, the terminal is that twin. The read-only half has one:
+`workdown changes` prints the message the dialog would propose.
 
 ## Scope
 

@@ -1,16 +1,17 @@
 //! Which paths the git controls are allowed to touch.
 //!
 //! The web app may stage and commit *workdown files only*: the paths
-//! `config.yaml` names (`paths.work_items`, `paths.templates`,
-//! `paths.resources`, `paths.views`, `schema`) plus `config.yaml`
-//! itself. Nothing else in the repository is ever staged by a browser
-//! button — a source change sitting next to the items is invisible to
-//! it, which is what makes `serve.git_controls` safe to switch on in a
-//! code repository.
+//! `Config::workdown_paths` lists — what `config.yaml` names
+//! (`paths.work_items`, `paths.templates`, `paths.resources`,
+//! `paths.views`, `schema`) plus `config.yaml` itself. Nothing else in
+//! the repository is ever staged by a browser button — a source change
+//! sitting next to the items is invisible to it, which is what makes
+//! `serve.git_controls` safe to switch on in a code repository.
 //!
-//! The scope is computed once per request and handed to every git call
-//! that needs it (status, add, commit) as the same pathspec list, so
-//! membership is decided by git's pathspec matching everywhere and
+//! The scope is computed once per process (the project cannot move
+//! inside its repository while the server runs) and handed to every git
+//! call that needs it (status, add, commit) as the same pathspec list,
+//! so membership is decided by git's pathspec matching everywhere and
 //! never by an after-the-fact filter that could drift from it. Entries
 //! are relative to the *repository* root — a workdown project may live
 //! in a subfolder of a larger repository — and passed to git with the
@@ -19,57 +20,13 @@
 
 use std::path::Path;
 
-use workdown_core::change_summary::ChangedFileKind;
-use workdown_core::model::config::Config;
+use workdown_core::model::config::{Config, PathRole};
 
-/// The role a scope entry plays, by the config key it came from. The
-/// role, not the filename, is what the pill shows ("schema" whatever
-/// the file is called) and what decides whether a changed file is a
-/// work item or a definition file for the commit message.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ScopeRole {
-    WorkItems,
-    Templates,
-    Resources,
-    Views,
-    Schema,
-    Config,
-}
-
-impl ScopeRole {
-    /// Definition roles in the order the pill names them.
-    pub const DEFINITIONS: [ScopeRole; 5] = [
-        ScopeRole::Schema,
-        ScopeRole::Views,
-        ScopeRole::Resources,
-        ScopeRole::Templates,
-        ScopeRole::Config,
-    ];
-
-    /// The short name the pill and the dialog use for this role.
-    pub fn label(self) -> &'static str {
-        match self {
-            ScopeRole::WorkItems => "items",
-            ScopeRole::Templates => "templates",
-            ScopeRole::Resources => "resources",
-            ScopeRole::Views => "views",
-            ScopeRole::Schema => "schema",
-            ScopeRole::Config => "config",
-        }
-    }
-
-    /// How the commit message generator should treat a file in this role.
-    pub fn kind(self) -> ChangedFileKind {
-        match self {
-            ScopeRole::WorkItems => ChangedFileKind::WorkItem,
-            _ => ChangedFileKind::Definition,
-        }
-    }
-}
+use crate::{repository_prefix, GitError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScopeEntry {
-    pub role: ScopeRole,
+    pub role: PathRole,
     /// Repository-relative, forward slashes, no leading `./`, no
     /// trailing slash. Empty means the repository root itself (a
     /// project at the top whose `work_items` is `.`).
@@ -85,6 +42,27 @@ pub struct GitScope {
 }
 
 impl GitScope {
+    /// The scope for the project at `project_root`: asks git where the
+    /// project sits inside its repository, then builds the entries from
+    /// the config. `None` when the project is not inside a git work
+    /// tree. `config_path` is where `config.yaml` was read from, as the
+    /// CLI was given it.
+    pub fn for_project(
+        project_root: &Path,
+        config: &Config,
+        config_path: &Path,
+    ) -> Result<Option<GitScope>, GitError> {
+        let Some(prefix) = repository_prefix(project_root)? else {
+            return Ok(None);
+        };
+        Ok(Some(GitScope::from_config(
+            &prefix,
+            config,
+            config_path,
+            project_root,
+        )))
+    }
+
     /// Build the scope from the project config. `prefix` is where the
     /// project root sits inside the repository, as `git rev-parse
     /// --show-prefix` reports it: empty at the top, `sub/dir/` below.
@@ -102,29 +80,18 @@ impl GitScope {
         config_path: &Path,
         project_root: &Path,
     ) -> GitScope {
-        let sources = [
-            (ScopeRole::WorkItems, config.paths.work_items.as_path()),
-            (ScopeRole::Templates, config.paths.templates.as_path()),
-            (ScopeRole::Resources, config.paths.resources.as_path()),
-            (ScopeRole::Views, config.paths.views.as_path()),
-            (ScopeRole::Schema, config.schema.as_path()),
-            (ScopeRole::Config, config_path),
-        ];
         let prefix = normalize(prefix);
-        let mut entries = Vec::new();
-        for (role, path) in sources {
-            let Some(relative) = project_relative(path, project_root) else {
-                continue;
-            };
-            let path = join(&prefix, &relative);
-            if entries.iter().any(|entry: &ScopeEntry| entry.path == path) {
-                // Two keys naming the same path (a `views` file inside
-                // the templates directory would be odd, but a repeated
-                // path is not): the first role wins.
-                continue;
-            }
-            entries.push(ScopeEntry { role, path });
-        }
+        let entries = config
+            .workdown_paths(config_path)
+            .into_iter()
+            .filter_map(|workdown_path| {
+                let relative = project_relative(&workdown_path.path, project_root)?;
+                Some(ScopeEntry {
+                    role: workdown_path.role,
+                    path: join(&prefix, &relative),
+                })
+            })
+            .collect();
         GitScope { prefix, entries }
     }
 
@@ -163,7 +130,7 @@ impl GitScope {
     /// The role of a repository-relative path, or `None` when it is
     /// outside the scope. The longest matching entry wins, so a file
     /// under a nested directory is attributed to the nearer key.
-    pub fn classify(&self, repository_path: &str) -> Option<ScopeRole> {
+    pub fn classify(&self, repository_path: &str) -> Option<PathRole> {
         let path = normalize(repository_path);
         self.entries
             .iter()
@@ -249,7 +216,7 @@ defaults:
     #[test]
     fn entries_follow_the_config_keys_at_the_repository_top() {
         let scope = scope("", "workdown-items");
-        let paths: Vec<(&str, ScopeRole)> = scope
+        let paths: Vec<(&str, PathRole)> = scope
             .entries()
             .iter()
             .map(|entry| (entry.path.as_str(), entry.role))
@@ -257,12 +224,12 @@ defaults:
         assert_eq!(
             paths,
             vec![
-                ("workdown-items", ScopeRole::WorkItems),
-                (".workdown/templates", ScopeRole::Templates),
-                (".workdown/resources.yaml", ScopeRole::Resources),
-                (".workdown/views.yaml", ScopeRole::Views),
-                (".workdown/schema.yaml", ScopeRole::Schema),
-                (".workdown/config.yaml", ScopeRole::Config),
+                ("workdown-items", PathRole::WorkItems),
+                (".workdown/templates", PathRole::Templates),
+                (".workdown/resources.yaml", PathRole::Resources),
+                (".workdown/views.yaml", PathRole::Views),
+                (".workdown/schema.yaml", PathRole::Schema),
+                (".workdown/config.yaml", PathRole::Config),
             ]
         );
         assert_eq!(scope.pathspecs()[0], ":(top)workdown-items");
@@ -275,7 +242,7 @@ defaults:
         assert_eq!(nested.entries()[5].path, "tracker/.workdown/config.yaml");
         assert_eq!(
             nested.classify("tracker/items/fix-login.md"),
-            Some(ScopeRole::WorkItems)
+            Some(PathRole::WorkItems)
         );
         assert_eq!(nested.classify("items/fix-login.md"), None);
         assert_eq!(nested.classify("tracker/src/main.rs"), None);
@@ -295,19 +262,19 @@ defaults:
         let scope = scope("", "workdown-items");
         assert_eq!(
             scope.classify("workdown-items/a.md"),
-            Some(ScopeRole::WorkItems)
+            Some(PathRole::WorkItems)
         );
         assert_eq!(
             scope.classify("workdown-items/nested/a.md"),
-            Some(ScopeRole::WorkItems)
+            Some(PathRole::WorkItems)
         );
         assert_eq!(
             scope.classify(".workdown/schema.yaml"),
-            Some(ScopeRole::Schema)
+            Some(PathRole::Schema)
         );
         assert_eq!(
             scope.classify(".workdown/templates/bug.md"),
-            Some(ScopeRole::Templates)
+            Some(PathRole::Templates)
         );
         // `workdown-items-old/` shares a name prefix, not a directory.
         assert_eq!(scope.classify("workdown-items-old/a.md"), None);
@@ -321,7 +288,7 @@ defaults:
         let scope = scope("", "workdown-items");
         assert_eq!(
             scope.classify("workdown-items\\a.md"),
-            Some(ScopeRole::WorkItems)
+            Some(PathRole::WorkItems)
         );
     }
 
@@ -329,18 +296,18 @@ defaults:
     fn work_items_at_the_project_root_covers_everything_under_it() {
         let scope = scope("tracker/", ".");
         assert_eq!(scope.entries()[0].path, "tracker");
-        assert_eq!(scope.classify("tracker/a.md"), Some(ScopeRole::WorkItems));
+        assert_eq!(scope.classify("tracker/a.md"), Some(PathRole::WorkItems));
         // Nested definition files still win over the enclosing items
         // directory — the longer match.
         assert_eq!(
             scope.classify("tracker/.workdown/schema.yaml"),
-            Some(ScopeRole::Schema)
+            Some(PathRole::Schema)
         );
         assert_eq!(scope.classify("other/a.md"), None);
 
         let top = scope_with_root_items();
         assert_eq!(top.pathspecs()[0], ":(top)");
-        assert_eq!(top.classify("anything.md"), Some(ScopeRole::WorkItems));
+        assert_eq!(top.classify("anything.md"), Some(PathRole::WorkItems));
     }
 
     fn scope_with_root_items() -> GitScope {
@@ -369,6 +336,6 @@ defaults:
         assert!(scope
             .entries()
             .iter()
-            .all(|entry| entry.role != ScopeRole::Config));
+            .all(|entry| entry.role != PathRole::Config));
     }
 }

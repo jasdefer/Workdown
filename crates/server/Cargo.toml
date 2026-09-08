@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 workdown-core = { path = "../core" }
+workdown-git = { path = "../git" }
 anyhow.workspace = true
 axum = "0.8"
 # The `--as-of` pinned evaluation date carried in AppState.
@@ -22,10 +23,11 @@ rust-embed = "8"
 serde.workspace = true
 serde_json.workspace = true
 # Runtime needs `net` (the `TcpListener`), `sync` (the broadcast
-# channel behind live updates), and `process`/`time` (the git sync
-# endpoints shell out to `git` under a timeout). The runtime itself is
-# built by the CLI; `macros`/`rt` stay test-only — see dev-dependencies.
-tokio = { workspace = true, features = ["net", "sync", "process", "time"] }
+# channel behind live updates), and `rt` (`spawn_blocking`: the git
+# endpoints run the synchronous `workdown-git` layer on a blocking
+# thread). The runtime itself is built by the CLI; `macros` stays
+# test-only — see dev-dependencies.
+tokio = { workspace = true, features = ["net", "sync", "rt"] }
 # Adapts a broadcast receiver into the `Stream` axum's SSE response
 # consumes (`wrappers::BroadcastStream`, gated behind the `sync` feature).
 tokio-stream = { version = "0.1", features = ["sync"] }

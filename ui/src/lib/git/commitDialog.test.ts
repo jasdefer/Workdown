@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { changeLabel, checklist, commitToast, groupFiles, splitDetails } from './commitDialog';
+import { checklist, commitToast, groupFiles, splitDetails } from './commitDialog';
 import type { GitCommitResult } from '$lib/api/generated/GitCommitResult';
 import type { GitStatus } from '$lib/api/generated/GitStatus';
 
@@ -16,7 +16,7 @@ const readyStatus: GitStatus = {
 
 const result = (overrides: Partial<GitCommitResult> = {}): GitCommitResult => ({
 	commit: 'a1b2c3d',
-	pull: { outcome: 'skipped' },
+	pull: { outcome: 'skipped', reason: 'nothing to integrate — the branch is not behind' },
 	push: { outcome: 'pushed', published: false },
 	status: readyStatus,
 	...overrides
@@ -25,25 +25,15 @@ const result = (overrides: Partial<GitCommitResult> = {}): GitCommitResult => ({
 describe('groupFiles', () => {
 	it('splits work items from definition files', () => {
 		const groups = groupFiles([
-			{ path: 'workdown-items/a.md', role: 'items', change: 'modified' },
-			{ path: '.workdown/schema.yaml', role: 'schema', change: 'modified' },
-			{ path: 'workdown-items/b.md', role: 'items', change: 'added' }
+			{ path: 'workdown-items/a.md', role: 'items', change: 'modified', label: 'edited' },
+			{ path: '.workdown/schema.yaml', role: 'schema', change: 'modified', label: 'edited' },
+			{ path: 'workdown-items/b.md', role: 'items', change: 'added', label: 'added' }
 		]);
 		expect(groups.items.map((file) => file.path)).toEqual([
 			'workdown-items/a.md',
 			'workdown-items/b.md'
 		]);
 		expect(groups.definitions.map((file) => file.role)).toEqual(['schema']);
-	});
-});
-
-describe('changeLabel', () => {
-	it('words every change kind', () => {
-		expect(changeLabel('modified')).toBe('edited');
-		expect(changeLabel('added')).toBe('added');
-		expect(changeLabel('deleted')).toBe('deleted');
-		expect(changeLabel('renamed')).toBe('renamed');
-		expect(changeLabel('unmerged')).toBe('conflicted');
 	});
 });
 
@@ -74,10 +64,10 @@ describe('checklist', () => {
 		]);
 	});
 
-	it('names a skipped pull and a publish', () => {
+	it('frames a skipped pull with the server reason, and names a publish', () => {
 		const rows = checklist(result({ push: { outcome: 'pushed', published: true } }));
 		expect(rows[1]).toEqual({
-			label: 'Pull skipped — nothing to integrate',
+			label: 'Pull skipped — nothing to integrate — the branch is not behind',
 			state: 'skipped',
 			details: null
 		});

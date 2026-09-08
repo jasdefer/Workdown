@@ -4,8 +4,8 @@
 //! text at `HEAD` and in the working tree — and describes the change the
 //! way a person scanning history wants to read it: item titles instead
 //! of filenames, prettified field names and values instead of raw slugs.
-//! Pure: no git, no I/O. The server gathers the texts; a later
-//! `workdown changes` command can reuse the same function.
+//! Pure: no git, no I/O. The server's commit preview and the `workdown
+//! changes` command gather the texts and call the same function.
 //!
 //! The generator knows field names, types and values from the schema and
 //! nothing else. It may say "Status → In Progress"; it never says
@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 
 use crate::coerce::coerce_fields;
 use crate::generators::prettify_slug;
+use crate::model::config::PathRole;
 use crate::model::field_value::format_field_value;
 use crate::model::schema::{FieldType, Schema};
 use crate::model::FieldValue;
@@ -33,16 +34,6 @@ use crate::parser::parse_work_item;
 /// in disguise; anyone who wants that detail opens the diff.
 pub const BODY_LINE_CAP: usize = 10;
 
-/// Which kind of file a changed path is, decided by the caller from the
-/// config's path list: anything under the work items directory is a
-/// work item, everything else in scope (schema, views, resources,
-/// templates, `config.yaml`) is a definition file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChangedFileKind {
-    WorkItem,
-    Definition,
-}
-
 /// One file the commit will cover, with its text on both sides of the
 /// change. `None` on the old side means the file is new; `None` on the
 /// new side means it was deleted.
@@ -52,11 +43,29 @@ pub struct ChangedFile {
     /// fallback the parser uses; for definition files, the path is the
     /// name the message shows (`schema.yaml`, `.workdown/templates/bug.md`).
     pub path: PathBuf,
-    pub kind: ChangedFileKind,
+    /// The config key the file falls under. Work items are described
+    /// field by field; every other role is a definition file, named by
+    /// path with a verb.
+    pub role: PathRole,
     /// The file's text at `HEAD`, or `None` when it did not exist there.
     pub old_text: Option<String>,
     /// The file's text in the working tree, or `None` when it was deleted.
     pub new_text: Option<String>,
+}
+
+impl ChangedFile {
+    /// The same file with both texts on LF line endings. Line endings
+    /// are not content: the `HEAD` side comes from the blob as stored,
+    /// the working-tree side from a file an editor (or autocrlf) may
+    /// have given CRLF endings.
+    fn with_normalized_newlines(&self) -> ChangedFile {
+        ChangedFile {
+            path: self.path.clone(),
+            role: self.role,
+            old_text: self.old_text.as_deref().map(normalize_newlines),
+            new_text: self.new_text.as_deref().map(normalize_newlines),
+        }
+    }
 }
 
 /// The generated message: a subject line, and body lines only when the
@@ -102,29 +111,19 @@ pub fn summarize_changes(
     let mut definitions = Vec::new();
 
     for file in files {
-        // Line endings are not content: the `HEAD` side comes from the
-        // blob as stored, the working-tree side from a file an editor
-        // (or autocrlf) may have given CRLF endings.
-        let file = ChangedFile {
-            path: file.path.clone(),
-            kind: file.kind,
-            old_text: file.old_text.as_deref().map(normalize_newlines),
-            new_text: file.new_text.as_deref().map(normalize_newlines),
-        };
-        let file = &file;
+        let file = file.with_normalized_newlines();
         if file.old_text == file.new_text {
             // Listed but identical — a mode change, or a caller being
             // generous. Nothing to say about it.
             continue;
         }
-        match file.kind {
-            ChangedFileKind::WorkItem => {
-                items.push(describe_work_item(file, schema, title_field));
-            }
-            ChangedFileKind::Definition => definitions.push(DefinitionChange {
+        if file.role.is_work_item() {
+            items.push(describe_work_item(&file, schema, title_field));
+        } else {
+            definitions.push(DefinitionChange {
                 name: file.path.to_string_lossy().replace('\\', "/"),
-                operation: Operation::of(file),
-            }),
+                operation: Operation::of(&file),
+            });
         }
     }
 
@@ -221,20 +220,23 @@ impl Operation {
 }
 
 /// One field that differs between the two sides, already worded for
-/// display: `field` is the prettified name, `new_value` the prettified
-/// new value or `None` when the field was removed.
+/// display.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FieldChange {
-    field_name: String,
-    field: String,
+    /// The field's name as the schema spells it (`status`) — the key
+    /// for looking its type up again.
+    name: String,
+    /// The prettified name the message shows (`Status`).
+    label: String,
+    /// The prettified new value, or `None` when the field was removed.
     new_value: Option<String>,
 }
 
 impl FieldChange {
     fn as_text(&self) -> String {
         match &self.new_value {
-            Some(value) => format!("{} → {}", self.field, value),
-            None => format!("{} cleared", self.field),
+            Some(value) => format!("{} → {}", self.label, value),
+            None => format!("{} cleared", self.label),
         }
     }
 }
@@ -407,8 +409,8 @@ fn compare_fields(old: &ParsedSide, new: &ParsedSide, schema: &Schema) -> Vec<Fi
     let mut changes = Vec::new();
     if old.id != new.id {
         changes.push(FieldChange {
-            field_name: "id".to_owned(),
-            field: "Id".to_owned(),
+            name: "id".to_owned(),
+            label: "Id".to_owned(),
             new_value: Some(new.id.clone()),
         });
     }
@@ -417,8 +419,8 @@ fn compare_fields(old: &ParsedSide, new: &ParsedSide, schema: &Schema) -> Vec<Fi
         let after = new.values.get(name);
         if before != after {
             changes.push(FieldChange {
-                field_name: name.to_owned(),
-                field: prettify_slug(name),
+                name: name.to_owned(),
+                label: prettify_slug(name),
                 new_value: after.cloned(),
             });
         }
@@ -494,12 +496,12 @@ fn uniform_field_move(items: &[ItemChange], schema: &Schema) -> Option<String> {
     let count = items.len();
     let is_choice = schema
         .fields
-        .get(&reference.field_name)
+        .get(&reference.name)
         .is_some_and(|definition| definition.field_type() == FieldType::Choice);
     Some(match (&reference.new_value, is_choice) {
         (Some(value), true) => format!("Move {count} items to {value}"),
-        (Some(value), false) => format!("Set {} to {value} on {count} items", reference.field),
-        (None, _) => format!("Clear {} on {count} items", reference.field),
+        (Some(value), false) => format!("Set {} to {value} on {count} items", reference.label),
+        (None, _) => format!("Clear {} on {count} items", reference.label),
     })
 }
 
@@ -646,7 +648,7 @@ mod tests {
     fn modified(id: &str, old: &str, new: &str) -> ChangedFile {
         ChangedFile {
             path: PathBuf::from(format!("workdown-items/{id}.md")),
-            kind: ChangedFileKind::WorkItem,
+            role: PathRole::WorkItems,
             old_text: Some(old.to_owned()),
             new_text: Some(new.to_owned()),
         }
@@ -655,7 +657,7 @@ mod tests {
     fn added(id: &str, new: &str) -> ChangedFile {
         ChangedFile {
             path: PathBuf::from(format!("workdown-items/{id}.md")),
-            kind: ChangedFileKind::WorkItem,
+            role: PathRole::WorkItems,
             old_text: None,
             new_text: Some(new.to_owned()),
         }
@@ -664,7 +666,7 @@ mod tests {
     fn deleted(id: &str, old: &str) -> ChangedFile {
         ChangedFile {
             path: PathBuf::from(format!("workdown-items/{id}.md")),
-            kind: ChangedFileKind::WorkItem,
+            role: PathRole::WorkItems,
             old_text: Some(old.to_owned()),
             new_text: None,
         }
@@ -673,7 +675,7 @@ mod tests {
     fn definition(path: &str, old: Option<&str>, new: Option<&str>) -> ChangedFile {
         ChangedFile {
             path: PathBuf::from(path),
-            kind: ChangedFileKind::Definition,
+            role: PathRole::Schema,
             old_text: old.map(str::to_owned),
             new_text: new.map(str::to_owned),
         }
