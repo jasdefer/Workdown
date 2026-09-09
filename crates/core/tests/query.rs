@@ -43,6 +43,9 @@ fields:
   tags:
     type: list
     required: false
+  due_date:
+    type: date
+    required: false
   parent:
     type: link
     required: false
@@ -79,12 +82,12 @@ fn setup_project() -> (TempDir, PathBuf) {
     // Work items with varied fields for testing queries.
     fs::write(
         root.join("workdown-items/task-a.md"),
-        "---\ntitle: Fix Login\ntype: task\nstatus: open\npoints: 3\nassignee: alice\ntags:\n  - auth\n  - backend\n---\nFix the login flow.\n",
+        "---\ntitle: Fix Login\ntype: task\nstatus: open\npoints: 3\nassignee: alice\ndue_date: 2026-03-15\ntags:\n  - auth\n  - backend\n---\nFix the login flow.\n",
     ).unwrap();
 
     fs::write(
         root.join("workdown-items/task-b.md"),
-        "---\ntitle: Add Dashboard\ntype: task\nstatus: in_progress\npoints: 5\nassignee: bob\ntags:\n  - frontend\n---\nBuild the main dashboard.\n",
+        "---\ntitle: Add Dashboard\ntype: task\nstatus: in_progress\npoints: 5\nassignee: bob\ndue_date: 2026-02-28\ntags:\n  - frontend\n---\nBuild the main dashboard.\n",
     ).unwrap();
 
     fs::write(
@@ -175,6 +178,16 @@ fn query_numeric_greater_than() {
     let result = run_query(&root, &["points>3"], &[], &[]);
     let ids = sorted_ids(&result);
     assert_eq!(ids, vec!["bug-c", "task-b"]);
+}
+
+#[test]
+fn query_date_greater_than_compares_calendar_dates() {
+    // An unpadded operand: as text, "2026-02-28" > "2026-3-1" because
+    // '0' sorts before '3', so the answer would have been task-b.
+    let (_directory, root) = setup_project();
+    let result = run_query(&root, &["due_date>2026-3-1"], &[], &[]);
+    let ids = sorted_ids(&result);
+    assert_eq!(ids, vec!["task-a"]);
 }
 
 #[test]

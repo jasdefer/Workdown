@@ -2,6 +2,7 @@
 id: prepare-commit-msg-hook
 title: Prefill terminal commits with the generated message
 status: to_do
+parent: misc-work
 depends_on:
   - commit-from-web-ui
 ---

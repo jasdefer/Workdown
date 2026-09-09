@@ -649,8 +649,11 @@ pub(crate) fn aggregate_result_type(
 
 /// A property in `schema.yaml` whose validity depends on the field's
 /// type. Type-agnostic properties (`description`, `required`,
-/// `default`) and the ones policed by their own checks (`compute`,
-/// `pull`, `when`) are deliberately absent.
+/// `default`) are absent, and so is `when`: it is rejected on `link`
+/// and `links` not because those types cannot carry it but because a
+/// derived relation would be invisible to reverse links and reference
+/// checks — a rule with a reason, policed by its own check with its own
+/// message.
 ///
 /// `VariantArray` supplies `FieldProperty::VARIANTS`; declaration order
 /// here is the order violations are reported in.
@@ -664,6 +667,8 @@ pub enum FieldProperty {
     Resource,
     Aggregate,
     Inverse,
+    Compute,
+    Pull,
 }
 
 impl std::fmt::Display for FieldProperty {
@@ -677,6 +682,8 @@ impl std::fmt::Display for FieldProperty {
             Self::Resource => "resource",
             Self::Aggregate => "aggregate",
             Self::Inverse => "inverse",
+            Self::Compute => "compute",
+            Self::Pull => "pull",
         };
         f.write_str(s)
     }
@@ -686,10 +693,11 @@ impl std::fmt::Display for FieldProperty {
 /// rejected on that type, so a property added to
 /// `RawFieldDefinition` is invalid everywhere until a row opts in.
 ///
-/// `Aggregate` is absent from every row on purpose: whether a type can
-/// be aggregated is already recorded by
-/// [`allowed_aggregate_functions`], and [`field_property_allowed`]
-/// reads it from there rather than restating it here.
+/// `Aggregate` and `Pull` are absent from every row on purpose: whether
+/// a type can be aggregated is already recorded by
+/// [`allowed_aggregate_functions`], pull applies those same functions
+/// over a forward link, and [`field_property_allowed`] reads both from
+/// there rather than restating the list here.
 ///
 /// The exhaustive `match` is the point of the table — a thirteenth
 /// [`FieldType`] fails to compile until it gets a row.
@@ -698,11 +706,11 @@ fn allowed_field_properties(field_type: FieldType) -> &'static [FieldProperty] {
     match field_type {
         FieldType::String => &[P::Pattern, P::Resource],
         FieldType::Choice | FieldType::Multichoice => &[P::Values],
-        FieldType::Integer | FieldType::Float => &[P::Min, P::Max],
-        FieldType::Date => &[],
-        FieldType::Duration => &[P::Min, P::Max],
+        FieldType::Integer | FieldType::Float => &[P::Min, P::Max, P::Compute],
+        FieldType::Date => &[P::Compute],
+        FieldType::Duration => &[P::Min, P::Max, P::Compute],
         FieldType::Color => &[],
-        FieldType::Boolean => &[],
+        FieldType::Boolean => &[P::Compute],
         FieldType::List => &[P::Resource],
         FieldType::Link | FieldType::Links => &[P::AllowCycles, P::Inverse],
     }
@@ -717,10 +725,25 @@ fn allowed_field_properties(field_type: FieldType) -> &'static [FieldProperty] {
 pub fn field_property_allowed(field_type: FieldType, property: FieldProperty) -> bool {
     match property {
         // Single source of truth: a type accepts `aggregate:` exactly
-        // when it has aggregate functions defined.
-        FieldProperty::Aggregate => allowed_aggregate_functions(field_type).is_some(),
+        // when it has aggregate functions defined, and `pull:` reduces
+        // with those same functions over a forward link.
+        FieldProperty::Aggregate | FieldProperty::Pull => {
+            allowed_aggregate_functions(field_type).is_some()
+        }
         other => allowed_field_properties(field_type).contains(&other),
     }
+}
+
+/// The field types `property` may be set on, in [`FieldType`]
+/// declaration order. The list an error message shows a user who put
+/// the property on the wrong type; derived from the table so no message
+/// spells a type list out by hand.
+pub fn field_types_allowing(property: FieldProperty) -> impl Iterator<Item = FieldType> {
+    use strum::VariantArray;
+    FieldType::VARIANTS
+        .iter()
+        .copied()
+        .filter(move |&field_type| field_property_allowed(field_type, property))
 }
 
 // ── Pull config ───────────────────────────────────────────────────────

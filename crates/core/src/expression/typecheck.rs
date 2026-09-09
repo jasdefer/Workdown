@@ -237,7 +237,10 @@ pub fn check_types(
 /// color; a color compares against a color or a text literal naming
 /// one (resolved to hex at evaluation). Ordering text or categories is
 /// as meaningless here as in the query builder, and stays an error.
-fn comparison_is_defined(
+///
+/// Visible to the evaluator's tests, which assert its runtime mirror
+/// `apply_comparison` answers exactly the pairings defined here.
+pub(super) fn comparison_is_defined(
     operator: ComparisonOperator,
     left: ExpressionType,
     right: ExpressionType,
@@ -301,6 +304,20 @@ fn binary_result_type(
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
+
+/// Every expression type, for exhaustive pairing loops — here for the
+/// algebra tables, and in the evaluator's tests to hold its runtime
+/// mirror to `comparison_is_defined`.
+#[cfg(test)]
+pub(super) const ALL_TYPES: [ExpressionType; 7] = [
+    ExpressionType::Integer,
+    ExpressionType::Float,
+    ExpressionType::Date,
+    ExpressionType::Duration,
+    ExpressionType::Boolean,
+    ExpressionType::Text,
+    ExpressionType::Color,
+];
 
 #[cfg(test)]
 mod tests {
@@ -368,17 +385,6 @@ mod tests {
     // Each table lists every (left, right) pairing with a defined result;
     // the loop then asserts every *other* pairing is rejected, so the
     // tables are exhaustive by construction.
-
-    /// Every expression type, for exhaustive pairing loops.
-    const ALL_TYPES: [ExpressionType; 7] = [
-        ExpressionType::Integer,
-        ExpressionType::Float,
-        ExpressionType::Date,
-        ExpressionType::Duration,
-        ExpressionType::Boolean,
-        ExpressionType::Text,
-        ExpressionType::Color,
-    ];
 
     fn assert_algebra(
         operator: BinaryOperator,

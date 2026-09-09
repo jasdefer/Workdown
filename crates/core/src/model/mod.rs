@@ -5,6 +5,7 @@ pub mod calendar;
 pub mod color;
 pub mod condition;
 pub mod config;
+pub mod date;
 pub mod diagnostic;
 pub mod duration;
 pub mod field_value;

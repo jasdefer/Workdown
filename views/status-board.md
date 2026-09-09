@@ -5,26 +5,24 @@ Cards grouped into columns by `status`.
 ## to_do
 - [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md)
 - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md)
-- [Decide which field types may declare compute and pull](../workdown-items/compute-type-support-mismatch.md)
-- [Read config.yaml per request so it hot-reloads like everything else](../workdown-items/config-hot-reload.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
-- [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md)
-- [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
-- [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md)
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md)
 - [Decide how much of the schema the web app edits, and what a breaking save does](../workdown-items/schema-editor-web-design.md)
-- [Derived field expressions](../workdown-items/schema-expressions.md)
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md)
-- [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md)
-- [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md)
-- [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
+- [Derived field expressions](../workdown-items/schema-expressions.md)
+
+## on_hold
+- [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
+- [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
+- [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md)
+- [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## done
 - [Commands fail when the work-items directory is missing](../workdown-items/add-missing-items-directory.md)
@@ -50,6 +48,7 @@ Cards grouped into columns by `status`.
 - [`color:` display role — choose which color field tints a view](../workdown-items/color-display-slot.md)
 - [Add `color` field type with background tinting](../workdown-items/color-field-type.md)
 - [Let the web app commit, so the git loop is not broken in the middle](../workdown-items/commit-from-web-ui.md)
+- [Fold `compute` and `pull` into the field-property table](../workdown-items/compute-type-support-mismatch.md)
 - [Computed fields — same-item cross-field expressions](../workdown-items/computed-fields.md)
 - [`when:` — derive a field value by first matching condition](../workdown-items/conditional-field-value.md)
 - [Validate the field-role keys in config.yaml against the schema](../workdown-items/config-field-role-validation.md)
@@ -66,6 +65,7 @@ Cards grouped into columns by `status`.
 - [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md)
 - [Resolve the current date at evaluation time, reproducibly](../workdown-items/evaluation-time-now.md)
 - [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md)
+- [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md)
 - [Comparisons, equality and booleans in the expression grammar](../workdown-items/expression-predicates.md)
 - [Store FieldValue::Date as chrono::NaiveDate](../workdown-items/field-value-native-date.md)
 - [First view end-to-end (board, read-only)](../workdown-items/first-view-end-to-end.md)
@@ -129,6 +129,7 @@ Cards grouped into columns by `status`.
 - [Time tracking](../workdown-items/time-tracking.md)
 - [Tell the user when a timed interval is over](../workdown-items/timer-notifications.md)
 - [Show which item is being timed in the views](../workdown-items/timer-recording-indicator.md)
+- [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md)
 - [UI foundation — conventions and scaffolding before the first view](../workdown-items/ui-foundation.md)
 - [Decide where the required-field check belongs in the load pipeline](../workdown-items/validation-phase-boundaries.md)
 - [Move value coercion out of the store to break the parser↔store cycle](../workdown-items/value-coercion-layering.md)
@@ -158,6 +159,7 @@ Cards grouped into columns by `status`.
 - [Split into core / cli / server workspace](../workdown-items/workspace-refactor.md)
 
 ## removed
+- [Read config.yaml per request so it hot-reloads like everything else](../workdown-items/config-hot-reload.md)
 - [Mapped fields — derive a value by lookup table](../workdown-items/field-value-map.md)
 - [Reusable GitHub Action to keep rendered views in sync](../workdown-items/github-render-action.md)
 - [Show a resource entry's label where views display its id](../workdown-items/resource-label-display.md)

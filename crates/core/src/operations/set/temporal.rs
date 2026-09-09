@@ -9,6 +9,7 @@
 use std::collections::HashMap;
 
 use super::{current_value, ComputedMutation, SetError};
+use crate::model::date::parse_date;
 
 /// Reject `--delta` on a duration field only when the current value is
 /// something other than a duration.
@@ -52,11 +53,7 @@ pub(super) fn require_existing_date(
             mode: "delta",
             field: field.to_owned(),
         }),
-        Some(serde_yaml::Value::String(string))
-            if chrono::NaiveDate::parse_from_str(string, "%Y-%m-%d").is_ok() =>
-        {
-            Ok(())
-        }
+        Some(serde_yaml::Value::String(string)) if parse_date(string).is_some() => Ok(()),
         Some(_) => Err(SetError::MutationCurrentValueMalformed {
             mode: "delta",
             field: field.to_owned(),
@@ -109,8 +106,7 @@ pub(super) fn compute_date_delta(
         .as_ref()
         .and_then(|value| value.as_str())
         .expect("precondition ensures existing date string");
-    let current_date = chrono::NaiveDate::parse_from_str(current_string, "%Y-%m-%d")
-        .expect("precondition ensures parseable date");
+    let current_date = parse_date(current_string).expect("precondition ensures parseable date");
     let new_date = current_date
         .checked_add_signed(chrono::Duration::seconds(delta_seconds))
         .expect("date arithmetic must fit chrono's NaiveDate range");

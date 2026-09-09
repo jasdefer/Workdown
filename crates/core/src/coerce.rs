@@ -14,8 +14,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use chrono::NaiveDate;
-
+use crate::model::date::parse_date;
 use crate::model::diagnostic::{Diagnostic, FieldValueError, ItemDiagnosticKind, RangeBound};
 use crate::model::schema::{
     CompiledPattern, FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity,
@@ -351,10 +350,9 @@ fn coerce_date(value: &serde_yaml::Value) -> Result<FieldValue, FieldValueError>
             got: yaml_type_name(value).into(),
         })?;
 
-    let date =
-        NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| FieldValueError::InvalidDate {
-            value: s.to_owned(),
-        })?;
+    let date = parse_date(s).ok_or_else(|| FieldValueError::InvalidDate {
+        value: s.to_owned(),
+    })?;
 
     Ok(FieldValue::Date(date))
 }
@@ -446,6 +444,7 @@ mod tests {
     use super::*;
     use crate::model::diagnostic::DiagnosticBody;
     use crate::model::schema::{FieldDefinition, FieldTypeConfig};
+    use chrono::NaiveDate;
     use indexmap::IndexMap;
     use std::path::PathBuf;
 

@@ -1,6 +1,6 @@
 ---
 id: expression-logical-combinators
-status: to_do
+status: on_hold
 title: "`and` / `or` / `not` in the expression grammar"
 parent: schema-expressions
 depends_on: [expression-predicates]

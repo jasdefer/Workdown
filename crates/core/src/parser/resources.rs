@@ -22,10 +22,10 @@
 
 use std::path::Path;
 
-use chrono::NaiveDate;
 use indexmap::IndexMap;
 use serde::Deserialize;
 
+use crate::model::date::parse_date;
 use crate::model::duration::parse_duration;
 use crate::model::resources::{ResourceEntry, Resources};
 use crate::model::FieldValue;
@@ -195,8 +195,8 @@ fn coerce_constant(
             let text = value
                 .as_str()
                 .ok_or_else(|| invalid("value must be a YYYY-MM-DD string".to_owned()))?;
-            let date = NaiveDate::parse_from_str(text, "%Y-%m-%d")
-                .map_err(|_| invalid(format!("'{text}' is not a valid YYYY-MM-DD date")))?;
+            let date = parse_date(text)
+                .ok_or_else(|| invalid(format!("'{text}' is not a valid YYYY-MM-DD date")))?;
             Ok(FieldValue::Date(date))
         }
         "duration" => {

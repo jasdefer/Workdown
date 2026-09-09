@@ -9,13 +9,14 @@ use indexmap::IndexMap;
 
 use crate::coerce::{coerce_value, yaml_type_name};
 use crate::expression::parse_expression;
+use crate::model::date::parse_date;
 use crate::model::message::one_of;
 use crate::model::schema::{
-    allowed_aggregate_functions, field_property_allowed, is_defined_inverse, is_relation_anchor,
-    Assertion, CompiledPattern, ComputeConfig, Condition, ConditionValue, CountConstraint,
-    DefaultValue, FieldDefinition, FieldProperty, FieldType, FieldTypeConfig, Generator,
-    NegationValue, RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema, WhenBranch,
-    WhenConfig,
+    allowed_aggregate_functions, field_property_allowed, field_types_allowing, is_defined_inverse,
+    is_relation_anchor, Assertion, CompiledPattern, ComputeConfig, Condition, ConditionValue,
+    CountConstraint, DefaultValue, FieldDefinition, FieldProperty, FieldType, FieldTypeConfig,
+    Generator, NegationValue, RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema,
+    WhenBranch, WhenConfig,
 };
 use crate::model::views::COLOR_NONE_SENTINEL;
 use strum::VariantArray;
@@ -491,8 +492,10 @@ fn interpret_compute(value: &serde_yaml::Value) -> Result<ComputeParts, String> 
 }
 
 /// Validate a field's `compute:` config: structural shape, expression
-/// syntax, and combinations with other options. Reference resolution and
-/// type checking need `resources.yaml` and live in `compute_check`.
+/// syntax, and combinations with other options. Whether the field's type
+/// may carry `compute:` at all is the property table's call, reported by
+/// [`validate_type_specific_properties`]. Reference resolution and type
+/// checking need `resources.yaml` and live in `compute_check`.
 fn validate_compute_config(
     name: &str,
     field: &RawFieldDefinition,
@@ -506,24 +509,6 @@ fn validate_compute_config(
         errors.push(field_error(
             name,
             "'compute' and 'default' cannot be combined — both fill in absent values",
-        ));
-    }
-
-    let type_supports_compute = matches!(
-        field.field_type,
-        FieldType::Integer
-            | FieldType::Float
-            | FieldType::Date
-            | FieldType::Duration
-            | FieldType::Boolean
-    );
-    if !type_supports_compute {
-        errors.push(field_error(
-            name,
-            format!(
-                "'compute' is only valid for integer, float, date, duration, and boolean fields (this field is {})",
-                field.field_type
-            ),
         ));
     }
 
@@ -550,7 +535,9 @@ fn validate_compute_config(
 }
 
 /// Validate a field's `pull:` config structurally: combinations with
-/// other options and the declared type. Reference resolution (`over`,
+/// other options. Whether the field's type may carry `pull:` at all is
+/// the property table's call, reported by
+/// [`validate_type_specific_properties`]. Reference resolution (`over`,
 /// `field`, function/type fit) needs the whole field map settled and
 /// lives in `compute_check`, where a finding disables the one field
 /// instead of failing the load.
@@ -579,24 +566,6 @@ fn validate_pull_compatibility(
         errors.push(field_error(
             name,
             "'pull' and 'default' cannot be combined — both fill in absent values",
-        ));
-    }
-
-    let type_supports_pull = matches!(
-        field.field_type,
-        FieldType::Integer
-            | FieldType::Float
-            | FieldType::Date
-            | FieldType::Duration
-            | FieldType::Boolean
-    );
-    if !type_supports_pull {
-        errors.push(field_error(
-            name,
-            format!(
-                "'pull' is only valid for integer, float, date, duration, and boolean fields (this field is {})",
-                field.field_type
-            ),
         ));
     }
 }
@@ -665,9 +634,16 @@ fn validate_type_specific_properties(
 ) {
     for &property in FieldProperty::VARIANTS {
         if property_is_set(field, property) && !field_property_allowed(field.field_type, property) {
+            let valid_on = field_types_allowing(property)
+                .map(|field_type| field_type.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
             errors.push(field_error(
                 name,
-                format!("'{property}' is not valid for type '{}'", field.field_type),
+                format!(
+                    "'{property}' is not valid for type '{}' (valid on: {valid_on})",
+                    field.field_type
+                ),
             ));
         }
     }
@@ -738,6 +714,8 @@ fn property_is_set(field: &RawFieldDefinition, property: FieldProperty) -> bool 
         FieldProperty::Resource => field.resource.is_some(),
         FieldProperty::Aggregate => field.aggregate.is_some(),
         FieldProperty::Inverse => field.inverse.is_some(),
+        FieldProperty::Compute => field.compute.is_some(),
+        FieldProperty::Pull => field.pull.is_some(),
     }
 }
 
@@ -1211,9 +1189,9 @@ fn coerce_date_value(
     let ConditionValue::String(raw) = value else {
         return;
     };
-    match chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d") {
-        Ok(date) => *value = ConditionValue::Date(date),
-        Err(_) => errors.push(rule_error(
+    match parse_date(raw) {
+        Some(date) => *value = ConditionValue::Date(date),
+        None => errors.push(rule_error(
             rule_name,
             format!(
                 "condition on date field '{ref_key}' has invalid date '{raw}' (expected YYYY-MM-DD)"
@@ -2164,7 +2142,7 @@ fields:
 ";
         assert_validation_error_contains(
             yaml,
-            "'compute' is only valid for integer, float, date, duration, and boolean fields (this field is choice)",
+            "'compute' is not valid for type 'choice' (valid on: integer, float, date, duration, boolean)",
         );
     }
 
@@ -2273,7 +2251,7 @@ fields:
 ";
         assert_validation_error_contains(
             yaml,
-            "'pull' is only valid for integer, float, date, duration, and boolean fields (this field is choice)",
+            "'pull' is not valid for type 'choice' (valid on: integer, float, date, duration, boolean)",
         );
     }
 
