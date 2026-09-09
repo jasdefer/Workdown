@@ -1,6 +1,7 @@
 ---
 id: project-load-cache
 status: to_do
+parent: misc-work
 title: Cache the project load in the server (when it starts to hurt)
 tags:
 - watch

@@ -1,6 +1,7 @@
 ---
 id: recording-dot-extraction
 status: to_do
+parent: misc-work
 title: Extract the recording indicator the six item-presenting views each rebuilt
 ---
 

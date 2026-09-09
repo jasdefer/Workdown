@@ -1,6 +1,7 @@
 ---
 id: config-hot-reload
-status: to_do
+status: removed
+parent: misc-work
 title: Read config.yaml per request so it hot-reloads like everything else
 ---
 
@@ -14,6 +15,25 @@ watcher pings the browsers anyway, so the edit visibly *causes* a
 refetch, and that refetch is served with the old config. Nothing says
 so. The user sees their change ignored and has no reason to suspect a
 restart is needed.
+
+## Removed 2026-09-09
+
+Parked as a rare case. The item was a finding from the 2026-08 code
+review, not something a user ran into, and config.yaml is edited a
+handful of times in a project's life. Reading the file per request
+would add a parse path, a runtime failure mode and a rule about which
+keys are boot-bound, all for a case nobody has hit.
+
+If it does bite, the cheap cure is the silence, not the reload: keep the
+raw config text from startup, have the watcher compare it against the
+file when a save touches it, expose one boolean on the project endpoint
+the shell already refetches on every ping, and show a banner saying
+"config.yaml changed since the server started; restart to apply". No
+reload, no new parsing, everything stays boot-bound. Hot reload can be
+added on top later without undoing that.
+
+**Trigger to reopen:** a config edit during `workdown serve` confuses
+someone more than once.
 
 ## The problem in detail
 
