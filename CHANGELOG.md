@@ -5,6 +5,18 @@ tagged version into the top of that version's GitHub release page, so
 entries are written for people using workdown, not for people reading
 its source — internal refactors are deliberately absent.
 
+## Unreleased
+
+### Fixed
+
+- Comparisons in `compute:` and `when:` expressions now compare two
+  integer fields exactly. Whole numbers above 2^53 were converted to
+  floating point first, so two values differing by one could compare
+  equal.
+- A float field holding YAML's `.nan` now fails a comparison with the
+  same "result is not a finite number" warning that arithmetic on it
+  already raised, instead of the condition silently matching nothing.
+
 ## 0.2.7 - 2026-09-09
 
 ### Added

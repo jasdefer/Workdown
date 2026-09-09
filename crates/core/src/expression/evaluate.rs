@@ -138,7 +138,9 @@ pub fn evaluate(
 }
 
 /// Apply one comparison to two values — the runtime half of
-/// `typecheck::comparison_is_defined`, with the same pairings.
+/// `typecheck::comparison_is_defined`, with the same pairings. The
+/// `comparison_algebra_matches_the_type_checker` test holds the two
+/// together.
 fn apply_comparison(
     operator: ComparisonOperator,
     left: Value,
@@ -148,21 +150,25 @@ fn apply_comparison(
 
     // Orderable pairings answer every operator.
     let ordering: Option<Ordering> = match (&left, &right) {
-        (a, b) if both_numbers(a, b) => as_float(a).partial_cmp(&as_float(b)),
+        // Exact, like integer arithmetic: through f64, two integers
+        // above 2^53 that differ by one would compare equal.
+        (Value::Integer(a), Value::Integer(b)) => Some(a.cmp(b)),
+        (a, b) if both_numbers(a, b) => {
+            // A float pairing always orders — unless an operand is NaN,
+            // which YAML `.nan` lets into a float field. That is a value
+            // failure on this item, reported like NaN arithmetic, not a
+            // pairing the algebra lacks.
+            return as_float(a)
+                .partial_cmp(&as_float(b))
+                .map(|ordering| Value::Boolean(ordering_holds(operator, ordering)))
+                .ok_or(EvaluateError::NotFinite);
+        }
         (Value::Timestamp(a), Value::Timestamp(b)) => Some(a.cmp(b)),
         (Value::Duration(a), Value::Duration(b)) => Some(a.cmp(b)),
         _ => None,
     };
     if let Some(ordering) = ordering {
-        let holds = match operator {
-            ComparisonOperator::Equal => ordering == Ordering::Equal,
-            ComparisonOperator::NotEqual => ordering != Ordering::Equal,
-            ComparisonOperator::LessThan => ordering == Ordering::Less,
-            ComparisonOperator::LessOrEqual => ordering != Ordering::Greater,
-            ComparisonOperator::GreaterThan => ordering == Ordering::Greater,
-            ComparisonOperator::GreaterOrEqual => ordering != Ordering::Less,
-        };
-        return Ok(Value::Boolean(holds));
+        return Ok(Value::Boolean(ordering_holds(operator, ordering)));
     }
 
     // Equality-only pairings.
@@ -189,6 +195,19 @@ fn apply_comparison(
 
     // Undefined pairing — already reported by the schema-level check.
     Err(EvaluateError::InvalidOperation)
+}
+
+/// Whether `operator` holds for two operands that compare as `ordering`.
+fn ordering_holds(operator: ComparisonOperator, ordering: std::cmp::Ordering) -> bool {
+    use std::cmp::Ordering;
+    match operator {
+        ComparisonOperator::Equal => ordering == Ordering::Equal,
+        ComparisonOperator::NotEqual => ordering != Ordering::Equal,
+        ComparisonOperator::LessThan => ordering == Ordering::Less,
+        ComparisonOperator::LessOrEqual => ordering != Ordering::Greater,
+        ComparisonOperator::GreaterThan => ordering == Ordering::Greater,
+        ComparisonOperator::GreaterOrEqual => ordering != Ordering::Less,
+    }
 }
 
 /// Whether a text value names the given resolved color hex: parsed as a
@@ -322,6 +341,7 @@ fn scale_duration(seconds: i64, factor: f64) -> Result<Value, EvaluateError> {
 #[cfg(test)]
 mod tests {
     use super::super::parser::parse_expression;
+    use super::super::typecheck::{comparison_is_defined, ExpressionType, ALL_TYPES};
     use super::*;
     use std::collections::HashMap;
 
@@ -549,5 +569,99 @@ mod tests {
             evaluated("flag == status"),
             Err(EvaluateError::InvalidOperation)
         );
+    }
+
+    #[test]
+    fn integer_comparison_is_exact_above_the_float_mantissa() {
+        // 2^53 and 2^53 + 1 are the same f64; as integers they differ.
+        let context = MapContext {
+            fields: HashMap::from([
+                ("larger", Value::Integer(9_007_199_254_740_993)),
+                ("smaller", Value::Integer(9_007_199_254_740_992)),
+            ]),
+            constants: HashMap::new(),
+        };
+        let evaluated = |source: &str| evaluate(&parse_expression(source).unwrap(), &context);
+        assert_eq!(evaluated("larger == smaller"), Ok(Value::Boolean(false)));
+        assert_eq!(evaluated("larger != smaller"), Ok(Value::Boolean(true)));
+        assert_eq!(evaluated("larger > smaller"), Ok(Value::Boolean(true)));
+        assert_eq!(evaluated("larger <= smaller"), Ok(Value::Boolean(false)));
+    }
+
+    #[test]
+    fn nan_operand_is_a_reported_failure_not_a_silent_skip() {
+        // YAML `.nan` reaches evaluation as a float. Comparing it must
+        // fail the way arithmetic on it already does, so the item gets
+        // a warning instead of a silently unanswered condition.
+        let context = MapContext {
+            fields: HashMap::from([("weight", Value::Float(f64::NAN))]),
+            constants: HashMap::new(),
+        };
+        let evaluated = |source: &str| evaluate(&parse_expression(source).unwrap(), &context);
+        for source in [
+            "weight > 1",
+            "weight == weight",
+            "weight != 1.5",
+            "1 < weight",
+        ] {
+            assert_eq!(evaluated(source), Err(EvaluateError::NotFinite), "{source}");
+        }
+        assert_eq!(evaluated("weight + 1"), Err(EvaluateError::NotFinite));
+    }
+
+    // ── The comparison algebra against the type checker ─────────────
+
+    const ALL_COMPARISONS: [ComparisonOperator; 6] = [
+        ComparisonOperator::Equal,
+        ComparisonOperator::NotEqual,
+        ComparisonOperator::LessThan,
+        ComparisonOperator::LessOrEqual,
+        ComparisonOperator::GreaterThan,
+        ComparisonOperator::GreaterOrEqual,
+    ];
+
+    /// One well-formed runtime value of each expression type.
+    fn sample_value(expression_type: ExpressionType) -> Value {
+        match expression_type {
+            ExpressionType::Integer => Value::Integer(4),
+            ExpressionType::Float => Value::Float(2.5),
+            ExpressionType::Date => Value::Timestamp(20_458 * DAY),
+            ExpressionType::Duration => Value::Duration(6 * HOUR),
+            ExpressionType::Boolean => Value::Boolean(true),
+            ExpressionType::Text => Value::Text("done".to_owned()),
+            ExpressionType::Color => Value::Color("#ef4444".to_owned()),
+        }
+    }
+
+    #[test]
+    fn comparison_algebra_matches_the_type_checker() {
+        // Every type pairing under every operator: the runtime answers
+        // exactly where `comparison_is_defined` says it may, and refuses
+        // with InvalidOperation everywhere else — so the two halves
+        // cannot drift apart, the way `assert_algebra` pins arithmetic.
+        for left in ALL_TYPES {
+            for right in ALL_TYPES {
+                for operator in ALL_COMPARISONS {
+                    let result =
+                        apply_comparison(operator, sample_value(left), sample_value(right));
+                    let defined = comparison_is_defined(operator, left, right);
+                    match result {
+                        Ok(Value::Boolean(_)) => {
+                            assert!(
+                                defined,
+                                "{left} {operator} {right} evaluated but is undefined"
+                            )
+                        }
+                        Err(EvaluateError::InvalidOperation) => {
+                            assert!(
+                                !defined,
+                                "{left} {operator} {right} is defined but was refused"
+                            )
+                        }
+                        other => panic!("{left} {operator} {right}: unexpected {other:?}"),
+                    }
+                }
+            }
+        }
     }
 }
