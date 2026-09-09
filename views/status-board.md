@@ -17,6 +17,7 @@ Cards grouped into columns by `status`.
 - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
 - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md)
+- [Move the in-file operations tests to core's tests directory](../workdown-items/relocate-operations-tests.md)
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md)
 - [Decide how much of the schema the web app edits, and what a breaking save does](../workdown-items/schema-editor-web-design.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)

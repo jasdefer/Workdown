@@ -393,15 +393,18 @@ tests ran).
 
 ### 5. Work breakdown (2026-09-09)
 
-**Decided:** four items under [[testing-strategy]], in this order.
+**Decided:** five items under [[testing-strategy]], in this order.
 
 1. [[cli-binary-tests]]: new `crates/cli/tests/`, running the built
    executable, with the decision-two cases.
-2. [[test-audit]]: file by file down the ranked list, delete what fails
-   a decision-two rule, relocate the in-file operations integration
-   tests to `crates/core/tests/`, count before and after.
-3. [[ci-test-run-completeness]]: the script from decision four.
-4. [[testing-guide]]: decisions one and two written into
+2. [[relocate-operations-tests]]: the pure move of the in-file
+   operations integration tests to `crates/core/tests/`, about 3,500
+   lines, split out so it is reviewed on its own and the in-file counts
+   are honest before any judgement.
+3. [[test-audit]]: file by file down the ranked list, delete what fails
+   a decision-two rule, count before and after.
+4. [[ci-test-run-completeness]]: the script from decision four.
+5. [[testing-guide]]: decisions one and two written into
    `docs/architecture.md`, with a one-line pointer in `CLAUDE.md`.
 
 Parked, not items: browser tests; the Svelte store factory.
@@ -452,6 +455,6 @@ and CI can no longer be green while most of the suite did not run.
 ## Outcome (2026-09-09)
 
 All eight questions answered or parked, recorded above as decisions one
-to five. Four follow-up items created under [[testing-strategy]]. The
+to five. Five follow-up items created under [[testing-strategy]]. The
 rules themselves land in `docs/architecture.md` through
 [[testing-guide]], which is where a future change meets them.

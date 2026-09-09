@@ -3,7 +3,7 @@ id: test-audit
 title: Audit every test block against the rules, delete what fails them, move what is misplaced
 status: to_do
 parent: testing-strategy
-depends_on: [cli-binary-tests]
+depends_on: [relocate-operations-tests]
 ---
 
 ## In plain words
@@ -11,14 +11,18 @@ depends_on: [cli-binary-tests]
 Decisions one and two of [[testing-strategy-design]] say what a test is
 for and which cases each layer gets. The existing suite was written
 before either existed. This item walks the suite against them, largest
-block first, and does three things: deletes tests that fail a rule,
-moves tests that sit in the wrong place, and counts before and after so
-the milestone can say whether it ended with fewer or better tests than
-it started with. **Example:** `crates/core/src/operations/set/mod.rs`
-has 16 lines of product code and 1,202 lines of tests that write a temp
-project and assert on files. Those are integration tests by our own
-definition, so they move to `crates/core/tests/`. Nothing about them
-is wrong except the address.
+block first, and does two things: deletes tests that fail a rule, and
+counts before and after so the milestone can say whether it ended with
+fewer or better tests than it started with. **Example:**
+`view_data/gantt_by_initiative.rs` has 123 lines of product code and
+499 lines of tests. Either each of those tests is a distinct placement
+or grouping shape, and they stay, or some restate what the gantt tests
+below them already prove, and those go. Reading them against the rule
+is the work.
+
+The pure moves — the in-file operations tests that belong in
+`crates/core/tests/` — are [[relocate-operations-tests]], which runs
+first so this item starts from honest in-file numbers.
 
 ## What the inventory already found
 
@@ -26,11 +30,9 @@ is wrong except the address.
   parser, `coerce`, query evaluator, views parser, `compute_check`,
   `where_check`, expression typechecker, duration, gantt placement,
   derive, rollup, cycles. Large because their input spaces are.
-- **Relocate, about 3,500 lines:** the in-file tests under
-  `operations/set/mod.rs`, `rename.rs`, `view_write.rs`, `body.rs`,
-  `frontmatter_io.rs`, `install_hooks.rs`. Integration tests living in
-  the file. Each operation is tested once, so this is a move, not a
-  dedup.
+- **Already moved by [[relocate-operations-tests]]:** the in-file
+  operations integration tests, about 3,500 lines. Not this item's
+  concern beyond confirming nothing was lost.
 - **Look first for excess:** `view_data/gantt_by_initiative.rs` and
   `gantt_by_depth.rs` (about four test lines per product line); the 47
   tests in `crates/server/tests/git_endpoint.rs` (any that assert on
@@ -59,22 +61,24 @@ A deletion is made because a rule fails, never to reach a number.
 ## Order of work
 
 1. Record the "before" counts with the method in the design item's
-   baseline section.
-2. Relocate the operations blocks first. Pure moves, easy to review,
-   and they make the in-file numbers honest before any judgement about
-   them.
-3. Then down the ranked list, one file per commit, largest first.
-4. Record the "after" counts the same way, in [[testing-strategy]].
+   baseline section. The baseline was taken before the relocation, so
+   the per-layer split has shifted; the totals have not.
+2. Down the ranked list, one file per commit, largest first. For each
+   block: name the function under test, decide input-space or glue,
+   then apply the four rules test by test.
+3. Record the "after" counts the same way, in [[testing-strategy]].
 
 ## Watch out
 
-Coverage in transit: a relocated block that loses a case on the way is
-the risk the "forward-only" leaning was guarding against. Move whole
-blocks, run the full workspace gate after each, and only then edit.
+A deletion that looks like a restatement can be the only test of one
+corner the `tests/` file never sends through. Before deleting, find the
+integration test that covers the same path and check it reaches the same
+branch. If it does not, the test stays, or the case moves into the
+integration test first.
 
 ## Done when
 
-- No in-file test block writes a temp project; those all live in
-  `tests/`.
+- Every block in the ranked list has been read against the rules, and
+  the item records the verdict per file, one line each.
 - Every deletion is justified against a named rule in its commit.
 - Before and after counts are in the milestone, taken the same way.
