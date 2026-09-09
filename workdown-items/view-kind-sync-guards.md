@@ -178,7 +178,9 @@ failure mode.
    disagreement (the JSON schema forbids `compute:` on `string`, `choice`
    and `color`; `compute_check::expression_type_of` accepts all three), and
    settling which side is right is a real rule change that should not ride
-   along in a test-only item. Filed separately.
+   along in a test-only item. Filed separately. (Lifted since: the
+   disagreement turned out not to exist, and [[compute-type-support-mismatch]]
+   folded both into the table, so the probe covers ten properties now.)
 6. **`docs/views.md` gets the drift test**, though the item called it
    optional — its kind table is machine-readable and the test is ~15 lines.
 7. **Checklist row 12 is in scope** — `ViewRenderer.svelte`'s if/else chain

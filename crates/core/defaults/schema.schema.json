@@ -136,7 +136,7 @@
           "description": "'when' cannot be combined with 'compute' (both derive the field's value) or a generator 'default' (next to 'when' the fallback is evaluated, never stamped), and is not supported on link/links fields (a derived relation would be invisible to reverse links and reference checks)."
         }
       },
-      "$comment": "One block per field type, in the order model/schema.rs declares FieldType. Each `then` lists the properties that type rejects, mirroring allowed_field_properties (and, for `aggregate`, allowed_aggregate_functions) in crates/core/src/model/schema.rs. crates/core/tests/schema_schema.rs probes every type/property pair against the Rust answer, so a block that drifts from the table fails there. Keep one block per type rather than sharing blocks across type lists — overlapping lists is how two entries went missing once already. The `compute` / `pull` blocks at the end are type lists on purpose; the rule they encode is tracked in the compute-type-support-mismatch work item.",
+      "$comment": "One block per field type, in the order model/schema.rs declares FieldType. Each `then` lists the properties that type rejects, mirroring allowed_field_properties (and, for `aggregate` and `pull`, allowed_aggregate_functions) in crates/core/src/model/schema.rs, plus the shape a permitted property must take on that type (numeric bounds, duration bounds, `compute` without `round` outside date). crates/core/tests/schema_schema.rs probes every type/property pair against the Rust answer, so a block that drifts from the table fails there. Keep one block per type rather than sharing blocks across type lists — overlapping lists is how two entries went missing once already.",
       "allOf": [
         {
           "if": {
@@ -149,7 +149,9 @@
               "max": false,
               "allow_cycles": false,
               "aggregate": false,
-              "inverse": false
+              "inverse": false,
+              "compute": false,
+              "pull": false
             }
           }
         },
@@ -166,7 +168,9 @@
               "allow_cycles": false,
               "resource": false,
               "aggregate": false,
-              "inverse": false
+              "inverse": false,
+              "compute": false,
+              "pull": false
             }
           }
         },
@@ -183,7 +187,9 @@
               "allow_cycles": false,
               "resource": false,
               "aggregate": false,
-              "inverse": false
+              "inverse": false,
+              "compute": false,
+              "pull": false
             }
           }
         },
@@ -199,7 +205,13 @@
               "resource": false,
               "inverse": false,
               "min": { "type": "number" },
-              "max": { "type": "number" }
+              "max": { "type": "number" },
+              "compute": {
+                "anyOf": [
+                  { "type": "string" },
+                  { "not": { "required": ["round"] } }
+                ]
+              }
             }
           }
         },
@@ -215,7 +227,13 @@
               "resource": false,
               "inverse": false,
               "min": { "type": "number" },
-              "max": { "type": "number" }
+              "max": { "type": "number" },
+              "compute": {
+                "anyOf": [
+                  { "type": "string" },
+                  { "not": { "required": ["round"] } }
+                ]
+              }
             }
           }
         },
@@ -253,6 +271,12 @@
               "max": {
                 "type": "string",
                 "pattern": "^-?\\s*(\\d+(s|min|h|d|w))(\\s+\\d+(s|min|h|d|w))*$"
+              },
+              "compute": {
+                "anyOf": [
+                  { "type": "string" },
+                  { "not": { "required": ["round"] } }
+                ]
               }
             }
           }
@@ -270,7 +294,9 @@
               "allow_cycles": false,
               "resource": false,
               "aggregate": false,
-              "inverse": false
+              "inverse": false,
+              "compute": false,
+              "pull": false
             }
           }
         },
@@ -286,7 +312,13 @@
               "max": false,
               "allow_cycles": false,
               "resource": false,
-              "inverse": false
+              "inverse": false,
+              "compute": {
+                "anyOf": [
+                  { "type": "string" },
+                  { "not": { "required": ["round"] } }
+                ]
+              }
             }
           }
         },
@@ -302,7 +334,9 @@
               "max": false,
               "allow_cycles": false,
               "aggregate": false,
-              "inverse": false
+              "inverse": false,
+              "compute": false,
+              "pull": false
             }
           }
         },
@@ -317,7 +351,9 @@
               "min": false,
               "max": false,
               "resource": false,
-              "aggregate": false
+              "aggregate": false,
+              "compute": false,
+              "pull": false
             }
           }
         },
@@ -332,33 +368,9 @@
               "min": false,
               "max": false,
               "resource": false,
-              "aggregate": false
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "type": { "enum": ["string", "choice", "multichoice", "color", "list", "link", "links"] } }
-          },
-          "then": {
-            "properties": {
+              "aggregate": false,
               "compute": false,
               "pull": false
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "type": { "enum": ["integer", "float", "duration"] } }
-          },
-          "then": {
-            "properties": {
-              "compute": {
-                "anyOf": [
-                  { "type": "string" },
-                  { "not": { "required": ["round"] } }
-                ]
-              }
             }
           }
         }

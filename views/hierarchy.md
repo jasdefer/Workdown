@@ -5,7 +5,6 @@ Hierarchical outline following `parent` upward to roots.
 - [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md) — status: to_do
   - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md) — status: to_do
 - [Miscellaneous improvements](../workdown-items/misc-work.md) — status: in_progress
-  - [Fold `compute` and `pull` into the field-property table](../workdown-items/compute-type-support-mismatch.md) — status: to_do
   - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md) — status: to_do
   - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md) — status: to_do
   - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md) — status: on_hold

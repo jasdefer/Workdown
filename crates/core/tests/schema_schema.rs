@@ -180,9 +180,9 @@ fields:
 // reading the schema's blocks: what the schema *accepts* is what an editor
 // will let through, however the schema chooses to say it.
 //
-// `compute:` and `pull:` are deliberately not probed — the two sides
-// genuinely disagree there, and deciding which is right is a rule change
-// tracked in `compute-type-support-mismatch`.
+// The document only ever meets the JSON schema, which cannot resolve
+// references between fields, so a value may name a field the document
+// does not declare; the Rust side is asked directly.
 
 /// A representative value for `property`, well-formed for `field_type`, so
 /// the only thing a rejection can be about is whether the property belongs
@@ -204,6 +204,10 @@ fn representative_value(field_type: FieldType, property: FieldProperty) -> &'sta
         // the enum is enough to ask whether `aggregate:` is allowed here.
         FieldProperty::Aggregate => "{ function: count, over: parent }",
         FieldProperty::Inverse => "children",
+        // The string form: a mapping with `round` would be rejected for
+        // its shape on every non-date type, not for the property.
+        FieldProperty::Compute => "other + 1",
+        FieldProperty::Pull => "{ over: parent, field: other, function: count }",
     }
 }
 

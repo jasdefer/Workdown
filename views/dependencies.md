@@ -8,7 +8,6 @@ flowchart TD
         burndown-chart-design["Decide where the burndown's time axis comes from"]
     end
     subgraph misc-work ["Miscellaneous improvements"]
-        compute-type-support-mismatch["Fold `compute` and `pull` into the field-property table"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
         prepare-commit-msg-hook["Prefill terminal commits with the generated message"]
         project-load-cache["Cache the project load in the server (when it starts to hurt)"]
