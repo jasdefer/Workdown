@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 
 use chrono::NaiveDate;
 use tempfile::TempDir;
-use workdown_core::model::diagnostic::DiagnosticBody;
+use workdown_core::model::diagnostic::{DiagnosticBody, ItemDiagnosticKind};
+use workdown_core::model::schema::Severity;
 use workdown_core::model::FieldValue;
 use workdown_core::parser::config::load_config;
 use workdown_core::project::{load_project, Project};
@@ -977,4 +978,64 @@ fn missing_required_findings_are_ordered_item_first() {
         "got: {:?}",
         project.diagnostics
     );
+}
+
+// ── Runtime evaluation failures ─────────────────────────────────────
+
+/// A value that is well-formed YAML but breaks evaluation — `.nan` in a
+/// float field — reaches the user as one warning on the item, naming
+/// the field and the branch, rather than a condition that silently
+/// matches nothing. (`compute:` reports through the same channel with
+/// the same detail text; this pins the `when:` path, which is where a
+/// silent skip would otherwise hide.)
+#[test]
+fn nan_in_a_compared_field_is_one_item_warning() {
+    let schema_yaml = format!(
+        "{COMMON_FIELDS}  weight:
+    type: float
+  heavy:
+    type: boolean
+    when:
+      - if: weight > 1
+        then: true
+    default: false
+"
+    );
+    let (_directory, root) = setup_project(
+        &schema_yaml,
+        "",
+        &[
+            ("broken.md", "---\nweight: .nan\n---\n"),
+            ("fine.md", "---\nweight: 2.5\n---\n"),
+        ],
+    );
+
+    let project = load(&root);
+
+    assert_eq!(
+        project.diagnostics.len(),
+        1,
+        "got: {:?}",
+        project.diagnostics
+    );
+    let diagnostic = &project.diagnostics[0];
+    assert_eq!(diagnostic.severity, Severity::Warning);
+    assert!(
+        matches!(
+            &diagnostic.body,
+            DiagnosticBody::Item(item)
+                if item.item_id.as_str() == "broken"
+                    && matches!(
+                        &item.kind,
+                        ItemDiagnosticKind::WhenConditionFailed { field, branch_number: 1, detail }
+                            if field == "heavy" && detail == "result is not a finite number"
+                    )
+        ),
+        "got: {diagnostic:?}"
+    );
+    // The unanswered branch falls through to the default; the healthy
+    // item is untouched.
+    let heavy = |id: &str| project.store.get(id).unwrap().fields.get("heavy").cloned();
+    assert_eq!(heavy("broken"), Some(FieldValue::Boolean(false)));
+    assert_eq!(heavy("fine"), Some(FieldValue::Boolean(true)));
 }

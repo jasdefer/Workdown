@@ -195,8 +195,8 @@ impl Operator {
 /// - `choice` — equality and list membership (`in` / `not in`). Categories
 ///   are matched whole, and lexicographic ordering of category names is
 ///   meaningless.
-/// - `date` — equality and ordering (ISO dates sort chronologically as
-///   text); substring / regex omitted.
+/// - `date` — equality and ordering (the evaluator parses the operand
+///   and compares calendar dates); substring / regex omitted.
 /// - `link` — equality and list membership; a link is an id reference.
 /// - `integer` / `float` / `duration` — ordered scalars: equality and
 ///   comparison.

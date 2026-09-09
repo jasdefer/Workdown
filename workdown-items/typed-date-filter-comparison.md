@@ -56,6 +56,13 @@ things by textual accident), which is why it was excluded from
   the operand checker, now the evaluator) accepts unpadded month and
   day, so `2026-3-1` was never malformed here — it was only compared
   wrongly, as text.
-- Tests live as unit cases in `crates/core/src/query/eval.rs`: the
-  typed comparison, the malformed-operand shapes, and the textual
-  `contains`.
+- Tests follow the three-layer rule: the behaviour is asserted once at
+  the query engine in `crates/core/tests/query.rs` (an unpadded operand
+  through a real project), and the operand shapes — malformed dates and
+  the textual `contains` — are unit cases in `crates/core/src/query/eval.rs`.
+- Review follow-up (2026-09-09): the `YYYY-MM-DD` parse was spelled out
+  at seven sites (coercion, resource constants, rule conditions, the
+  operand checker, the `set` date delta, and now the evaluator). They
+  all go through `parse_date` in `crates/core/src/model/date.rs`, so the
+  grammar the evaluator accepts is by construction the one frontmatter
+  accepts.

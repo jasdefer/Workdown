@@ -65,6 +65,12 @@ corner:
    type pair and operator asserts the runtime answers exactly the
    pairings the type checker defines, like `assert_algebra` does for
    arithmetic.
+4. **The warning is pinned at the project loader.** No integration test
+   asserted that a runtime evaluation failure reaches the user at all,
+   so the changelog claim rested on unit tests alone.
+   `crates/core/tests/computed_fields.rs` now loads a project with `.nan`
+   in a compared float field and asserts exactly one item warning naming
+   the field and branch, per the "each distinct error the user can hit, once" rule.
 
 Not touched: a `.nan` float still passes `min`/`max` bounds in
 validation. It is a validation-layer question, noted here and left

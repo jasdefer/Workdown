@@ -3,6 +3,7 @@
 //! The evaluator is type-aware — it uses the schema to determine how to
 //! compare field values (numeric for integers, lexicographic for strings, etc.).
 
+use crate::model::date::parse_date;
 use crate::model::duration::parse_duration;
 use crate::model::field_value::format_field_value;
 use crate::model::schema::{FieldType, Schema};
@@ -219,8 +220,7 @@ fn eval_date(field_value: &FieldValue, comparison: &Comparison) -> bool {
                 FieldValue::Date(date) => Some(*date),
                 _ => None,
             };
-            let expected =
-                chrono::NaiveDate::parse_from_str(comparison.operand.text(), "%Y-%m-%d").ok();
+            let expected = parse_date(comparison.operand.text());
             eval_ordered(actual, expected, operator)
         }
     }

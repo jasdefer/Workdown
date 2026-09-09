@@ -16,6 +16,16 @@ its source — internal refactors are deliberately absent.
 - A float field holding YAML's `.nan` now fails a comparison with the
   same "result is not a finite number" warning that arithmetic on it
   already raised, instead of the condition silently matching nothing.
+- Filters on a `date` field (`where:` in views, `workdown query --where`,
+  the filter builder) compare calendar dates instead of text. An
+  unpadded operand such as `due_date>2026-3-1` now means March 1st, and
+  an operand that is not a date (`03/01/2026`, `yesterday`) matches
+  nothing rather than whatever happened to sort next to it. `~` and
+  regex still match the displayed text, so `due_date~2026-03` remains
+  "in March 2026".
+- Schema errors for a property on the wrong field type now say which
+  types accept it: `'compute' is not valid for type 'choice' (valid on:
+  integer, float, date, duration, boolean)`.
 
 ## 0.2.7 - 2026-09-09
 

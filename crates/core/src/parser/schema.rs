@@ -9,6 +9,7 @@ use indexmap::IndexMap;
 
 use crate::coerce::{coerce_value, yaml_type_name};
 use crate::expression::parse_expression;
+use crate::model::date::parse_date;
 use crate::model::message::one_of;
 use crate::model::schema::{
     allowed_aggregate_functions, field_property_allowed, field_types_allowing, is_defined_inverse,
@@ -1188,9 +1189,9 @@ fn coerce_date_value(
     let ConditionValue::String(raw) = value else {
         return;
     };
-    match chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d") {
-        Ok(date) => *value = ConditionValue::Date(date),
-        Err(_) => errors.push(rule_error(
+    match parse_date(raw) {
+        Some(date) => *value = ConditionValue::Date(date),
+        None => errors.push(rule_error(
             rule_name,
             format!(
                 "condition on date field '{ref_key}' has invalid date '{raw}' (expected YYYY-MM-DD)"

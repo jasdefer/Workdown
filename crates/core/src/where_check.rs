@@ -47,6 +47,7 @@
 
 use std::collections::HashSet;
 
+use crate::model::date::parse_date;
 use crate::model::message::one_of;
 use crate::model::resources::Resources;
 use crate::model::schema::{FieldTypeConfig, Schema};
@@ -286,7 +287,7 @@ fn resolve_check(field_name: &str, context: &CheckContext) -> Option<ValueCheck>
         }
         FieldTypeConfig::Date => ValueCheck::Parses {
             expected: "a date (YYYY-MM-DD)".to_owned(),
-            parses: |value| chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok(),
+            parses: |value| parse_date(value).is_some(),
             equality_only: false,
         },
         FieldTypeConfig::Integer { .. } => ValueCheck::Parses {

@@ -18,6 +18,8 @@
 //! *caller* rounds the final timestamp onto a calendar day with its
 //! configured rounding mode.
 
+use std::cmp::Ordering;
+
 use super::ast::{BinaryOperator, ComparisonOperator, Expression};
 use crate::model::color::{parse_color, resolve_color_to_hex};
 
@@ -146,23 +148,20 @@ fn apply_comparison(
     left: Value,
     right: Value,
 ) -> Result<Value, EvaluateError> {
-    use std::cmp::Ordering;
-
     // Orderable pairings answer every operator.
     let ordering: Option<Ordering> = match (&left, &right) {
         // Exact, like integer arithmetic: through f64, two integers
         // above 2^53 that differ by one would compare equal.
         (Value::Integer(a), Value::Integer(b)) => Some(a.cmp(b)),
-        (a, b) if both_numbers(a, b) => {
-            // A float pairing always orders — unless an operand is NaN,
-            // which YAML `.nan` lets into a float field. That is a value
-            // failure on this item, reported like NaN arithmetic, not a
-            // pairing the algebra lacks.
-            return as_float(a)
+        // A float pairing always orders — unless an operand is NaN,
+        // which YAML `.nan` lets into a float field. That is a value
+        // failure on this item, reported like NaN arithmetic, not a
+        // pairing the algebra lacks.
+        (a, b) if both_numbers(a, b) => Some(
+            as_float(a)
                 .partial_cmp(&as_float(b))
-                .map(|ordering| Value::Boolean(ordering_holds(operator, ordering)))
-                .ok_or(EvaluateError::NotFinite);
-        }
+                .ok_or(EvaluateError::NotFinite)?,
+        ),
         (Value::Timestamp(a), Value::Timestamp(b)) => Some(a.cmp(b)),
         (Value::Duration(a), Value::Duration(b)) => Some(a.cmp(b)),
         _ => None,
@@ -198,8 +197,7 @@ fn apply_comparison(
 }
 
 /// Whether `operator` holds for two operands that compare as `ordering`.
-fn ordering_holds(operator: ComparisonOperator, ordering: std::cmp::Ordering) -> bool {
-    use std::cmp::Ordering;
+fn ordering_holds(operator: ComparisonOperator, ordering: Ordering) -> bool {
     match operator {
         ComparisonOperator::Equal => ordering == Ordering::Equal,
         ComparisonOperator::NotEqual => ordering != Ordering::Equal,
