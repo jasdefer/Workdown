@@ -20,9 +20,12 @@ fields:
     default: $filename_pretty
     description: Display name. Falls back to prettified filename if not set.
 
+  # `on_hold` is parked work: started or specified, deliberately not being
+  # picked up until a trigger named in the item fires. It keeps parked
+  # items apart from ready ones on the board, which `to_do` alone cannot.
   status:
     type: choice
-    values: [to_do, in_progress, done, removed]
+    values: [to_do, in_progress, on_hold, done, removed]
     required: true
     default: to_do
 
@@ -57,6 +60,8 @@ fields:
         then: gray
       - if: status == "in_progress"
         then: blue
+      - if: status == "on_hold"
+        then: yellow
     default: gray
 
 # ── Rules ──────────────────────────────────────────────────
@@ -70,6 +75,17 @@ fields:
 # Each match needs an `any` guard as well as its `all`: `all` over an empty
 # set is vacuously true, so without it a childless leaf would match and be
 # required to take the parent status.
+#
+# The mixed case — some children finished, the rest unstarted, nothing
+# running — cannot be matched by one rule (it would need two `any` clauses
+# on the same field). The two range rules at the end close it together:
+# an unstarted child means the parent is not done, a finished child means
+# it is no longer merely to do, and only `in_progress` or `on_hold`
+# satisfies both.
+#
+# `on_hold` flows upward only: a child on hold lets its parent pause, but
+# a child in progress pins the parent to in progress — work is happening
+# under it, whatever the label says.
 rules:
   - name: parent-in-progress-when-child-in-progress
     match:
@@ -78,6 +94,14 @@ rules:
     require:
       status:
         values: [in_progress]
+  - name: parent-active-when-child-on-hold
+    match:
+      children.status:
+        any: on_hold
+        none: in_progress
+    require:
+      status:
+        values: [in_progress, on_hold]
   - name: parent-to-do-when-all-children-to-do
     match:
       children.status:
@@ -94,3 +118,18 @@ rules:
     require:
       status:
         values: [done]
+  - name: unstarted-child-keeps-parent-open
+    match:
+      children.status:
+        any: to_do
+    require:
+      status:
+        values: [to_do, in_progress, on_hold]
+  - name: finished-child-starts-parent
+    match:
+      children.status:
+        any: done
+        none: in_progress
+    require:
+      status:
+        values: [in_progress, on_hold, done]

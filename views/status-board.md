@@ -7,22 +7,24 @@ Cards grouped into columns by `status`.
 - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md)
 - [Decide which field types may declare compute and pull](../workdown-items/compute-type-support-mismatch.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
-- [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
-- [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md)
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md)
 - [Decide how much of the schema the web app edits, and what a breaking save does](../workdown-items/schema-editor-web-design.md)
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md)
 - [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md)
-- [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md)
-- [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
+
+## on_hold
+- [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
+- [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
+- [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md)
+- [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
 ## done
 - [Commands fail when the work-items directory is missing](../workdown-items/add-missing-items-directory.md)

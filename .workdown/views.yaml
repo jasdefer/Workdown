@@ -56,6 +56,10 @@ views:
     aggregate: count
     where:
     - status=in_progress
+  - label: On hold
+    aggregate: count
+    where:
+    - status=on_hold
   - label: Done
     aggregate: count
     where:

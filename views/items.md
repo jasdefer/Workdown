@@ -47,7 +47,7 @@
 | [evaluation-time-now](../workdown-items/evaluation-time-now.md) | done | [polish](../workdown-items/polish.md) |  |
 | [explicit-in-operator](../workdown-items/explicit-in-operator.md) | done | [polish](../workdown-items/polish.md) | [view-filter-editor](../workdown-items/view-filter-editor.md) |
 | [expression-comparison-corner-cases](../workdown-items/expression-comparison-corner-cases.md) | done | [schema-expressions](../workdown-items/schema-expressions.md) | [conditional-field-value](../workdown-items/conditional-field-value.md) |
-| [expression-logical-combinators](../workdown-items/expression-logical-combinators.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [expression-predicates](../workdown-items/expression-predicates.md) |
+| [expression-logical-combinators](../workdown-items/expression-logical-combinators.md) | on_hold | [schema-expressions](../workdown-items/schema-expressions.md) | [expression-predicates](../workdown-items/expression-predicates.md) |
 | [expression-predicates](../workdown-items/expression-predicates.md) | done | [polish](../workdown-items/polish.md) |  |
 | [field-value-map](../workdown-items/field-value-map.md) | removed | [schema-expressions](../workdown-items/schema-expressions.md) |  |
 | [field-value-native-date](../workdown-items/field-value-native-date.md) | done | [renderers](../workdown-items/renderers.md) |  |
@@ -76,7 +76,7 @@
 | [pomodoro-timer](../workdown-items/pomodoro-timer.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [effort-timer](../workdown-items/effort-timer.md) |
 | [prepare-commit-msg-hook](../workdown-items/prepare-commit-msg-hook.md) | to_do | [misc-work](../workdown-items/misc-work.md) | [commit-from-web-ui](../workdown-items/commit-from-web-ui.md) |
 | [project-constants](../workdown-items/project-constants.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |
-| [project-load-cache](../workdown-items/project-load-cache.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
+| [project-load-cache](../workdown-items/project-load-cache.md) | on_hold | [misc-work](../workdown-items/misc-work.md) |  |
 | [project-tour](../workdown-items/project-tour.md) | done |  |  |
 | [publish-branch-from-push](../workdown-items/publish-branch-from-push.md) | done | [full-git-loop](../workdown-items/full-git-loop.md) |  |
 | [pull-fields](../workdown-items/pull-fields.md) | done | [schema-expressions](../workdown-items/schema-expressions.md) | [computed-fields](../workdown-items/computed-fields.md), [aggregate-rollup](../workdown-items/aggregate-rollup.md) |
@@ -151,7 +151,7 @@
 | [walker-primitives](../workdown-items/walker-primitives.md) | done | [code-quality](../workdown-items/code-quality.md) |  |
 | [walking-skeleton](../workdown-items/walking-skeleton.md) | done | [server](../workdown-items/server.md) |  |
 | [web-layer-adr](../workdown-items/web-layer-adr.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
-| [when-map-shorthand](../workdown-items/when-map-shorthand.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [conditional-field-value](../workdown-items/conditional-field-value.md) |
-| [when-then-value-expressions](../workdown-items/when-then-value-expressions.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [conditional-field-value](../workdown-items/conditional-field-value.md) |
+| [when-map-shorthand](../workdown-items/when-map-shorthand.md) | on_hold | [schema-expressions](../workdown-items/schema-expressions.md) | [conditional-field-value](../workdown-items/conditional-field-value.md) |
+| [when-then-value-expressions](../workdown-items/when-then-value-expressions.md) | on_hold | [schema-expressions](../workdown-items/schema-expressions.md) | [conditional-field-value](../workdown-items/conditional-field-value.md) |
 | [where-clause-value-validation](../workdown-items/where-clause-value-validation.md) | done | [polish](../workdown-items/polish.md) | [explicit-in-operator](../workdown-items/explicit-in-operator.md) |
 | [workspace-refactor](../workdown-items/workspace-refactor.md) | done | [foundation](../workdown-items/foundation.md) |  |
