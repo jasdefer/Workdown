@@ -29,6 +29,13 @@ done
 
 failures=0
 
+# Under CARGO_TERM_COLOR=always (as in CI) cargo colours the `Running`
+# lines, with escape codes between the word and the path; match against
+# a stripped copy.
+plain_cargo_log=$(mktemp)
+trap 'rm -f "$plain_cargo_log"' EXIT
+sed -E $'s/\x1b\[[0-9;]*m//g' "$cargo_log" > "$plain_cargo_log"
+
 # ── Rust: one unit binary per crate ──────────────────────────────────
 # `cargo test` reports a unit binary as
 #   Running unittests src/lib.rs (target/debug/deps/<package>-<hash>)
@@ -37,7 +44,7 @@ for manifest in crates/*/Cargo.toml; do
     crate_dir=$(dirname "$manifest")
     package=$(sed -n 's/^name = "\(.*\)"/\1/p' "$manifest" | head -n 1)
     binary=${package//-/_}
-    if ! grep -Eq "Running unittests src/(lib|main)\.rs \(.*/deps/${binary}-[0-9a-f]+\)" "$cargo_log"; then
+    if ! grep -Eq "Running unittests src/(lib|main)\.rs \(.*/deps/${binary}-[0-9a-f]+\)" "$plain_cargo_log"; then
         echo "check-test-run: unit tests of $crate_dir ($package) did not run" >&2
         failures=$((failures + 1))
     fi
@@ -58,7 +65,7 @@ for test_file in crates/*/tests/*.rs; do
     owners[$name]="${owners[$name]:-}${owners[$name]:+, }$(dirname "$(dirname "$test_file")")"
 done
 for name in "${!expected_runs[@]}"; do
-    observed=$(grep -Ec "Running tests/${name//./\\.} \(" "$cargo_log" || true)
+    observed=$(grep -Ec "Running tests/${name//./\\.} \(" "$plain_cargo_log" || true)
     if (( observed < expected_runs[$name] )); then
         echo "check-test-run: tests/$name exists in ${owners[$name]} (${expected_runs[$name]} target(s)) but ran $observed time(s)" >&2
         failures=$((failures + 1))
@@ -87,6 +94,6 @@ if (( failures > 0 )); then
     exit 1
 fi
 
-unit_count=$(grep -Ec "Running unittests src/(lib|main)\.rs" "$cargo_log")
-integration_count=$(grep -Ec "Running tests/[^ ]+\.rs \(" "$cargo_log")
+unit_count=$(grep -Ec "Running unittests src/(lib|main)\.rs" "$plain_cargo_log")
+integration_count=$(grep -Ec "Running tests/[^ ]+\.rs \(" "$plain_cargo_log")
 echo "check-test-run: every test target ran — $unit_count unit binaries, $integration_count integration targets, $tests_passed Vitest tests in $files_passed files"
