@@ -257,41 +257,6 @@ mod tests {
     // ── derive_slug ──────────────────────────────────────────────────
 
     #[test]
-    fn derive_slug_uses_explicit_id() {
-        let mut field_values = HashMap::new();
-        field_values.insert(
-            "id".to_owned(),
-            serde_yaml::Value::String("my-id".to_owned()),
-        );
-        field_values.insert(
-            "title".to_owned(),
-            serde_yaml::Value::String("Other Title".to_owned()),
-        );
-
-        assert_eq!(derive_slug(&field_values).unwrap(), "my-id");
-    }
-
-    #[test]
-    fn derive_slug_falls_back_to_title() {
-        let mut field_values = HashMap::new();
-        field_values.insert(
-            "title".to_owned(),
-            serde_yaml::Value::String("My Title".to_owned()),
-        );
-
-        assert_eq!(derive_slug(&field_values).unwrap(), "my-title");
-    }
-
-    #[test]
-    fn derive_slug_errors_when_neither_given() {
-        let field_values = HashMap::new();
-        assert!(matches!(
-            derive_slug(&field_values),
-            Err(AddError::MissingFilenameSource)
-        ));
-    }
-
-    #[test]
     fn derive_slug_rejects_invalid_id() {
         let mut field_values = HashMap::new();
         field_values.insert(

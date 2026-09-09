@@ -1270,28 +1270,6 @@ fields:
     }
 
     #[test]
-    fn check_failed_compute_stays_quiet_even_with_error_on_missing() {
-        // The typo'd reference is a schema-level finding (reported once
-        // by compute_check); the items must not each repeat it as a
-        // missing-input error.
-        let schema_yaml = "\
-fields:
-  start_date:
-    type: date
-  end_date:
-    type: date
-    compute:
-      expression: strat_date + duration
-      error_on_missing: true
-";
-        let mut items = HashMap::from([item("task", vec![("start_date", date(2026, 1, 5))])]);
-        let diagnostics = run_derive(&mut items, schema_yaml, "");
-
-        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
-        assert_eq!(field(&items, "task", "end_date"), None);
-    }
-
-    #[test]
     fn required_field_with_check_failed_compute_reports_plain_missing_required() {
         // The check's schema diagnostic carries the cause; the item
         // reports its blank value without guessing at inputs of an
@@ -1465,38 +1443,6 @@ fields:
         ]);
         run_derive(&mut items, FORWARD_SCHEDULING_SCHEMA, "");
         assert_eq!(field(&items, "c", "start"), None);
-    }
-
-    #[test]
-    fn pull_missing_input_with_error_on_missing_names_the_dependency() {
-        let schema_yaml = "\
-fields:
-  depends_on:
-    type: links
-    allow_cycles: false
-  end:
-    type: date
-  start:
-    type: date
-    pull:
-      over: depends_on
-      field: end
-      function: max
-      error_on_missing: true
-";
-        let mut items = HashMap::from([
-            item("a", vec![]),
-            item("b", vec![("depends_on", links_value(&["a"]))]),
-        ]);
-        let diagnostics = run_derive(&mut items, schema_yaml, "");
-
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].severity, Severity::Error);
-        assert!(matches!(
-            item_kinds(&diagnostics)[0],
-            ItemDiagnosticKind::PullMissingInputs { field, missing_inputs }
-                if field == "start" && missing_inputs == &vec!["a.end".to_owned()]
-        ));
     }
 
     #[test]

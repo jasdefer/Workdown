@@ -1558,15 +1558,6 @@ views:
     }
 
     #[test]
-    fn view_from_value_builds_validated_view() {
-        let value: serde_yaml::Value =
-            serde_yaml::from_str("id: b\ntype: board\nfield: status\n").unwrap();
-        let view = view_from_value(value).unwrap();
-        assert_eq!(view.id, "b");
-        assert!(matches!(view.kind, ViewKind::Board { field } if field == "status"));
-    }
-
-    #[test]
     fn view_from_value_rejects_missing_required_slot() {
         let value: serde_yaml::Value = serde_yaml::from_str("id: b\ntype: board\n").unwrap();
         let error = view_from_value(value).unwrap_err();

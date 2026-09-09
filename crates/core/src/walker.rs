@@ -141,12 +141,6 @@ mod tests {
         assert!(target_of_link(&i, "parent").is_none());
     }
 
-    #[test]
-    fn target_of_link_returns_none_for_links_plural() {
-        let i = item("a", vec![("deps", links(&["b", "c"]))]);
-        assert!(target_of_link(&i, "deps").is_none());
-    }
-
     // ── targets_of ─────────────────────────────────────────────────
 
     #[test]

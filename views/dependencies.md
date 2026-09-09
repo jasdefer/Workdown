@@ -29,7 +29,4 @@ flowchart TD
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end
     status-transition-dates["Fill in a date when a status changes, instead of typing it by hand"]
-    subgraph testing-strategy ["Decide what our tests are for, and restructure them accordingly"]
-        testing-strategy-design["Work out the testing approach and break the milestone into items"]
-    end
 ```

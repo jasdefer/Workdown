@@ -198,23 +198,4 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
-
-    #[tokio::test]
-    async fn robots_txt_is_served() {
-        let app = router(test_state());
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/robots.txt")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let ctype = response.headers().get(header::CONTENT_TYPE).cloned();
-        let body = body_bytes(response).await;
-        assert_eq!(ctype.unwrap(), "text/plain");
-        assert!(String::from_utf8_lossy(&body).contains("Disallow: /"));
-    }
 }

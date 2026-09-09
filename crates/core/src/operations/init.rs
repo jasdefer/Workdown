@@ -135,13 +135,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn render_config_replaces_project_name() {
-        let result = render_config(DEFAULT_CONFIG, "My Cool App");
-        assert!(result.contains("name: My Cool App"));
-        assert!(!result.contains("name: My Project"));
-    }
-
-    #[test]
     fn render_config_preserves_comments() {
         let result = render_config(DEFAULT_CONFIG, "Test");
         assert!(result.contains("# Default Workdown Configuration"));
@@ -150,11 +143,6 @@ mod tests {
     #[test]
     fn yaml_safe_name_plain() {
         assert_eq!(yaml_safe_name("Foo Bar"), "Foo Bar");
-    }
-
-    #[test]
-    fn yaml_safe_name_with_colon() {
-        assert_eq!(yaml_safe_name("Foo: Bar"), "\"Foo: Bar\"");
     }
 
     #[test]

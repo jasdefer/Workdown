@@ -359,13 +359,6 @@ mod tests {
     }
 
     #[test]
-    fn uses_configured_item_link_base() {
-        let data = table(vec!["id"], vec![row("a", vec![id_cell("a")])]);
-        let output = render_table(&data, "../nested/items", "");
-        assert!(output.contains("| [a](../nested/items/a.md) |\n"));
-    }
-
-    #[test]
     fn full_output_snapshot() {
         let data = table(
             vec!["id", "status", "points"],

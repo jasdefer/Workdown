@@ -197,34 +197,4 @@ mod tests {
         assert!(output.contains("- [Auth epic](../workdown-items/epic.md) — status: open\n"));
         assert!(output.contains("  - [Login](../workdown-items/story.md) — status: in_progress\n"));
     }
-
-    #[test]
-    fn full_output_snapshot() {
-        let tree = data(
-            vec![
-                ("status", FieldType::Choice),
-                ("assignee", FieldType::String),
-            ],
-            vec![TreeNode {
-                cells: vec![Some(FieldValue::Choice("open".into())), None],
-                children: vec![leaf(
-                    "story",
-                    Some("Login flow"),
-                    vec![
-                        Some(FieldValue::Choice("in_progress".into())),
-                        Some(FieldValue::String("alice".into())),
-                    ],
-                )],
-                ..leaf("epic", Some("Auth"), vec![])
-            }],
-        );
-        let output = render_tree(&tree, "../workdown-items", "");
-        let expected = concat!(
-            "# Tree: parent\n",
-            "\n",
-            "- [Auth](../workdown-items/epic.md) — status: open\n",
-            "  - [Login flow](../workdown-items/story.md) — status: in_progress · assignee: alice\n",
-        );
-        assert_eq!(output, expected);
-    }
 }

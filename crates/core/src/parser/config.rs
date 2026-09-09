@@ -66,6 +66,7 @@ mod tests {
         assert_eq!(config.defaults.board_field, "status");
         // working_days commented out → calendar falls back to Mon–Fri.
         assert!(config.working_days.is_none());
+        assert_eq!(config.serve.as_ref().and_then(|s| s.port), Some(3141));
     }
 
     #[test]
@@ -87,6 +88,7 @@ defaults:
         let config = parse_config(yaml).unwrap();
         assert_eq!(config.project.name, "Test");
         assert!(config.project.description.is_empty());
+        assert!(config.serve.is_none());
     }
 
     #[test]
@@ -189,32 +191,6 @@ working_days: [saturday, sunday]
         assert!(calendar.is_working(saturday));
         assert!(calendar.is_working(sunday));
         assert!(!calendar.is_working(monday));
-    }
-
-    #[test]
-    fn parse_default_config_has_serve_port() {
-        let config = parse_config(include_str!("../../defaults/config.yaml")).unwrap();
-        assert_eq!(config.serve.as_ref().and_then(|s| s.port), Some(3141));
-    }
-
-    #[test]
-    fn parse_config_without_serve_section() {
-        let yaml = r#"
-project:
-  name: Test
-paths:
-  work_items: items
-  templates: .workdown/templates
-  resources: .workdown/resources.yaml
-  views: .workdown/views.yaml
-schema: .workdown/schema.yaml
-defaults:
-  board_field: status
-  tree_field: parent
-  graph_field: depends_on
-"#;
-        let config = parse_config(yaml).unwrap();
-        assert!(config.serve.is_none());
     }
 
     #[test]

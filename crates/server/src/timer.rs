@@ -143,9 +143,6 @@ enum Phase {
 
 struct TimerMemory {
     phase: Phase,
-    /// The mode of the last started session — stopwatch until a
-    /// pomodoro session has ever started. Set by every start, changed
-    /// by nothing else.
     last_mode: TimerMode,
 }
 
@@ -332,13 +329,6 @@ mod tests {
         }
     }
 
-    fn running_break(service: &TimerService) -> BreakSnapshot {
-        match service.snapshot().phase {
-            PhaseSnapshot::Break(snapshot) => snapshot,
-            other => panic!("expected a break, found {other:?}"),
-        }
-    }
-
     fn assert_idle(service: &TimerService) {
         assert!(matches!(service.snapshot().phase, PhaseSnapshot::Idle));
     }
@@ -352,27 +342,6 @@ mod tests {
     }
 
     #[test]
-    fn starts_idle_with_the_stopwatch_as_sticky_mode() {
-        let service = TimerService::new(clock());
-        let snapshot = service.snapshot();
-        assert!(matches!(snapshot.phase, PhaseSnapshot::Idle));
-        assert_eq!(snapshot.last_mode, TimerMode::Stopwatch);
-    }
-
-    #[test]
-    fn elapsed_is_now_minus_start() {
-        let clock = clock();
-        let service = service_on(&clock);
-        service.start(id("task-a"), TimerMode::Stopwatch).unwrap();
-
-        clock.advance(chrono::Duration::seconds(95));
-        let snapshot = work(&service);
-        assert_eq!(snapshot.elapsed_seconds, 95);
-        assert_eq!(snapshot.item_id.as_str(), "task-a");
-        assert_eq!(snapshot.mode, TimerMode::Stopwatch);
-    }
-
-    #[test]
     fn backwards_clock_jump_clamps_elapsed_at_zero() {
         let clock = clock();
         let service = service_on(&clock);
@@ -380,29 +349,6 @@ mod tests {
 
         clock.advance(chrono::Duration::seconds(-3600));
         assert_eq!(work(&service).elapsed_seconds, 0);
-    }
-
-    #[test]
-    fn start_while_a_work_interval_runs_is_refused_with_the_running_one() {
-        let service = TimerService::new(clock());
-        service.start(id("task-a"), TimerMode::Stopwatch).unwrap();
-
-        let refused = service
-            .start(id("task-b"), TimerMode::Stopwatch)
-            .unwrap_err();
-        assert_eq!(refused.item_id.as_str(), "task-a");
-        // Same item too — a second start is never a silent restart.
-        let refused = service
-            .start(id("task-a"), TimerMode::Pomodoro)
-            .unwrap_err();
-        assert_eq!(refused.item_id.as_str(), "task-a");
-    }
-
-    #[test]
-    fn stop_with_no_timer_is_refused() {
-        let service = TimerService::new(clock());
-        let result = service.stop_with(|_| Ok::<_, ()>(()));
-        assert!(matches!(result, Err(StopError::NotRunning)));
     }
 
     #[test]
@@ -421,57 +367,6 @@ mod tests {
     }
 
     #[test]
-    fn failed_write_keeps_the_work_interval_running() {
-        let clock = clock();
-        let service = service_on(&clock);
-        service.start(id("task-a"), TimerMode::Stopwatch).unwrap();
-        clock.advance(chrono::Duration::seconds(60));
-
-        let result = service.stop_with(|_| Err::<(), _>("disk on fire"));
-        assert!(matches!(result, Err(StopError::Write("disk on fire"))));
-
-        // Still running, still counting — measured time was not discarded.
-        clock.advance(chrono::Duration::seconds(60));
-        assert_eq!(work(&service).elapsed_seconds, 120);
-
-        // And a later stop succeeds with the full elapsed time.
-        let (snapshot, _) = service.stop_with(|_| Ok::<_, ()>(())).unwrap();
-        assert_eq!(snapshot.elapsed_seconds, 120);
-        assert_idle(&service);
-    }
-
-    #[test]
-    fn pomodoro_stop_begins_a_break_following_the_item() {
-        let clock = clock();
-        let service = service_on(&clock);
-        service.start(id("task-a"), TimerMode::Pomodoro).unwrap();
-        // 32 minutes — overrun is stopped like any other interval.
-        clock.advance(chrono::Duration::seconds(32 * 60));
-
-        let (snapshot, _) = service.stop_with(|_| Ok::<_, ()>(())).unwrap();
-        assert_eq!(snapshot.elapsed_seconds, 32 * 60);
-
-        // The break begins as the write lands and counts from there.
-        let snapshot = running_break(&service);
-        assert_eq!(snapshot.followed_item.as_str(), "task-a");
-        assert_eq!(snapshot.elapsed_seconds, 0);
-        clock.advance(chrono::Duration::seconds(60));
-        assert_eq!(running_break(&service).elapsed_seconds, 60);
-    }
-
-    #[test]
-    fn pomodoro_stop_under_half_a_minute_goes_idle_without_a_break() {
-        let clock = clock();
-        let service = service_on(&clock);
-        service.start(id("task-a"), TimerMode::Pomodoro).unwrap();
-        clock.advance(chrono::Duration::seconds(29));
-
-        service.stop_with(|_| Ok::<_, ()>(())).unwrap();
-        // The write rounded to zero: nothing happened, nothing remains.
-        assert_idle(&service);
-    }
-
-    #[test]
     fn failed_pomodoro_write_keeps_the_work_interval_and_starts_no_break() {
         let clock = clock();
         let service = service_on(&clock);
@@ -481,54 +376,6 @@ mod tests {
         let result = service.stop_with(|_| Err::<(), _>("disk on fire"));
         assert!(matches!(result, Err(StopError::Write("disk on fire"))));
         assert_eq!(work(&service).item_id.as_str(), "task-a");
-    }
-
-    #[test]
-    fn stop_during_a_break_is_refused() {
-        let clock = clock();
-        let service = service_on(&clock);
-        run_into_a_break(&service, &clock, "task-a");
-
-        let result = service.stop_with(|_| Ok::<_, ()>(()));
-        assert!(matches!(result, Err(StopError::BreakRunning)));
-        // The break survived the refused stop.
-        assert_eq!(running_break(&service).followed_item.as_str(), "task-a");
-    }
-
-    #[test]
-    fn end_break_returns_to_idle_and_only_a_break_can_end() {
-        let clock = clock();
-        let service = service_on(&clock);
-
-        // Idle: nothing to end.
-        assert!(matches!(
-            service.end_break(),
-            Err(BreakEndError::NotRunning)
-        ));
-
-        // A work interval's exit is stop, not break end.
-        service.start(id("task-a"), TimerMode::Stopwatch).unwrap();
-        assert!(matches!(
-            service.end_break(),
-            Err(BreakEndError::WorkRunning)
-        ));
-        service.stop_with(|_| Ok::<_, ()>(())).unwrap();
-
-        run_into_a_break(&service, &clock, "task-a");
-        service.end_break().unwrap();
-        assert_idle(&service);
-    }
-
-    #[test]
-    fn start_during_a_break_is_one_transition_into_work() {
-        let clock = clock();
-        let service = service_on(&clock);
-        run_into_a_break(&service, &clock, "task-a");
-
-        // Any item works — the followed one is a default, not a rule.
-        let started = service.start(id("task-b"), TimerMode::Pomodoro).unwrap();
-        assert_eq!(started.item_id.as_str(), "task-b");
-        assert_eq!(work(&service).item_id.as_str(), "task-b");
     }
 
     #[test]

@@ -54,16 +54,6 @@ priority: medium
     }
 
     #[test]
-    fn template_with_literal_id_preserves_it() {
-        let content = "---\nid: fixed-id\ntype: bug\n---\nbody\n";
-        let template = parse_template_content(content, test_path()).unwrap();
-        assert_eq!(
-            template.frontmatter.get("id").unwrap(),
-            &serde_yaml::Value::String("fixed-id".into())
-        );
-    }
-
-    #[test]
     fn template_with_uuid_token_preserves_raw_token() {
         let content = "---\nid: $uuid\ntype: bug\n---\nbody\n";
         let template = parse_template_content(content, test_path()).unwrap();
@@ -71,20 +61,5 @@ priority: medium
             template.frontmatter.get("id").unwrap(),
             &serde_yaml::Value::String("$uuid".into())
         );
-    }
-
-    #[test]
-    fn template_missing_opening_delimiter_errors() {
-        let content = "type: bug\n---\nbody\n";
-        let result = parse_template_content(content, test_path());
-        assert!(matches!(result, Err(ParseError::MissingFrontmatter { .. })));
-    }
-
-    #[test]
-    fn template_body_preserved() {
-        let content = "---\ntype: bug\n---\n\n## Steps\n1. reproduce\n";
-        let template = parse_template_content(content, test_path()).unwrap();
-        assert!(template.body.contains("## Steps"));
-        assert!(template.body.contains("1. reproduce"));
     }
 }

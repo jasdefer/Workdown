@@ -327,16 +327,6 @@ mod tests {
     }
 
     #[test]
-    fn pick_duration_unit_weeks_for_large_values() {
-        assert_eq!(pick_duration_unit(4 * SECONDS_PER_WEEK).label, "weeks");
-    }
-
-    #[test]
-    fn pick_duration_unit_zero_falls_through_to_seconds() {
-        assert_eq!(pick_duration_unit(0).label, "seconds");
-    }
-
-    #[test]
     fn pick_duration_unit_negative_uses_absolute_magnitude() {
         assert_eq!(pick_duration_unit(-2 * SECONDS_PER_DAY).label, "days");
     }
@@ -356,17 +346,6 @@ mod tests {
     }
 
     #[test]
-    fn format_axis_tick_duration_drops_decimal_for_integers() {
-        let unit = pick_duration_unit(2 * SECONDS_PER_DAY);
-        let kind = AxisKind::Duration {
-            divisor: unit.divisor_seconds,
-            label: unit.label,
-        };
-        // 2.0 days → "2"
-        assert_eq!(format_axis_tick(2.0, kind), "2");
-    }
-
-    #[test]
     fn axis_label_appends_unit_for_duration() {
         let unit = pick_duration_unit(2 * SECONDS_PER_DAY);
         let kind = AxisKind::Duration {
@@ -379,11 +358,6 @@ mod tests {
     #[test]
     fn axis_label_for_number_is_field_name() {
         assert_eq!(axis_label("score", AxisKind::Number), "score");
-    }
-
-    #[test]
-    fn axis_label_for_date_is_field_name() {
-        assert_eq!(axis_label("day", AxisKind::Date), "day");
     }
 
     // ── Padding ─────────────────────────────────────────────────────

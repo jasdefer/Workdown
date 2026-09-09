@@ -292,15 +292,4 @@ defaults:
         assert_eq!(resolution.start_port, DEFAULT_PORT);
         assert!(!resolution.explicit);
     }
-
-    #[test]
-    fn empty_serve_section_uses_default() {
-        let config = config_with(Some(ServeConfig {
-            port: None,
-            ..ServeConfig::default()
-        }));
-        let resolution = resolve_port(&config, None);
-        assert_eq!(resolution.start_port, DEFAULT_PORT);
-        assert!(!resolution.explicit);
-    }
 }

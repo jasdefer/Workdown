@@ -73,19 +73,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_abbreviation() {
+    fn rejects_anything_but_a_full_lowercase_name() {
         assert!(serde_yaml::from_str::<Weekday>("mon").is_err());
         assert!(serde_yaml::from_str::<Weekday>("tue").is_err());
-    }
-
-    #[test]
-    fn rejects_uppercase_or_titlecase() {
         assert!(serde_yaml::from_str::<Weekday>("Monday").is_err());
         assert!(serde_yaml::from_str::<Weekday>("MONDAY").is_err());
-    }
-
-    #[test]
-    fn rejects_unknown_day() {
         assert!(serde_yaml::from_str::<Weekday>("funday").is_err());
     }
 

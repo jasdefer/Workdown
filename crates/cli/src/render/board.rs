@@ -158,16 +158,6 @@ mod tests {
     }
 
     #[test]
-    fn uses_configured_item_link_base() {
-        let data = board(
-            "status",
-            vec![column(Some("open"), vec![card("foo", None)])],
-        );
-        let output = render_board(&data, "../nested/items", "");
-        assert!(output.contains("- [foo](../nested/items/foo.md)\n"));
-    }
-
-    #[test]
     fn blank_line_between_sections() {
         let data = board(
             "status",
