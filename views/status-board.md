@@ -13,7 +13,6 @@ Cards grouped into columns by `status`.
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md)
 - [Decide how much of the schema the web app edits, and what a breaking save does](../workdown-items/schema-editor-web-design.md)
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md)
-- [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md)
 
 ## in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
@@ -130,6 +129,7 @@ Cards grouped into columns by `status`.
 - [Time tracking](../workdown-items/time-tracking.md)
 - [Tell the user when a timed interval is over](../workdown-items/timer-notifications.md)
 - [Show which item is being timed in the views](../workdown-items/timer-recording-indicator.md)
+- [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md)
 - [UI foundation — conventions and scaffolding before the first view](../workdown-items/ui-foundation.md)
 - [Decide where the required-field check belongs in the load pipeline](../workdown-items/validation-phase-boundaries.md)
 - [Move value coercion out of the store to break the parser↔store cycle](../workdown-items/value-coercion-layering.md)

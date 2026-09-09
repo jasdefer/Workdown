@@ -157,10 +157,11 @@ fn eval_single(
         Some(FieldType::Float) => eval_float(field_value, comparison),
         Some(FieldType::Boolean) => eval_boolean(field_value, comparison),
         Some(FieldType::Duration) => eval_duration(field_value, comparison),
+        Some(FieldType::Date) => eval_date(field_value, comparison),
         Some(FieldType::Color) => eval_color(field_value, comparison),
         Some(FieldType::Multichoice) | Some(FieldType::List) => eval_list(field_value, comparison),
         Some(FieldType::Links) => eval_links(field_value, comparison),
-        // String, Choice, Date, Link, and unknown fields all use string comparison.
+        // String, Choice, Link, and unknown fields all use string comparison.
         _ => eval_string(field_value, comparison),
     }
 }
@@ -190,7 +191,7 @@ fn eval_ordered<T: PartialOrd>(actual: Option<T>, expected: Option<T>, operator:
     }
 }
 
-/// String-like comparison: String, Choice, Date, Link, and unknown fields.
+/// String-like comparison: String, Choice, Link, and unknown fields.
 /// The field value is coerced to text via [`format_field_value`], so a
 /// filter compares exactly the text a view displays.
 fn eval_string(field_value: &FieldValue, comparison: &Comparison) -> bool {
@@ -201,6 +202,27 @@ fn eval_string(field_value: &FieldValue, comparison: &Comparison) -> bool {
         Operator::Contains => actual.contains(expected),
         Operator::Matches => eval_regex(comparison, &actual),
         operator => eval_ordered(Some(actual.as_str()), Some(expected), operator),
+    }
+}
+
+/// Date comparison. The six comparison operators parse the RHS as a
+/// `YYYY-MM-DD` date and compare calendar dates, so `2026-3-1` never
+/// matches instead of comparing as text that happens to sort — the same
+/// answer `where_check` already gives for an unparseable date operand.
+/// `Contains` and `Matches` keep working on the displayed text, which is
+/// how a filter says "in March 2026" (`due_date ~ 2026-03`).
+fn eval_date(field_value: &FieldValue, comparison: &Comparison) -> bool {
+    match comparison.operator {
+        Operator::Contains | Operator::Matches => eval_string(field_value, comparison),
+        operator => {
+            let actual = match field_value {
+                FieldValue::Date(date) => Some(*date),
+                _ => None,
+            };
+            let expected =
+                chrono::NaiveDate::parse_from_str(comparison.operand.text(), "%Y-%m-%d").ok();
+            eval_ordered(actual, expected, operator)
+        }
     }
 }
 
@@ -897,20 +919,73 @@ mod tests {
         assert!(!check(&item, &predicate, &schema).unwrap());
     }
 
-    // ── Date comparison (lexicographic) ─────────────────────────
+    // ── Date comparison (typed) ─────────────────────────────────
 
-    #[test]
-    fn date_greater_than() {
-        let schema = test_schema();
-        let item = make_item(
+    fn march_15_item() -> WorkItem {
+        make_item(
             "t1",
             vec![(
                 "due_date",
                 FieldValue::Date(chrono::NaiveDate::from_ymd_opt(2026, 3, 15).unwrap()),
             )],
-        );
+        )
+    }
+
+    #[test]
+    fn date_greater_than() {
+        let schema = test_schema();
         let predicate = comparison("due_date", Operator::GreaterThan, "2026-03-01");
-        assert!(check(&item, &predicate, &schema).unwrap());
+        assert!(check(&march_15_item(), &predicate, &schema).unwrap());
+    }
+
+    /// The bug this closes: `2026-3-1` used to compare as text, so
+    /// `2026-03-15 > 2026-3-1` was false by the accident of `0` sorting
+    /// before `3`. The date parser the whole app uses accepts unpadded
+    /// month and day, so the operand is a date and compares as one.
+    #[test]
+    fn date_unpadded_operand_compares_as_a_date() {
+        let schema = test_schema();
+        let predicate = comparison("due_date", Operator::GreaterThan, "2026-3-1");
+        assert!(check(&march_15_item(), &predicate, &schema).unwrap());
+    }
+
+    /// An operand that is not a date at all matches nothing, positive or
+    /// negative operator alike, as unparseable numbers do.
+    #[test]
+    fn date_malformed_operand_matches_nothing() {
+        let schema = test_schema();
+        let item = march_15_item();
+        for (operator, value) in [
+            (Operator::LessThan, "03/01/2026"),
+            (Operator::Equal, "2026-03-15T00:00"),
+            (Operator::NotEqual, "yesterday"),
+            (Operator::GreaterOrEqual, "2026-13-45"),
+        ] {
+            let predicate = comparison("due_date", operator, value);
+            assert!(
+                !check(&item, &predicate, &schema).unwrap(),
+                "{operator:?} {value}"
+            );
+        }
+    }
+
+    /// `~` and `matches` stay textual: the only way to say "in March 2026".
+    #[test]
+    fn date_contains_works_on_displayed_text() {
+        let schema = test_schema();
+        let item = march_15_item();
+        assert!(check(
+            &item,
+            &comparison("due_date", Operator::Contains, "2026-03"),
+            &schema
+        )
+        .unwrap());
+        assert!(!check(
+            &item,
+            &comparison("due_date", Operator::Contains, "2026-04"),
+            &schema
+        )
+        .unwrap());
     }
 
     // ── Link comparison ─────────────────────────────────────────

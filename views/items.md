@@ -125,7 +125,7 @@
 | [time-tracking](../workdown-items/time-tracking.md) | done |  |  |
 | [timer-notifications](../workdown-items/timer-notifications.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [pomodoro-timer](../workdown-items/pomodoro-timer.md) |
 | [timer-recording-indicator](../workdown-items/timer-recording-indicator.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [effort-timer](../workdown-items/effort-timer.md) |
-| [typed-date-filter-comparison](../workdown-items/typed-date-filter-comparison.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
+| [typed-date-filter-comparison](../workdown-items/typed-date-filter-comparison.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [ui-foundation](../workdown-items/ui-foundation.md) | done | [server](../workdown-items/server.md) | [walking-skeleton](../workdown-items/walking-skeleton.md) |
 | [validation-phase-boundaries](../workdown-items/validation-phase-boundaries.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [derived-field-single-predicate](../workdown-items/derived-field-single-predicate.md) |
 | [value-coercion-layering](../workdown-items/value-coercion-layering.md) | done | [misc-work](../workdown-items/misc-work.md) |  |

@@ -12,7 +12,6 @@ flowchart TD
         prepare-commit-msg-hook["Prefill terminal commits with the generated message"]
         project-load-cache["Cache the project load in the server (when it starts to hurt)"]
         recording-dot-extraction["Extract the recording indicator the six item-presenting views each rebuilt"]
-        typed-date-filter-comparison["Compare dates in filters as dates, not as text"]
     end
     subgraph multi-project-support ["Multi-project support"]
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]

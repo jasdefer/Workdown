@@ -9,7 +9,6 @@ Hierarchical outline following `parent` upward to roots.
   - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md) — status: to_do
   - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md) — status: on_hold
   - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md) — status: to_do
-  - [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md) — status: to_do
 - [Multi-project support](../workdown-items/multi-project-support.md) — status: to_do
   - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — status: to_do
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md) — status: to_do
