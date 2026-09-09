@@ -5,6 +5,8 @@ Cards grouped into columns by `status`.
 ## to_do
 - [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md)
 - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md)
+- [Fail CI when a test file exists but did not run](../workdown-items/ci-test-run-completeness.md)
+- [Test the shipped binary, so the CLI's wiring and exit codes are pinned](../workdown-items/cli-binary-tests.md)
 - [Decide which field types may declare compute and pull](../workdown-items/compute-type-support-mismatch.md)
 - [Read config.yaml per request so it hot-reloads like everything else](../workdown-items/config-hot-reload.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
@@ -19,6 +21,8 @@ Cards grouped into columns by `status`.
 - [Decide how much of the schema the web app edits, and what a breaking save does](../workdown-items/schema-editor-web-design.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md)
+- [Audit every test block against the rules, delete what fails them, move what is misplaced](../workdown-items/test-audit.md)
+- [Write the testing rules where a future change will meet them](../workdown-items/testing-guide.md)
 - [Compare dates in filters as dates, not as text](../workdown-items/typed-date-filter-comparison.md)
 - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md)
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
@@ -26,7 +30,6 @@ Cards grouped into columns by `status`.
 ## in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [Decide what our tests are for, and restructure them accordingly](../workdown-items/testing-strategy.md)
-- [Work out the testing approach and break the milestone into items](../workdown-items/testing-strategy-design.md)
 
 ## done
 - [Commands fail when the work-items directory is missing](../workdown-items/add-missing-items-directory.md)
@@ -121,6 +124,7 @@ Cards grouped into columns by `status`.
 - [Fix the documentation that is actively wrong](../workdown-items/stale-docs-refresh.md)
 - [Cover the browser-side paths that fail silently](../workdown-items/stateful-test-gaps.md)
 - [Make store-diagnostic surfacing consistent across commands](../workdown-items/store-diagnostics-consistency.md)
+- [Work out the testing approach and break the milestone into items](../workdown-items/testing-strategy-design.md)
 - [Time tracking](../workdown-items/time-tracking.md)
 - [Tell the user when a timed interval is over](../workdown-items/timer-notifications.md)
 - [Show which item is being timed in the views](../workdown-items/timer-recording-indicator.md)

@@ -1,7 +1,7 @@
 ---
 id: testing-strategy-design
 title: Work out the testing approach and break the milestone into items
-status: in_progress
+status: done
 parent: testing-strategy
 ---
 
@@ -378,48 +378,80 @@ The audit is a build item, not part of this design item. It works file
 by file through the ranked list, largest block first, and each deletion
 or move is justified in the commit against the rule it applies.
 
-## Open points (state on 2026-09-08)
+### 4. How CI notices a silent green (2026-09-09)
 
-Decisions 1 to 3 are taken above. Two remain proposed, not decided;
-the session ended before they were confirmed.
+**Decided:** a short script in the CI job, run after `cargo test`, that
+lists every test target the repository contains (each crate's unit
+binary and each `crates/*/tests/*.rs` file) and compares that list
+against the `Running ...` lines `cargo test` printed. A target that
+exists but did not run fails the build by name. The same step checks
+that the Vitest run happened. No coverage tool in CI, no test-count
+floor to maintain: the expected list is derived from the tree, so it
+stays correct as files come and go. Rejected: a coverage floor (decision
+two) and a fixed test count (manual upkeep, says nothing about which
+tests ran).
 
-### 4. Proposed: how CI notices a silent green
+### 5. Work breakdown (2026-09-09)
 
-CI compares the test binaries `cargo test` reports against the ones the
-workspace contains (each crate's unit binary plus each `tests/*.rs`
-file), and checks the Vitest run happened. Fails loudly if any is
-missing from the run. Rejected alternatives: a coverage floor (decision
-two) and a fixed test count (needs manual upkeep, says nothing about
-which tests ran).
+**Decided:** four items under [[testing-strategy]], in this order.
 
-### 5. Proposed: work breakdown, in order
-
-1. **CLI binary test layer.** New `crates/cli/tests/`, the decision-two
-   cases: each command reaches its operation, each flag arrives, exit
-   codes `0`/`1`/`2`, `serve` exits without a project. Needs `ui/dist`
-   present to build (see the inherited note above).
-2. **Test audit.** File by file down the ranked list: delete what fails
+1. [[cli-binary-tests]]: new `crates/cli/tests/`, running the built
+   executable, with the decision-two cases.
+2. [[test-audit]]: file by file down the ranked list, delete what fails
    a decision-two rule, relocate the in-file operations integration
-   tests to `crates/core/tests/`, record test count and lines per layer
-   before and after. Places to look first for excess: the
-   `gantt_by_initiative` and `gantt_by_depth` blocks (about four test
-   lines per product line), the 47 git endpoint tests (any that assert
-   on repository state rather than the HTTP contract), and unit tests of
-   glue in the `operations/set` submodules.
-3. **CI run completeness check.** The script from point 4.
-4. **Testing guide.** Decisions one and two written into
-   `docs/architecture.md`, with a one-line pointer in `CLAUDE.md`, so a
-   future change meets the rules where it is made.
+   tests to `crates/core/tests/`, count before and after.
+3. [[ci-test-run-completeness]]: the script from decision four.
+4. [[testing-guide]]: decisions one and two written into
+   `docs/architecture.md`, with a one-line pointer in `CLAUDE.md`.
 
 Parked, not items: browser tests; the Svelte store factory.
 
-### Question answered along the way
-
 "Do we have too many tests somewhere?" Not visibly. The large blocks are
-input-space functions and are large for a reason. The candidates above
-are the only places the inventory flagged, and the audit decides them.
+input-space functions and are large for a reason. The only places the
+inventory flagged are named in [[test-audit]], and the audit decides
+them.
 
-### Next session
+## Baseline for the later comparison (measured 2026-09-09)
 
-Confirm or amend points 4 and 5, record them as decisions, create the
-four items under [[testing-strategy]], mark this item done.
+The "after" column is an **estimate made before any test was touched.
+It is not a target and must not steer the audit or the CLI tests**: a
+block is deleted because it fails a rule, never to hit a number, and a
+CLI test is written because a rule asks for it, never to fill a line
+budget. The column exists only so the milestone can be compared to its
+starting point when it closes.
+
+| Layer | Today (measured) | After (estimate, not a target) |
+|---|---|---|
+| Rust unit, in-file | 32,300 lines | 27,000 to 28,000 |
+| Core integration, `crates/core/tests/` | 5,300 | 8,800 (3,500 relocated) |
+| Server integration, `crates/server/tests/` | 4,700 | 4,300 to 4,700 |
+| CLI binary, `crates/cli/tests/` | 0 | 400 to 600 |
+| Web app unit | 2,100 | 2,100 |
+| **Total** | **44,400** | **42,500 to 44,000** |
+
+| | Today (measured) | After (estimate) |
+|---|---|---|
+| Rust test functions | 1,960 | about 1,850 to 1,950 |
+| Web app test functions | 207 | 207 |
+| Line coverage, workspace | 92.6% | around 95% |
+| Line coverage, CLI crate | 78% | around 95% |
+| Line coverage, core / git / server | 96% / 90% / 90% | unchanged |
+
+How the "today" numbers were taken, so the closing count uses the same
+method: in-file lines are everything from a file's first `#[cfg(test)]`
+to its end, summed per crate; `tests/` lines are `wc -l` over the
+directory; UI lines are `wc -l` over `ui/src/**/*.test.ts`; test
+functions are `#[test]` and `#[tokio::test]` attributes in `crates/`,
+and `it(`/`test(` calls in the UI; coverage is
+`cargo llvm-cov --workspace --summary-only` in the dev container.
+
+The structural change is the point, not the totals: every test gets a
+reason and a place, the 1,300 uncovered lines of CLI wiring get covered,
+and CI can no longer be green while most of the suite did not run.
+
+## Outcome (2026-09-09)
+
+All eight questions answered or parked, recorded above as decisions one
+to five. Four follow-up items created under [[testing-strategy]]. The
+rules themselves land in `docs/architecture.md` through
+[[testing-guide]], which is where a future change meets them.

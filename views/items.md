@@ -12,8 +12,10 @@
 | [burndown-chart](../workdown-items/burndown-chart.md) | to_do |  |  |
 | [burndown-chart-design](../workdown-items/burndown-chart-design.md) | to_do | [burndown-chart](../workdown-items/burndown-chart.md) |  |
 | [chart-renderer-sharing](../workdown-items/chart-renderer-sharing.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [view-order-in-extractor](../workdown-items/view-order-in-extractor.md) |
+| [ci-test-run-completeness](../workdown-items/ci-test-run-completeness.md) | to_do | [testing-strategy](../workdown-items/testing-strategy.md) |  |
 | [ci-workspace-coverage](../workdown-items/ci-workspace-coverage.md) | done |  |  |
 | [cli-add-audit](../workdown-items/cli-add-audit.md) | done | [item-mutations](../workdown-items/item-mutations.md) |  |
+| [cli-binary-tests](../workdown-items/cli-binary-tests.md) | to_do | [testing-strategy](../workdown-items/testing-strategy.md) |  |
 | [cli-body-command](../workdown-items/cli-body-command.md) | done | [item-mutations](../workdown-items/item-mutations.md) |  |
 | [cli-exit-code-contract](../workdown-items/cli-exit-code-contract.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [cli-move-command](../workdown-items/cli-move-command.md) | done | [item-mutations](../workdown-items/item-mutations.md) | [cli-set-command](../workdown-items/cli-set-command.md) |
@@ -115,8 +117,10 @@
 | [status-transition-dates](../workdown-items/status-transition-dates.md) | to_do |  |  |
 | [store-diagnostics-consistency](../workdown-items/store-diagnostics-consistency.md) | done | [polish](../workdown-items/polish.md) |  |
 | [tags-view](../workdown-items/tags-view.md) | removed | [misc-work](../workdown-items/misc-work.md) |  |
+| [test-audit](../workdown-items/test-audit.md) | to_do | [testing-strategy](../workdown-items/testing-strategy.md) | [cli-binary-tests](../workdown-items/cli-binary-tests.md) |
+| [testing-guide](../workdown-items/testing-guide.md) | to_do | [testing-strategy](../workdown-items/testing-strategy.md) |  |
 | [testing-strategy](../workdown-items/testing-strategy.md) | in_progress |  |  |
-| [testing-strategy-design](../workdown-items/testing-strategy-design.md) | in_progress | [testing-strategy](../workdown-items/testing-strategy.md) |  |
+| [testing-strategy-design](../workdown-items/testing-strategy-design.md) | done | [testing-strategy](../workdown-items/testing-strategy.md) |  |
 | [time-tracking](../workdown-items/time-tracking.md) | done |  |  |
 | [timer-notifications](../workdown-items/timer-notifications.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [pomodoro-timer](../workdown-items/pomodoro-timer.md) |
 | [timer-recording-indicator](../workdown-items/timer-recording-indicator.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [effort-timer](../workdown-items/effort-timer.md) |
