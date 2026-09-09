@@ -1,70 +1,74 @@
 ---
 id: compute-type-support-mismatch
 status: to_do
-parent: schema-expressions
-title: Decide which field types may declare compute and pull
+parent: misc-work
+title: Fold `compute` and `pull` into the field-property table
 ---
 
 ## In plain words
 
-Two places answer "may a `string` field derive its value from a
-`compute:` expression?", and they answer differently. The editor
-autocomplete schema says no; the Rust checker says yes. Nobody has
-decided which is right — the disagreement was found by reading them
-side by side, not by anyone hitting it.
+Every "may this field type carry this setting?" question is answered
+from one table in the schema model, except two. Whether a field may
+have a `compute:` or a `pull:` line is decided by two hand-written type
+lists in the schema parser instead. Two hand-written lists next to one
+table is how entries drift; the fix is to give the table two more rows
+and make the parser ask it, like it does for every other setting.
 
-## The problem in detail
+No behaviour changes for users. The five types that may be calculated
+(integer, float, date, duration, boolean) stay the five; the messages
+stay as they are.
 
-`crates/core/defaults/schema.schema.json` forbids `compute:` and
-`pull:` on `string`, `choice`, `multichoice`, `color`, `list`, `link`
-and `links` fields — a single `if`/`then` block listing all seven. So
-an editor with the schema loaded flags `compute:` on a `string` field
-as invalid.
+## What was actually found (2026-09-09)
 
-`crates/core/src/compute_check.rs::expression_type_of` maps a declared
-field type to the expression type it participates as, and returns a
-type for three of those seven: `String` and `Choice` become `Text`,
-`Color` becomes `Color`. Only the four collection types
-(`multichoice`, `list`, `link`, `links`) return `None`. So the CLI
-accepts a computed `string` field that the editor reddens.
+This item used to claim that the editor description
+(`schema.schema.json`) and the Rust checker disagreed about computed
+text and colour fields. They do not. The parser rejects `compute:` and
+`pull:` on any other type before the checker runs
+(`crates/core/src/parser/schema.rs`, "'compute' is only valid for
+integer, float, date, duration, and boolean fields"), the schema guide
+says the same, and the JSON schema forbids the same. The function the
+original finding pointed at, `expression_type_of` in
+`compute_check.rs`, maps text and colour to expression types so those
+fields can be *referenced* in a condition (`status == "done"`), not so
+they can be computed.
 
-`pull:` is restricted differently again — not by a type list but by
-whether the source field's type has aggregate functions and whether
-the result type fits the declared type — so its overlap with the JSON
-schema's seven-type list needs checking on its own rather than being
-assumed to match `compute:`.
+Why not allow computed text and colour anyway: the expression language
+has no text operations — no joining, no formatting. The only text an
+expression can yield is a literal or a copy of another field, which
+`default` and `when:` already do better. Reopen when text operations
+exist.
 
-## Why it is a decision, not a fix
+## Decisions taken
 
-Either side can be made to agree with the other, and the two answers
-are genuinely different products:
+1. **Two new rows.** `FieldProperty` in `crates/core/src/model/schema.rs`
+   gains `Compute` and `Pull`; `allowed_field_properties` lists them on
+   integer, float, date, duration and boolean, nowhere else. The
+   exhaustive `match` keeps a future type honest.
+2. **The parser asks the table.** The two `type_supports_*` checks in
+   `crates/core/src/parser/schema.rs` call `field_property_allowed`
+   instead of carrying their own type lists. The error wording stays
+   exactly as it is — the parser tests at the "only valid for" messages
+   pin it.
+3. **The probe covers them for free.** `crates/core/tests/schema_schema.rs`
+   walks every `FieldProperty` variant against the JSON schema, so the
+   two rows are probed once they exist. Add a `representative_value`
+   for each (a well-formed `compute: other + 1`-style expression needs
+   a referenced field; a `pull:` needs a link field and a source — the
+   probe document builder may need a second field). Delete the comment
+   that excludes them.
+4. **The JSON schema follows its own rule.** The shared `if`/`then`
+   block that forbids `compute` and `pull` on seven types becomes
+   `"compute": false, "pull": false` inside each of those types' own
+   blocks, as its `$comment` asks ("keep one block per type"). Remove
+   the sentence in that comment pointing at this item.
+5. **Docs unchanged.** `docs/schema.md` already states the five types.
+   Widen the probe note in [[view-kind-sync-guards]] only if it names
+   the exclusion.
 
-- **The CLI is right** — a computed `string` (say, a label built from
-  other fields) and a computed `color` are useful, the expression
-  algebra already types them, and the JSON schema is simply stale.
-  Then the fix is to narrow the schema's list to the four collection
-  types.
-- **The schema is right** — derivation is for the scalar/temporal
-  types and text derivation invites string concatenation the algebra
-  was not designed for. Then the fix is a check in `compute_check`
-  rejecting the declaration, plus a diagnostic.
+## Acceptance
 
-Whichever wins, the losing side changes and the pair gets a test, so
-the two cannot drift apart again.
-
-## Where it came from
-
-Found while writing the decision sheet for
-[[view-kind-sync-guards]]'s fourth mirror. That item guards the
-field-type → allowed-*properties* matrix by probing the JSON schema
-against the Rust rule; `compute:` and `pull:` were deliberately left
-out of its scope, because settling a real behavioral rule should not
-ride along inside a test-only change. Once this item lands, the probe
-there can be widened to cover both keys.
-
-## Objective
-
-Decide which types may declare `compute:` and which may declare
-`pull:`, make both the Rust checker and `schema.schema.json` say it,
-and cover the agreement with the probe test from
-[[view-kind-sync-guards]].
+- `field_property_allowed(type, Compute)` and `(type, Pull)` are the
+  only places that know which types may be derived.
+- The probe test reports zero disagreements with `compute` and `pull`
+  included.
+- All CI gates green; no user-visible change.

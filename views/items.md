@@ -27,7 +27,7 @@
 | [color-display-slot](../workdown-items/color-display-slot.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [color-field-type](../workdown-items/color-field-type.md), [view-display-config](../workdown-items/view-display-config.md) |
 | [color-field-type](../workdown-items/color-field-type.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [mutations-slice](../workdown-items/mutations-slice.md) |
 | [commit-from-web-ui](../workdown-items/commit-from-web-ui.md) | done | [full-git-loop](../workdown-items/full-git-loop.md) |  |
-| [compute-type-support-mismatch](../workdown-items/compute-type-support-mismatch.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) |  |
+| [compute-type-support-mismatch](../workdown-items/compute-type-support-mismatch.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
 | [computed-fields](../workdown-items/computed-fields.md) | done | [time-tracking](../workdown-items/time-tracking.md) | [project-constants](../workdown-items/project-constants.md) |
 | [conditional-field-value](../workdown-items/conditional-field-value.md) | done | [polish](../workdown-items/polish.md) | [expression-predicates](../workdown-items/expression-predicates.md), [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
 | [config-field-role-validation](../workdown-items/config-field-role-validation.md) | done | [time-tracking](../workdown-items/time-tracking.md) |  |

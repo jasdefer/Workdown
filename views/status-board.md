@@ -5,7 +5,7 @@ Cards grouped into columns by `status`.
 ## to_do
 - [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md)
 - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md)
-- [Decide which field types may declare compute and pull](../workdown-items/compute-type-support-mismatch.md)
+- [Fold `compute` and `pull` into the field-property table](../workdown-items/compute-type-support-mismatch.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)

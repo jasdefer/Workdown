@@ -8,6 +8,7 @@ flowchart TD
         burndown-chart-design["Decide where the burndown's time axis comes from"]
     end
     subgraph misc-work ["Miscellaneous improvements"]
+        compute-type-support-mismatch["Fold `compute` and `pull` into the field-property table"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
         prepare-commit-msg-hook["Prefill terminal commits with the generated message"]
         project-load-cache["Cache the project load in the server (when it starts to hurt)"]
@@ -21,7 +22,6 @@ flowchart TD
         schema-editor-web-design["Decide how much of the schema the web app edits, and what a breaking save does"]
     end
     subgraph schema-expressions ["Derived field expressions"]
-        compute-type-support-mismatch["Decide which field types may declare compute and pull"]
         expression-logical-combinators["`and` / `or` / `not` in the expression grammar"]
         when-map-shorthand["`map:` — lookup-table shorthand over the `when:` evaluator"]
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
