@@ -1,7 +1,7 @@
 ---
 id: testing-strategy
 title: Decide what our tests are for, and restructure them accordingly
-status: in_progress
+status: done
 ---
 
 ## In plain words
@@ -98,3 +98,42 @@ CLI's wiring. It has been narrowed to the browser half, and its CLI
 questions moved into [[testing-strategy-design]] — testing the built
 binary is what this milestone is for, and answering it there would have
 pre-empted it.
+
+## Outcome (2026-09-09)
+
+Designed in [[testing-strategy-design]] and built in five items:
+[[cli-binary-tests]], [[relocate-operations-tests]], [[test-audit]],
+[[ci-test-run-completeness]], [[testing-guide]]. What changed:
+
+- **The thing we ship is tested.** 88 tests under `crates/cli/tests/`
+  run the compiled binary: every command reaches its operation, every
+  flag arrives, and the `0` / `1` / `2` exit-code contract is pinned per
+  command. The inverted-exit-code failure from the opening paragraph now
+  fails the build.
+- **Every test has a place.** 107 operations integration tests moved
+  from the bottoms of source files to `crates/core/tests/`; the
+  remaining in-file blocks are unit tests of input-space functions.
+- **Fewer tests, by rule.** 109 tests deleted, each against a named
+  rule with the test that still covers the behaviour, and about 24
+  file-content assertions removed from server tests. Net, the suite
+  went from 1,960 Rust test functions to 1,939 while adding the binary
+  layer, and from about 44,400 test lines to 43,130.
+- **A silent green is loud.** CI derives every test target from the
+  tree and fails by name when one did not run.
+- **The rules are where a change meets them:** the Testing section of
+  `docs/architecture.md`, pointed at from `CLAUDE.md`.
+
+| Layer | Before (2026-09-09) | After |
+|---|---|---|
+| Rust unit, in-file | 32,300 lines | 26,161 |
+| Core integration | 5,300 | 9,183 |
+| Server integration | 4,700 | 4,346 |
+| CLI binary | 0 | 1,374 |
+| Web app unit | 2,100 | 2,066 |
+| Rust test functions | 1,960 | 1,939 |
+
+Parked, not done: browser tests; the Svelte store factory. Left open by
+the audit as gaps rather than rule violations: `walker::walk_up`,
+`model/field_value.rs` formatting for eight variants,
+`cli/src/render/markdown.rs`, the `Multichoice` case of `schema_args`,
+the port scan in `serve.rs`.

@@ -1,7 +1,7 @@
 ---
 id: testing-guide
 title: Write the testing rules where a future change will meet them
-status: to_do
+status: done
 parent: testing-strategy
 ---
 
@@ -45,3 +45,28 @@ front of every change made with the tool.
 - [[cli-binary-tests]] and [[test-audit]] follow it, which is the test
   of whether it is decidable in the moment. Adjust the wording if they
   could not.
+
+## Outcome (2026-09-09)
+
+A "Testing: three layers, one assertion per behaviour" section in
+`docs/architecture.md`, placed before "Related reading": the layer
+table, the one-sentence rule, the three-step "where a new test goes",
+the per-layer case checklist from decision two, what is deliberately not
+done, and one paragraph on the CI completeness check. It links to the
+design item for the reasoning and repeats none of it. One line under
+Conventions in `CLAUDE.md` points at the section.
+
+Two clarifications the build items forced into the wording, recorded
+here because they were not in the decisions as first written:
+
+- A unit block that builds a `Store` from files in a temp directory
+  only to feed an in-memory function is still a unit block. Without
+  this, the location rule would have demanded moving the derive, rules,
+  cycles, evaluator and checks blocks for no judgement benefit.
+- The origin guard is asserted once for all, since it is one layer over
+  the API, not once per endpoint.
+
+`cargo doc --no-deps --workspace` with `-D warnings` and the docs drift
+test still pass. [[cli-binary-tests]] and [[relocate-operations-tests]]
+were built to these rules and needed no wording beyond the two points
+above.

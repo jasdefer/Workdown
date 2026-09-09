@@ -104,3 +104,4 @@ Key design decisions are recorded in `docs/adr/`. Create new ADRs for fundamenta
 - References use the ID (filename without `.md`), e.g. `parent: implement-auth-epic`
 - One work item per file
 - Frontmatter = structure, Markdown body = freeform content
+- Tests: three layers, a behaviour asserted once at its owner's public entry point; which cases each layer gets and where a new test goes is the "Testing" section of `docs/architecture.md`

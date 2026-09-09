@@ -161,6 +161,36 @@ A workable order: 1–7 in one pass, leaning on `cargo check` to walk you throug
 
 A new **field type** has the same shape, one table smaller: the `FieldType` enum and the property matrix in `crates/core/src/model/schema.rs` are compiler-enforced, and their two mirrors — `crates/core/defaults/schema.schema.json` and the type table in [docs/schema.md](schema.md) — are covered by `crates/core/tests/schema_schema.rs` (which probes every type/property pair against `field_property_allowed`) and `crates/core/tests/docs_guides.rs`.
 
+## Testing: three layers, one assertion per behaviour
+
+The rules, not the reasoning. The reasoning, the alternatives weighed and the measurements behind these rules are in the design item `workdown-items/testing-strategy-design.md`.
+
+| Layer | Question it answers | Where it lives |
+|---|---|---|
+| Unit | Does this function handle every input shape? | `#[cfg(test)]` in the file; `*.test.ts` beside a pure UI module |
+| Integration | Does this crate's public entry point do the right thing to a real project on disk? | `crates/<crate>/tests/` |
+| Binary | Is the shipped command wired up, with the right exit code? | `crates/cli/tests/`, running the compiled executable |
+
+**The rule:** a behaviour is asserted once, in the crate that owns it, at that crate's public entry point. Layers above assert only on what they add. Core owns what operations do to files; the server asserts its HTTP contract; the CLI asserts that a command reaches its operation and exits with the right code.
+
+**Where a new test goes:**
+
+1. Find the crate that owns the behaviour and write the test there, against its public entry point, in that crate's `tests/`.
+2. If the change also touched a handler or a command, add one contract test above it: a status code in `crates/server/tests/`, an exit code or a flag in `crates/cli/tests/`.
+3. If the change introduced a function with more input shapes than the integration test sends through, add unit tests for the shapes, in the file. A function with one shape gets no unit test; the integration test already covers it.
+
+**Which cases, per layer.** These are the cases each layer gets, and nothing else is required.
+
+- *Core integration, per operation:* the happy path once, checking the result and the file on disk; each distinct error the user can hit, once (distinct means a different message or cause, not a different input producing the same error); each option or mode that changes the outcome, once; anything touching more than one item (parent chains, rollups, cycles). Not a case: internal branches with the same visible outcome, and anything a unit test already pins.
+- *Server contract, per endpoint:* one success response, status and JSON shape, never file contents; each distinct status code the endpoint can return, once; the origin guard once for all, since it is one layer over the API. Not a case: the same status for a different bad value. Exception: behaviour the server owns outright and nothing below it tests (the timer state machine, the git commit, pull and push flows) is tested fully there.
+- *CLI binary, per command:* one invocation that reaches the operation and exits `0`; each flag once, proven by a flag that visibly changes the result; exit `1` on an operation error and `2` on a malformed invocation, once per command. Not a case: what the operation does, which core proves. The fixture is one shared default project in `crates/cli/tests/common/mod.rs`.
+- *Unit, per function with an input space:* every input shape the function distinguishes, and each shape it refuses with its diagnostic. A block that builds a `Store` from files in a temp directory only to feed an in-memory function is still a unit block. Not a case: a function with one shape.
+- *Web app:* pure-module unit tests in Node. Decision logic is pulled out of a stateful module into a pure function before it gets a test.
+
+**Deliberately not done:** browser or component tests (the client is thin over tested endpoints); a coverage percentage as a target or a CI gate (it cannot tell a parser with fifty tested shapes from glue with one). Coverage is run by hand as a finder when someone wonders, then left alone.
+
+**How CI notices a silent green:** `.github/scripts/check-test-run.sh` derives every test target from the tree and fails the build by name when the captured `cargo test --workspace` output did not run it, and checks that the Vitest run happened. Scoping the test step back to one crate turns red instead of green.
+
 ## Related reading
 
 - [Schema guide](schema.md) — field types, validation rules, defaults, computed, aggregated and pull fields.
