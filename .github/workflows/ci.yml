@@ -34,8 +34,12 @@ jobs:
       # Build the UI bundle before any Rust step: the non-test
       # `UiAssets` rust-embed derive requires `ui/dist/` to exist at
       # compile time, so clippy/build/doc would fail without it.
+      # Captured to a log because the completeness check below reads the
+      # Vitest summary out of it. `shell: bash` gives `pipefail`, so a
+      # failing build still fails this step despite the `tee`.
       - name: Build UI bundle
-        run: cargo xtask build-ui
+        shell: bash
+        run: cargo xtask build-ui 2>&1 | tee build-ui.log
 
       - name: Check formatting
         run: cargo fmt --check
@@ -52,7 +56,15 @@ jobs:
         run: cargo build --workspace
 
       - name: Test
-        run: cargo test --workspace
+        shell: bash
+        run: cargo test --workspace 2>&1 | tee cargo-test.log
+
+      # A green `cargo test` only says that what ran passed. This step
+      # derives every test target from the tree (one unit binary per
+      # crate, every `crates/*/tests/*.rs`) and fails by name when one is
+      # missing from the log above, and checks the Vitest run happened.
+      - name: Check every test target ran
+        run: .github/scripts/check-test-run.sh cargo-test.log build-ui.log
 
       - name: Doc
         run: cargo doc --no-deps --workspace
