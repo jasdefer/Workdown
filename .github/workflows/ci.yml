@@ -64,7 +64,7 @@ jobs:
       # crate, every `crates/*/tests/*.rs`) and fails by name when one is
       # missing from the log above, and checks the Vitest run happened.
       - name: Check every test target ran
-        run: .github/scripts/check-test-run.sh cargo-test.log build-ui.log
+        run: bash .github/scripts/check-test-run.sh cargo-test.log build-ui.log
 
       - name: Doc
         run: cargo doc --no-deps --workspace
