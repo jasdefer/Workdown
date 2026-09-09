@@ -1,6 +1,6 @@
 ---
 id: schema-editor-web
-status: to_do
+status: in_progress
 title: See and edit the schema in the web app
 ---
 
@@ -58,6 +58,10 @@ and nothing else. `schema.yaml` is different in kind:
   Whatever backs the form should read one table, not a third copy.
 
 ## What has to be settled
+
+Settled on 2026-09-09 in [[schema-editor-web-design]], which holds the
+UX definition, the decisions and the breakdown into children. The
+questions are kept below as the record of what was asked.
 
 - **How much of the schema is editable.** Fields only, or rules and
   resource references too. A first cut that adds and edits plain fields
