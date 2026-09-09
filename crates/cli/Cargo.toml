@@ -33,3 +33,6 @@ plotters = { version = "0.3", default-features = false, features = ["svg_backend
 
 [dev-dependencies]
 indexmap.workspace = true
+# `tests/` runs the compiled binary against a throwaway project written
+# to a temp directory (see `tests/common/mod.rs`).
+tempfile = "3"

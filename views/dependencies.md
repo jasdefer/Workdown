@@ -29,13 +29,4 @@ flowchart TD
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end
     status-transition-dates["Fill in a date when a status changes, instead of typing it by hand"]
-    subgraph testing-strategy ["Decide what our tests are for, and restructure them accordingly"]
-        ci-test-run-completeness["Fail CI when a test file exists but did not run"]
-        cli-binary-tests["Test the shipped binary, so the CLI's wiring and exit codes are pinned"]
-        relocate-operations-tests["Move the in-file operations tests to core's tests directory"]
-        test-audit["Audit every test block against the rules, delete what fails them, move what is misplaced"]
-        testing-guide["Write the testing rules where a future change will meet them"]
-    end
-    relocate-operations-tests --> cli-binary-tests
-    test-audit --> relocate-operations-tests
 ```

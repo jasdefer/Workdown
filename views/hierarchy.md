@@ -22,9 +22,3 @@ Hierarchical outline following `parent` upward to roots.
   - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md) — status: to_do
   - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md) — status: to_do
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md) — status: to_do
-- [Decide what our tests are for, and restructure them accordingly](../workdown-items/testing-strategy.md) — status: in_progress
-  - [Fail CI when a test file exists but did not run](../workdown-items/ci-test-run-completeness.md) — status: to_do
-  - [Test the shipped binary, so the CLI's wiring and exit codes are pinned](../workdown-items/cli-binary-tests.md) — status: to_do
-  - [Move the in-file operations tests to core's tests directory](../workdown-items/relocate-operations-tests.md) — status: to_do
-  - [Audit every test block against the rules, delete what fails them, move what is misplaced](../workdown-items/test-audit.md) — status: to_do
-  - [Write the testing rules where a future change will meet them](../workdown-items/testing-guide.md) — status: to_do
