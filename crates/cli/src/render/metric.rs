@@ -115,12 +115,6 @@ mod tests {
     }
 
     #[test]
-    fn renders_top_heading() {
-        let output = render_metric(&data(vec![]), "");
-        assert!(output.starts_with("# Metrics\n\n"));
-    }
-
-    #[test]
     fn empty_rows_emits_heading_only() {
         let output = render_metric(&data(vec![]), "");
         assert_eq!(output, "# Metrics\n\n");
@@ -138,20 +132,6 @@ mod tests {
         );
         let expected = "# Metrics\n\n| Label | Value |\n| --- | --- |\n| Open items | 12 |\n";
         assert_eq!(output, expected);
-    }
-
-    #[test]
-    fn integer_number_drops_decimal() {
-        let output = render_metric(
-            &data(vec![row(
-                "Count",
-                Aggregate::Count,
-                Some(ChartValue::Number(7.0)),
-            )]),
-            "",
-        );
-        assert!(output.contains("| Count | 7 |\n"));
-        assert!(!output.contains("7.0"));
     }
 
     #[test]

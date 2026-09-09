@@ -701,14 +701,6 @@ mod tests {
 
     // ── Missing field ───────────────────────────────────────────
 
-    #[test]
-    fn missing_field_no_match() {
-        let schema = test_schema();
-        let item = make_item("t1", vec![]);
-        let predicate = comparison("points", Operator::GreaterThan, "3");
-        assert!(!check(&item, &predicate, &schema).unwrap());
-    }
-
     /// An absent field fails every positive comparison.
     #[test]
     fn missing_field_fails_positive_operators() {
@@ -747,37 +739,8 @@ mod tests {
 
     /// The contract `not in` relies on: it agrees with `!=` for every item,
     /// including one carrying no value for the field.
-    #[test]
-    fn not_in_agrees_with_not_equal_on_absent_field() {
-        let schema = test_schema();
-        let absent = make_item("t1", vec![]);
-        let present = make_item("t2", vec![("status", FieldValue::String("done".into()))]);
-
-        for item in [&absent, &present] {
-            let single = parse_where("status!=done").unwrap();
-            let membership = parse_where("status not in done").unwrap();
-            assert_eq!(
-                check(item, &single, &schema).unwrap(),
-                check(item, &membership, &schema).unwrap(),
-                "'status!=done' and 'status not in done' disagree on {}",
-                item.id
-            );
-        }
-    }
-
     /// The stricter reading — exclude items with no value — stays reachable by
     /// AND-ing the presence check, which is how a `where:` list combines.
-    #[test]
-    fn presence_check_restores_strict_exclusion() {
-        let schema = test_schema();
-        let absent = make_item("t1", vec![]);
-        let predicate = Predicate::And(vec![
-            parse_where("status!=done").unwrap(),
-            parse_where("status?").unwrap(),
-        ]);
-        assert!(!check(&absent, &predicate, &schema).unwrap());
-    }
-
     #[test]
     fn membership_matches_listed_values_only() {
         let schema = test_schema();

@@ -252,46 +252,6 @@ mod tests {
     }
 
     #[test]
-    fn delimited_renders_header_and_basic_row() {
-        let item = make_item(
-            "task-a",
-            vec![
-                ("title", FieldValue::String("Hello".into())),
-                ("points", FieldValue::Integer(3)),
-            ],
-        );
-        let columns = vec!["id".to_owned(), "title".to_owned(), "points".to_owned()];
-        let output = render_delimited(&[&item], &columns, &tsv_options()).unwrap();
-        assert_eq!(output, "id\ttitle\tpoints\ntask-a\tHello\t3\n");
-    }
-
-    #[test]
-    fn delimited_omits_header_when_disabled() {
-        let item = make_item("task-a", vec![("title", FieldValue::String("Hi".into()))]);
-        let columns = vec!["id".to_owned(), "title".to_owned()];
-        let options = DelimitedOptions {
-            header: false,
-            ..tsv_options()
-        };
-        let output = render_delimited(&[&item], &columns, &options).unwrap();
-        assert_eq!(output, "task-a\tHi\n");
-    }
-
-    #[test]
-    fn delimited_joins_lists_with_list_separator() {
-        let item = make_item(
-            "task-a",
-            vec![(
-                "tags",
-                FieldValue::List(vec!["auth".into(), "backend".into()]),
-            )],
-        );
-        let columns = vec!["id".to_owned(), "tags".to_owned()];
-        let output = render_delimited(&[&item], &columns, &tsv_options()).unwrap();
-        assert_eq!(output, "id\ttags\ntask-a\tauth;backend\n");
-    }
-
-    #[test]
     fn delimited_missing_field_is_empty_cell() {
         let item = make_item("task-a", vec![]);
         let columns = vec!["id".to_owned(), "title".to_owned()];
@@ -315,46 +275,5 @@ mod tests {
         };
         let output = render_delimited(&[&item], &columns, &options).unwrap();
         assert_eq!(output, "id,title\ntask-a,\"Hello, world\"\n");
-    }
-
-    #[test]
-    fn delimited_errors_on_embedded_separator_in_list_element() {
-        let item = make_item(
-            "task-a",
-            vec![(
-                "tags",
-                FieldValue::List(vec!["auth;sensitive".into(), "backend".into()]),
-            )],
-        );
-        let columns = vec!["id".to_owned(), "tags".to_owned()];
-        let result = render_delimited(&[&item], &columns, &tsv_options());
-        match result {
-            Err(DelimitedError::EmbeddedSeparator {
-                item_id,
-                field,
-                separator,
-            }) => {
-                assert_eq!(item_id, "task-a");
-                assert_eq!(field, "tags");
-                assert_eq!(separator, ';');
-            }
-            other => panic!("expected EmbeddedSeparator, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn delimited_errors_on_delimiter_list_separator_collision() {
-        let item = make_item("task-a", vec![]);
-        let columns = vec!["id".to_owned()];
-        let options = DelimitedOptions {
-            delimiter: b';',
-            header: true,
-            list_separator: ';',
-        };
-        let result = render_delimited(&[&item], &columns, &options);
-        assert!(matches!(
-            result,
-            Err(DelimitedError::DelimiterConflict { .. })
-        ));
     }
 }

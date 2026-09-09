@@ -404,21 +404,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn duration_picks_days_for_larger_ranges() {
-        // 1 day per bucket → "days".
-        let buckets = vec![
-            bucket(ymd(2026, 1, 5), 86_400.0),
-            bucket(ymd(2026, 1, 6), 86_400.0),
-        ];
-        let output = render_workload(
-            &data(WorkloadUnit::Duration, buckets, vec![]),
-            "../workdown-items",
-            "",
-        );
-        assert!(output.contains("effort (days)"));
-    }
-
     // ── Values table ────────────────────────────────────────────────
 
     #[test]

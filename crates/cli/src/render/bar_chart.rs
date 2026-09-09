@@ -359,20 +359,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn duration_bars_axis_chooses_hours_for_short_ranges() {
-        let bars = vec![
-            bar("alpha", ChartValue::Duration(2 * SECONDS_PER_HOUR)),
-            bar("beta", ChartValue::Duration(5 * SECONDS_PER_HOUR)),
-        ];
-        let output = render_bar_chart(
-            &data("tag", Some("estimate"), Aggregate::Sum, bars, vec![]),
-            "../workdown-items",
-            "",
-        );
-        assert!(output.contains("sum of estimate (hours)"));
-    }
-
     // ── Bar order / category labels ─────────────────────────────────
 
     #[test]

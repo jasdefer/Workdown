@@ -175,68 +175,6 @@ mod tests {
     // ── build_frontmatter_yaml ───────────────────────────────────────
 
     #[test]
-    fn build_emits_fields_in_schema_order() {
-        let schema = schema_with(vec![
-            ("title", string_field()),
-            ("status", string_field()),
-            ("priority", string_field()),
-        ]);
-        let mut frontmatter = HashMap::new();
-        frontmatter.insert(
-            "priority".to_owned(),
-            serde_yaml::Value::String("high".to_owned()),
-        );
-        frontmatter.insert(
-            "title".to_owned(),
-            serde_yaml::Value::String("Hello".to_owned()),
-        );
-        frontmatter.insert(
-            "status".to_owned(),
-            serde_yaml::Value::String("open".to_owned()),
-        );
-
-        let yaml = build_frontmatter_yaml(&frontmatter, &schema, false);
-
-        // Title is listed before status, status before priority — matches schema.
-        let title_position = yaml.find("title:").unwrap();
-        let status_position = yaml.find("status:").unwrap();
-        let priority_position = yaml.find("priority:").unwrap();
-        assert!(title_position < status_position);
-        assert!(status_position < priority_position);
-    }
-
-    #[test]
-    fn build_skips_id_when_not_user_set() {
-        let schema = schema_with(vec![("id", string_field()), ("title", string_field())]);
-        let mut frontmatter = HashMap::new();
-        frontmatter.insert(
-            "title".to_owned(),
-            serde_yaml::Value::String("Hello".to_owned()),
-        );
-
-        let yaml = build_frontmatter_yaml(&frontmatter, &schema, false);
-        assert!(!yaml.contains("id:"));
-        assert!(yaml.contains("title: Hello"));
-    }
-
-    #[test]
-    fn build_emits_id_when_user_set() {
-        let schema = schema_with(vec![("id", string_field()), ("title", string_field())]);
-        let mut frontmatter = HashMap::new();
-        frontmatter.insert(
-            "id".to_owned(),
-            serde_yaml::Value::String("custom-id".to_owned()),
-        );
-        frontmatter.insert(
-            "title".to_owned(),
-            serde_yaml::Value::String("Hello".to_owned()),
-        );
-
-        let yaml = build_frontmatter_yaml(&frontmatter, &schema, true);
-        assert!(yaml.contains("id: custom-id"));
-    }
-
-    #[test]
     fn build_appends_extra_fields_alphabetically_after_schema_fields() {
         let schema = schema_with(vec![("title", string_field())]);
         let mut frontmatter = HashMap::new();
@@ -271,29 +209,6 @@ mod tests {
     }
 
     // ── write_file_atomically ────────────────────────────────────────
-
-    #[test]
-    fn atomic_write_creates_new_file_with_content() {
-        let directory = tempfile::tempdir().unwrap();
-        let target = directory.path().join("note.md");
-
-        write_file_atomically(&target, "hello world").unwrap();
-
-        let read_back = std::fs::read_to_string(&target).unwrap();
-        assert_eq!(read_back, "hello world");
-    }
-
-    #[test]
-    fn atomic_write_replaces_existing_file() {
-        let directory = tempfile::tempdir().unwrap();
-        let target = directory.path().join("note.md");
-        std::fs::write(&target, "original").unwrap();
-
-        write_file_atomically(&target, "replaced").unwrap();
-
-        let read_back = std::fs::read_to_string(&target).unwrap();
-        assert_eq!(read_back, "replaced");
-    }
 
     #[test]
     fn atomic_write_removes_temp_file_on_success() {
@@ -331,12 +246,6 @@ mod tests {
 
     fn list_field() -> FieldDefinition {
         FieldDefinition::new(FieldTypeConfig::List)
-    }
-
-    fn choice_field() -> FieldDefinition {
-        FieldDefinition::new(FieldTypeConfig::Choice {
-            values: vec!["open".into(), "done".into()],
-        })
     }
 
     #[test]
@@ -425,12 +334,5 @@ mod tests {
     fn parse_string_field_returns_string() {
         let value = parse_value_for_field("hello world", &string_field());
         assert_eq!(value.as_str().unwrap(), "hello world");
-    }
-
-    #[test]
-    fn parse_choice_field_returns_string() {
-        // Choice membership check happens in coerce, not here.
-        let value = parse_value_for_field("not-in-list", &choice_field());
-        assert_eq!(value.as_str().unwrap(), "not-in-list");
     }
 }

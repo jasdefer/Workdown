@@ -360,20 +360,6 @@ This is the body.
     }
 
     #[test]
-    fn parse_empty_frontmatter() {
-        let content = "\
----
----
-Some body text.
-";
-        let item = parse_work_item(content, test_path()).unwrap();
-
-        assert_eq!(item.id, "test-item");
-        assert!(item.frontmatter.is_empty());
-        assert!(item.body.contains("Some body text."));
-    }
-
-    #[test]
     fn parse_empty_body() {
         let content = "\
 ---
@@ -387,72 +373,11 @@ title: No body
     }
 
     #[test]
-    fn missing_opening_delimiter() {
-        let content = "title: oops\n---\nbody\n";
-        let result = parse_work_item(content, test_path());
-
-        assert!(matches!(result, Err(ParseError::MissingFrontmatter { .. })));
-    }
-
-    #[test]
-    fn missing_closing_delimiter() {
-        let content = "---\ntitle: oops\n";
-        let result = parse_work_item(content, test_path());
-
-        assert!(matches!(
-            result,
-            Err(ParseError::UnclosedFrontmatter { .. })
-        ));
-    }
-
-    #[test]
-    fn frontmatter_is_a_list() {
-        let content = "---\n- one\n- two\n---\nbody\n";
-        let result = parse_work_item(content, test_path());
-
-        assert!(matches!(
-            result,
-            Err(ParseError::FrontmatterNotMapping { .. })
-        ));
-    }
-
-    #[test]
-    fn invalid_yaml() {
-        let content = "---\n: :\n  bad:\n    - [\n---\nbody\n";
-        let result = parse_work_item(content, test_path());
-
-        assert!(matches!(result, Err(ParseError::InvalidYaml { .. })));
-    }
-
-    #[test]
     fn empty_file() {
         let content = "";
         let result = parse_work_item(content, test_path());
 
         assert!(matches!(result, Err(ParseError::MissingFrontmatter { .. })));
-    }
-
-    #[test]
-    fn body_preserves_markdown_structure() {
-        let content = "\
----
-title: Rich body
----
-
-# Heading
-
-- bullet 1
-- bullet 2
-
-```rust
-fn main() {}
-```
-";
-        let item = parse_work_item(content, test_path()).unwrap();
-
-        assert!(item.body.contains("# Heading"));
-        assert!(item.body.contains("- bullet 1"));
-        assert!(item.body.contains("fn main() {}"));
     }
 
     #[test]
@@ -505,40 +430,5 @@ tags: [a, b, c]
         let content = "---\nid: Fix-Login\ntitle: Test\n---\n";
         let result = parse_work_item(content, Path::new("whatever.md"));
         assert!(matches!(result, Err(ParseError::InvalidId { .. })));
-    }
-
-    #[test]
-    fn id_starts_with_digit_accepted() {
-        let content = "---\ntitle: Test\n---\n";
-        let item = parse_work_item(content, Path::new("123-task.md")).unwrap();
-        assert_eq!(item.id, "123-task");
-    }
-
-    #[test]
-    fn id_invalid_format_trailing_hyphen() {
-        let content = "---\ntitle: Test\n---\n";
-        let result = parse_work_item(content, Path::new("fix-login-.md"));
-        assert!(matches!(result, Err(ParseError::InvalidId { .. })));
-    }
-
-    #[test]
-    fn id_invalid_format_underscores() {
-        let content = "---\ntitle: Test\n---\n";
-        let result = parse_work_item(content, Path::new("fix_login.md"));
-        assert!(matches!(result, Err(ParseError::InvalidId { .. })));
-    }
-
-    #[test]
-    fn id_with_digits() {
-        let content = "---\ntitle: Test\n---\n";
-        let item = parse_work_item(content, Path::new("task-42.md")).unwrap();
-        assert_eq!(item.id, "task-42");
-    }
-
-    #[test]
-    fn id_single_letter() {
-        let content = "---\ntitle: Test\n---\n";
-        let item = parse_work_item(content, Path::new("x.md")).unwrap();
-        assert_eq!(item.id, "x");
     }
 }

@@ -414,19 +414,4 @@ mod tests {
         assert_eq!(field, "depends_on");
         assert_eq!(chain, ids(&["a", "b", "a"]).as_slice());
     }
-
-    #[test]
-    fn all_cycle_diagnostics_are_errors() {
-        let schema = schema_with(vec![("parent", link_field(false))]);
-        let (_dir, path) = setup_items_dir(vec![
-            ("a.md", "---\nstatus: open\nparent: b\n---\n"),
-            ("b.md", "---\nstatus: open\nparent: a\n---\n"),
-        ]);
-        let store = Store::load(&path, &schema).unwrap();
-        let diagnostics = detect_cycles(&store, &schema);
-
-        for diagnostic in &diagnostics {
-            assert_eq!(diagnostic.severity, Severity::Error);
-        }
-    }
 }

@@ -99,3 +99,13 @@ fn load_from_missing_dir_returns_directory_missing() {
         Err(TemplateError::DirectoryMissing { .. })
     ));
 }
+
+#[test]
+fn list_templates_skips_files_that_are_not_markdown() {
+    let (_directory, templates_dir) = make_templates_dir();
+    fs::write(templates_dir.join("real.md"), "---\ntype: a\n---\n").unwrap();
+    fs::write(templates_dir.join("readme.txt"), "noise").unwrap();
+
+    let names = list_template_names(&templates_dir);
+    assert_eq!(names, vec!["real".to_owned()]);
+}

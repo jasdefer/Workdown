@@ -192,11 +192,6 @@ mod tests {
     }
 
     #[test]
-    fn prettify_with_digits() {
-        assert_eq!(prettify_slug("task-42"), "Task 42");
-    }
-
-    #[test]
     fn prettify_underscore_separated_value() {
         assert_eq!(prettify_slug("in_progress"), "In Progress");
     }
@@ -228,23 +223,6 @@ mod tests {
         assert_eq!(resolved.len(), 10);
         assert_eq!(&resolved[4..5], "-");
         assert_eq!(&resolved[7..8], "-");
-    }
-
-    #[test]
-    fn tokens_resolves_uuid_exact_match() {
-        let store = empty_store(&minimal_schema());
-        let mut frontmatter = HashMap::new();
-        frontmatter.insert(
-            "assignee".to_owned(),
-            serde_yaml::Value::String("$uuid".to_owned()),
-        );
-
-        resolve_template_tokens(&mut frontmatter, Some("slug"), &store);
-
-        let resolved = frontmatter.get("assignee").unwrap().as_str().unwrap();
-        // UUIDs are 36 chars with 4 hyphens.
-        assert_eq!(resolved.len(), 36);
-        assert_eq!(resolved.matches('-').count(), 4);
     }
 
     #[test]

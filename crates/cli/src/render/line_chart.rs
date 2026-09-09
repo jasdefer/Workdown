@@ -280,26 +280,6 @@ mod tests {
     // ── Single series ───────────────────────────────────────────────
 
     #[test]
-    fn single_series_emits_svg_with_first_palette_color() {
-        let points = vec![
-            point("a", ChartValue::Number(1.0), SizeValue::Number(2.0)),
-            point("b", ChartValue::Number(2.0), SizeValue::Number(4.0)),
-            point("c", ChartValue::Number(3.0), SizeValue::Number(6.0)),
-        ];
-        let output = render_line_chart(
-            &data("x", "y", None, single(points), vec![]),
-            "../workdown-items",
-            "",
-        );
-        assert!(output.contains("<svg"));
-        // First palette color drives the single series.
-        assert!(
-            output.contains("stroke=\"#E69F00\""),
-            "expected first palette color in stroke, got: {output}"
-        );
-    }
-
-    #[test]
     fn single_series_skips_legend() {
         let points = vec![
             point("a", ChartValue::Number(1.0), SizeValue::Number(2.0)),

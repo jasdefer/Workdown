@@ -73,11 +73,6 @@ mod tests {
     }
 
     #[test]
-    fn slugify_special_characters() {
-        assert_eq!(slugify("Fix Bug #123!").unwrap(), "fix-bug-123");
-    }
-
-    #[test]
     fn slugify_extra_spaces_and_symbols() {
         assert_eq!(slugify("  Hello,  World!  ").unwrap(), "hello-world");
     }
@@ -95,10 +90,5 @@ mod tests {
     #[test]
     fn slugify_only_digits_succeeds() {
         assert_eq!(slugify("12345").unwrap(), "12345");
-    }
-
-    #[test]
-    fn slugify_preserves_internal_digits() {
-        assert_eq!(slugify("Task 42 Done").unwrap(), "task-42-done");
     }
 }

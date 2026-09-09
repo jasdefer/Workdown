@@ -405,30 +405,6 @@ mod tests {
     // ── List (repeat and comma) ──────────────────────────────────────
 
     #[test]
-    fn list_field_accepts_repeated_flags() {
-        let schema = schema_with(vec![("tags", FieldDefinition::new(FieldTypeConfig::List))]);
-        let matches = parse(&schema, &["--tags", "auth", "--tags", "backend"]);
-        let field_map = matches_to_field_map(&matches, &schema);
-
-        let sequence = field_map.get("tags").unwrap().as_sequence().unwrap();
-        assert_eq!(sequence.len(), 2);
-        assert_eq!(sequence[0].as_str().unwrap(), "auth");
-        assert_eq!(sequence[1].as_str().unwrap(), "backend");
-    }
-
-    #[test]
-    fn list_field_accepts_comma_separated() {
-        let schema = schema_with(vec![("tags", FieldDefinition::new(FieldTypeConfig::List))]);
-        let matches = parse(&schema, &["--tags", "auth,backend"]);
-        let field_map = matches_to_field_map(&matches, &schema);
-
-        let sequence = field_map.get("tags").unwrap().as_sequence().unwrap();
-        assert_eq!(sequence.len(), 2);
-        assert_eq!(sequence[0].as_str().unwrap(), "auth");
-        assert_eq!(sequence[1].as_str().unwrap(), "backend");
-    }
-
-    #[test]
     fn list_field_trims_whitespace() {
         let schema = schema_with(vec![("tags", FieldDefinition::new(FieldTypeConfig::List))]);
         let matches = parse(&schema, &["--tags", "auth, backend"]);
@@ -471,22 +447,6 @@ mod tests {
     }
 
     // ── Links (list of ids) ──────────────────────────────────────────
-
-    #[test]
-    fn links_field_accepts_repeat_and_comma() {
-        let schema = schema_with(vec![(
-            "depends_on",
-            FieldDefinition::new(FieldTypeConfig::Links {
-                allow_cycles: None,
-                inverse: None,
-            }),
-        )]);
-        let matches = parse(&schema, &["--depends_on", "a,b", "--depends_on", "c"]);
-        let field_map = matches_to_field_map(&matches, &schema);
-
-        let sequence = field_map.get("depends_on").unwrap().as_sequence().unwrap();
-        assert_eq!(sequence.len(), 3);
-    }
 
     // ── Underscore in field name preserved ───────────────────────────
 

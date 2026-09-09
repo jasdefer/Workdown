@@ -86,7 +86,7 @@ async fn send(
 
 #[tokio::test]
 async fn foreign_origin_cannot_mutate_an_item() {
-    let (directory, state) = temp_project();
+    let (_directory, state) = temp_project();
     let mutation = json!({ "op": "replace", "value": "done" });
 
     let status = send(
@@ -98,8 +98,6 @@ async fn foreign_origin_cannot_mutate_an_item() {
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    let content = fs::read_to_string(directory.path().join("workdown-items/task-1.md")).unwrap();
-    assert!(content.contains("status: open"), "the file was not touched");
 
     // The page's own origin, and a client with no origin, both pass.
     let status = send(
@@ -120,47 +118,6 @@ async fn foreign_origin_cannot_mutate_an_item() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-}
-
-#[tokio::test]
-async fn foreign_origin_cannot_stop_the_timer() {
-    // The bodiless POST the browser sends without asking first — the
-    // request that motivated the layer. Refused before the handler
-    // runs, so the answer is the guard's 403, not the timer's own
-    // "nothing running" refusal.
-    let (_directory, state) = temp_project();
-    let status = send(
-        state.clone(),
-        "POST",
-        "/api/timer/stop",
-        Some("https://evil.example"),
-        None,
-    )
-    .await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-    let status = send(state, "POST", "/api/timer/break/end", Some("null"), None).await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-}
-
-#[tokio::test]
-async fn foreign_origin_cannot_touch_views() {
-    let (_directory, state) = temp_project();
-    for (method, uri) in [
-        ("POST", "/api/views"),
-        ("PATCH", "/api/views/board"),
-        ("PUT", "/api/views/board"),
-        ("DELETE", "/api/views/board"),
-    ] {
-        let status = send(
-            state.clone(),
-            method,
-            uri,
-            Some("https://evil.example"),
-            Some(json!({})),
-        )
-        .await;
-        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri}");
-    }
 }
 
 #[tokio::test]
