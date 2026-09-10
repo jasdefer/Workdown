@@ -30,6 +30,10 @@ ts-rs = { version = "10", features = ["serde-compat", "chrono-impl", "no-serde-w
 # is the point: a hand-written `ALL` const would be one more copy of the
 # fact the guards exist to protect.
 strum = { version = "0.28", features = ["derive"] }
+# Content hash of `schema.yaml` for the schema editor's optimistic
+# concurrency check (`schema_definition_data::content_hash`). Already in
+# the tree through the server's embedded-assets crate.
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"

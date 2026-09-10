@@ -45,8 +45,6 @@ The field editor as defined in [[schema-editor-web-design]].
 - **Remove.** Button in the footer, same preview and dialog.
 - **`409`.** The panel says the file changed on disk and offers to
   reload the field, discarding pending edits.
-- **Comment note.** When the field's entry carries comments, one line
-  above the footer says they will not be kept.
 
 ## Not in scope
 

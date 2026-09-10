@@ -10,7 +10,6 @@ Cards grouped into columns by `status`.
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md)
-- [Serve the full schema definition and the type tables to the web app](../workdown-items/schema-definition-api.md)
 - [Field editor block for integer, float and duration](../workdown-items/schema-field-editor-numeric.md)
 - [Field editor block for link and links](../workdown-items/schema-field-editor-relation.md)
 - [The field editor panel, with the shared header and the save flow](../workdown-items/schema-field-editor-shell.md)
@@ -20,6 +19,7 @@ Cards grouped into columns by `status`.
 - [Let an existing field change type, but only to a type that keeps every value valid](../workdown-items/schema-field-type-change.md)
 - [Write one field definition into schema.yaml without touching the rest](../workdown-items/schema-field-write-backend.md)
 - [A schema page that shows the fields and rules](../workdown-items/schema-page-read-view.md)
+- [Edit rules on the schema page](../workdown-items/schema-rules-editor.md)
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md)
 
 ## in_progress
@@ -32,7 +32,6 @@ Cards grouped into columns by `status`.
 - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
 - [Edit compute, when, pull and aggregate blocks in the field editor](../workdown-items/schema-derived-field-editor.md)
 - [Rename a field and everything that names it](../workdown-items/schema-field-rename.md)
-- [Edit rules on the schema page](../workdown-items/schema-rules-editor.md)
 - [Turn a free-text field into a choice, with the values it already holds](../workdown-items/schema-string-to-choice.md)
 - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md)
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
@@ -128,6 +127,7 @@ Cards grouped into columns by `status`.
 - [Validate resource references and render resource pickers](../workdown-items/resource-option-lists.md)
 - [Rules can't reference the current date](../workdown-items/rules-current-date-reference.md)
 - [Apply the same-origin check to every mutating endpoint, not just the git ones](../workdown-items/same-origin-guard-everywhere.md)
+- [Serve the full schema definition and the type tables to the web app](../workdown-items/schema-definition-api.md)
 - [Define the schema editor's UX and settle how it writes, then break out the work](../workdown-items/schema-editor-web-design.md)
 - [Expose schema metadata so the UI can offer valid choices](../workdown-items/schema-metadata-api.md)
 - [Table-drive the "is this property allowed on this field type?" check](../workdown-items/schema-property-table.md)

@@ -12,11 +12,11 @@ use crate::expression::parse_expression;
 use crate::model::date::parse_date;
 use crate::model::message::one_of;
 use crate::model::schema::{
-    allowed_aggregate_functions, field_property_allowed, field_types_allowing, is_defined_inverse,
-    is_relation_anchor, Assertion, CompiledPattern, ComputeConfig, Condition, ConditionValue,
-    CountConstraint, DefaultValue, FieldDefinition, FieldProperty, FieldType, FieldTypeConfig,
-    Generator, NegationValue, RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema,
-    WhenBranch, WhenConfig,
+    allowed_aggregate_functions, allowed_generators, field_property_allowed, field_types_allowing,
+    field_types_allowing_generator, is_defined_inverse, is_relation_anchor, Assertion,
+    CompiledPattern, ComputeConfig, Condition, ConditionValue, CountConstraint, DefaultValue,
+    FieldDefinition, FieldProperty, FieldType, FieldTypeConfig, NegationValue, RawFieldDefinition,
+    RawRule, RawSchema, RoundMode, Rule, Schema, WhenBranch, WhenConfig,
 };
 use crate::model::views::COLOR_NONE_SENTINEL;
 use strum::VariantArray;
@@ -962,23 +962,19 @@ fn validate_default_compatibility(
     };
 
     match default {
-        DefaultValue::Generator(gen) => {
-            let compatible = match gen {
-                Generator::Filename | Generator::FilenamePretty => {
-                    field.field_type == FieldType::String
-                }
-                Generator::Uuid => field.field_type == FieldType::String,
-                Generator::Today => field.field_type == FieldType::Date,
-                Generator::MaxPlusOne => {
-                    field.field_type == FieldType::Integer || field.field_type == FieldType::Float
-                }
-            };
-            if !compatible {
-                let generator_name = gen.token();
+        DefaultValue::Generator(generator) => {
+            // The table in the schema model decides; this check only
+            // words the answer.
+            if !allowed_generators(field.field_type).contains(generator) {
+                let valid_on = field_types_allowing_generator(*generator)
+                    .map(|field_type| field_type.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 errors.push(field_error(
                     name,
                     format!(
-                        "generator '{generator_name}' is not compatible with type '{}'",
+                        "generator '{}' is not compatible with type '{}' (valid on: {valid_on})",
+                        generator.token(),
                         field.field_type
                     ),
                 ));
@@ -1340,6 +1336,7 @@ fn is_one_to_many_reference(reference: &str, fields: &IndexMap<String, FieldDefi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::schema::Generator;
     use crate::model::schema::{AggregateFunction, Severity};
 
     // ── Happy path ────────────────────────────────────────────────
@@ -2605,9 +2602,9 @@ fields:
             SchemaLoadError::Validation(e) => e,
             other => panic!("expected Validation error, got: {other}"),
         };
-        assert!(errors
-            .iter()
-            .any(|e| e.message.contains("$today") && e.message.contains("not compatible")));
+        assert!(errors.iter().any(|e| e.message.contains(
+            "generator '$today' is not compatible with type 'integer' (valid on: date)"
+        )));
     }
 
     #[test]

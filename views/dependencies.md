@@ -17,7 +17,6 @@ flowchart TD
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]
     end
     subgraph schema-editor-web ["See and edit the schema in the web app"]
-        schema-definition-api["Serve the full schema definition and the type tables to the web app"]
         schema-derived-field-editor["Edit compute, when, pull and aggregate blocks in the field editor"]
         schema-field-editor-numeric["Field editor block for integer, float and duration"]
         schema-field-editor-relation["Field editor block for link and links"]
@@ -48,10 +47,8 @@ flowchart TD
     schema-field-rename --> schema-field-write-backend
     schema-field-reorder --> schema-field-write-backend
     schema-field-reorder --> schema-page-read-view
-    schema-field-type-change --> schema-definition-api
     schema-field-type-change --> schema-field-editor-shell
-    schema-field-write-backend --> schema-definition-api
-    schema-page-read-view --> schema-definition-api
+    schema-rules-editor --> schema-field-type-change
     schema-rules-editor --> schema-field-write-backend
     schema-rules-editor --> schema-page-read-view
     schema-string-to-choice --> schema-field-editor-values

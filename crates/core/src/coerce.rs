@@ -506,6 +506,87 @@ mod tests {
 
     // ── String coercion ──────────────────────────────────────────────
 
+    /// A frontmatter value that is valid under `field_type` with no
+    /// constraints configured, written the way an item file would hold
+    /// it. One per type: the widening test feeds each through the
+    /// coercion of every type its row says it may widen to.
+    fn representative_value(field_type: FieldType) -> serde_yaml::Value {
+        match field_type {
+            FieldType::String => yaml_str("hello"),
+            FieldType::Choice => yaml_str("open"),
+            FieldType::Multichoice => yaml_seq(vec![yaml_str("open"), yaml_str("done")]),
+            FieldType::Integer => yaml_int(42),
+            FieldType::Float => yaml_float(1.5),
+            FieldType::Date => yaml_str("2026-03-01"),
+            FieldType::Duration => yaml_str("2d 4h"),
+            FieldType::Color => yaml_str("#aabbcc"),
+            FieldType::Boolean => yaml_bool(true),
+            FieldType::List => yaml_seq(vec![yaml_str("a"), yaml_str("b")]),
+            FieldType::Link => yaml_str("some-item"),
+            FieldType::Links => yaml_seq(vec![yaml_str("some-item"), yaml_str("other-item")]),
+        }
+    }
+
+    /// An unconstrained definition of `field_type`; choice types get
+    /// the values the representative value uses.
+    fn unconstrained_definition(field_type: FieldType) -> FieldDefinition {
+        let values = || vec!["open".to_owned(), "done".to_owned()];
+        FieldDefinition::new(match field_type {
+            FieldType::String => FieldTypeConfig::String { pattern: None },
+            FieldType::Choice => FieldTypeConfig::Choice { values: values() },
+            FieldType::Multichoice => FieldTypeConfig::Multichoice { values: values() },
+            FieldType::Integer => FieldTypeConfig::Integer {
+                min: None,
+                max: None,
+            },
+            FieldType::Float => FieldTypeConfig::Float {
+                min: None,
+                max: None,
+            },
+            FieldType::Date => FieldTypeConfig::Date,
+            FieldType::Duration => FieldTypeConfig::Duration {
+                min: None,
+                max: None,
+            },
+            FieldType::Color => FieldTypeConfig::Color,
+            FieldType::Boolean => FieldTypeConfig::Boolean,
+            FieldType::List => FieldTypeConfig::List,
+            FieldType::Link => FieldTypeConfig::Link {
+                allow_cycles: None,
+                inverse: None,
+            },
+            FieldType::Links => FieldTypeConfig::Links {
+                allow_cycles: None,
+                inverse: None,
+            },
+        })
+    }
+
+    #[test]
+    fn widening_table_pairs_are_accepted_by_the_target_coercion() {
+        // `widening_targets` promises that changing a field's type along
+        // a listed pair invalidates no existing value. This is the
+        // promise's enforcement: the representative value of the source
+        // type must coerce under the source (so the fixture is honest)
+        // and under every target the row lists.
+        use crate::model::schema::widening_targets;
+        use strum::VariantArray;
+        for &source in FieldType::VARIANTS {
+            let value = representative_value(source);
+            coerce_value(&value, &unconstrained_definition(source)).unwrap_or_else(|error| {
+                panic!("representative value of {source} is not valid as {source}: {error}")
+            });
+            for &target in widening_targets(source) {
+                coerce_value(&value, &unconstrained_definition(target)).unwrap_or_else(|error| {
+                    panic!(
+                        "widening table lists {source} → {target}, but {target} rejects a \
+                         {source} value: {error}"
+                    )
+                });
+            }
+        }
+    }
+
     #[test]
     fn coerce_string_valid() {
         let s = schema(vec![(

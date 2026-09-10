@@ -7,6 +7,21 @@ its source — internal refactors are deliberately absent.
 
 ## Unreleased
 
+### Added
+
+- `workdown serve` answers `GET /api/schema/definition`: every field's
+  full definition as `schema.yaml` has it, every rule, the type
+  system's own tables (which properties, default generators and
+  aggregate functions each type accepts, and which type changes keep
+  every existing value valid) and a content hash of the file. The web
+  app's schema page is built on it; nothing in the app reads it yet.
+
+### Changed
+
+- A `default:` generator on a type it cannot serve (`$today` on an
+  integer) now says which types it is valid on, the way a misplaced
+  property already did.
+
 ### Fixed
 
 - Comparisons in `compute:` and `when:` expressions now compare two

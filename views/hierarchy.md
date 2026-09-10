@@ -12,7 +12,6 @@ Hierarchical outline following `parent` upward to roots.
 - [Multi-project support](../workdown-items/multi-project-support.md) — status: to_do
   - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — status: to_do
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md) — status: in_progress
-  - [Serve the full schema definition and the type tables to the web app](../workdown-items/schema-definition-api.md) — status: to_do
   - [Edit compute, when, pull and aggregate blocks in the field editor](../workdown-items/schema-derived-field-editor.md) — status: on_hold
   - [Field editor block for integer, float and duration](../workdown-items/schema-field-editor-numeric.md) — status: to_do
   - [Field editor block for link and links](../workdown-items/schema-field-editor-relation.md) — status: to_do
@@ -24,7 +23,7 @@ Hierarchical outline following `parent` upward to roots.
   - [Let an existing field change type, but only to a type that keeps every value valid](../workdown-items/schema-field-type-change.md) — status: to_do
   - [Write one field definition into schema.yaml without touching the rest](../workdown-items/schema-field-write-backend.md) — status: to_do
   - [A schema page that shows the fields and rules](../workdown-items/schema-page-read-view.md) — status: to_do
-  - [Edit rules on the schema page](../workdown-items/schema-rules-editor.md) — status: on_hold
+  - [Edit rules on the schema page](../workdown-items/schema-rules-editor.md) — status: to_do
   - [Turn a free-text field into a choice, with the values it already holds](../workdown-items/schema-string-to-choice.md) — status: on_hold
 - [Derived field expressions](../workdown-items/schema-expressions.md) — status: in_progress
   - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md) — status: on_hold

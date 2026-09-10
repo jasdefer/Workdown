@@ -38,7 +38,9 @@ use workdown_core::model::diagnostic::{
     FilesDiagnostic, FilesDiagnosticKind, ItemDiagnostic, ItemDiagnosticKind, RangeBound,
 };
 use workdown_core::model::field_value::FieldValue;
-use workdown_core::model::schema::{FieldType, Severity};
+use workdown_core::model::schema::{
+    AggregateFunction, FieldProperty, FieldType, Generator, Severity,
+};
 use workdown_core::model::view_slots;
 use workdown_core::model::views::{Aggregate, Bucket, DisplayConfig, ViewSummary, ViewType};
 use workdown_core::model::WorkItemId;
@@ -51,6 +53,10 @@ use workdown_core::query::clause::{Clause, Condition};
 use workdown_core::query::types::Operator;
 use workdown_core::schema_data::{
     FieldSchema, FieldTypeOperators, PaletteColor, ResourceList, ResourceOption, SchemaData,
+};
+use workdown_core::schema_definition_data::{
+    DefaultData, DerivedBlocks, FieldDefinitionData, FieldShape, FieldTypeAggregateFunctions,
+    FieldTypeGenerators, FieldTypeProperties, FieldTypeWidening, RuleData, SchemaDefinitionData,
 };
 use workdown_core::timer_data::{
     EffortFieldState, StartTimer, TimerMode, TimerPhase, TimerStartOutcome, TimerState,
@@ -167,6 +173,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Editing vocabulary (GET /api/schema).
     exports.add::<SchemaData>();
     exports.add::<FieldSchema>();
+    exports.add::<SchemaDefinitionData>();
+    exports.add::<FieldDefinitionData>();
+    exports.add::<FieldShape>();
+    exports.add::<DefaultData>();
+    exports.add::<DerivedBlocks>();
+    exports.add::<RuleData>();
+    exports.add::<FieldTypeProperties>();
+    exports.add::<FieldTypeAggregateFunctions>();
+    exports.add::<FieldTypeGenerators>();
+    exports.add::<FieldTypeWidening>();
+    exports.add::<FieldProperty>();
+    exports.add::<Generator>();
+    exports.add::<AggregateFunction>();
     exports.add::<ResourceList>();
     exports.add::<ResourceOption>();
     exports.add::<PaletteColor>();

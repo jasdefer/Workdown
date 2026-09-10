@@ -98,9 +98,7 @@ panel is editable. Editing the block itself is a later child.
 **The `id` field.** Shown first, type locked to string, no remove
 button. It is the one privileged field.
 
-**Footer.** *Save*, *Cancel*, and for an existing field *Remove*. When
-the field's block in `schema.yaml` carries comments, a one-line note
-above the footer says they will not be kept.
+**Footer.** *Save*, *Cancel*, and for an existing field *Remove*.
 
 ### Saving
 
@@ -126,7 +124,8 @@ located by byte span and replaced, a new field is appended at the end
 of `fields:`, a removed field's entry is cut, a reorder moves entries.
 Every byte outside the touched entries survives, including the comment
 above the field and the order of everything else. Comments inside the
-replaced entry are lost, which is what the footer note warns about.
+replaced entry are lost. The editor is comment-blind: it never writes
+a comment and does not warn about losing one (decision 14).
 
 After the write the panel closes, the file watcher pings, and the page
 and every other tab refetch as they do for any YAML change. Undo is a
@@ -168,6 +167,8 @@ otherwise silently overwrite someone's edit to the same field.
    remove and reorder fields with their plain properties. Derived
    blocks and rules are displayed, not edited. Each gets its own child
    later, once the plain editor has shown what the UX looks like.
+   Revised 2026-09-10: the rules editor is the last child of this
+   milestone, not parked (decision 15).
 2. **Form, not text.** A YAML textarea in the browser is strictly worse
    than an editor with the shipped JSON-schema autocomplete. The form is
    what adds value for the person who does not know the YAML.
@@ -206,6 +207,15 @@ otherwise silently overwrite someone's edit to the same field.
     table in Rust of changes that cannot invalidate a value.
 13. **Only fields and rules on the page.** Resources and constants wait
     for a resources editor.
+14. **Comment-blind editor** (2026-09-10). No comment note in the
+    footer, no "carries comments" flag on the wire. The editor never
+    writes a comment; which existing ones survive is a property of the
+    write strategy, settled in [[schema-field-write-backend]].
+15. **Rules editor in the milestone, last** (2026-09-10). Rules are
+    not meant to stay read-only. Fields go first because a field is a
+    fixed property set per type while a rule is a small language
+    (paths, quantifiers, comparisons, counts) whose form is designed
+    against the finished page.
 
 ## Breakdown
 
@@ -222,8 +232,8 @@ Cut on 2026-09-09 as children of [[schema-editor-web]], in build order:
    reorder endpoint.
 4. [[schema-field-editor-shell]] — the slide-over with the header
    block, default control, save flow with preview dialog, remove, `409`
-   handling, comment note. Covers the plain-scalar shape as its first
-   type-specific block.
+   handling. Covers the plain-scalar shape as its first type-specific
+   block.
 5. [[schema-field-editor-numeric]] — min/max, typed per type.
 6. [[schema-field-editor-text]] — pattern, resource picker.
 7. [[schema-field-editor-values]] — the ordered value-list editor.
@@ -231,12 +241,13 @@ Cut on 2026-09-09 as children of [[schema-editor-web]], in build order:
 9. [[schema-field-reorder]] — drag handle on the table.
 10. [[schema-field-type-change]] — widening table, greyed selector,
     confirm on dropped properties.
+11. [[schema-rules-editor]] — its UX designed once the field editor
+    exists; adds the structured rule shape to the definition endpoint.
 
 Parked (`on_hold`) until the above has shaped the UX:
 
 - [[schema-derived-field-editor]] — `compute`, `when`, `pull`,
   `aggregate`.
-- [[schema-rules-editor]].
 - [[schema-field-rename]] — rename with rewrite of items, views, rules
   and expressions.
 - [[schema-string-to-choice]] — conversion with values pre-filled from
