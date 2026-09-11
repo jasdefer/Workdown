@@ -113,4 +113,5 @@ Found on the way, not fixed here: the schema parser checks a literal
 `default:` only by YAML kind, so `default: 1.5` on an integer field or
 `default: tomorrow` on a date field loads and then fails at
 `workdown add`. The payload reports such a default as `invalid` with
-the coercion's reason; tightening the parser is a candidate item.
+the coercion's reason; tightening the parser is
+[[schema-default-coercion-check]].
