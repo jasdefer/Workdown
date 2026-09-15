@@ -1,6 +1,6 @@
 ---
 id: schema-default-coercion-check
-status: to_do
+status: done
 parent: schema-editor-web
 title: Schema parser rejects a literal default the field cannot hold
 ---
@@ -43,3 +43,24 @@ with the conversion's reason.
   list field is rejected today by the kind check; whether coercion
   should accept `default: 2h` on a duration is a separate question and
   stays as it is unless the coercion move settles it for free.
+
+## Decisions taken (2026-09-15)
+
+1. **The check runs after conversion.** A literal default is coerced
+   through the field's typed definition, next to where the `when` pass
+   already does the same for its fallback. The raw-shape check is
+   removed rather than kept alongside.
+2. **Range bounds count.** `default: 0` on an integer with `min: 1`
+   is a load error, as is any other value the item coercion refuses.
+3. **Duration defaults are allowed.** `default: 2h` on a duration
+   field loads. Its rejection was an accident: the shape check's
+   allow-list predates the duration type and was never extended.
+   Pinned by a test.
+4. **One path for every type.** The tailored choice and color
+   branches go too; their tests assert the coercion's wording.
+5. **Message shape** follows the `when` fallback message:
+   `default does not fit type '<type>': <coercion reason>`.
+6. **The coercion names the number kind.** Its "expected integer, got
+   number" read as a contradiction, so the YAML kind name now says
+   `integer` or `float`. Item diagnostics get the same wording; no
+   test pinned the old one.

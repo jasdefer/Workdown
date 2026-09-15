@@ -147,11 +147,11 @@ pub enum DefaultData {
     /// A literal, coerced through the field's own definition so the
     /// client can render it in the type's editor.
     Literal { value: FieldValue },
-    /// A literal the field's coercion rejects. The parser checks a
-    /// default's YAML kind against the type, not its full validity —
-    /// `default: 1.5` on an integer, an out-of-range number, a
-    /// malformed date all load. Kept as text so the page can show what
-    /// the file says and why the editor cannot.
+    /// A literal the field's coercion rejects. The parser runs every
+    /// literal default through that same coercion at load, so a loaded
+    /// schema cannot produce this; it stays as the fallback should the
+    /// two ever disagree, kept as text so the page can show what the
+    /// file says and why the editor cannot.
     Invalid { text: String, reason: String },
 }
 
@@ -483,7 +483,7 @@ fields:
       round: ceil
   start:
     type: date
-    default: not-a-date
+    default: 2026-03-01
   flag:
     type: boolean
     default: true
@@ -620,7 +620,7 @@ rules:
     }
 
     #[test]
-    fn defaults_are_generator_literal_or_invalid() {
+    fn defaults_are_generator_or_literal() {
         let data = built();
         assert_eq!(
             field(&data, "id").default,
@@ -652,15 +652,14 @@ rules:
                 value: FieldValue::Boolean(true)
             })
         );
-        // The parser accepts any string as a date default; coercion
-        // does not, and the page is told why.
-        match &field(&data, "start").default {
-            Some(DefaultData::Invalid { text, reason }) => {
-                assert_eq!(text, "not-a-date");
-                assert!(!reason.is_empty());
-            }
-            other => panic!("expected an invalid default, got {other:?}"),
-        }
+        assert_eq!(
+            field(&data, "start").default,
+            Some(DefaultData::Literal {
+                value: FieldValue::Date(
+                    chrono::NaiveDate::from_ymd_opt(2026, 3, 1).expect("a valid date")
+                )
+            })
+        );
         assert_eq!(field(&data, "title").default, None);
     }
 

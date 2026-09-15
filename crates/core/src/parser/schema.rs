@@ -32,7 +32,7 @@ pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
 
     let mut errors = Vec::new();
 
-    // Validate raw field definitions (type-specific properties, defaults, aggregates, inverses).
+    // Validate raw field definitions (type-specific properties, generator defaults, aggregates, inverses).
     validate_fields(&raw.fields, &mut errors);
 
     // `when:` stays raw until after conversion — coercing each `then:`
@@ -51,6 +51,10 @@ pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
         .collect();
 
     attach_when_configs(&mut fields, raw_when_configs, &mut errors);
+
+    // Literal defaults are coerced through the converted fields; `when`
+    // fields had theirs taken by the pass above.
+    validate_literal_defaults(&fields, &mut errors);
 
     // Validate rules against the converted fields.
     validate_raw_rules(&raw.rules, &fields, &mut errors);
@@ -210,7 +214,7 @@ fn validate_fields(
         validate_type_specific_properties(name, field, errors);
         validate_aggregate_compatibility(name, field, errors);
         validate_aggregate_over(name, field, fields, errors);
-        validate_default_compatibility(name, field, errors);
+        validate_default_generator(name, field, errors);
         validate_compute_config(name, field, errors);
         validate_pull_compatibility(name, field, errors);
         validate_when_compatibility(name, field, errors);
@@ -950,98 +954,64 @@ fn validate_aggregate_over(
     }
 }
 
-/// Check that the default value is compatible with the field type.
-fn validate_default_compatibility(
+/// Check that a generator default can produce a value of the field's
+/// type. Literal defaults are checked after conversion by
+/// [`validate_literal_defaults`], which needs the typed field config.
+fn validate_default_generator(
     name: &str,
     field: &RawFieldDefinition,
     errors: &mut Vec<SchemaValidationError>,
 ) {
-    let default = match &field.default {
-        Some(d) => d,
-        None => return,
+    let Some(DefaultValue::Generator(generator)) = &field.default else {
+        return;
     };
 
-    match default {
-        DefaultValue::Generator(generator) => {
-            // The table in the schema model decides; this check only
-            // words the answer.
-            if !allowed_generators(field.field_type).contains(generator) {
-                let valid_on = field_types_allowing_generator(*generator)
-                    .map(|field_type| field_type.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                errors.push(field_error(
-                    name,
-                    format!(
-                        "generator '{}' is not compatible with type '{}' (valid on: {valid_on})",
-                        generator.token(),
-                        field.field_type
-                    ),
-                ));
-            }
+    // The table in the schema model decides; this check only words
+    // the answer.
+    if !allowed_generators(field.field_type).contains(generator) {
+        let valid_on = field_types_allowing_generator(*generator)
+            .map(|field_type| field_type.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        errors.push(field_error(
+            name,
+            format!(
+                "generator '{}' is not compatible with type '{}' (valid on: {valid_on})",
+                generator.token(),
+                field.field_type
+            ),
+        ));
+    }
+}
+
+/// Check that every literal default is a value the field can hold, by
+/// running it through the same coercion an item's value goes through:
+/// the type, its `values`, its `min`/`max`, its `pattern`. A default
+/// the coercion rejects would otherwise surface only when `workdown
+/// add` fails to write it into a new item.
+///
+/// Runs after [`attach_when_configs`], which has already moved (and
+/// coerced) the default of every `when` field into its config, so a
+/// field is checked here or there, never twice.
+fn validate_literal_defaults(
+    fields: &IndexMap<String, FieldDefinition>,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    for (name, definition) in fields {
+        let Some(literal) = &definition.default else {
+            continue;
+        };
+        if matches!(literal, DefaultValue::Generator(_)) {
+            continue;
         }
-        DefaultValue::String(s) => match field.field_type {
-            FieldType::String | FieldType::Date => {}
-            FieldType::Color => {
-                if let Err(parse_error) = crate::model::color::parse_color(s) {
-                    errors.push(field_error(
-                        name,
-                        format!("default is not a valid color: {parse_error}"),
-                    ));
-                }
-            }
-            FieldType::Choice | FieldType::Multichoice => {
-                if let Some(ref values) = field.values {
-                    if !values.contains(s) {
-                        errors.push(field_error(
-                            name,
-                            format!("default '{s}' is not {}", one_of(values)),
-                        ));
-                    }
-                }
-            }
-            _ => {
-                errors.push(field_error(
-                    name,
-                    format!(
-                        "string default is not compatible with type '{}'",
-                        field.field_type
-                    ),
-                ));
-            }
-        },
-        DefaultValue::Integer(_) => {
-            if field.field_type != FieldType::Integer {
-                errors.push(field_error(
-                    name,
-                    format!(
-                        "integer default is not compatible with type '{}'",
-                        field.field_type
-                    ),
-                ));
-            }
-        }
-        DefaultValue::Float(_) => {
-            if field.field_type != FieldType::Integer && field.field_type != FieldType::Float {
-                errors.push(field_error(
-                    name,
-                    format!(
-                        "float default is not compatible with type '{}'",
-                        field.field_type
-                    ),
-                ));
-            }
-        }
-        DefaultValue::Bool(_) => {
-            if field.field_type != FieldType::Boolean {
-                errors.push(field_error(
-                    name,
-                    format!(
-                        "boolean default is not compatible with type '{}'",
-                        field.field_type
-                    ),
-                ));
-            }
+        if let Err(error) = coerce_value(&default_literal_as_yaml(literal), definition) {
+            errors.push(field_error(
+                name,
+                format!(
+                    "default does not fit type '{}': {error}",
+                    definition.field_type()
+                ),
+            ));
         }
     }
 }
@@ -1837,9 +1807,9 @@ fields:
             other => panic!("expected Validation error, got: {other}"),
         };
         assert!(
-            errors
-                .iter()
-                .any(|e| e.message.contains("default is not a valid color")),
+            errors.iter().any(|e| e
+                .message
+                .contains("default does not fit type 'color': 'teal' is not a valid color")),
             "expected default-color error, got: {errors:?}"
         );
     }
@@ -2586,7 +2556,12 @@ fields:
             SchemaLoadError::Validation(e) => e,
             other => panic!("expected Validation error, got: {other}"),
         };
-        assert!(errors.iter().any(|e| e.message.contains("not compatible")));
+        assert!(
+            errors.iter().any(|e| e
+                .message
+                .contains("default does not fit type 'integer': expected integer, got string")),
+            "{errors:?}"
+        );
     }
 
     #[test]
@@ -2622,11 +2597,125 @@ fields:
             other => panic!("expected Validation error, got: {other}"),
         };
         assert!(
-            errors.iter().any(|error| error
-                .message
-                .contains("default 'pending' is not one of: open, closed")),
+            errors.iter().any(|error| error.message.contains(
+                "default does not fit type 'choice': 'pending' is not one of: open, closed"
+            )),
             "{errors:?}"
         );
+    }
+
+    /// Load a schema expected to fail and return the one message that
+    /// names `field` — the default checks report each field once.
+    fn default_error_for(yaml: &str, field: &str) -> String {
+        let errors = match parse_schema(yaml).unwrap_err() {
+            SchemaLoadError::Validation(errors) => errors,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        let mut messages: Vec<&str> = errors
+            .iter()
+            .filter(|error| error.context == format!("field '{field}'"))
+            .map(|error| error.message.as_str())
+            .collect();
+        assert_eq!(
+            messages.len(),
+            1,
+            "one error for '{field}', got: {errors:?}"
+        );
+        messages.remove(0).to_owned()
+    }
+
+    #[test]
+    fn float_default_on_integer_rejected() {
+        let yaml = "\
+fields:
+  count:
+    type: integer
+    default: 1.5
+";
+        assert_eq!(
+            default_error_for(yaml, "count"),
+            "default does not fit type 'integer': expected integer, got float"
+        );
+    }
+
+    #[test]
+    fn malformed_date_default_rejected() {
+        let yaml = "\
+fields:
+  due:
+    type: date
+    default: tomorrow
+";
+        assert_eq!(
+            default_error_for(yaml, "due"),
+            "default does not fit type 'date': 'tomorrow' is not a valid date (expected YYYY-MM-DD)"
+        );
+    }
+
+    #[test]
+    fn well_formed_date_default_accepted() {
+        let yaml = "\
+fields:
+  due:
+    type: date
+    default: 2026-01-31
+";
+        parse_schema(yaml).expect("a YYYY-MM-DD date default loads");
+    }
+
+    #[test]
+    fn default_outside_field_range_rejected() {
+        let yaml = "\
+fields:
+  points:
+    type: integer
+    min: 1
+    default: 0
+";
+        assert_eq!(
+            default_error_for(yaml, "points"),
+            "default does not fit type 'integer': 0 is below the minimum of 1"
+        );
+    }
+
+    #[test]
+    fn duration_default_accepted() {
+        let yaml = "\
+fields:
+  effort:
+    type: duration
+    default: 2h
+";
+        let schema = parse_schema(yaml).expect("a duration default loads");
+        assert_eq!(
+            schema.fields["effort"].default,
+            Some(DefaultValue::String("2h".to_owned()))
+        );
+    }
+
+    #[test]
+    fn malformed_duration_default_rejected() {
+        let yaml = "\
+fields:
+  effort:
+    type: duration
+    default: soon
+";
+        assert!(default_error_for(yaml, "effort")
+            .starts_with("default does not fit type 'duration': 'soon' is not a valid duration"),);
+    }
+
+    #[test]
+    fn default_violating_pattern_rejected() {
+        let yaml = "\
+fields:
+  code:
+    type: string
+    pattern: '^[A-Z]+$'
+    default: abc
+";
+        assert!(default_error_for(yaml, "code")
+            .starts_with("default does not fit type 'string': 'abc' does not match pattern"),);
     }
 
     // ── Rule validation errors ────────────────────────────────────

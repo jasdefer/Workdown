@@ -41,7 +41,7 @@ Field names are lowercase letters, digits, and underscores, starting with a lett
 |--------|------|-------------|
 | `type` | string | Required. One of the types above. |
 | `required` | boolean | Whether the field must be present. Default: `false`. |
-| `default` | value | Default value applied by `workdown add`. Can be a literal or a generator. |
+| `default` | value | Default value applied by `workdown add`. Can be a literal or a generator. A literal must be a value the field accepts (its type, `values`, `min`/`max`, `pattern`); one that is not fails at load. |
 | `description` | string | Human-readable explanation. |
 | `resource` | string | Name of a resource section in `resources.yaml`. Valid for `string` and `list` types. See [Resources](#resources). |
 | `aggregate` | object | Aggregation config for computed fields (see below). |
