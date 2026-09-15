@@ -26,7 +26,6 @@ Cards grouped into columns by `status`.
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
-- [A schema page that shows the fields and rules](../workdown-items/schema-page-read-view.md)
 
 ## on_hold
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
@@ -131,6 +130,7 @@ Cards grouped into columns by `status`.
 - [Serve the full schema definition and the type tables to the web app](../workdown-items/schema-definition-api.md)
 - [Define the schema editor's UX and settle how it writes, then break out the work](../workdown-items/schema-editor-web-design.md)
 - [Expose schema metadata so the UI can offer valid choices](../workdown-items/schema-metadata-api.md)
+- [A schema page that shows the fields and rules](../workdown-items/schema-page-read-view.md)
 - [Table-drive the "is this property allowed on this field type?" check](../workdown-items/schema-property-table.md)
 - [Interactive UI (workdown serve)](../workdown-items/server.md)
 - [One git layer for the server and the CLI, in its own crate](../workdown-items/shared-git-crate.md)

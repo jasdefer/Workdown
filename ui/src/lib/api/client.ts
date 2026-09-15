@@ -26,6 +26,7 @@ import type { FieldMutationResult } from './generated/FieldMutationResult';
 import type { ItemDetail } from './generated/ItemDetail';
 import type { ProjectIdentity } from './generated/ProjectIdentity';
 import type { SchemaData } from './generated/SchemaData';
+import type { SchemaDefinitionData } from './generated/SchemaDefinitionData';
 import type { SetViewFilter } from './generated/SetViewFilter';
 import type { StartTimer } from './generated/StartTimer';
 import type { TimerMode } from './generated/TimerMode';
@@ -151,6 +152,14 @@ export const api = {
 	deleteView: (id: string) =>
 		request<ViewMutationResult>('DELETE', `/api/views/${encodeURIComponent(id)}`),
 	getSchema: () => request<SchemaData>('GET', '/api/schema'),
+	/**
+	 * The schema editor's payload: every field's full definition, the
+	 * rules, the type system's tables and a content hash of `schema.yaml`.
+	 * Read from the schema file alone, so it answers while the items
+	 * directory is broken; a schema that does not parse is a `422` with
+	 * the load diagnostic. Only the `/schema` page fetches it.
+	 */
+	getSchemaDefinition: () => request<SchemaDefinitionData>('GET', '/api/schema/definition'),
 	/**
 	 * The project's identity — name and description. Answered from the
 	 * config the server read at start, so it survives a project that

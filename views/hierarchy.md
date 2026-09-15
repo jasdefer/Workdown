@@ -23,7 +23,6 @@ Hierarchical outline following `parent` upward to roots.
   - [Drag fields into a new order on the schema page](../workdown-items/schema-field-reorder.md) — status: to_do
   - [Let an existing field change type, but only to a type that keeps every value valid](../workdown-items/schema-field-type-change.md) — status: to_do
   - [Write one field definition into schema.yaml without touching the rest](../workdown-items/schema-field-write-backend.md) — status: to_do
-  - [A schema page that shows the fields and rules](../workdown-items/schema-page-read-view.md) — status: in_progress
   - [Edit rules on the schema page](../workdown-items/schema-rules-editor.md) — status: to_do
   - [Turn a free-text field into a choice, with the values it already holds](../workdown-items/schema-string-to-choice.md) — status: on_hold
 - [Derived field expressions](../workdown-items/schema-expressions.md) — status: in_progress
