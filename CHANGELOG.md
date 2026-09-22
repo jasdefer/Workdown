@@ -15,6 +15,21 @@ its source — internal refactors are deliberately absent.
   aggregate functions each type accepts, and which type changes keep
   every existing value valid) and a content hash of the file. The web
   app's schema page is built on it; nothing in the app reads it yet.
+- `workdown serve` can write one field of `schema.yaml` at a time:
+  `POST /api/schema/fields` adds a field, `PUT` and `DELETE
+  /api/schema/fields/{name}` replace or remove one, `PUT
+  /api/schema/field-order` reorders them. A write changes only that
+  field's entry, refuses anything that would leave the schema unable to
+  load, and otherwise saves and reports the resulting warnings, as item
+  and view writes do. The `id` field, a field a `config.yaml` role
+  names, and type changes outside the widening table are refused; a
+  field with a `compute`, `when`, `pull` or `aggregate` block keeps its
+  type and its block. `GET /api/schema/fields/{name}/usage` says what
+  depends on a field — the views, rules, recipes and config roles
+  naming it, and the items holding a value — so the schema editor can
+  grey out *Remove* with the reason. Comments in `schema.yaml` are not
+  preserved by a write from the web app; the file stays the source of
+  truth for its content, not its formatting.
 
 ### Changed
 

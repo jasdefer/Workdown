@@ -45,9 +45,11 @@ use workdown_core::model::view_slots;
 use workdown_core::model::views::{Aggregate, Bucket, DisplayConfig, ViewSummary, ViewType};
 use workdown_core::model::WorkItemId;
 use workdown_core::mutation_data::{
-    CreateItem, CreateItemResult, CreateView, FieldMutation, FieldMutationResult, SetViewFilter,
-    UpdateView, ViewDefinition, ViewMutationResult,
+    CreateField, CreateItem, CreateItemResult, CreateView, FieldMutation, FieldMutationResult,
+    ReorderFields, SchemaMutationResult, SetViewFilter, UpdateView, ViewDefinition,
+    ViewMutationResult,
 };
+use workdown_core::operations::schema_write::{DefaultWrite, FieldDefinitionWrite, FieldUsage};
 use workdown_core::project_data::ProjectIdentity;
 use workdown_core::query::clause::{Clause, Condition};
 use workdown_core::query::types::Operator;
@@ -206,6 +208,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<UpdateView>();
     exports.add::<ViewDefinition>();
     exports.add::<ViewMutationResult>();
+
+    // Schema-write contracts (POST/PUT/DELETE /api/schema/fields…,
+    // PUT /api/schema/field-order, GET /api/schema/fields/:name/usage).
+    exports.add::<FieldDefinitionWrite>();
+    exports.add::<DefaultWrite>();
+    exports.add::<CreateField>();
+    exports.add::<ReorderFields>();
+    exports.add::<SchemaMutationResult>();
+    exports.add::<FieldUsage>();
 
     // Timer contracts (GET /api/timer, POST /api/timer/start, POST /api/timer/stop).
     exports.add::<EffortFieldState>();

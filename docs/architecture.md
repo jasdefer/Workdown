@@ -133,6 +133,8 @@ The diff is the interesting part, and it implements [ADR-001](adr/001-snapshot-v
 
 Frontmatter is rendered by `crate::operations::frontmatter_io::build_frontmatter_yaml`, which emits schema-defined fields in schema order and unknown fields alphabetically after them. Deterministic ordering is what keeps mutations producing clean diffs.
 
+Two mutations write configuration rather than items, and both follow the same refuse-or-warn split: `crate::operations::view_write` (`views.yaml`) and `crate::operations::schema_write` (one field of `schema.yaml` at a time). Each serializes a candidate file, refuses it when it would not *load*, and otherwise writes it and diffs diagnostics. They differ in what they load to judge the candidate. A view write re-runs `views_check` alone, because a view cannot change anything outside itself. A schema write runs the whole spine through `crate::project::load_project_with_schema` — `load_project` with the candidate `Schema` in place of the file — because a field change can surface anywhere: items holding a value, a view slot, a compute expression, a config role. The same call, with the field removed in memory, is how `schema_write::field_usage` answers what depends on a field: by asking the checks, not by enumerating the places a field name can appear.
+
 ## Adding a view kind
 
 Thirteen kinds exist today. A fourteenth touches the places below. The right-hand column is what stops you shipping it half-done — and every row but the last now has one.

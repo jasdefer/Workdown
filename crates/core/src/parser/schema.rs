@@ -154,7 +154,7 @@ fn rule_error(name: &str, message: impl Into<String>) -> SchemaValidationError {
 /// starting with a letter or an underscore. Mirrors the
 /// `^[a-z_][a-z0-9_]*$` pattern `defaults/schema.schema.json` uses for
 /// the same rule — change both together.
-fn is_valid_field_name(name: &str) -> bool {
+pub(crate) fn is_valid_field_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
         Some(c) if c.is_ascii_lowercase() || c == '_' => {}

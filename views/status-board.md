@@ -25,7 +25,6 @@ Cards grouped into columns by `status`.
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
-- [Write one field definition into schema.yaml and say what uses a field](../workdown-items/schema-field-write-backend.md)
 
 ## on_hold
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
@@ -130,6 +129,7 @@ Cards grouped into columns by `status`.
 - [Schema parser rejects a literal default the field cannot hold](../workdown-items/schema-default-coercion-check.md)
 - [Serve the full schema definition and the type tables to the web app](../workdown-items/schema-definition-api.md)
 - [Define the schema editor's UX and settle how it writes, then break out the work](../workdown-items/schema-editor-web-design.md)
+- [Write one field definition into schema.yaml and say what uses a field](../workdown-items/schema-field-write-backend.md)
 - [Expose schema metadata so the UI can offer valid choices](../workdown-items/schema-metadata-api.md)
 - [A schema page that shows the fields and rules](../workdown-items/schema-page-read-view.md)
 - [Table-drive the "is this property allowed on this field type?" check](../workdown-items/schema-property-table.md)

@@ -39,11 +39,12 @@
 
 use std::path::Path;
 
-use crate::display_check::{check_display_roles, RoleViolation};
+use crate::display_check::{check_display_roles, DisplayRole, RoleViolation};
 use crate::model::config::{Config, ViewDefaults};
 use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic};
 use crate::model::schema::{FieldType, Schema, Severity};
 use crate::model::view_slots;
+use crate::model::views::{ColorRole, DisplayConfig};
 
 /// Run all cross-file checks on `config.yaml` against a schema.
 ///
@@ -214,6 +215,53 @@ fn check_field_role(
         slot: role.slot,
         field_name: role.field_name.to_owned(),
     }));
+}
+
+// ── Roles naming a field ─────────────────────────────────────────────
+
+/// The `config.yaml` slots whose value names `field_name`: the field-role
+/// keys and the display-role defaults, in that order, each slot once. A
+/// graph role naming the field's *inverse* counts too, since the inverse
+/// goes when the field does.
+///
+/// This is the question the schema write asks before removing a field.
+/// `config.yaml` is read once at startup, so a role left pointing at a
+/// removed field would break only on the next restart — the one
+/// dependency the save-with-warning rule cannot surface in time.
+pub fn roles_naming_field(config: &Config, schema: &Schema, field_name: &str) -> Vec<&'static str> {
+    let inverse = schema
+        .fields
+        .get(field_name)
+        .and_then(|definition| definition.inverse());
+
+    let mut slots: Vec<&'static str> = field_roles(&config.defaults)
+        .iter()
+        .filter(|role| {
+            role.field_name == field_name
+                || (role.inverse_names_allowed && Some(role.field_name) == inverse)
+        })
+        .map(|role| role.slot)
+        .collect();
+
+    let DisplayConfig {
+        title,
+        subtitle,
+        fields,
+        color,
+    } = &config.defaults.display;
+    if title.as_deref() == Some(field_name) {
+        slots.push(DisplayRole::Title.config_slot());
+    }
+    if subtitle.as_deref() == Some(field_name) {
+        slots.push(DisplayRole::Subtitle.config_slot());
+    }
+    if fields.iter().flatten().any(|name| name == field_name) {
+        slots.push(DisplayRole::Fields.config_slot());
+    }
+    if matches!(color, Some(ColorRole::Field(name)) if name == field_name) {
+        slots.push(DisplayRole::Color.config_slot());
+    }
+    slots
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -712,6 +760,54 @@ mod tests {
         assert!(
             severities.contains(&Severity::Warning),
             "got: {severities:?}"
+        );
+    }
+
+    // ── Roles naming a field ─────────────────────────────────────────
+
+    #[test]
+    fn roles_naming_field_lists_field_roles_then_display_roles() {
+        let config = config_with_all_roles(
+            "status",
+            "parent",
+            "depends_on",
+            Some("effort"),
+            DisplayConfig {
+                title: Some("title".into()),
+                fields: Some(vec!["id".into(), "status".into()]),
+                color: Some(ColorRole::Field("team_color".into())),
+                ..DisplayConfig::default()
+            },
+        );
+        let schema = simple_schema();
+        assert_eq!(
+            roles_naming_field(&config, &schema, "status"),
+            ["defaults.board_field", "defaults.display.fields"]
+        );
+        assert_eq!(
+            roles_naming_field(&config, &schema, "team_color"),
+            ["defaults.display.color"]
+        );
+        assert_eq!(
+            roles_naming_field(&config, &schema, "effort"),
+            ["defaults.effort_field"]
+        );
+        assert_eq!(
+            roles_naming_field(&config, &schema, "title"),
+            ["defaults.display.title"]
+        );
+        assert!(roles_naming_field(&config, &schema, "depends_on").len() == 1);
+        assert!(roles_naming_field(&config, &schema, "nothing").is_empty());
+    }
+
+    #[test]
+    fn roles_naming_field_counts_a_graph_role_naming_the_inverse() {
+        // `children` is the inverse `parent` declares; it goes when
+        // `parent` goes, so the graph role names `parent` in effect.
+        let config = roles("status", "parent", "children");
+        assert_eq!(
+            roles_naming_field(&config, &simple_schema(), "parent"),
+            ["defaults.tree_field", "defaults.graph_field"]
         );
     }
 }

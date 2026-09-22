@@ -13,16 +13,30 @@ use crate::model::diagnostic::Diagnostic;
 
 /// `true` iff any diagnostic exists in `post` that wasn't already in `pre`.
 ///
+/// The yes/no form of [`introduced_diagnostics`], for callers that only
+/// drive an exit code or a flag from the answer.
+pub(crate) fn introduced_by_mutation(pre: &[Diagnostic], post: &[Diagnostic]) -> bool {
+    !introduced_diagnostics(pre, post).is_empty()
+}
+
+/// The diagnostics in `post` that weren't already in `pre`, in `post`'s
+/// order — what a change *introduced*, as opposed to what the project
+/// already reported.
+///
 /// Identity is by stable JSON serialization — every `Diagnostic` field
 /// is `Serialize`, and re-serializing the same data produces the same
-/// string. Cheap because `pre` is hashed once.
-pub(crate) fn introduced_by_mutation(pre: &[Diagnostic], post: &[Diagnostic]) -> bool {
+/// string. Cheap because `pre` is hashed once. A diagnostic that fails
+/// to serialize (which none does) counts as new rather than as known.
+pub(crate) fn introduced_diagnostics(pre: &[Diagnostic], post: &[Diagnostic]) -> Vec<Diagnostic> {
     let pre_keys: HashSet<String> = pre.iter().filter_map(diagnostic_key).collect();
-    post.iter().any(|diagnostic| {
-        diagnostic_key(diagnostic)
-            .map(|key| !pre_keys.contains(&key))
-            .unwrap_or(true)
-    })
+    post.iter()
+        .filter(|diagnostic| {
+            diagnostic_key(diagnostic)
+                .map(|key| !pre_keys.contains(&key))
+                .unwrap_or(true)
+        })
+        .cloned()
+        .collect()
 }
 
 fn diagnostic_key(diagnostic: &Diagnostic) -> Option<String> {

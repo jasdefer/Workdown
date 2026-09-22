@@ -1,6 +1,6 @@
 ---
 id: schema-field-write-backend
-status: in_progress
+status: done
 parent: schema-editor-web
 depends_on: [schema-definition-api]
 title: Write one field definition into schema.yaml and say what uses a field
@@ -152,6 +152,33 @@ replaced the splice design.
 5. **Hard refusals live in core.** The server maps each to a status;
    a CLI wrapper later inherits them.
 6. **Tests per layer**, as listed under "What is needed".
+
+Settled during implementation on 2026-09-22:
+
+7. **Reorder lives at `PUT /api/schema/field-order`**, not
+   `/api/schema/fields/order`. The router matches a static segment
+   before a parameter, so under the planned address a field named
+   `order` could never be edited or removed through `PUT`/`DELETE
+   /api/schema/fields/order`. `order` is a plausible field name.
+8. **The literal default is written as it arrives.** The item editor
+   sends a JSON scalar (a duration as its `1w 2d` text); the write puts
+   that value under `default:` and the candidate parse judges it, since
+   the parser already runs every literal default through the field's
+   own coercion. A default the type cannot hold is therefore refused
+   as the parse error (`422`), worded by the parser, rather than by a
+   second coercion step in the write.
+9. **`default:` beside `when:` is part of the recipe.** The parser
+   moves it into the `when` config as the evaluated fallback, so the
+   definition endpoint shows no default for such a field. A replace
+   leaves the file's `default:` untouched on a `when` field, whatever
+   the payload says; otherwise the editor's `default: null` would erase
+   the fallback the badge says is there.
+10. **Create takes `{ name, definition }`**, mirroring
+    `CreateView`, rather than the definition with `name` flattened in.
+    `PUT` takes the bare definition; the name is the path.
+11. **Removing a field a graph role names through its inverse is
+    refused too.** `roles_naming_field` counts `graph_field: children`
+    as naming `parent`, because the inverse goes when the field goes.
 
 ## Insights
 

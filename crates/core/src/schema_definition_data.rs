@@ -34,7 +34,7 @@
 
 use std::path::Path;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use strum::VariantArray;
 
@@ -74,9 +74,11 @@ pub struct SchemaDefinitionData {
     /// existing value. Empty means the type is locked to itself.
     pub widening_by_type: Vec<FieldTypeWidening>,
     /// Content hash of `schema.yaml` as read for this payload. Opaque to
-    /// the client: the write endpoints demand it back and compare it
-    /// with the bytes they read at write time, refusing with `409` when
-    /// the file changed underneath an open editor.
+    /// the client, which may compare two fetches by it to tell whether
+    /// the file changed in between. The write endpoints do not ask for
+    /// it back: a write replaces one field's entry in a freshly read
+    /// file, so last write wins per field and no conflict check is
+    /// needed (`schema-editor-web-design`, decision 9 as revised).
     pub hash: String,
 }
 
@@ -113,7 +115,7 @@ pub struct FieldDefinitionData {
 /// The type-specific part of a field definition. One variant per
 /// distinct property set, mirroring [`FieldTypeConfig`]; the `kind`
 /// tag names the editor block the web app renders.
-#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FieldShape {
     /// No type-specific properties: `date`, `color`, `boolean`, `list`.

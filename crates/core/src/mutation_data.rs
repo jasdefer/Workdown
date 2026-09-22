@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::views::View;
 use crate::model::WorkItemId;
 use crate::operations::add::AddOutcome;
+use crate::operations::schema_write::{FieldDefinitionWrite, SchemaWriteOutcome};
 use crate::operations::set::{BooleanMode, CollectionMode, SetOperation, SetOutcome};
 use crate::operations::view_write::ViewWriteOutcome;
 use crate::parser::views::view_to_value;
@@ -249,6 +250,43 @@ impl ViewMutationResult {
             view_id: outcome.view_id.clone(),
             mutation_caused_warning: outcome.mutation_caused_warning,
             info_messages: outcome.info_messages.clone(),
+        }
+    }
+}
+
+/// A request to add a field to `schema.yaml`: the frontmatter key it
+/// will be stored under plus its definition, the same shape `PUT
+/// /api/schema/fields/{name}` takes (there the name is the path).
+/// Sent to `POST /api/schema/fields`.
+#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
+pub struct CreateField {
+    pub name: String,
+    pub definition: FieldDefinitionWrite,
+}
+
+/// A request to rewrite the order of `fields:` in `schema.yaml`: every
+/// current field name exactly once, in the wanted order. Sent to `PUT
+/// /api/schema/field-order`.
+#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
+pub struct ReorderFields {
+    pub order: Vec<String>,
+}
+
+/// The result of a successful schema mutation (add, update, remove,
+/// reorder) — the field it concerned (`null` for a reorder) and whether
+/// the write introduced a diagnostic. Warnings themselves ride in the
+/// envelope's `diagnostics`.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct SchemaMutationResult {
+    pub field_name: Option<String>,
+    pub mutation_caused_warning: bool,
+}
+
+impl SchemaMutationResult {
+    pub fn from_outcome(outcome: &SchemaWriteOutcome) -> Self {
+        Self {
+            field_name: outcome.field_name.clone(),
+            mutation_caused_warning: outcome.mutation_caused_warning,
         }
     }
 }

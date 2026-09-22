@@ -27,7 +27,6 @@ flowchart TD
         schema-field-rename["Rename a field and everything that names it"]
         schema-field-reorder["Drag fields into a new order on the schema page"]
         schema-field-type-change["Let an existing field change type, but only to a type that keeps every value valid"]
-        schema-field-write-backend["Write one field definition into schema.yaml and say what uses a field"]
         schema-rules-editor["Edit rules on the schema page"]
         schema-string-to-choice["Turn a free-text field into a choice, with the values it already holds"]
     end
@@ -40,14 +39,10 @@ flowchart TD
     schema-derived-field-editor --> schema-field-editor-shell
     schema-field-editor-numeric --> schema-field-editor-shell
     schema-field-editor-relation --> schema-field-editor-shell
-    schema-field-editor-shell --> schema-field-write-backend
     schema-field-editor-text --> schema-field-editor-shell
     schema-field-editor-values --> schema-field-editor-shell
-    schema-field-rename --> schema-field-write-backend
-    schema-field-reorder --> schema-field-write-backend
     schema-field-type-change --> schema-field-editor-shell
     schema-rules-editor --> schema-field-type-change
-    schema-rules-editor --> schema-field-write-backend
     schema-string-to-choice --> schema-field-editor-values
     schema-string-to-choice --> schema-field-type-change
 ```

@@ -480,7 +480,9 @@ pub enum DefaultValue {
 /// `schema.yaml`, so the web app sees the same spelling the file uses;
 /// a unit test pins each serde name to [`Generator::token`].
 /// `VariantArray` supplies `Generator::VARIANTS` for the type tables.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ts_rs::TS, strum::VariantArray)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS, strum::VariantArray,
+)]
 pub enum Generator {
     /// Filename without `.md` extension.
     #[serde(rename = "$filename")]

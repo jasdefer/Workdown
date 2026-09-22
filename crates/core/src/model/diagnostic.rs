@@ -728,6 +728,23 @@ impl Diagnostic {
             None
         }
     }
+
+    /// The `config.yaml` slot this diagnostic is about — one of the
+    /// config-defaults findings that name a slot such as
+    /// `defaults.board_field` or `defaults.display.color`. `None` for
+    /// every other diagnostic, view findings included: those carry a
+    /// slot relative to their view and are addressed by [`Self::view_id`].
+    pub fn config_slot(&self) -> Option<&'static str> {
+        let DiagnosticBody::Config(config) = &self.body else {
+            return None;
+        };
+        match &config.kind {
+            ConfigDiagnosticKind::ConfigUnknownField { slot, .. }
+            | ConfigDiagnosticKind::ConfigFieldTypeMismatch { slot, .. }
+            | ConfigDiagnosticKind::ConfigVirtualIdNotAllowed { slot } => Some(slot),
+            _ => None,
+        }
+    }
 }
 
 /// The single place in the codebase where every view-variant is enumerated.
