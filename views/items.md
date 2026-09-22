@@ -107,7 +107,7 @@
 | [rules-current-date-reference](../workdown-items/rules-current-date-reference.md) | done | [polish](../workdown-items/polish.md) | [evaluation-time-now](../workdown-items/evaluation-time-now.md) |
 | [same-origin-guard-everywhere](../workdown-items/same-origin-guard-everywhere.md) | done |  |  |
 | [schema-default-coercion-check](../workdown-items/schema-default-coercion-check.md) | done | [schema-editor-web](../workdown-items/schema-editor-web.md) |  |
-| [schema-default-strip-comments](../workdown-items/schema-default-strip-comments.md) | to_do | [schema-editor-web](../workdown-items/schema-editor-web.md) |  |
+| [schema-default-strip-comments](../workdown-items/schema-default-strip-comments.md) | done | [schema-editor-web](../workdown-items/schema-editor-web.md) |  |
 | [schema-definition-api](../workdown-items/schema-definition-api.md) | done | [schema-editor-web](../workdown-items/schema-editor-web.md) |  |
 | [schema-derived-field-editor](../workdown-items/schema-derived-field-editor.md) | on_hold | [schema-editor-web](../workdown-items/schema-editor-web.md) | [schema-field-editor-shell](../workdown-items/schema-field-editor-shell.md) |
 | [schema-editor-web](../workdown-items/schema-editor-web.md) | in_progress |  |  |

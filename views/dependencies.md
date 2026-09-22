@@ -17,7 +17,6 @@ flowchart TD
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]
     end
     subgraph schema-editor-web ["See and edit the schema in the web app"]
-        schema-default-strip-comments["Move the tutorial comments out of the shipped default schema"]
         schema-derived-field-editor["Edit compute, when, pull and aggregate blocks in the field editor"]
         schema-field-editor-numeric["Field editor block for integer, float and duration"]
         schema-field-editor-relation["Field editor block for link and links"]

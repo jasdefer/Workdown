@@ -1,6 +1,6 @@
 ---
 id: schema-default-strip-comments
-status: to_do
+status: done
 parent: schema-editor-web
 title: Move the tutorial comments out of the shipped default schema
 ---
@@ -30,3 +30,31 @@ file should contain what the program reads.
 
 - Any change to what the schema contains.
 - The web editor itself.
+
+## Decisions taken
+
+Done on 2026-09-22.
+
+1. **The schema guide is the destination, not the README.** Every
+   explanation and example the comments carried was already in
+   `docs/schema.md` — the aggregate, compute, when and pull sections
+   and the rule examples for levels 2 to 4 — except the one thing the
+   comments sketched across three blocks: the scheduling setup that
+   combines them. That became a "Scheduling recipe" section, one
+   copy-pasteable block using the default schema's own `parent` and
+   `depends_on`, verified to load.
+2. **The header links the guide by URL**, because a consumer project
+   has no `docs/` directory; `See docs/schema.md` only worked inside
+   this repository. Four lines, nothing else.
+3. **`status_color` is the one field that explains itself.** It was
+   the only field with a comment of its own; the comment became its
+   `description`. The relation fields had a section label, not an
+   explanation, and get nothing.
+4. **The same pattern elsewhere, noted and left.** `resources.yaml`
+   has it too — sample `teams` and `sprints` sections and the whole
+   `constants` explanation are comments — and needs the same treatment
+   the day a resources editor writes the file; until then nothing
+   deletes them. `views.yaml` has only a four-line header, already
+   fine. `config.yaml` explains its display roles and `serve` section
+   in comments, but no writer touches it (it is read once at startup),
+   so they are safe where they are.

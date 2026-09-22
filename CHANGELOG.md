@@ -33,6 +33,14 @@ its source — internal refactors are deliberately absent.
 
 ### Changed
 
+- The default `schema.yaml` that `workdown init` copies into a project
+  no longer carries the tutorial comments and commented-out examples.
+  They live in the schema guide, which the file's header links, with a
+  new "Scheduling recipe" section holding the aggregate, compute and
+  pull example the comments used to sketch. A save from the web app
+  writes the file back without comments, so this keeps a first browser
+  save from silently deleting them. The `status_color` field explains
+  itself through its `description` instead.
 - A `default:` generator on a type it cannot serve (`$today` on an
   integer) now says which types it is valid on, the way a misplaced
   property already did.

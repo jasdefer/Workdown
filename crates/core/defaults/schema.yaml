@@ -1,6 +1,7 @@
 # Default Workdown Schema — copied into your project by `workdown init`.
-# Customize to fit your project. Each field picks a type from the type system
-# and configures it with concrete values (allowed choices, defaults, etc.).
+# Field types and their options, derived fields (aggregate, compute, when,
+# pull) and rules are explained with copy-pasteable examples in the schema
+# guide: https://github.com/jasdefer/Workdown/blob/main/docs/schema.md
 
 fields:
   id:
@@ -50,12 +51,9 @@ fields:
     type: date
     required: false
 
-  # Derived by condition — nothing to set by hand: the first matching
-  # branch supplies the value, and a manually set color on an item
-  # always wins. Tints cards and bars everywhere via the
-  # `display: color:` role in config.yaml.
   status_color:
     type: color
+    description: Derived from status by the first matching branch; a color set by hand on an item wins. Tints cards and bars through the display color role in config.yaml.
     when:
       - if: status == "done"
         then: green
@@ -65,15 +63,8 @@ fields:
         then: purple
       - if: status == "closed"
         then: gray
-      # Time-aware branches work too. This one needs an `end_date`
-      # field (see the aggregated-fields section below) and makes
-      # rendered output depend on the day the command runs — pin with
-      # `--as-of <date>` for reproducible renders:
-      # - if: end_date < $today
-      #   then: red
     default: gray
 
-  # Relations
   parent:
     type: link
     required: false
@@ -98,64 +89,7 @@ fields:
     allow_cycles: true
     inverse: duplicated_by
 
-  # Aggregated fields — set manually on leaf items, computed automatically
-  # up the link chain named in `over` (required; the link field needs
-  # allow_cycles: false). Uncomment and adjust as needed:
-  #
-  # start_date:
-  #   type: date
-  #   required: false
-  #   aggregate:
-  #     function: min
-  #     over: parent
-  #     error_on_missing: false
-  #
-  # end_date:
-  #   type: date
-  #   required: false
-  #   aggregate:
-  #     function: max
-  #     over: parent
-  #     error_on_missing: false
-
-  # Computed fields — same item, cross-field: derive a value at load
-  # time from an expression over the item's other fields and constants
-  # from resources.yaml. Never written to files; a hand-written value
-  # always wins. See docs/schema.md. Uncomment and adjust as needed —
-  # keep a single `end_date` definition: to combine with the aggregate
-  # block above, put `compute:` and `aggregate:` on one definition
-  # (compute fills leaves, the rollup fills parents):
-  #
-  # duration:
-  #   type: duration
-  #   required: false
-  #
-  # end_date:
-  #   type: date
-  #   required: false
-  #   compute: start_date + duration
-
-  # Pull fields — cross-item, cross-field: read a field from the items
-  # a forward link points at and reduce the values. Together with a
-  # compute this gives forward scheduling from minimal input — set only
-  # depends_on + duration everywhere, plus a hand-written start_date on
-  # items with no dependencies (manual always wins; the pull fills only
-  # absence). Uncomment together with the duration/end_date block above:
-  #
-  # start_date:
-  #   type: date
-  #   required: false
-  #   pull:
-  #     over: depends_on     # link/links field followed forward; needs allow_cycles: false
-  #     field: end_date      # the field read on each dependency
-  #     function: max        # start when the last dependency ends
-
-# ── Rules ──────────────────────────────────────────────────
-# Cross-field, cross-item, and collection-wide validation.
-# See schema.schema.json for the formal rule syntax definition.
-
 rules:
-  # Level 2: Cross-field, same item
   - name: in-progress-needs-assignee
     description: Work items in progress must have an assignee
     match:
@@ -169,30 +103,3 @@ rules:
       type: bug
     require:
       priority: required
-
-  # Level 3: Relationship-based — uncomment and adjust as needed:
-  #
-  # - name: parent-not-backlog-when-child-active
-  #   description: Parent cannot be in backlog if a child is in progress
-  #   match:
-  #     status: in_progress
-  #   require:
-  #     parent.status:
-  #       not: backlog
-  #
-  # - name: epic-children-types
-  #   description: Epic children must be tasks or bugs
-  #   match:
-  #     type: epic
-  #   require:
-  #     children.type:
-  #       values: [task, bug]
-
-  # Level 4: Collection-wide — uncomment and adjust as needed:
-  #
-  # - name: wip-limit
-  #   description: At most 5 items in progress at once
-  #   match:
-  #     status: in_progress
-  #   count:
-  #     max: 5

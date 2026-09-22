@@ -12,7 +12,6 @@ Hierarchical outline following `parent` upward to roots.
 - [Multi-project support](../workdown-items/multi-project-support.md) — status: to_do
   - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — status: to_do
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md) — status: in_progress
-  - [Move the tutorial comments out of the shipped default schema](../workdown-items/schema-default-strip-comments.md) — status: to_do
   - [Edit compute, when, pull and aggregate blocks in the field editor](../workdown-items/schema-derived-field-editor.md) — status: on_hold
   - [Field editor block for integer, float and duration](../workdown-items/schema-field-editor-numeric.md) — status: to_do
   - [Field editor block for link and links](../workdown-items/schema-field-editor-relation.md) — status: to_do
