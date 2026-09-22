@@ -25,8 +25,11 @@ Decision 12 of [[schema-editor-web-design]].
 - Picking a new type keeps the header block, shows a confirm naming
   the type-specific properties that will be dropped, and swaps the
   block beneath.
-- The save preview still runs: a widening change can still trip a
-  rule or a view slot that expects the old type.
+- The backend already refuses any pair outside the widening table
+  ([[schema-field-write-backend]], requirement 6), so this item is
+  UI only. A widening change can still trip a rule or a view slot that
+  expects the old type; that shows as a warning in the banner after
+  the save, as for every save (revised 2026-09-22, no preview dialog).
 - The widening table as first shipped: integer → float; integer, float,
   date, duration, boolean, choice, color → string; multichoice, links →
   list.

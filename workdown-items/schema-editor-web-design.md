@@ -102,6 +102,15 @@ button. It is the one privileged field.
 
 ### Saving
 
+> **Revised 2026-09-22.** The two-tier preview, the splice and the
+> content hash below were replaced when the requirements were settled
+> for [[schema-field-write-backend]]: a save writes directly and shows
+> warnings afterwards like items and views; comments are not preserved;
+> last write wins. What a field is used by is shown *up front* in the
+> panel, and *Remove* is greyed out with the reason while a role, view,
+> rule or recipe names the field. The paragraphs below stand as the
+> original reasoning.
+
 The unit of a write is one field definition. Nothing is written while
 typing: a definition is only valid as a whole (a choice with no values
 yet does not load), and every write pings every open tab.
@@ -179,10 +188,22 @@ otherwise silently overwrite someone's edit to the same field.
    byte-for-byte and needs only a span-aware parser (`serde_yaml` has no
    spans and is archived upstream; `saphyr` or similar for span
    discovery, `serde_yaml` unchanged for everything else).
+   *Revised 2026-09-22:* the user ranks the schema as the source of
+   truth for content, not formatting, and does not want comments in
+   it (descriptions carry explanations). The write edits the generic
+   YAML tree and writes it back, comment-free; no new parser. The
+   tutorial comments leave the shipped default in
+   [[schema-default-strip-comments]].
 4. **Two save tiers.** Unloadable candidate: rejected, nothing written.
    Loadable with new warnings: previewed behind a confirm. Same rule
    `views.yaml` writes follow, with the preview added because the
    schema's blast radius is the whole project.
+   *Revised 2026-09-22:* tier 1 stands; the preview dialog is dropped.
+   The case it existed for, removing a field something depends on, is
+   handled better by showing usage up front and greying out *Remove*
+   with the reason ([[schema-field-write-backend]], requirement 5).
+   Everything else saves and reports warnings afterwards, consistent
+   with items and views.
 5. **No rename.** Its consequences span items, views, rules and
    expressions. A rename that rewrites all of them is its own item.
 6. **Remove is remove.** Items keep the key and get the existing
@@ -200,6 +221,10 @@ otherwise silently overwrite someone's edit to the same field.
    checks and moves into the table first. `GET /api/schema` is
    unchanged so item editors do not pay for it. ADR-005 stands.
 9. **`409` on a changed file.** Justified by the splice.
+   *Revised 2026-09-22:* dropped with the splice. Same machine, same
+   user; editing the file and the web app at once is not a case worth
+   a mechanism. Last write wins, per field, because the server always
+   reads the file fresh and replaces one entry.
 10. **Save per field definition.** Not live, not per page.
 11. **Reorder in the first cut.** Cheap on the splice write, and order
     is user-visible in every form and board.
@@ -227,12 +252,12 @@ Cut on 2026-09-09 as children of [[schema-editor-web]], in build order:
 2. [[schema-page-read-view]] — the `/schema` route, field table with
    badges, rules list, broken state. No editing yet.
 3. [[schema-field-write-backend]] — `operations/schema_write.rs`:
-   splice add/replace/remove/reorder, candidate load, diagnostic diff,
-   hash check; `POST`/`PUT`/`DELETE` under `/api/schema/fields`; the
-   reorder endpoint.
+   generic-tree add/replace/remove/reorder, candidate load, diagnostic
+   diff; `POST`/`PUT`/`DELETE` under `/api/schema/fields`, the order
+   endpoint, and the per-field usage endpoint (revised 2026-09-22).
 4. [[schema-field-editor-shell]] — the slide-over with the header
-   block, default control, save flow with preview dialog, remove, `409`
-   handling. Covers the plain-scalar shape as its first type-specific
+   block, default control, direct save, usage section with greyed
+   *Remove*. Covers the plain-scalar shape as its first type-specific
    block.
 5. [[schema-field-editor-numeric]] — min/max, typed per type.
 6. [[schema-field-editor-text]] — pattern, resource picker.

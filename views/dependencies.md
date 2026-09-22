@@ -17,6 +17,7 @@ flowchart TD
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]
     end
     subgraph schema-editor-web ["See and edit the schema in the web app"]
+        schema-default-strip-comments["Move the tutorial comments out of the shipped default schema"]
         schema-derived-field-editor["Edit compute, when, pull and aggregate blocks in the field editor"]
         schema-field-editor-numeric["Field editor block for integer, float and duration"]
         schema-field-editor-relation["Field editor block for link and links"]
@@ -26,7 +27,7 @@ flowchart TD
         schema-field-rename["Rename a field and everything that names it"]
         schema-field-reorder["Drag fields into a new order on the schema page"]
         schema-field-type-change["Let an existing field change type, but only to a type that keeps every value valid"]
-        schema-field-write-backend["Write one field definition into schema.yaml without touching the rest"]
+        schema-field-write-backend["Write one field definition into schema.yaml and say what uses a field"]
         schema-rules-editor["Edit rules on the schema page"]
         schema-string-to-choice["Turn a free-text field into a choice, with the values it already holds"]
     end

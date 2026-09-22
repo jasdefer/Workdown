@@ -12,6 +12,7 @@ Hierarchical outline following `parent` upward to roots.
 - [Multi-project support](../workdown-items/multi-project-support.md) — status: to_do
   - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — status: to_do
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md) — status: in_progress
+  - [Move the tutorial comments out of the shipped default schema](../workdown-items/schema-default-strip-comments.md) — status: to_do
   - [Edit compute, when, pull and aggregate blocks in the field editor](../workdown-items/schema-derived-field-editor.md) — status: on_hold
   - [Field editor block for integer, float and duration](../workdown-items/schema-field-editor-numeric.md) — status: to_do
   - [Field editor block for link and links](../workdown-items/schema-field-editor-relation.md) — status: to_do
@@ -21,7 +22,7 @@ Hierarchical outline following `parent` upward to roots.
   - [Rename a field and everything that names it](../workdown-items/schema-field-rename.md) — status: on_hold
   - [Drag fields into a new order on the schema page](../workdown-items/schema-field-reorder.md) — status: to_do
   - [Let an existing field change type, but only to a type that keeps every value valid](../workdown-items/schema-field-type-change.md) — status: to_do
-  - [Write one field definition into schema.yaml without touching the rest](../workdown-items/schema-field-write-backend.md) — status: to_do
+  - [Write one field definition into schema.yaml and say what uses a field](../workdown-items/schema-field-write-backend.md) — status: in_progress
   - [Edit rules on the schema page](../workdown-items/schema-rules-editor.md) — status: to_do
   - [Turn a free-text field into a choice, with the values it already holds](../workdown-items/schema-string-to-choice.md) — status: on_hold
 - [Derived field expressions](../workdown-items/schema-expressions.md) — status: in_progress

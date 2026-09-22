@@ -10,6 +10,7 @@ Cards grouped into columns by `status`.
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md)
+- [Move the tutorial comments out of the shipped default schema](../workdown-items/schema-default-strip-comments.md)
 - [Field editor block for integer, float and duration](../workdown-items/schema-field-editor-numeric.md)
 - [Field editor block for link and links](../workdown-items/schema-field-editor-relation.md)
 - [The field editor panel, with the shared header and the save flow](../workdown-items/schema-field-editor-shell.md)
@@ -17,7 +18,6 @@ Cards grouped into columns by `status`.
 - [Field editor block for choice and multichoice — the ordered value list](../workdown-items/schema-field-editor-values.md)
 - [Drag fields into a new order on the schema page](../workdown-items/schema-field-reorder.md)
 - [Let an existing field change type, but only to a type that keeps every value valid](../workdown-items/schema-field-type-change.md)
-- [Write one field definition into schema.yaml without touching the rest](../workdown-items/schema-field-write-backend.md)
 - [Edit rules on the schema page](../workdown-items/schema-rules-editor.md)
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md)
 
@@ -25,6 +25,7 @@ Cards grouped into columns by `status`.
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
+- [Write one field definition into schema.yaml and say what uses a field](../workdown-items/schema-field-write-backend.md)
 
 ## on_hold
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)

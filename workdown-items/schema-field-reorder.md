@@ -19,12 +19,13 @@ Decision 11 of [[schema-editor-web-design]].
 
 - A drag handle per row, using the drag-and-drop helpers the board
   already has.
-- On drop, call the reorder endpoint from
-  [[schema-field-write-backend]] with the full ordered list. The splice
-  moves whole entries, comments above them included.
+- On drop, call the order endpoint from
+  [[schema-field-write-backend]] with the full ordered list. The
+  server reorders the entries under `fields:` in the YAML tree;
+  comments are not preserved (revised 2026-09-22).
 - `id` stays first; the handle on its row is disabled.
-- The `409` case: the file changed underneath, the page refetches and
-  the drop is discarded with a notice.
+- No conflict handling: last write wins, and the page refetches on the
+  watcher's ping after the write.
 
 ## Not in scope
 
