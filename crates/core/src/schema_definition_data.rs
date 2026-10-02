@@ -60,10 +60,11 @@ pub struct SchemaDefinitionData {
     pub fields: Vec<FieldDefinitionData>,
     /// Every rule, in file order.
     pub rules: Vec<RuleData>,
-    /// Which type-restricted properties each type accepts. One entry
-    /// per [`FieldType`], in declaration order. Header properties
-    /// (`description`, `required`, `default`) are valid everywhere and
-    /// absent here; `resource` is listed because only some types take it.
+    /// Which type-restricted properties each type accepts, and which
+    /// shape it is edited as. One entry per [`FieldType`], in
+    /// declaration order. Header properties (`description`, `required`,
+    /// `default`) are valid everywhere and absent here; `resource` is
+    /// listed because only some types take it.
     pub properties_by_type: Vec<FieldTypeProperties>,
     /// Which aggregate functions reduce values of each type; an empty
     /// list means the type cannot be aggregated or pulled at all.
@@ -191,11 +192,63 @@ pub struct RuleData {
     pub body: String,
 }
 
-/// The type-restricted properties one type accepts.
+/// The type-restricted properties one type accepts, and the shape its
+/// fields carry.
 #[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
 pub struct FieldTypeProperties {
     pub field_type: FieldType,
     pub properties: Vec<FieldProperty>,
+    /// The `kind` of the [`FieldShape`] every field of this type has.
+    /// Served so the editor can build the empty shape of a new field
+    /// without a type-to-shape table of its own.
+    pub shape_kind: ShapeKind,
+}
+
+/// The `kind` tag of a [`FieldShape`], on its own. The editor block a
+/// type's properties are edited in; one value per variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+pub enum ShapeKind {
+    Scalar,
+    Numeric,
+    Duration,
+    Text,
+    Values,
+    Relation,
+}
+
+impl ShapeKind {
+    /// The shape a field of `field_type` carries. The exhaustive `match`
+    /// is the point: a new [`FieldType`] fails to compile until it
+    /// chooses a shape. `FieldShape::from_config` is the same table
+    /// read off a parsed field; `tests::shape_kind_matches_every_shape`
+    /// keeps the two in step.
+    pub fn of(field_type: FieldType) -> Self {
+        match field_type {
+            FieldType::String => ShapeKind::Text,
+            FieldType::Choice | FieldType::Multichoice => ShapeKind::Values,
+            FieldType::Integer | FieldType::Float => ShapeKind::Numeric,
+            FieldType::Duration => ShapeKind::Duration,
+            FieldType::Date | FieldType::Color | FieldType::Boolean | FieldType::List => {
+                ShapeKind::Scalar
+            }
+            FieldType::Link | FieldType::Links => ShapeKind::Relation,
+        }
+    }
+}
+
+impl FieldShape {
+    /// This shape's `kind` tag.
+    pub fn kind(&self) -> ShapeKind {
+        match self {
+            FieldShape::Scalar => ShapeKind::Scalar,
+            FieldShape::Numeric { .. } => ShapeKind::Numeric,
+            FieldShape::Duration { .. } => ShapeKind::Duration,
+            FieldShape::Text { .. } => ShapeKind::Text,
+            FieldShape::Values { .. } => ShapeKind::Values,
+            FieldShape::Relation { .. } => ShapeKind::Relation,
+        }
+    }
 }
 
 /// The aggregate functions defined for one type.
@@ -289,6 +342,7 @@ pub fn build(yaml: &str) -> Result<SchemaDefinitionData, SchemaLoadError> {
                     .copied()
                     .filter(|&property| field_property_allowed(field_type, property))
                     .collect(),
+                shape_kind: ShapeKind::of(field_type),
             })
             .collect(),
         aggregate_functions_by_type: FieldType::VARIANTS
@@ -740,6 +794,15 @@ rules:
         assert!(
             row(&data.properties_by_type, FieldType::Integer).contains(&FieldProperty::Aggregate)
         );
+        let shape_kind = |field_type| {
+            data.properties_by_type
+                .iter()
+                .find(|row| row.field_type == field_type)
+                .unwrap()
+                .shape_kind
+        };
+        assert_eq!(shape_kind(FieldType::Duration), ShapeKind::Duration);
+        assert_eq!(shape_kind(FieldType::Integer), ShapeKind::Numeric);
 
         let generators = data
             .generators_by_type
@@ -761,6 +824,25 @@ rules:
             .find(|row| row.field_type == FieldType::Integer)
             .unwrap();
         assert_eq!(widening.widens_to, vec![FieldType::Float]);
+    }
+
+    /// The per-type table and the shape read off a parsed field are two
+    /// spellings of one fact; the fixture has a field of every type.
+    #[test]
+    fn shape_kind_matches_every_shape() {
+        let data = built();
+        for field_type in FieldType::VARIANTS {
+            let field = data
+                .fields
+                .iter()
+                .find(|field| field.field_type == *field_type)
+                .unwrap_or_else(|| panic!("the fixture has a {field_type:?} field"));
+            assert_eq!(
+                field.shape.kind(),
+                ShapeKind::of(*field_type),
+                "{field_type:?}"
+            );
+        }
     }
 
     #[test]

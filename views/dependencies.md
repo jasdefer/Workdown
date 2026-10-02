@@ -20,9 +20,9 @@ flowchart TD
         schema-derived-field-editor["Edit compute, when, pull and aggregate blocks in the field editor"]
         schema-field-editor-numeric["Field editor block for integer, float and duration"]
         schema-field-editor-relation["Field editor block for link and links"]
-        schema-field-editor-shell["The field editor panel, with the shared header and the save flow"]
         schema-field-editor-text["Field editor block for string and list, with the resource picker"]
         schema-field-editor-values["Field editor block for choice and multichoice — the ordered value list"]
+        schema-field-remove-values["Offer to drop a removed field's values from every item"]
         schema-field-rename["Rename a field and everything that names it"]
         schema-field-reorder["Drag fields into a new order on the schema page"]
         schema-field-type-change["Let an existing field change type, but only to a type that keeps every value valid"]
@@ -35,12 +35,6 @@ flowchart TD
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end
     status-transition-dates["Fill in a date when a status changes, instead of typing it by hand"]
-    schema-derived-field-editor --> schema-field-editor-shell
-    schema-field-editor-numeric --> schema-field-editor-shell
-    schema-field-editor-relation --> schema-field-editor-shell
-    schema-field-editor-text --> schema-field-editor-shell
-    schema-field-editor-values --> schema-field-editor-shell
-    schema-field-type-change --> schema-field-editor-shell
     schema-rules-editor --> schema-field-type-change
     schema-string-to-choice --> schema-field-editor-values
     schema-string-to-choice --> schema-field-type-change

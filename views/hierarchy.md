@@ -15,9 +15,9 @@ Hierarchical outline following `parent` upward to roots.
   - [Edit compute, when, pull and aggregate blocks in the field editor](../workdown-items/schema-derived-field-editor.md) — status: on_hold
   - [Field editor block for integer, float and duration](../workdown-items/schema-field-editor-numeric.md) — status: to_do
   - [Field editor block for link and links](../workdown-items/schema-field-editor-relation.md) — status: to_do
-  - [The field editor panel, with the shared header and the save flow](../workdown-items/schema-field-editor-shell.md) — status: to_do
   - [Field editor block for string and list, with the resource picker](../workdown-items/schema-field-editor-text.md) — status: to_do
   - [Field editor block for choice and multichoice — the ordered value list](../workdown-items/schema-field-editor-values.md) — status: to_do
+  - [Offer to drop a removed field's values from every item](../workdown-items/schema-field-remove-values.md) — status: to_do
   - [Rename a field and everything that names it](../workdown-items/schema-field-rename.md) — status: on_hold
   - [Drag fields into a new order on the schema page](../workdown-items/schema-field-reorder.md) — status: to_do
   - [Let an existing field change type, but only to a type that keeps every value valid](../workdown-items/schema-field-type-change.md) — status: to_do

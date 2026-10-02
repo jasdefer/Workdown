@@ -154,3 +154,20 @@ export function loadFailure(result: ApiResult<SchemaDefinitionData>): LoadFailur
 	}
 	return { path: null, detail: result.error ?? 'The schema could not be loaded.' };
 }
+
+/**
+ * Which field the editor panel is for, from the page's URL: `?field=`
+ * names an existing field, `?add` asks for a new one, neither keeps the
+ * panel closed. Both at once is a URL nobody writes; adding wins so the
+ * empty form is what shows.
+ */
+export type PanelTarget = { kind: 'add' } | { kind: 'edit'; name: string };
+
+export function panelTarget(search: {
+	fieldName: string | null;
+	adding: boolean;
+}): PanelTarget | null {
+	if (search.adding) return { kind: 'add' };
+	if (search.fieldName !== null) return { kind: 'edit', name: search.fieldName };
+	return null;
+}

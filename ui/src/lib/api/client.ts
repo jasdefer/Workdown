@@ -13,9 +13,12 @@
 import type { Clause } from './generated/Clause';
 import type { CreateItem } from './generated/CreateItem';
 import type { CreateItemResult } from './generated/CreateItemResult';
+import type { CreateField } from './generated/CreateField';
 import type { CreateView } from './generated/CreateView';
 import type { Diagnostic } from './generated/Diagnostic';
+import type { FieldDefinitionWrite } from './generated/FieldDefinitionWrite';
 import type { FieldMutation } from './generated/FieldMutation';
+import type { FieldUsage } from './generated/FieldUsage';
 import type { GitCommitPreview } from './generated/GitCommitPreview';
 import type { GitCommitRequest } from './generated/GitCommitRequest';
 import type { GitCommitResult } from './generated/GitCommitResult';
@@ -27,6 +30,7 @@ import type { ItemDetail } from './generated/ItemDetail';
 import type { ProjectIdentity } from './generated/ProjectIdentity';
 import type { SchemaData } from './generated/SchemaData';
 import type { SchemaDefinitionData } from './generated/SchemaDefinitionData';
+import type { SchemaMutationResult } from './generated/SchemaMutationResult';
 import type { SetViewFilter } from './generated/SetViewFilter';
 import type { StartTimer } from './generated/StartTimer';
 import type { TimerMode } from './generated/TimerMode';
@@ -160,6 +164,40 @@ export const api = {
 	 * the load diagnostic. Only the `/schema` page fetches it.
 	 */
 	getSchemaDefinition: () => request<SchemaDefinitionData>('GET', '/api/schema/definition'),
+	/**
+	 * Add a field at the end of `fields:` in `schema.yaml`. `201` with the
+	 * name; a taken name is a `409`, a definition that would not load a
+	 * `422`, each with the reason in `error`. Save-with-warning as for
+	 * items: a write that loads but fails a cross-file check is written and
+	 * the findings ride back in `diagnostics`.
+	 */
+	createField: (body: CreateField) =>
+		request<SchemaMutationResult>('POST', '/api/schema/fields', body),
+	/**
+	 * Replace a field's plain properties, keeping its position and its
+	 * recipe. An unknown name is a `404`; a definition that would not load
+	 * is a `422`.
+	 */
+	updateField: (name: string, definition: FieldDefinitionWrite) =>
+		request<SchemaMutationResult>(
+			'PUT',
+			`/api/schema/fields/${encodeURIComponent(name)}`,
+			definition
+		),
+	/**
+	 * Remove a field. Items keep the key; their unknown-field warnings
+	 * ride back in `diagnostics`. The `id` field and a field a config
+	 * role names are refused with a `422`.
+	 */
+	deleteField: (name: string) =>
+		request<SchemaMutationResult>('DELETE', `/api/schema/fields/${encodeURIComponent(name)}`),
+	/**
+	 * What depends on a field: the parse error removing it would cause,
+	 * or the diagnostics it would introduce. The panel asks on open to
+	 * fill its usage section and decide whether Remove is allowed.
+	 */
+	getFieldUsage: (name: string) =>
+		request<FieldUsage>('GET', `/api/schema/fields/${encodeURIComponent(name)}/usage`),
 	/**
 	 * The project's identity — name and description. Answered from the
 	 * config the server read at start, so it survives a project that

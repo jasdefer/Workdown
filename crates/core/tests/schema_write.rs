@@ -474,13 +474,16 @@ fn field_usage_lists_the_view_and_the_items_naming_the_field() {
 }
 
 #[test]
-fn field_usage_reports_a_rule_naming_the_field_as_the_parse_error() {
+fn field_usage_names_the_rule_naming_the_field_beside_the_parse_error() {
     let (_directory, root, config) = setup();
 
     // `in-progress-needs-assignee` requires `assignee`: removing the
-    // field makes the schema unloadable, which is the blocker.
+    // field makes the schema unloadable, and the rule is the blocker
+    // the client lists.
     let usage = field_usage(&config, &root, config_path(), "assignee").unwrap();
 
+    assert_eq!(usage.rules, vec!["in-progress-needs-assignee"]);
+    assert!(usage.recipes.is_empty());
     let parse_error = usage.parse_error.expect("a rule names the field");
     assert!(
         parse_error.contains("in-progress-needs-assignee"),

@@ -30,6 +30,26 @@ its source — internal refactors are deliberately absent.
   grey out *Remove* with the reason. Comments in `schema.yaml` are not
   preserved by a write from the web app; the file stays the source of
   truth for its content, not its formatting.
+- The web app's schema page edits fields. Clicking a row opens a
+  slide-over with the field's name, type, required flag, description
+  and default — the default entered with the same editor an item's
+  value uses, or picked from the generators valid for the type — plus
+  what the field is used by and a *Remove* button that is greyed out,
+  with the reason, while a view, a config role, a recipe or a rule
+  names the field. *Add field* opens the same panel empty, with every
+  type to choose from. Saving writes the field directly and shows any
+  warnings above the table; a definition that would not load is
+  refused with the reason and nothing is written. The type-specific
+  settings (allowed values, bounds, pattern, cycle rules) are still
+  edited in the file for now, and the panel says so; a field with a
+  `compute`, `when`, `pull` or `aggregate` block shows the block
+  read-only with its type locked. The panel is URL state
+  (`/schema?field=status`, `/schema?add`), so it survives the live
+  refresh and the back button closes it. `GET /api/schema/definition`
+  now also says which shape each type is edited as (`shape_kind`), and
+  `GET /api/schema/fields/{name}/usage` names the rules and the
+  recipes (`aggregate`, `pull`) referencing a field (`rules`,
+  `recipes`) beside the parser's message, so the panel can list them.
 
 ### Changed
 

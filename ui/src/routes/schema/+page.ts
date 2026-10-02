@@ -11,11 +11,19 @@
 // watcher's ping, so an edit to `schema.yaml` in a text editor refreshes
 // the page for free, while the store is never re-fetched by the ping. No
 // other page needs this payload.
+//
+// The field editor's state is the URL, as the item panel's is on a view
+// page: `?field=<name>` opens the panel on that field, `?add` opens it
+// empty. Both are read here so the page re-runs when they change.
 
 import { api } from '$lib/api/client';
 import type { PageLoad } from './$types';
 
-export const load: PageLoad = async () => {
+export const load: PageLoad = async ({ url }) => {
 	const result = await api.getSchemaDefinition();
-	return { result };
+	return {
+		result,
+		fieldName: url.searchParams.get('field'),
+		adding: url.searchParams.has('add')
+	};
 };

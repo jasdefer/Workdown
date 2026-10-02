@@ -7,6 +7,7 @@ import {
 	firstLine,
 	idFirst,
 	loadFailure,
+	panelTarget,
 	settingsLine,
 	typeSummary
 } from './schemaPage';
@@ -179,5 +180,22 @@ describe('loadFailure', () => {
 
 	it('has a generic line when the reply carried neither', () => {
 		expect(loadFailure(result({ status: 500 })).detail).toBe('The schema could not be loaded.');
+	});
+});
+
+describe('panelTarget', () => {
+	it('is closed without a query', () => {
+		expect(panelTarget({ fieldName: null, adding: false })).toBeNull();
+	});
+
+	it('names the field to edit', () => {
+		expect(panelTarget({ fieldName: 'status', adding: false })).toEqual({
+			kind: 'edit',
+			name: 'status'
+		});
+	});
+
+	it('opens empty for add, even beside a field name', () => {
+		expect(panelTarget({ fieldName: 'status', adding: true })).toEqual({ kind: 'add' });
 	});
 });

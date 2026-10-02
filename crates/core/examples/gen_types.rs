@@ -59,6 +59,7 @@ use workdown_core::schema_data::{
 use workdown_core::schema_definition_data::{
     DefaultData, DerivedBlocks, FieldDefinitionData, FieldShape, FieldTypeAggregateFunctions,
     FieldTypeGenerators, FieldTypeProperties, FieldTypeWidening, RuleData, SchemaDefinitionData,
+    ShapeKind,
 };
 use workdown_core::timer_data::{
     EffortFieldState, StartTimer, TimerMode, TimerPhase, TimerStartOutcome, TimerState,
@@ -182,6 +183,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<DerivedBlocks>();
     exports.add::<RuleData>();
     exports.add::<FieldTypeProperties>();
+    exports.add::<ShapeKind>();
     exports.add::<FieldTypeAggregateFunctions>();
     exports.add::<FieldTypeGenerators>();
     exports.add::<FieldTypeWidening>();

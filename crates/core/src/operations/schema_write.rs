@@ -131,12 +131,30 @@ pub enum DefaultWrite {
 }
 
 /// What depends on a field: the answer [`field_usage`] gives.
+///
+/// The schema's own references come by name — the rules and the
+/// recipes naming the field — because a client shows them as a list to
+/// edit first. Everything outside the schema file comes as the
+/// diagnostics the removal would introduce, with their scope, which is
+/// how a client tells a view from a config role from an item.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct FieldUsage {
+    /// The rules whose `match`, `require` or `count` names the field,
+    /// directly or through its inverse (`children.status` names
+    /// `status`, and `parent` through `children`). In file order.
+    pub rules: Vec<String>,
+    /// The other fields whose `aggregate` or `pull` climbs or reads
+    /// the field (`aggregate.over`, `pull.over`, `pull.field`). In
+    /// declaration order. A `compute` expression reading the field is
+    /// reported through `introduced` instead, as the warning it would
+    /// become.
+    pub recipes: Vec<String>,
     /// Set when removing the field would leave `schema.yaml` unable to
-    /// load — a rule or a rollup names it — with the parser's message.
-    /// `introduced` is empty then: nothing further can be asked of a
-    /// schema that does not parse.
+    /// load, with the parser's message. `rules` and `recipes` are the
+    /// explanation when either is non-empty; the message is for a
+    /// client to show when neither names anything. `introduced` is
+    /// empty then: nothing further can be asked of a schema that does
+    /// not parse.
     pub parse_error: Option<String>,
     /// The diagnostics removing the field would introduce, each with
     /// its scope: config findings for the views and the `config.yaml`
@@ -422,6 +440,8 @@ pub fn field_usage(
         });
     }
     let named_by = config_check::roles_naming_field(config, &context.current, name);
+    let rules = rules_naming_field(&context.current, name);
+    let recipes = recipes_naming_field(&context.current, name);
 
     fields_mut(&mut context.document).shift_remove(name);
     let candidate_text =
@@ -430,6 +450,8 @@ pub fn field_usage(
         Ok(candidate) => candidate,
         Err(error) => {
             return Ok(FieldUsage {
+                rules,
+                recipes,
                 parse_error: Some(error.to_string()),
                 introduced: Vec::new(),
             })
@@ -454,9 +476,61 @@ pub fn field_usage(
         }
     }
     Ok(FieldUsage {
+        rules,
+        recipes,
         parse_error: None,
         introduced,
     })
+}
+
+/// The rules naming `name` in a `match` or `require` key, in file
+/// order. A key is a field reference, bare or dotted (`children.status`);
+/// it names the field when any segment is the field's name or its
+/// inverse — the same segments the parser resolves against the fields.
+fn rules_naming_field(schema: &Schema, name: &str) -> Vec<String> {
+    let inverse = schema
+        .fields
+        .get(name)
+        .and_then(|definition| definition.inverse());
+    let names_field = |reference: &str| {
+        reference
+            .split('.')
+            .any(|segment| segment == name || Some(segment) == inverse)
+    };
+    schema
+        .rules
+        .iter()
+        .filter(|rule| {
+            rule.match_conditions
+                .keys()
+                .chain(rule.require.keys())
+                .any(|reference| names_field(reference))
+        })
+        .map(|rule| rule.name.clone())
+        .collect()
+}
+
+/// The other fields whose rollup or pull names `name`: as the relation
+/// climbed (`aggregate.over`, `pull.over`) or as the field read
+/// (`pull.field`). In declaration order.
+fn recipes_naming_field(schema: &Schema, name: &str) -> Vec<String> {
+    schema
+        .fields
+        .iter()
+        .filter(|(other, _)| other.as_str() != name)
+        .filter(|(_, definition)| {
+            let climbs = definition
+                .aggregate
+                .as_ref()
+                .is_some_and(|aggregate| aggregate.over == name);
+            let pulls = definition
+                .pull
+                .as_ref()
+                .is_some_and(|pull| pull.over == name || pull.field == name);
+            climbs || pulls
+        })
+        .map(|(other, _)| other.clone())
+        .collect()
 }
 
 // ── Internals ────────────────────────────────────────────────────────
@@ -696,6 +770,99 @@ mod tests {
 
     fn keys(properties: &[(&'static str, serde_yaml::Value)]) -> Vec<&'static str> {
         properties.iter().map(|(key, _)| *key).collect()
+    }
+
+    /// Every way a rule or a recipe can name a field: bare, as the
+    /// second segment of a dotted reference, as the relation walked
+    /// (directly or by its inverse), and as the field a pull reads.
+    const REFERENCING_SCHEMA: &str = "\
+fields:
+  id:
+    type: string
+  status:
+    type: choice
+    values: [open, done]
+  parent:
+    type: link
+    inverse: children
+    allow_cycles: false
+  depends_on:
+    type: links
+    allow_cycles: false
+  points:
+    type: integer
+  total:
+    type: integer
+    aggregate:
+      function: sum
+      over: parent
+  blocked_points:
+    type: integer
+    pull:
+      over: depends_on
+      field: points
+      function: sum
+rules:
+  - name: bare
+    require:
+      points: required
+  - name: through-children
+    match:
+      children.status: done
+    count:
+      min: 0
+  - name: counts-children
+    require:
+      children:
+        min_count: 1
+  - name: via-dependency
+    match:
+      depends_on.status: open
+    count:
+      min: 0
+  - name: unrelated
+    match:
+      id: x
+    count:
+      min: 0
+";
+
+    #[test]
+    fn rules_naming_field_resolves_bare_dotted_and_inverse_references() {
+        let schema = parse_schema(REFERENCING_SCHEMA).unwrap();
+        assert_eq!(rules_naming_field(&schema, "points"), vec!["bare"]);
+        assert_eq!(
+            rules_naming_field(&schema, "status"),
+            vec!["through-children", "via-dependency"]
+        );
+        assert_eq!(
+            rules_naming_field(&schema, "parent"),
+            vec!["through-children", "counts-children"]
+        );
+        assert_eq!(
+            rules_naming_field(&schema, "depends_on"),
+            vec!["via-dependency"]
+        );
+        assert!(rules_naming_field(&schema, "total").is_empty());
+    }
+
+    #[test]
+    fn recipes_naming_field_finds_the_relation_climbed_and_the_field_read() {
+        let schema = parse_schema(REFERENCING_SCHEMA).unwrap();
+        assert_eq!(recipes_naming_field(&schema, "parent"), vec!["total"]);
+        assert_eq!(
+            recipes_naming_field(&schema, "depends_on"),
+            vec!["blocked_points"]
+        );
+        assert_eq!(
+            recipes_naming_field(&schema, "points"),
+            vec!["blocked_points"]
+        );
+        assert!(recipes_naming_field(&schema, "status").is_empty());
+        assert!(
+            recipes_naming_field(&schema, "total").is_empty(),
+            "a field never names itself"
+        );
     }
 
     #[test]

@@ -30,6 +30,17 @@ async function fetchSchema(): Promise<void> {
 	}
 }
 
+/**
+ * The entries of the resource list named `resource`, or none for no
+ * resource, and for a list that is missing or has no entries — the same
+ * situations where core stops validating the value, so an editor falls
+ * back to free text rather than offering an empty picker.
+ */
+function optionsOfResource(resource: string | null): ResourceOption[] {
+	if (resource === null) return [];
+	return data?.resources.find((list) => list.name === resource)?.options ?? [];
+}
+
 export const schemaStore = {
 	/** The full payload, or `null` before the first successful load. */
 	get value(): SchemaData | null {
@@ -66,9 +77,15 @@ export const schemaStore = {
 	 * editor falls back to free text rather than offering an empty picker.
 	 */
 	resourceOptions(field: FieldSchema | undefined): ResourceOption[] {
-		if (field?.resource == null) return [];
-		return data?.resources.find((list) => list.name === field.resource)?.options ?? [];
+		return optionsOfResource(field?.resource ?? null);
 	},
+	/**
+	 * The entries of the resource list named `resource`, for a host that
+	 * holds the name rather than a field: the schema editor's default
+	 * control, whose draft names the list. Same emptiness rules as
+	 * `resourceOptions`.
+	 */
+	optionsOfResource,
 	/**
 	 * Operators the filter builder may offer for a field type — the set the
 	 * evaluator treats as meaningful. Empty until loaded, or for an unknown
