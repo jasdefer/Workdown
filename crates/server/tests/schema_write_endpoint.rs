@@ -244,6 +244,29 @@ async fn delete_field_saves_with_warning_and_returns_200() {
     assert!(!written.contains("title:"), "{written}");
 }
 
+#[tokio::test]
+async fn delete_field_with_drop_values_names_the_rewritten_items_and_returns_200() {
+    let (directory, state) = temp_project();
+    write_item(directory.path(), "a", "---\ntitle: Has a title\n---\n");
+    write_item(directory.path(), "b", "---\nstatus: open\n---\n");
+
+    let response = send(
+        state,
+        "DELETE",
+        "/api/schema/fields/title?drop_values=true",
+        None,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let envelope = body_json(response).await;
+    assert_eq!(envelope["data"]["field_name"], "title");
+    assert_eq!(envelope["data"]["rewritten_items"], json!(["a"]));
+    // The value went with the field, so nothing is left to warn about.
+    assert_eq!(envelope["data"]["mutation_caused_warning"], false);
+    assert!(envelope["diagnostics"].as_array().unwrap().is_empty());
+}
+
 // ── PUT /api/schema/field-order ──────────────────────────────────────
 
 #[tokio::test]

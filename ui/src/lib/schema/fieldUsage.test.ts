@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Diagnostic } from '$lib/api/generated/Diagnostic';
 import type { FieldUsage } from '$lib/api/generated/FieldUsage';
-import { blockerPhrase, summarizeUsage, type UsageSummary } from './fieldUsage';
+import { blockerPhrase, removeDialogText, summarizeUsage, type UsageSummary } from './fieldUsage';
 
 const viewNamesIt: Diagnostic = {
 	severity: 'warning',
@@ -134,5 +134,36 @@ describe('blockerPhrase', () => {
 		expect(blockerPhrase({ ...nothing, rules: ['a'], views: ['v', 'w'], recipes: ['total'] })).toBe(
 			'1 rule, 2 views and 1 recipe'
 		);
+	});
+});
+
+describe('removeDialogText', () => {
+	it('offers one answer when the count is unknown', () => {
+		const text = removeDialogText(null);
+		expect(text.dropLabel).toBeNull();
+		expect(text.body).toBe('Items holding a value keep it and get a warning.');
+	});
+
+	it('offers one answer when no item holds a value', () => {
+		const text = removeDialogText(0);
+		expect(text.dropLabel).toBeNull();
+		expect(text.keepLabel).toBe('Remove');
+		expect(text.body).toBe('No item holds a value for it.');
+	});
+
+	it('offers to drop the values and names the count', () => {
+		expect(removeDialogText(3)).toEqual({
+			body: '3 items hold a value: keep it with a warning on each, or drop it from the files.',
+			keepLabel: 'Remove field',
+			dropLabel: 'Remove field and its values (3 items)'
+		});
+	});
+
+	it('words one item in the singular', () => {
+		const text = removeDialogText(1);
+		expect(text.body).toBe(
+			'1 item holds a value: keep it with a warning on each, or drop it from the files.'
+		);
+		expect(text.dropLabel).toBe('Remove field and its value (1 item)');
 	});
 });

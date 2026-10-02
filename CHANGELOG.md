@@ -50,6 +50,16 @@ its source — internal refactors are deliberately absent.
   `GET /api/schema/fields/{name}/usage` names the rules and the
   recipes (`aggregate`, `pull`) referencing a field (`rules`,
   `recipes`) beside the parser's message, so the panel can list them.
+- Removing a field from the schema page can take its values along.
+  When items hold a value for the field, the confirmation offers
+  *Remove field*, which leaves the items as they are with a warning on
+  each, and *Remove field and its values*, which also rewrites those
+  items without the key; the schema is written first, so an item that
+  cannot be rewritten simply keeps its warning. `DELETE
+  /api/schema/fields/{name}?drop_values=true` is the request behind
+  it, and the result names the items it rewrote (`rewritten_items`).
+  A rewritten item comes back in schema order and without the
+  comments its frontmatter had, as after any `set`.
 
 ### Changed
 

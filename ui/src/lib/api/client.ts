@@ -185,12 +185,17 @@ export const api = {
 			definition
 		),
 	/**
-	 * Remove a field. Items keep the key; their unknown-field warnings
-	 * ride back in `diagnostics`. The `id` field and a field a config
-	 * role names are refused with a `422`.
+	 * Remove a field. With `dropValues` every item holding the key is
+	 * rewritten without it and named in `rewritten_items`; without, the
+	 * items keep the key and their unknown-field warnings ride back in
+	 * `diagnostics`. The `id` field and a field a config role names are
+	 * refused with a `422`.
 	 */
-	deleteField: (name: string) =>
-		request<SchemaMutationResult>('DELETE', `/api/schema/fields/${encodeURIComponent(name)}`),
+	deleteField: (name: string, options: { dropValues: boolean }) =>
+		request<SchemaMutationResult>(
+			'DELETE',
+			`/api/schema/fields/${encodeURIComponent(name)}${options.dropValues ? '?drop_values=true' : ''}`
+		),
 	/**
 	 * What depends on a field: the parse error removing it would cause,
 	 * or the diagnostics it would introduce. The panel asks on open to

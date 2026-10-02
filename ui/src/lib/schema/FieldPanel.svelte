@@ -17,7 +17,9 @@
   that loads but warns is written, and the warnings go to the page
   through `onsaved`. Remove is greyed out while anything whose break
   outlives a warning names the field — a view, a config role, a recipe,
-  a rule — with those as the explanation.
+  a rule — with those as the explanation. Items holding a value do not
+  block; the confirmation offers to remove the field alone or to drop
+  the values from those items as well.
 
   The type-specific block covers the plain scalars (nothing to edit);
   the other blocks are later items, and until each lands the panel says
@@ -44,7 +46,7 @@
 		writeBody,
 		type DraftDefault
 	} from './fieldDraft';
-	import { blockerPhrase, summarizeUsage, type UsageSummary } from './fieldUsage';
+	import { blockerPhrase, removeDialogText, summarizeUsage, type UsageSummary } from './fieldUsage';
 	import { fillMechanisms, type PanelTarget } from './schemaPage';
 
 	interface Props {
@@ -158,11 +160,11 @@
 		onsaved(result.diagnostics);
 	}
 
-	async function remove(): Promise<void> {
+	async function remove(dropValues: boolean): Promise<void> {
 		if (existing === null) return;
 		saving = true;
 		saveError = null;
-		const result = await api.deleteField(existing.name);
+		const result = await api.deleteField(existing.name, { dropValues });
 		saving = false;
 		if (result.error !== undefined) {
 			saveError = result.error;
@@ -179,12 +181,11 @@
 		draft.default = next;
 	}
 
-	function removeQuestion(): string {
-		if (usage.status !== 'loaded') return 'Items keep their value and get a warning.';
-		const count = usage.summary.itemCount;
-		if (count === 0) return 'No item holds a value for it.';
-		return `${String(count)} ${count === 1 ? 'item keeps its value and gets' : 'items keep their value and get'} a warning.`;
-	}
+	// The remove confirmation: one answer, or two once items hold a
+	// value — remove the field and keep them, or drop them as well.
+	const removeText = $derived(
+		removeDialogText(usage.status === 'loaded' ? usage.summary.itemCount : null)
+	);
 </script>
 
 <SlideOver
@@ -394,12 +395,21 @@
 	<ConfirmDialog
 		anchor={removeButton}
 		title="Remove field '{existing.name}'?"
-		body={removeQuestion()}
-		confirmLabel="Remove"
+		body={removeText.body}
+		confirmLabel={removeText.keepLabel}
+		secondary={removeText.dropLabel === null
+			? undefined
+			: {
+					label: removeText.dropLabel,
+					onconfirm: () => {
+						confirmingRemove = false;
+						void remove(true);
+					}
+				}}
 		destructive
 		onconfirm={() => {
 			confirmingRemove = false;
-			void remove();
+			void remove(false);
 		}}
 		oncancel={() => (confirmingRemove = false)}
 	/>
@@ -596,14 +606,23 @@
 		padding: 0;
 	}
 
+	/* Beside Cancel behind a thin rule, not at the panel's far edge:
+	   the footer spans a wide panel, and a button pushed to its end sat
+	   under the usage column, far from the form. The confirmation
+	   popover guards the click, so distance from Save buys nothing. */
 	.remove {
-		margin-left: auto;
-		background: none;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
+		margin-left: var(--space-1);
+		padding-left: var(--space-4);
+		border-left: 1px solid var(--color-border);
+		border-radius: 0;
+		border-top: none;
+		border-right: none;
+		border-bottom: none;
 		color: var(--color-error-fg);
 		font-size: var(--text-sm);
-		padding: 0.35rem var(--space-3);
+		padding-top: 0.35rem;
+		padding-right: 0;
+		padding-bottom: 0.35rem;
 		cursor: pointer;
 	}
 

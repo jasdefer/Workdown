@@ -16,7 +16,7 @@ use workdown_core::model::diagnostic::{DiagnosticBody, ItemDiagnosticKind};
 use workdown_core::model::schema::{DefaultValue, FieldType, FieldTypeConfig};
 use workdown_core::operations::schema_write::{
     add_field, field_usage, remove_field, reorder_fields, update_field, DefaultWrite,
-    FieldDefinitionWrite, SchemaWriteError,
+    FieldDefinitionWrite, RemovedValues, SchemaWriteError,
 };
 use workdown_core::parser::config::load_config;
 use workdown_core::parser::schema::load_schema;
@@ -331,7 +331,8 @@ fn an_unknown_field_name_is_refused_on_update_and_remove() {
         &definition(FieldType::Date, FieldShape::Scalar),
     )
     .unwrap_err();
-    let remove_error = remove_field(&config, &root, config_path(), "nope").unwrap_err();
+    let remove_error =
+        remove_field(&config, &root, config_path(), "nope", RemovedValues::Keep).unwrap_err();
 
     assert!(matches!(update_error, SchemaWriteError::FieldNotFound { name } if name == "nope"));
     assert!(matches!(remove_error, SchemaWriteError::FieldNotFound { name } if name == "nope"));
@@ -344,19 +345,73 @@ fn an_unknown_field_name_is_refused_on_update_and_remove() {
 fn remove_field_drops_the_entry_and_warns_about_items_holding_a_value() {
     let (_directory, root, config) = setup();
     write_item(&root, "a", "updated: 2026-02-01\n");
+    let item_before = item_text(&root, "a");
     let before = fields_tree(&root);
 
-    let outcome = remove_field(&config, &root, config_path(), "updated").unwrap();
+    let outcome = remove_field(
+        &config,
+        &root,
+        config_path(),
+        "updated",
+        RemovedValues::Keep,
+    )
+    .unwrap();
 
     assert!(outcome.mutation_caused_warning);
-    assert!(outcome.warnings.iter().any(|diagnostic| matches!(
-        &diagnostic.body,
-        DiagnosticBody::Item(item)
-            if matches!(&item.kind, ItemDiagnosticKind::UnknownField { field } if field == "updated")
-    )));
+    assert!(warns_about_unknown_field(&outcome.warnings, "updated"));
+    assert!(outcome.rewritten_items.is_empty());
+    assert_eq!(item_text(&root, "a"), item_before);
     let after = fields_tree(&root);
     assert!(!after.contains_key("updated"));
     assert_untouched(&before, &after, &["updated"]);
+}
+
+#[test]
+fn remove_field_dropping_values_rewrites_only_the_items_holding_the_key() {
+    let (_directory, root, config) = setup();
+    fs::write(
+        root.join("workdown-items/a.md"),
+        "---\ntitle: a\ntype: task\nstatus: open\ncreated: 2026-01-01\nupdated: 2026-02-01\n---\n\nNotes to keep.\n",
+    )
+    .unwrap();
+    write_item(&root, "b", "");
+    let other_item_before = item_text(&root, "b");
+
+    let outcome = remove_field(
+        &config,
+        &root,
+        config_path(),
+        "updated",
+        RemovedValues::Drop,
+    )
+    .unwrap();
+
+    assert_eq!(outcome.rewritten_items, ["a"]);
+    assert!(!outcome.mutation_caused_warning);
+    assert!(!warns_about_unknown_field(&outcome.warnings, "updated"));
+    let rewritten = item_text(&root, "a");
+    assert!(!rewritten.contains("updated:"), "{rewritten}");
+    assert!(
+        rewritten.ends_with("---\n\nNotes to keep.\n"),
+        "{rewritten}"
+    );
+    assert_eq!(item_text(&root, "b"), other_item_before);
+    assert!(!fields_tree(&root).contains_key("updated"));
+}
+
+fn item_text(root: &Path, id: &str) -> String {
+    fs::read_to_string(root.join(format!("workdown-items/{id}.md"))).unwrap()
+}
+
+fn warns_about_unknown_field(
+    warnings: &[workdown_core::model::diagnostic::Diagnostic],
+    field_name: &str,
+) -> bool {
+    warnings.iter().any(|diagnostic| matches!(
+        &diagnostic.body,
+        DiagnosticBody::Item(item)
+            if matches!(&item.kind, ItemDiagnosticKind::UnknownField { field } if field == field_name)
+    ))
 }
 
 #[test]
@@ -364,7 +419,7 @@ fn the_id_field_cannot_be_removed() {
     let (_directory, root, config) = setup();
     let original = schema_text(&root);
 
-    let error = remove_field(&config, &root, config_path(), "id").unwrap_err();
+    let error = remove_field(&config, &root, config_path(), "id", RemovedValues::Keep).unwrap_err();
 
     assert!(matches!(error, SchemaWriteError::IdNotRemovable));
     assert_eq!(schema_text(&root), original);
@@ -376,8 +431,10 @@ fn a_field_a_config_role_names_cannot_be_removed() {
     let original = schema_text(&root);
 
     // `status` is the board field; `title` is the display title default.
-    let board_error = remove_field(&config, &root, config_path(), "status").unwrap_err();
-    let display_error = remove_field(&config, &root, config_path(), "title").unwrap_err();
+    let board_error =
+        remove_field(&config, &root, config_path(), "status", RemovedValues::Keep).unwrap_err();
+    let display_error =
+        remove_field(&config, &root, config_path(), "title", RemovedValues::Keep).unwrap_err();
 
     assert!(matches!(
         &board_error,

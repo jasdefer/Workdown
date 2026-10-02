@@ -28,6 +28,24 @@
 //! tab can overwrite that field and nothing else: last write wins, per
 //! field, and there is no conflict detection.
 //!
+//! ## Dropping a removed field's values
+//!
+//! [`remove_field`] can also rewrite every item whose file holds the
+//! key ([`RemovedValues::Drop`]), since most of the time the values go
+//! with the field. The schema is written first, then each item through
+//! `frontmatter_io::remove_frontmatter_key` with the schema the write
+//! still holds —
+//! the `unset` operation looks a field up in the schema before it
+//! touches a file and would refuse every item once the field is gone.
+//! An item that cannot be rewritten is logged and skipped: it still
+//! holds the key, so the reload that follows reports it with the
+//! unknown-field warning it would have had anyway. The warnings the
+//! outcome reports are the ones remaining after both writes, and
+//! [`SchemaWriteOutcome::rewritten_items`] names the items touched. A
+//! rewritten item comes back in the order every item write uses —
+//! schema order, then unknown keys alphabetically — and without the
+//! comments its frontmatter had, exactly as after a `set`.
+//!
 //! ## What blocks a write vs. what only warns
 //!
 //! A write is rejected, leaving `schema.yaml` untouched, when the
@@ -72,8 +90,9 @@ use crate::model::config::Config;
 use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic};
 use crate::model::duration::format_duration_seconds;
 use crate::model::schema::{widening_targets, FieldType, Generator, Schema, Severity};
+use crate::model::work_item::WorkItem;
 use crate::operations::diagnostics::{introduced_by_mutation, introduced_diagnostics};
-use crate::operations::frontmatter_io::write_file_atomically;
+use crate::operations::frontmatter_io::{remove_frontmatter_key, write_file_atomically};
 use crate::parser::schema::{is_valid_field_name, parse_schema, SchemaLoadError};
 use crate::project::{load_project_with_schema, LoadError};
 use crate::schema_definition_data::FieldShape;
@@ -180,6 +199,22 @@ pub struct SchemaWriteOutcome {
     /// before. Drives the caller's exit code / response, distinct from
     /// pre-existing problems elsewhere in the project.
     pub mutation_caused_warning: bool,
+    /// The items whose file was rewritten without the removed field,
+    /// sorted by id. Empty unless the removal asked for
+    /// [`RemovedValues::Drop`]; an item that could not be rewritten is
+    /// absent here and present in `warnings`.
+    pub rewritten_items: Vec<String>,
+}
+
+/// What a removal does with the values items hold for the field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemovedValues {
+    /// Items keep the key and get the unknown-field warning on the next
+    /// load; nothing rewrites them.
+    Keep,
+    /// Every item whose file holds the key is rewritten without it,
+    /// after the schema is written.
+    Drop,
 }
 
 /// Errors returned by the schema-write operations.
@@ -360,13 +395,16 @@ pub fn update_field(
     finalize(context, Some(name.to_owned()))
 }
 
-/// Remove a field. Items keep the key and get the unknown-field warning
-/// on the next load; nothing rewrites them.
+/// Remove a field. What happens to the values items hold for it is
+/// `removed_values`' call: kept, with the unknown-field warning on the
+/// next load, or dropped from every item file holding the key (see the
+/// module docs).
 pub fn remove_field(
     config: &Config,
     project_root: &Path,
     config_path: &Path,
     name: &str,
+    removed_values: RemovedValues,
 ) -> Result<SchemaWriteOutcome, SchemaWriteError> {
     if name == "id" {
         return Err(SchemaWriteError::IdNotRemovable);
@@ -387,7 +425,11 @@ pub fn remove_field(
     }
     fields_mut(&mut context.document).shift_remove(name);
 
-    finalize(context, Some(name.to_owned()))
+    let drop_key_from_items = match removed_values {
+        RemovedValues::Keep => None,
+        RemovedValues::Drop => Some(name),
+    };
+    finalize_then_rewrite_items(context, Some(name.to_owned()), drop_key_from_items)
 }
 
 /// Rewrite the order of `fields:` from a full ordered list of the
@@ -554,8 +596,9 @@ const PLAIN_PROPERTY_KEYS: [&str; 11] = [
 
 /// Everything a write starts from, loaded once: the current file as a
 /// generic tree (what gets edited), as a typed schema (what the
-/// refusals consult), and the diagnostics of the project against it
-/// (the baseline the post-write diagnostics are diffed against).
+/// refusals consult), the loaded items (what a removal that drops
+/// values rewrites) and the diagnostics of the project against it (the
+/// baseline the post-write diagnostics are diffed against).
 struct WriteContext<'a> {
     config: &'a Config,
     project_root: &'a Path,
@@ -563,6 +606,7 @@ struct WriteContext<'a> {
     schema_path: PathBuf,
     document: serde_yaml::Value,
     current: Schema,
+    items: Vec<WorkItem>,
     pre_diagnostics: Vec<Diagnostic>,
 }
 
@@ -593,6 +637,7 @@ fn load_for_write<'a>(
         schema_path,
         document,
         current: project.schema,
+        items: project.store.into_items(),
         pre_diagnostics: project.diagnostics,
     })
 }
@@ -717,12 +762,25 @@ fn finalize(
     context: WriteContext<'_>,
     field_name: Option<String>,
 ) -> Result<SchemaWriteOutcome, SchemaWriteError> {
+    finalize_then_rewrite_items(context, field_name, None)
+}
+
+/// [`finalize`], then — when `drop_key_from_items` names a field — the
+/// rewrite of every item holding that key and a reload against the
+/// written schema, so the outcome's warnings are the ones that remain
+/// after both writes.
+fn finalize_then_rewrite_items(
+    context: WriteContext<'_>,
+    field_name: Option<String>,
+    drop_key_from_items: Option<&str>,
+) -> Result<SchemaWriteOutcome, SchemaWriteError> {
     let WriteContext {
         config,
         project_root,
         config_path,
         schema_path,
         document,
+        items,
         pre_diagnostics,
         current: _,
     } = context;
@@ -744,13 +802,48 @@ fn finalize(
         }
     })?;
 
+    let rewritten_items = match drop_key_from_items {
+        Some(key) => drop_key_from_item_files(&items, key, &project.schema),
+        None => Vec::new(),
+    };
+    // The items on disk changed, so the project loaded to judge the
+    // candidate no longer describes them.
+    let project = if rewritten_items.is_empty() {
+        project
+    } else {
+        load_project_with_schema(config, project_root, config_path, project.schema, None)?
+    };
+
     let mutation_caused_warning = introduced_by_mutation(&pre_diagnostics, &project.diagnostics);
     Ok(SchemaWriteOutcome {
         path: schema_path,
         field_name,
         warnings: project.diagnostics,
         mutation_caused_warning,
+        rewritten_items,
     })
+}
+
+/// Rewrite every item whose file holds `key` without it, with the
+/// written schema deciding the key order; the ids rewritten, sorted. An
+/// item that cannot be read, parsed or written is logged and skipped:
+/// it still holds the key, and the reload after this reports it with
+/// the unknown-field warning.
+fn drop_key_from_item_files(items: &[WorkItem], key: &str, schema: &Schema) -> Vec<String> {
+    let mut rewritten_items = Vec::new();
+    for item in items {
+        match remove_frontmatter_key(&item.source_path, key, schema) {
+            Ok(true) => rewritten_items.push(item.id.to_string()),
+            Ok(false) => {}
+            Err(error) => tracing::warn!(
+                item = %item.id,
+                %error,
+                "could not drop field '{key}' from the item; it keeps the value"
+            ),
+        }
+    }
+    rewritten_items.sort();
+    rewritten_items
 }
 
 #[cfg(test)]

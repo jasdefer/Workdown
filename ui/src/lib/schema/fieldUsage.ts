@@ -90,3 +90,41 @@ function counted(count: number, singular: string, plural: string): string | null
 	if (count === 0) return null;
 	return `${String(count)} ${count === 1 ? singular : plural}`;
 }
+
+/** What the remove confirmation says and offers. */
+export interface RemoveDialogText {
+	/** The sentence under the title. */
+	body: string;
+	/** The answer that removes the field and leaves the items alone. */
+	keepLabel: string;
+	/**
+	 * The answer that also drops the values from the items; `null` when
+	 * no item holds one or the count is unknown, and the dialog has one
+	 * answer.
+	 */
+	dropLabel: string | null;
+}
+
+/**
+ * The remove confirmation for a field `itemCount` items hold a value
+ * for; `null` when the usage answer did not load and the count is
+ * unknown.
+ */
+export function removeDialogText(itemCount: number | null): RemoveDialogText {
+	if (itemCount === null) {
+		return {
+			body: 'Items holding a value keep it and get a warning.',
+			keepLabel: 'Remove',
+			dropLabel: null
+		};
+	}
+	if (itemCount === 0) {
+		return { body: 'No item holds a value for it.', keepLabel: 'Remove', dropLabel: null };
+	}
+	const items = counted(itemCount, 'item', 'items') ?? '';
+	return {
+		body: `${items} ${itemCount === 1 ? 'holds' : 'hold'} a value: keep it with a warning on each, or drop it from the files.`,
+		keepLabel: 'Remove field',
+		dropLabel: `Remove field and its ${itemCount === 1 ? 'value' : 'values'} (${items})`
+	};
+}

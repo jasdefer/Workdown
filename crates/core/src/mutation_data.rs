@@ -273,13 +273,15 @@ pub struct ReorderFields {
 }
 
 /// The result of a successful schema mutation (add, update, remove,
-/// reorder) — the field it concerned (`null` for a reorder) and whether
-/// the write introduced a diagnostic. Warnings themselves ride in the
-/// envelope's `diagnostics`.
+/// reorder) — the field it concerned (`null` for a reorder), whether
+/// the write introduced a diagnostic, and the items a removal that
+/// dropped the field's values rewrote (empty for every other write).
+/// Warnings themselves ride in the envelope's `diagnostics`.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct SchemaMutationResult {
     pub field_name: Option<String>,
     pub mutation_caused_warning: bool,
+    pub rewritten_items: Vec<String>,
 }
 
 impl SchemaMutationResult {
@@ -287,6 +289,7 @@ impl SchemaMutationResult {
         Self {
             field_name: outcome.field_name.clone(),
             mutation_caused_warning: outcome.mutation_caused_warning,
+            rewritten_items: outcome.rewritten_items.clone(),
         }
     }
 }

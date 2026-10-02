@@ -198,6 +198,13 @@ impl Store {
         self.items.values()
     }
 
+    /// Take every successfully loaded work item out of the store, in no
+    /// particular order, for a caller that rewrites their files and has
+    /// no further use for the index.
+    pub fn into_items(self) -> Vec<WorkItem> {
+        self.items.into_values().collect()
+    }
+
     /// Get items that link TO the given item via `field_name`.
     ///
     /// For example, `referring_items("auth-epic", "parent")` returns all

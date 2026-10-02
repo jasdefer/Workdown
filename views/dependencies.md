@@ -22,7 +22,6 @@ flowchart TD
         schema-field-editor-relation["Field editor block for link and links"]
         schema-field-editor-text["Field editor block for string and list, with the resource picker"]
         schema-field-editor-values["Field editor block for choice and multichoice — the ordered value list"]
-        schema-field-remove-values["Offer to drop a removed field's values from every item"]
         schema-field-rename["Rename a field and everything that names it"]
         schema-field-reorder["Drag fields into a new order on the schema page"]
         schema-field-type-change["Let an existing field change type, but only to a type that keeps every value valid"]

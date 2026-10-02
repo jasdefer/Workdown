@@ -41,15 +41,16 @@
 //! the data and no diagnostics — project health surfaces on the views
 //! and on mutations, not on these metadata fetches.
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
+use serde::Deserialize;
 
 use workdown_core::mutation_data::{CreateField, ReorderFields, SchemaMutationResult};
 use workdown_core::operations::schema_write::{
     add_field, field_usage, remove_field, reorder_fields, update_field, FieldDefinitionWrite,
-    FieldUsage, SchemaWriteError, SchemaWriteOutcome,
+    FieldUsage, RemovedValues, SchemaWriteError, SchemaWriteOutcome,
 };
 use workdown_core::schema_data::{self, SchemaData};
 use workdown_core::schema_definition_data::{self, SchemaDefinitionData};
@@ -130,17 +131,35 @@ async fn update_field_handler(
     ))
 }
 
-/// `DELETE /api/schema/fields/{name}` — remove the field. Items keep the
-/// key and their unknown-field warning rides back in `diagnostics`.
+/// Query string for `DELETE /api/schema/fields/{name}`.
+#[derive(Deserialize)]
+struct DeleteFieldQuery {
+    /// `true` also rewrites every item holding the key, dropping it.
+    /// Absent or `false`, the items keep the key and their unknown-field
+    /// warning rides back in `diagnostics`.
+    #[serde(default)]
+    drop_values: bool,
+}
+
+/// `DELETE /api/schema/fields/{name}` — remove the field; with
+/// `?drop_values=true` also its values from every item holding one,
+/// named in the result's `rewritten_items`.
 async fn delete_field_handler(
     State(state): State<AppState>,
     Path(name): Path<String>,
+    Query(query): Query<DeleteFieldQuery>,
 ) -> ApiResponse<SchemaMutationResult> {
+    let removed_values = if query.drop_values {
+        RemovedValues::Drop
+    } else {
+        RemovedValues::Keep
+    };
     schema_mutation_response(remove_field(
         &state.config,
         &state.project_root,
         &state.config_path,
         &name,
+        removed_values,
     ))
 }
 
