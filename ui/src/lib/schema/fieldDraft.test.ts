@@ -11,12 +11,18 @@ import {
 	shapeProblem,
 	specOfDraft,
 	takesResource,
+	valueProblem,
 	withBound,
 	withPattern,
+	withValueAdded,
+	withValueMoved,
+	withValueRemoved,
+	withValueRenamed,
 	writeBody,
 	type BoundedShape,
 	type FieldDraft,
-	type TypeTables
+	type TypeTables,
+	type ValuesShape
 } from './fieldDraft';
 
 /** The rows the editor reads, as the server's tables spell them. */
@@ -170,6 +176,7 @@ describe('the type tables', () => {
 	it('leave the recipe keys and the edited settings out of those edited in the file', () => {
 		expect(settingsWithoutEditor(tables, 'link')).toEqual(['allow_cycles', 'inverse']);
 		expect(settingsWithoutEditor(tables, 'string')).toEqual([]);
+		expect(settingsWithoutEditor(tables, 'choice')).toEqual([]);
 		expect(settingsWithoutEditor(tables, 'integer')).toEqual([]);
 		expect(settingsWithoutEditor(tables, 'duration')).toEqual([]);
 		expect(settingsWithoutEditor(tables, 'date')).toEqual([]);
@@ -208,11 +215,49 @@ describe('withBound', () => {
 	});
 });
 
+describe('the value list', () => {
+	const shape: ValuesShape = { kind: 'values', values: ['open', 'in_progress', 'done'] };
+
+	it('refuses blank text and a value already listed, trimmed', () => {
+		expect(valueProblem(shape, '   ')).toBe('Enter a value.');
+		expect(valueProblem(shape, ' done ')).toBe("'done' is already in the list.");
+		expect(valueProblem(shape, 'review')).toBeNull();
+	});
+
+	it('lets a rename keep its own value and refuses another row’s', () => {
+		expect(valueProblem(shape, 'done', 2)).toBeNull();
+		expect(valueProblem(shape, 'done', 0)).toBe("'done' is already in the list.");
+	});
+
+	it('appends, renames in place and removes, trimming the text', () => {
+		expect(withValueAdded(shape, ' review ').values).toEqual([
+			'open',
+			'in_progress',
+			'done',
+			'review'
+		]);
+		expect(withValueRenamed(shape, 1, ' active ').values).toEqual(['open', 'active', 'done']);
+		expect(withValueRemoved(shape, 0).values).toEqual(['in_progress', 'done']);
+	});
+
+	it('swaps a value with its neighbour and stays put at the ends', () => {
+		expect(withValueMoved(shape, 1, 'up').values).toEqual(['in_progress', 'open', 'done']);
+		expect(withValueMoved(shape, 1, 'down').values).toEqual(['open', 'done', 'in_progress']);
+		expect(withValueMoved(shape, 0, 'up')).toBe(shape);
+		expect(withValueMoved(shape, 2, 'down')).toBe(shape);
+	});
+});
+
 describe('shapeProblem', () => {
 	it('names an inverted numeric pair and accepts an equal one', () => {
 		expect(shapeProblem({ kind: 'numeric', min: 10, max: 5 })).toBe('Min must not exceed max.');
 		expect(shapeProblem({ kind: 'numeric', min: 5, max: 5 })).toBeNull();
 		expect(shapeProblem({ kind: 'numeric', min: null, max: 5 })).toBeNull();
+	});
+
+	it('wants at least one value in a value list', () => {
+		expect(shapeProblem({ kind: 'values', values: [] })).toBe('Add at least one value.');
+		expect(shapeProblem({ kind: 'values', values: ['open'] })).toBeNull();
 	});
 
 	it('leaves duration bounds and patterns to the server', () => {

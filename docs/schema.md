@@ -23,8 +23,8 @@ Field names are lowercase letters, digits, and underscores, starting with a lett
 | Type | Description | Type-specific options |
 |------|-------------|---------------------|
 | `string` | Free text | `pattern` (regex) |
-| `choice` | Pick one from a list | `values` (required) |
-| `multichoice` | Pick zero or more from a list | `values` (required) |
+| `choice` | Pick one from a list | `values` (required; each value once, none blank) |
+| `multichoice` | Pick zero or more from a list | `values` (required; each value once, none blank) |
 | `integer` | Whole number | `min`, `max` |
 | `float` | Decimal number | `min`, `max` |
 | `date` | Calendar date (YYYY-MM-DD) | |

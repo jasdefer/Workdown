@@ -23,9 +23,9 @@
 
   The type-specific part is `ShapeBlock`, dispatched on the shape the
   type is edited as, plus the `resource:` picker for the types that
-  take one — a property of the field, not of its shape. The blocks for
-  choice values and link settings are later items, and until each
-  lands the panel says which settings are edited in the file for now.
+  take one — a property of the field, not of its shape. The block for
+  link settings is a later item, and until it lands the panel says
+  which settings are edited in the file for now.
 -->
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';

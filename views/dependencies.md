@@ -19,7 +19,6 @@ flowchart TD
     subgraph schema-editor-web ["See and edit the schema in the web app"]
         schema-derived-field-editor["Edit compute, when, pull and aggregate blocks in the field editor"]
         schema-field-editor-relation["Field editor block for link and links"]
-        schema-field-editor-values["Field editor block for choice and multichoice — the ordered value list"]
         schema-field-rename["Rename a field and everything that names it"]
         schema-field-reorder["Drag fields into a new order on the schema page"]
         schema-field-type-change["Let an existing field change type, but only to a type that keeps every value valid"]
@@ -33,6 +32,5 @@ flowchart TD
     end
     status-transition-dates["Fill in a date when a status changes, instead of typing it by hand"]
     schema-rules-editor --> schema-field-type-change
-    schema-string-to-choice --> schema-field-editor-values
     schema-string-to-choice --> schema-field-type-change
 ```

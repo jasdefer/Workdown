@@ -1,9 +1,10 @@
 <!--
   The type-specific block of the field editor, dispatched on the shape
   the draft's type is edited as: the bounds for `numeric` and
-  `duration`, the pattern for `text`, nothing for a plain `scalar`. The
-  blocks for `values` and `relation` are later items; until each lands
-  the panel says which settings are edited in the file.
+  `duration`, the pattern for `text`, the ordered value list for
+  `values`, nothing for a plain `scalar`. The block for `relation` is a
+  later item; until it lands the panel says which settings are edited
+  in the file.
 
   One component so the panel renders one line for the type-specific
   part, whatever the type. Owns no state: the draft's shape is the
@@ -16,6 +17,7 @@
 	import type { FieldType } from '$lib/api/generated/FieldType';
 	import BoundsBlock from './BoundsBlock.svelte';
 	import TextBlock from './TextBlock.svelte';
+	import ValuesBlock from './ValuesBlock.svelte';
 
 	interface Props {
 		shape: FieldShape;
@@ -33,4 +35,6 @@
 	<BoundsBlock {shape} {fieldType} {problem} {disabled} {onchange} />
 {:else if shape.kind === 'text'}
 	<TextBlock {shape} {disabled} {onchange} />
+{:else if shape.kind === 'values'}
+	<ValuesBlock {shape} {problem} {disabled} {onchange} />
 {/if}

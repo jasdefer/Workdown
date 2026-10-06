@@ -158,8 +158,8 @@ export function generatorsFor(tables: TypeTables, fieldType: FieldType): Generat
 /** The recipe keys: set by a fill mechanism, never by this editor. */
 const RECIPE_PROPERTIES: FieldProperty[] = ['compute', 'aggregate', 'pull'];
 
-/** The properties the panel has a control for: the bounds and text blocks, the resource control. */
-const PROPERTIES_WITH_EDITOR: FieldProperty[] = ['min', 'max', 'pattern', 'resource'];
+/** The properties the panel has a control for: the bounds, text and values blocks, the resource control. */
+const PROPERTIES_WITH_EDITOR: FieldProperty[] = ['min', 'max', 'pattern', 'resource', 'values'];
 
 /**
  * The properties of `fieldType` this editor has no control for yet,
@@ -220,14 +220,78 @@ export function withPattern(shape: TextShape, pattern: string): TextShape {
 	return { ...shape, pattern: pattern.trim() === '' ? null : pattern };
 }
 
+/** The shape of a `choice` or `multichoice`: the allowed values, in the order boards and dropdowns show them. */
+export type ValuesShape = Extract<FieldShape, { kind: 'values' }>;
+
+/**
+ * Why `text` cannot become a value of the list, or `null` when it can:
+ * blank text names no option, and a value already listed would be the
+ * same option twice. For a rename, `renaming` is the position whose
+ * current value does not count as a clash with itself. The server
+ * refuses both the same way; this only keeps the list clean as it is
+ * edited, so a save is never refused for something the block let in.
+ */
+export function valueProblem(shape: ValuesShape, text: string, renaming?: number): string | null {
+	const value = text.trim();
+	if (value === '') return 'Enter a value.';
+	const clash = shape.values.findIndex(
+		(existing, index) => existing === value && index !== renaming
+	);
+	return clash === -1 ? null : `'${value}' is already in the list.`;
+}
+
+/** The shape with `text`, trimmed, appended as the last value. The caller has checked `valueProblem`. */
+export function withValueAdded(shape: ValuesShape, text: string): ValuesShape {
+	return { ...shape, values: [...shape.values, text.trim()] };
+}
+
+/**
+ * The shape with the value at `index` replaced by `text`, trimmed. The
+ * caller has checked `valueProblem`. Items holding the old value are
+ * not touched; they warn after the save, as the panel says beside the
+ * list.
+ */
+export function withValueRenamed(shape: ValuesShape, index: number, text: string): ValuesShape {
+	return {
+		...shape,
+		values: shape.values.map((value, at) => (at === index ? text.trim() : value))
+	};
+}
+
+/** The shape without the value at `index`. */
+export function withValueRemoved(shape: ValuesShape, index: number): ValuesShape {
+	return { ...shape, values: shape.values.filter((_, at) => at !== index) };
+}
+
+/**
+ * The shape with the value at `index` swapped with its neighbour above
+ * (`'up'`) or below (`'down'`). Unchanged at the list's ends, so a
+ * button that is somehow clicked there does nothing.
+ */
+export function withValueMoved(
+	shape: ValuesShape,
+	index: number,
+	direction: 'up' | 'down'
+): ValuesShape {
+	const target = direction === 'up' ? index - 1 : index + 1;
+	if (index < 0 || index >= shape.values.length || target < 0 || target >= shape.values.length) {
+		return shape;
+	}
+	const values = [...shape.values];
+	const moved = values.splice(index, 1);
+	values.splice(target, 0, ...moved);
+	return { ...shape, values };
+}
+
 /**
  * Why the type-specific settings cannot be saved as they stand, or
  * `null`. Judged per shape, and only where the browser has the rule:
- * a numeric pair in the wrong order. Duration bounds are text whose
- * grammar lives in Rust, and a pattern is a regex in Rust's dialect,
- * which the browser's `RegExp` would judge differently; both are the
- * server's call, and the save comes back with its message. Saves a
- * round trip, nothing more: the server refuses the same things.
+ * a numeric pair in the wrong order, a value list with nothing in it.
+ * Duration bounds are text whose grammar lives in Rust, and a pattern
+ * is a regex in Rust's dialect, which the browser's `RegExp` would
+ * judge differently; both are the server's call, and the save comes
+ * back with its message. Saves a round trip, nothing more: the server
+ * refuses the same things.
  */
 export function shapeProblem(shape: FieldShape): string | null {
 	switch (shape.kind) {
@@ -235,10 +299,11 @@ export function shapeProblem(shape: FieldShape): string | null {
 			return shape.min !== null && shape.max !== null && shape.min > shape.max
 				? 'Min must not exceed max.'
 				: null;
+		case 'values':
+			return shape.values.length === 0 ? 'Add at least one value.' : null;
 		case 'scalar':
 		case 'duration':
 		case 'text':
-		case 'values':
 		case 'relation':
 			return null;
 	}

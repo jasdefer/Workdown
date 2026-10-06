@@ -14,7 +14,6 @@ Hierarchical outline following `parent` upward to roots.
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md) — status: in_progress
   - [Edit compute, when, pull and aggregate blocks in the field editor](../workdown-items/schema-derived-field-editor.md) — status: on_hold
   - [Field editor block for link and links](../workdown-items/schema-field-editor-relation.md) — status: to_do
-  - [Field editor block for choice and multichoice — the ordered value list](../workdown-items/schema-field-editor-values.md) — status: to_do
   - [Rename a field and everything that names it](../workdown-items/schema-field-rename.md) — status: on_hold
   - [Drag fields into a new order on the schema page](../workdown-items/schema-field-reorder.md) — status: to_do
   - [Let an existing field change type, but only to a type that keeps every value valid](../workdown-items/schema-field-type-change.md) — status: to_do

@@ -659,7 +659,7 @@ fn validate_type_specific_properties(
                 format!("'values' is required for type '{}'", field.field_type),
             )),
             Some(v) if v.is_empty() => errors.push(field_error(name, "'values' must not be empty")),
-            _ => {}
+            Some(values) => validate_choice_values(name, values, errors),
         },
         FieldType::Integer | FieldType::Float => {
             // min/max are numbers; validate they are and that min ≤ max
@@ -735,6 +735,28 @@ fn check_bound_order<Bound: PartialOrd>(
             errors.push(field_error(
                 field_name,
                 "'min' must be less than or equal to 'max'",
+            ));
+        }
+    }
+}
+
+/// A choice value is text naming one option. Blank text names nothing,
+/// and a value listed twice would be two board columns for one option
+/// (the second always empty) and two identical entries in every
+/// dropdown. Both are refused here, so a hand-written list is held to
+/// the same rule the schema editor applies.
+fn validate_choice_values(name: &str, values: &[String], errors: &mut Vec<SchemaValidationError>) {
+    let mut seen = std::collections::HashSet::new();
+    for value in values {
+        if value.trim().is_empty() {
+            errors.push(field_error(
+                name,
+                "'values' must not contain an empty value",
+            ));
+        } else if !seen.insert(value.as_str()) {
+            errors.push(field_error(
+                name,
+                format!("'values' lists '{value}' more than once"),
             ));
         }
     }
@@ -1473,6 +1495,32 @@ rules:
         assert!(errors
             .iter()
             .any(|e| e.message.contains("'values' is required")));
+    }
+
+    #[test]
+    fn choice_with_duplicate_value() {
+        let yaml = "fields:\n  status:\n    type: choice\n    values: [open, done, done]\n";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("'values' lists 'done' more than once")));
+    }
+
+    #[test]
+    fn choice_with_blank_value() {
+        let yaml = "fields:\n  status:\n    type: choice\n    values: [open, '  ']\n";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(errors.iter().any(|e| e
+            .message
+            .contains("'values' must not contain an empty value")));
     }
 
     #[test]

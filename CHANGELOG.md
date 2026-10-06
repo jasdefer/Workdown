@@ -77,8 +77,23 @@ its source — internal refactors are deliberately absent.
   selectable, marked as unknown, so a save does not silently drop it.
   Both can be set on the same field, as the schema allows. Clearing
   either removes the key from the file.
+- The field editor edits the values of `choice` and `multichoice`
+  fields. A *Values* block lists them in order, the order boards and
+  dropdowns show them in, with *Up* and *Down* beside each, a *Remove*
+  button, and the value itself in a text input for renaming in place;
+  a new value is typed under the list and added with Enter or *Add*.
+  Blank text and a value already in the list are refused where they
+  are typed. Renaming or removing a value leaves the items holding it
+  as they are, with a warning on each after the save, which the block
+  says; a default naming a value that is no longer listed is refused
+  on save with the parser's message. An empty list greys out *Save*.
 
 ### Changed
+
+- A schema with a `choice` or `multichoice` field whose `values` list
+  the same value twice, or contain a blank value, is now refused at
+  load. A duplicate made two board columns for one option, the second
+  always empty, and two identical entries in every dropdown.
 
 - A schema with an `integer` or `float` field whose `min` is greater
   than its `max` is now refused at load, as a `duration` field's always
