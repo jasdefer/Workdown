@@ -60,8 +60,21 @@ its source — internal refactors are deliberately absent.
   it, and the result names the items it rewrote (`rewritten_items`).
   A rewritten item comes back in schema order and without the
   comments its frontmatter had, as after any `set`.
+- The field editor edits the bounds of `integer`, `float` and
+  `duration` fields. A *Bounds* block shows *Min* and *Max* side by
+  side, each entered with the type's own editor — whole numbers for an
+  integer, any number for a float, suffix shorthand such as `2d` for a
+  duration — and clearing one removes that key from the file. A
+  numeric pair with *Min* above *Max* greys out *Save* with the reason;
+  a duration bound is written as typed and refused with the parser's
+  message when it does not parse.
 
 ### Changed
+
+- A schema with an `integer` or `float` field whose `min` is greater
+  than its `max` is now refused at load, as a `duration` field's always
+  was. Such a pair admits no value at all, so no item could ever have
+  satisfied the field.
 
 - The default `schema.yaml` that `workdown init` copies into a project
   no longer carries the tutorial comments and commented-out examples.

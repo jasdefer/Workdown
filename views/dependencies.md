@@ -18,7 +18,6 @@ flowchart TD
     end
     subgraph schema-editor-web ["See and edit the schema in the web app"]
         schema-derived-field-editor["Edit compute, when, pull and aggregate blocks in the field editor"]
-        schema-field-editor-numeric["Field editor block for integer, float and duration"]
         schema-field-editor-relation["Field editor block for link and links"]
         schema-field-editor-text["Field editor block for string and list, with the resource picker"]
         schema-field-editor-values["Field editor block for choice and multichoice — the ordered value list"]

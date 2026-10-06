@@ -13,7 +13,6 @@ Hierarchical outline following `parent` upward to roots.
   - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — status: to_do
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md) — status: in_progress
   - [Edit compute, when, pull and aggregate blocks in the field editor](../workdown-items/schema-derived-field-editor.md) — status: on_hold
-  - [Field editor block for integer, float and duration](../workdown-items/schema-field-editor-numeric.md) — status: to_do
   - [Field editor block for link and links](../workdown-items/schema-field-editor-relation.md) — status: to_do
   - [Field editor block for string and list, with the resource picker](../workdown-items/schema-field-editor-text.md) — status: to_do
   - [Field editor block for choice and multichoice — the ordered value list](../workdown-items/schema-field-editor-values.md) — status: to_do

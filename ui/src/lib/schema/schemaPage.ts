@@ -14,7 +14,7 @@ import type { ApiResult } from '$lib/api/client';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import type { FieldShape } from '$lib/api/generated/FieldShape';
 import type { SchemaDefinitionData } from '$lib/api/generated/SchemaDefinitionData';
-import { formatDurationSeconds, formatNumber } from '$lib/views/format';
+import { formatNumber } from '$lib/views/format';
 
 /**
  * The fields in table order: `id` first, then declaration order. The
@@ -77,8 +77,9 @@ export function settingsLine(
  * shape carries nothing to say: a plain scalar, or a shape whose every
  * setting is unset. Without this line the page shows less than the
  * YAML file; with it, it answers the question people open the file for.
- * Durations go through the formatter every table and chart uses, so a
- * bound reads the same here as everywhere else in the app.
+ * Duration bounds arrive as the canonical shorthand the server formats
+ * and are shown as they are, so a bound reads the same here as in the
+ * editor and the file.
  */
 export function typeSummary(shape: FieldShape): string | null {
 	switch (shape.kind) {
@@ -90,10 +91,7 @@ export function typeSummary(shape: FieldShape): string | null {
 				shape.max === null ? null : formatNumber(shape.max)
 			);
 		case 'duration':
-			return rangeSummary(
-				shape.min_seconds === null ? null : formatDurationSeconds(Number(shape.min_seconds)),
-				shape.max_seconds === null ? null : formatDurationSeconds(Number(shape.max_seconds))
-			);
+			return rangeSummary(shape.min, shape.max);
 		case 'text':
 			return shape.pattern === null ? null : `pattern ${shape.pattern}`;
 		case 'values':

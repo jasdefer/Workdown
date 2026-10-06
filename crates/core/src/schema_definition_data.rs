@@ -39,6 +39,7 @@ use sha2::{Digest, Sha256};
 use strum::VariantArray;
 
 use crate::coerce::coerce_value;
+use crate::model::duration::format_duration_seconds;
 use crate::model::schema::{
     allowed_aggregate_functions, allowed_generators, field_property_allowed, widening_targets,
     AggregateFunction, DefaultValue, FieldDefinition, FieldProperty, FieldType, FieldTypeConfig,
@@ -123,12 +124,14 @@ pub enum FieldShape {
     Scalar,
     /// `integer` and `float`: inclusive bounds.
     Numeric { min: Option<f64>, max: Option<f64> },
-    /// `duration`: inclusive bounds in canonical seconds. The file
-    /// spells them as suffix shorthand (`"2d"`); the client's duration
-    /// editor works in seconds like the item panel's does.
+    /// `duration`: inclusive bounds as suffix shorthand (`"2d"`), the
+    /// spelling the file uses and the one a duration value travels in
+    /// (see [`FieldValue::Duration`]). Served in canonical form; written
+    /// as sent and judged by the parser, so the grammar lives in Rust
+    /// alone and the editor needs no copy of it.
     Duration {
-        min_seconds: Option<i64>,
-        max_seconds: Option<i64>,
+        min: Option<String>,
+        max: Option<String>,
     },
     /// `string`: an optional regex the value must match.
     Text { pattern: Option<String> },
@@ -425,8 +428,8 @@ impl FieldShape {
                 }
             }
             FieldTypeConfig::Duration { min, max } => FieldShape::Duration {
-                min_seconds: *min,
-                max_seconds: *max,
+                min: min.map(format_duration_seconds),
+                max: max.map(format_duration_seconds),
             },
             FieldTypeConfig::Date
             | FieldTypeConfig::Color
@@ -531,7 +534,7 @@ fields:
   effort:
     type: duration
     min: 1h
-    max: 2w
+    max: 15d
   when_done:
     type: date
     compute:
@@ -652,8 +655,9 @@ rules:
         assert_eq!(
             field(&data, "effort").shape,
             FieldShape::Duration {
-                min_seconds: Some(3600),
-                max_seconds: Some(14 * 24 * 3600),
+                min: Some("1h".to_owned()),
+                // Served in canonical form, whatever the file spells.
+                max: Some("2w 1d".to_owned()),
             }
         );
         for scalar in ["start", "flag", "color", "labels"] {

@@ -214,6 +214,53 @@ fn an_unloadable_candidate_is_refused_with_the_parse_error_and_nothing_is_writte
     assert_eq!(schema_text(&root), original, "file must be untouched");
 }
 
+#[test]
+fn bounds_the_parser_rejects_are_refused_with_its_message() {
+    let (_directory, root, config) = setup();
+    let original = schema_text(&root);
+
+    // A duration bound is written as the editor spelled it and judged
+    // by the parser, so a misspelling comes back as the parser's words.
+    let misspelled = definition(
+        FieldType::Duration,
+        FieldShape::Duration {
+            min: Some("2 days".to_owned()),
+            max: None,
+        },
+    );
+    let error = add_field(&config, &root, config_path(), "effort", &misspelled).unwrap_err();
+    match &error {
+        SchemaWriteError::Unloadable { detail } => {
+            assert!(
+                detail.contains("'min' is not a valid duration"),
+                "detail: {detail}"
+            );
+        }
+        other => panic!("expected Unloadable, got {other:?}"),
+    }
+
+    // An inverted numeric pair admits no value at all.
+    let inverted = definition(
+        FieldType::Integer,
+        FieldShape::Numeric {
+            min: Some(10.0),
+            max: Some(5.0),
+        },
+    );
+    let error = add_field(&config, &root, config_path(), "points", &inverted).unwrap_err();
+    match &error {
+        SchemaWriteError::Unloadable { detail } => {
+            assert!(
+                detail.contains("'min' must be less than or equal to 'max'"),
+                "detail: {detail}"
+            );
+        }
+        other => panic!("expected Unloadable, got {other:?}"),
+    }
+
+    assert_eq!(schema_text(&root), original, "file must be untouched");
+}
+
 // ── update_field ─────────────────────────────────────────────────
 
 #[test]

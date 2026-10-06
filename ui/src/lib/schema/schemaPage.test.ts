@@ -93,16 +93,10 @@ describe('typeSummary', () => {
 		expect(typeSummary({ kind: 'numeric', min: null, max: null })).toBeNull();
 	});
 
-	it('renders duration bounds as suffix shorthand', () => {
-		// 40 hours, in the compact form every table and chart uses. The
-		// payload types the seconds as bigint, JSON delivers a number — both
-		// are accepted.
-		expect(typeSummary({ kind: 'duration', min_seconds: null, max_seconds: 144000n })).toBe(
-			'at most 1d 16h'
-		);
-		expect(
-			typeSummary({ kind: 'duration', min_seconds: 900 as unknown as bigint, max_seconds: null })
-		).toBe('at least 15min');
+	it('phrases duration bounds as the shorthand the server serves', () => {
+		expect(typeSummary({ kind: 'duration', min: null, max: '1d 16h' })).toBe('at most 1d 16h');
+		expect(typeSummary({ kind: 'duration', min: '15min', max: '2w' })).toBe('15min to 2w');
+		expect(typeSummary({ kind: 'duration', min: null, max: null })).toBeNull();
 	});
 
 	it('shows the pattern of a text field, nothing without one', () => {

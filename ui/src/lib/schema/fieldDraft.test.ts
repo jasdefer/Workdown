@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import {
+	boundsProblem,
 	emptyShape,
 	generatorsFor,
 	initialDraft,
@@ -9,7 +10,9 @@ import {
 	settingsWithoutEditor,
 	shapeKindOf,
 	specOfDraft,
+	withBound,
 	writeBody,
+	type BoundedShape,
 	type FieldDraft,
 	type TypeTables
 } from './fieldDraft';
@@ -140,11 +143,7 @@ describe('emptyShape', () => {
 	it('has every setting unset for every kind', () => {
 		expect(emptyShape('scalar')).toEqual({ kind: 'scalar' });
 		expect(emptyShape('numeric')).toEqual({ kind: 'numeric', min: null, max: null });
-		expect(emptyShape('duration')).toEqual({
-			kind: 'duration',
-			min_seconds: null,
-			max_seconds: null
-		});
+		expect(emptyShape('duration')).toEqual({ kind: 'duration', min: null, max: null });
 		expect(emptyShape('text')).toEqual({ kind: 'text', pattern: null });
 		expect(emptyShape('values')).toEqual({ kind: 'values', values: [] });
 		expect(emptyShape('relation')).toEqual({ kind: 'relation', allow_cycles: null, inverse: null });
@@ -166,9 +165,41 @@ describe('the type tables', () => {
 		expect(generatorsFor(tables, 'link')).toEqual([]);
 	});
 
-	it('leave the recipe keys out of the settings edited in the file', () => {
-		expect(settingsWithoutEditor(tables, 'integer')).toEqual(['min', 'max']);
+	it('leave the recipe keys and the edited bounds out of the settings edited in the file', () => {
+		expect(settingsWithoutEditor(tables, 'string')).toEqual(['pattern', 'resource']);
+		expect(settingsWithoutEditor(tables, 'integer')).toEqual([]);
+		expect(settingsWithoutEditor(tables, 'duration')).toEqual([]);
 		expect(settingsWithoutEditor(tables, 'date')).toEqual([]);
+	});
+});
+
+describe('withBound', () => {
+	it('sets a numeric bound from the editor and clears it on null', () => {
+		const shape: BoundedShape = { kind: 'numeric', min: null, max: 10 };
+		expect(withBound(shape, 'min', 2)).toEqual({ kind: 'numeric', min: 2, max: 10 });
+		expect(withBound(shape, 'max', null)).toEqual({ kind: 'numeric', min: null, max: null });
+	});
+
+	it('sets a duration bound as the shorthand typed and clears it on blank', () => {
+		const shape: BoundedShape = { kind: 'duration', min: null, max: null };
+		expect(withBound(shape, 'max', '2w 1d')).toEqual({ kind: 'duration', min: null, max: '2w 1d' });
+		expect(withBound({ ...shape, min: '1h' }, 'min', '')).toEqual(shape);
+	});
+
+	it('treats a value of the wrong kind as cleared', () => {
+		expect(withBound({ kind: 'numeric', min: 1, max: null }, 'min', 'two').min).toBeNull();
+	});
+});
+
+describe('boundsProblem', () => {
+	it('names an inverted numeric pair and accepts an equal one', () => {
+		expect(boundsProblem({ kind: 'numeric', min: 10, max: 5 })).toBe('Min must not exceed max.');
+		expect(boundsProblem({ kind: 'numeric', min: 5, max: 5 })).toBeNull();
+		expect(boundsProblem({ kind: 'numeric', min: null, max: 5 })).toBeNull();
+	});
+
+	it('leaves duration bounds to the server', () => {
+		expect(boundsProblem({ kind: 'duration', min: '4w', max: '1d' })).toBeNull();
 	});
 });
 

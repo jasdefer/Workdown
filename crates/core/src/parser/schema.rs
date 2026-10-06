@@ -662,25 +662,23 @@ fn validate_type_specific_properties(
             _ => {}
         },
         FieldType::Integer | FieldType::Float => {
+            // min/max are numbers; validate they are and that min ≤ max
+            // if both are present. Bounds in the wrong order admit no
+            // value at all, so no item could ever satisfy the field.
             validate_numeric_bound(name, "min", &field.min, field.field_type, errors);
             validate_numeric_bound(name, "max", &field.max, field.field_type, errors);
+            let min = field.min.as_ref().and_then(parse_numeric_bound);
+            let max = field.max.as_ref().and_then(parse_numeric_bound);
+            check_bound_order(name, min, max, errors);
         }
         FieldType::Duration => {
             // min/max are duration strings; validate they parse and that
             // min ≤ max if both are present.
             validate_duration_bound(name, "min", &field.min, errors);
             validate_duration_bound(name, "max", &field.max, errors);
-            if let (Some(min), Some(max)) = (
-                parse_duration_bound_opt(&field.min),
-                parse_duration_bound_opt(&field.max),
-            ) {
-                if min > max {
-                    errors.push(field_error(
-                        name,
-                        "'min' must be less than or equal to 'max'",
-                    ));
-                }
-            }
+            let min = parse_duration_bound_opt(&field.min);
+            let max = parse_duration_bound_opt(&field.max);
+            check_bound_order(name, min, max, errors);
         }
         FieldType::String => {
             // A pattern that will not compile is a schema defect, so it
@@ -720,6 +718,25 @@ fn property_is_set(field: &RawFieldDefinition, property: FieldProperty) -> bool 
         FieldProperty::Inverse => field.inverse.is_some(),
         FieldProperty::Compute => field.compute.is_some(),
         FieldProperty::Pull => field.pull.is_some(),
+    }
+}
+
+/// `min` does not exceed `max` where both bounds parsed; one or both
+/// absent is fine. One message for every bounded type, so the editor can
+/// rely on its wording.
+fn check_bound_order<Bound: PartialOrd>(
+    field_name: &str,
+    min: Option<Bound>,
+    max: Option<Bound>,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    if let (Some(min), Some(max)) = (min, max) {
+        if min > max {
+            errors.push(field_error(
+                field_name,
+                "'min' must be less than or equal to 'max'",
+            ));
+        }
     }
 }
 
@@ -1637,6 +1654,47 @@ fields:
                 .message
                 .contains("'min' must be a duration string for type 'duration'")),
             "expected duration-string error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn numeric_min_greater_than_max_rejected() {
+        for field_type in ["integer", "float"] {
+            let yaml = format!(
+                "\
+fields:
+  points:
+    type: {field_type}
+    min: 10
+    max: 5
+"
+            );
+            let err = parse_schema(&yaml).unwrap_err();
+            let errors = match err {
+                SchemaLoadError::Validation(e) => e,
+                other => panic!("expected Validation error, got: {other}"),
+            };
+            assert!(
+                errors.iter().any(|e| e
+                    .message
+                    .contains("'min' must be less than or equal to 'max'")),
+                "{field_type}: expected min/max ordering error, got: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn numeric_equal_bounds_accepted() {
+        let yaml = "\
+fields:
+  points:
+    type: integer
+    min: 5
+    max: 5
+";
+        assert!(
+            parse_schema(yaml).is_ok(),
+            "equal bounds admit exactly one value"
         );
     }
 

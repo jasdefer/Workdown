@@ -21,8 +21,9 @@
   block; the confirmation offers to remove the field alone or to drop
   the values from those items as well.
 
-  The type-specific block covers the plain scalars (nothing to edit);
-  the other blocks are later items, and until each lands the panel says
+  The type-specific block covers the plain scalars (nothing to edit)
+  and the bounds of integer, float and duration (`BoundsBlock`); the
+  other blocks are later items, and until each lands the panel says
   which settings are edited in the file for now.
 -->
 <script lang="ts">
@@ -35,8 +36,10 @@
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
 	import SlideOver from '$lib/ui/SlideOver.svelte';
+	import BoundsBlock from './BoundsBlock.svelte';
 	import DefaultControl from './DefaultControl.svelte';
 	import {
+		boundsProblem,
 		generatorsFor,
 		initialDraft,
 		newDraft,
@@ -44,6 +47,7 @@
 		settingsWithoutEditor,
 		specOfDraft,
 		writeBody,
+		type BoundedShape,
 		type DraftDefault
 	} from './fieldDraft';
 	import { blockerPhrase, removeDialogText, summarizeUsage, type UsageSummary } from './fieldUsage';
@@ -102,6 +106,12 @@
 	const generators = $derived(generatorsFor(definition, draft.fieldType));
 	const pendingSettings = $derived(settingsWithoutEditor(definition, draft.fieldType));
 	const nameValid = $derived(existing !== null || draft.name.trim() !== '');
+	// The bounds the draft carries, when its type has any; what is wrong
+	// with them, when something is, greys out Save.
+	const bounds = $derived<BoundedShape | null>(
+		draft.shape.kind === 'numeric' || draft.shape.kind === 'duration' ? draft.shape : null
+	);
+	const boundsIssue = $derived(bounds === null ? null : boundsProblem(bounds));
 	// What stands in the way of Remove, as the button's explanation;
 	// `null` once nothing does, or while the answer is not in.
 	const blockedBy = $derived(usage.status === 'loaded' ? blockerPhrase(usage.summary) : null);
@@ -179,6 +189,10 @@
 
 	function onDefaultChange(next: DraftDefault | null): void {
 		draft.default = next;
+	}
+
+	function onBoundsChange(next: BoundedShape): void {
+		draft.shape = next;
 	}
 
 	// The remove confirmation: one answer, or two once items hold a
@@ -288,6 +302,16 @@
 
 					<!-- ── Type-specific block ──────────────────────────────── -->
 
+					{#if bounds !== null}
+						<BoundsBlock
+							shape={bounds}
+							fieldType={draft.fieldType}
+							problem={boundsIssue}
+							disabled={saving}
+							onchange={onBoundsChange}
+						/>
+					{/if}
+
 					{#if pendingSettings.length > 0}
 						<p class="hint">
 							{pendingSettings.length === 1 ? 'The setting' : 'The settings'}
@@ -366,7 +390,12 @@
 			<!-- ── Footer ───────────────────────────────────────────── -->
 
 			<div class="actions">
-				<button type="submit" class="primary" disabled={saving || !nameValid}>
+				<button
+					type="submit"
+					class="primary"
+					disabled={saving || !nameValid || boundsIssue !== null}
+					title={boundsIssue ?? undefined}
+				>
 					{#if existing === null}
 						{saving ? 'Adding…' : 'Add field'}
 					{:else}

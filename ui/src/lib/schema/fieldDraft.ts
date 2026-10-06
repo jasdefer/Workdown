@@ -118,7 +118,7 @@ export function emptyShape(kind: ShapeKind): FieldShape {
 		case 'numeric':
 			return { kind: 'numeric', min: null, max: null };
 		case 'duration':
-			return { kind: 'duration', min_seconds: null, max_seconds: null };
+			return { kind: 'duration', min: null, max: null };
 		case 'text':
 			return { kind: 'text', pattern: null };
 		case 'values':
@@ -158,17 +158,68 @@ export function generatorsFor(tables: TypeTables, fieldType: FieldType): Generat
 /** The recipe keys: set by a fill mechanism, never by this editor. */
 const RECIPE_PROPERTIES: FieldProperty[] = ['compute', 'aggregate', 'pull'];
 
+/** The properties the panel has a control for: the bounds block. */
+const PROPERTIES_WITH_EDITOR: FieldProperty[] = ['min', 'max'];
+
 /**
  * The properties of `fieldType` this editor has no control for yet,
  * so the panel can say they are edited in the file for now. The
- * type-specific blocks each remove their properties from this answer
- * as they land; the recipe keys never appear, they are not plain
- * properties.
+ * type-specific blocks each add their properties to
+ * `PROPERTIES_WITH_EDITOR` as they land; the recipe keys never appear,
+ * they are not plain properties.
  */
 export function settingsWithoutEditor(tables: TypeTables, fieldType: FieldType): FieldProperty[] {
 	return propertiesOf(tables, fieldType).filter(
-		(property) => !RECIPE_PROPERTIES.includes(property)
+		(property) =>
+			!RECIPE_PROPERTIES.includes(property) && !PROPERTIES_WITH_EDITOR.includes(property)
 	);
+}
+
+/** A shape with inclusive bounds: numbers for `integer` and `float`, shorthand text for `duration`. */
+export type BoundedShape = Extract<FieldShape, { kind: 'numeric' | 'duration' }>;
+
+/**
+ * The shape with one bound replaced by what the value editor handed
+ * over. The editor emits the type's own value — a number for a numeric
+ * field, shorthand text for a duration — or `null` when cleared, which
+ * unsets the bound and removes the key from the file. A value of the
+ * wrong kind cannot come from the editor; it is treated as cleared
+ * rather than written into a shape it does not fit.
+ */
+export function withBound(
+	shape: BoundedShape,
+	bound: 'min' | 'max',
+	value: FieldValue | null
+): BoundedShape {
+	switch (shape.kind) {
+		case 'numeric': {
+			const next = typeof value === 'number' ? value : null;
+			return bound === 'min' ? { ...shape, min: next } : { ...shape, max: next };
+		}
+		case 'duration': {
+			const next = typeof value === 'string' && value !== '' ? value : null;
+			return bound === 'min' ? { ...shape, min: next } : { ...shape, max: next };
+		}
+	}
+}
+
+/**
+ * Why the bounds cannot be saved as they stand, or `null`. Only a
+ * numeric pair can be judged here; duration bounds are text whose
+ * grammar lives in Rust, so their order is the server's call, and the
+ * save comes back with its message. Saves a round trip, nothing more:
+ * the server refuses an inverted pair either way.
+ */
+export function boundsProblem(shape: BoundedShape): string | null {
+	if (
+		shape.kind === 'numeric' &&
+		shape.min !== null &&
+		shape.max !== null &&
+		shape.min > shape.max
+	) {
+		return 'Min must not exceed max.';
+	}
+	return null;
 }
 
 /**

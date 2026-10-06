@@ -88,7 +88,6 @@ use serde::{Deserialize, Serialize};
 use crate::config_check;
 use crate::model::config::Config;
 use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic};
-use crate::model::duration::format_duration_seconds;
 use crate::model::schema::{widening_targets, FieldType, Generator, Schema, Severity};
 use crate::model::work_item::WorkItem;
 use crate::operations::diagnostics::{introduced_by_mutation, introduced_diagnostics};
@@ -673,15 +672,14 @@ fn plain_properties(definition: &FieldDefinitionWrite) -> Vec<(&'static str, ser
                 properties.push(("max", numeric_bound(*max, definition.field_type)));
             }
         }
-        FieldShape::Duration {
-            min_seconds,
-            max_seconds,
-        } => {
-            if let Some(min) = min_seconds {
-                properties.push(("min", Value::String(format_duration_seconds(*min))));
+        // Written as sent; `parse_schema` judges the text afterwards and
+        // refuses the write with its message when a bound does not parse.
+        FieldShape::Duration { min, max } => {
+            if let Some(min) = min {
+                properties.push(("min", Value::String(min.clone())));
             }
-            if let Some(max) = max_seconds {
-                properties.push(("max", Value::String(format_duration_seconds(*max))));
+            if let Some(max) = max {
+                properties.push(("max", Value::String(max.clone())));
             }
         }
         FieldShape::Text { pattern } => {
@@ -999,16 +997,20 @@ rules:
             ["type", "min", "required"]
         );
 
+        // A duration bound is written as the editor spelled it.
         let duration = definition(
             FieldType::Duration,
             FieldShape::Duration {
-                min_seconds: Some(3600),
-                max_seconds: Some(14 * 24 * 3600),
+                min: Some("1h".to_owned()),
+                max: Some("2w 1d".to_owned()),
             },
         );
         let properties = plain_properties(&duration);
         assert_eq!(properties[1].1, serde_yaml::Value::String("1h".to_owned()));
-        assert_eq!(properties[2].1, serde_yaml::Value::String("2w".to_owned()));
+        assert_eq!(
+            properties[2].1,
+            serde_yaml::Value::String("2w 1d".to_owned())
+        );
 
         let text = definition(
             FieldType::String,
