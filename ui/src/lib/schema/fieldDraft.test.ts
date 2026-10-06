@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import {
-	boundsProblem,
 	emptyShape,
 	generatorsFor,
 	initialDraft,
@@ -9,8 +8,11 @@ import {
 	retype,
 	settingsWithoutEditor,
 	shapeKindOf,
+	shapeProblem,
 	specOfDraft,
+	takesResource,
 	withBound,
+	withPattern,
 	writeBody,
 	type BoundedShape,
 	type FieldDraft,
@@ -165,11 +167,26 @@ describe('the type tables', () => {
 		expect(generatorsFor(tables, 'link')).toEqual([]);
 	});
 
-	it('leave the recipe keys and the edited bounds out of the settings edited in the file', () => {
-		expect(settingsWithoutEditor(tables, 'string')).toEqual(['pattern', 'resource']);
+	it('leave the recipe keys and the edited settings out of those edited in the file', () => {
+		expect(settingsWithoutEditor(tables, 'link')).toEqual(['allow_cycles', 'inverse']);
+		expect(settingsWithoutEditor(tables, 'string')).toEqual([]);
 		expect(settingsWithoutEditor(tables, 'integer')).toEqual([]);
 		expect(settingsWithoutEditor(tables, 'duration')).toEqual([]);
 		expect(settingsWithoutEditor(tables, 'date')).toEqual([]);
+	});
+
+	it('say which types may name a resource', () => {
+		expect(takesResource(tables, 'string')).toBe(true);
+		expect(takesResource(tables, 'list')).toBe(true);
+		expect(takesResource(tables, 'integer')).toBe(false);
+	});
+});
+
+describe('withPattern', () => {
+	it('sets the pattern as typed and clears it on blank', () => {
+		const shape = { kind: 'text', pattern: null } as const;
+		expect(withPattern(shape, '^[a-z-]+$')).toEqual({ kind: 'text', pattern: '^[a-z-]+$' });
+		expect(withPattern({ kind: 'text', pattern: '^x' }, '   ')).toEqual(shape);
 	});
 });
 
@@ -191,15 +208,16 @@ describe('withBound', () => {
 	});
 });
 
-describe('boundsProblem', () => {
+describe('shapeProblem', () => {
 	it('names an inverted numeric pair and accepts an equal one', () => {
-		expect(boundsProblem({ kind: 'numeric', min: 10, max: 5 })).toBe('Min must not exceed max.');
-		expect(boundsProblem({ kind: 'numeric', min: 5, max: 5 })).toBeNull();
-		expect(boundsProblem({ kind: 'numeric', min: null, max: 5 })).toBeNull();
+		expect(shapeProblem({ kind: 'numeric', min: 10, max: 5 })).toBe('Min must not exceed max.');
+		expect(shapeProblem({ kind: 'numeric', min: 5, max: 5 })).toBeNull();
+		expect(shapeProblem({ kind: 'numeric', min: null, max: 5 })).toBeNull();
 	});
 
-	it('leaves duration bounds to the server', () => {
-		expect(boundsProblem({ kind: 'duration', min: '4w', max: '1d' })).toBeNull();
+	it('leaves duration bounds and patterns to the server', () => {
+		expect(shapeProblem({ kind: 'duration', min: '4w', max: '1d' })).toBeNull();
+		expect(shapeProblem({ kind: 'text', pattern: '(' })).toBeNull();
 	});
 });
 

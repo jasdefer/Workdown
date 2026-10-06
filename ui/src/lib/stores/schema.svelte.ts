@@ -61,6 +61,14 @@ export const schemaStore = {
 	get palette(): PaletteColor[] {
 		return data?.palette ?? [];
 	},
+	/**
+	 * The names of the resource lists `resources.yaml` declares, in file
+	 * order, empty ones included — the option set for a field's
+	 * `resource:` picker in the schema editor. Empty until loaded.
+	 */
+	get resourceNames(): string[] {
+		return data?.resources.map((list) => list.name) ?? [];
+	},
 	/** Set when the last load failed; `null` otherwise. */
 	get error(): string | null {
 		return loadError;

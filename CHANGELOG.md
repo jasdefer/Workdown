@@ -68,6 +68,15 @@ its source — internal refactors are deliberately absent.
   numeric pair with *Min* above *Max* greys out *Save* with the reason;
   a duration bound is written as typed and refused with the parser's
   message when it does not parse.
+- The field editor edits a `string` field's `pattern` and the
+  `resource:` of `string` and `list` fields. *Pattern* is a text input
+  for the regex a value must match, written as typed and refused with
+  the parser's message when it is not a valid expression. *Resource*
+  is a picker over the lists `resources.yaml` declares, with a blank
+  choice for none; a name the file holds that no list carries stays
+  selectable, marked as unknown, so a save does not silently drop it.
+  Both can be set on the same field, as the schema allows. Clearing
+  either removes the key from the file.
 
 ### Changed
 

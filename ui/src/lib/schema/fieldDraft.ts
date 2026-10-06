@@ -158,8 +158,8 @@ export function generatorsFor(tables: TypeTables, fieldType: FieldType): Generat
 /** The recipe keys: set by a fill mechanism, never by this editor. */
 const RECIPE_PROPERTIES: FieldProperty[] = ['compute', 'aggregate', 'pull'];
 
-/** The properties the panel has a control for: the bounds block. */
-const PROPERTIES_WITH_EDITOR: FieldProperty[] = ['min', 'max'];
+/** The properties the panel has a control for: the bounds and text blocks, the resource control. */
+const PROPERTIES_WITH_EDITOR: FieldProperty[] = ['min', 'max', 'pattern', 'resource'];
 
 /**
  * The properties of `fieldType` this editor has no control for yet,
@@ -175,8 +175,16 @@ export function settingsWithoutEditor(tables: TypeTables, fieldType: FieldType):
 	);
 }
 
+/** Whether a field of `fieldType` may name a resource list. */
+export function takesResource(tables: TypeTables, fieldType: FieldType): boolean {
+	return propertiesOf(tables, fieldType).includes('resource');
+}
+
 /** A shape with inclusive bounds: numbers for `integer` and `float`, shorthand text for `duration`. */
 export type BoundedShape = Extract<FieldShape, { kind: 'numeric' | 'duration' }>;
+
+/** The shape of a `string`: an optional pattern the value must match. */
+export type TextShape = Extract<FieldShape, { kind: 'text' }>;
 
 /**
  * The shape with one bound replaced by what the value editor handed
@@ -204,22 +212,36 @@ export function withBound(
 }
 
 /**
- * Why the bounds cannot be saved as they stand, or `null`. Only a
- * numeric pair can be judged here; duration bounds are text whose
- * grammar lives in Rust, so their order is the server's call, and the
- * save comes back with its message. Saves a round trip, nothing more:
- * the server refuses an inverted pair either way.
+ * The text shape with its pattern replaced by what was typed; blank
+ * means no pattern, which removes the key from the file. The text is
+ * kept as typed otherwise — a regex may begin or end with a space.
  */
-export function boundsProblem(shape: BoundedShape): string | null {
-	if (
-		shape.kind === 'numeric' &&
-		shape.min !== null &&
-		shape.max !== null &&
-		shape.min > shape.max
-	) {
-		return 'Min must not exceed max.';
+export function withPattern(shape: TextShape, pattern: string): TextShape {
+	return { ...shape, pattern: pattern.trim() === '' ? null : pattern };
+}
+
+/**
+ * Why the type-specific settings cannot be saved as they stand, or
+ * `null`. Judged per shape, and only where the browser has the rule:
+ * a numeric pair in the wrong order. Duration bounds are text whose
+ * grammar lives in Rust, and a pattern is a regex in Rust's dialect,
+ * which the browser's `RegExp` would judge differently; both are the
+ * server's call, and the save comes back with its message. Saves a
+ * round trip, nothing more: the server refuses the same things.
+ */
+export function shapeProblem(shape: FieldShape): string | null {
+	switch (shape.kind) {
+		case 'numeric':
+			return shape.min !== null && shape.max !== null && shape.min > shape.max
+				? 'Min must not exceed max.'
+				: null;
+		case 'scalar':
+		case 'duration':
+		case 'text':
+		case 'values':
+		case 'relation':
+			return null;
 	}
-	return null;
 }
 
 /**

@@ -21,33 +21,36 @@
   block; the confirmation offers to remove the field alone or to drop
   the values from those items as well.
 
-  The type-specific block covers the plain scalars (nothing to edit)
-  and the bounds of integer, float and duration (`BoundsBlock`); the
-  other blocks are later items, and until each lands the panel says
-  which settings are edited in the file for now.
+  The type-specific part is `ShapeBlock`, dispatched on the shape the
+  type is edited as, plus the `resource:` picker for the types that
+  take one — a property of the field, not of its shape. The blocks for
+  choice values and link settings are later items, and until each
+  lands the panel says which settings are edited in the file for now.
 -->
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { api } from '$lib/api/client';
 	import type { Diagnostic } from '$lib/api/generated/Diagnostic';
 	import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
+	import type { FieldShape } from '$lib/api/generated/FieldShape';
 	import type { FieldType } from '$lib/api/generated/FieldType';
 	import type { SchemaDefinitionData } from '$lib/api/generated/SchemaDefinitionData';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
 	import SlideOver from '$lib/ui/SlideOver.svelte';
-	import BoundsBlock from './BoundsBlock.svelte';
 	import DefaultControl from './DefaultControl.svelte';
+	import ResourceControl from './ResourceControl.svelte';
+	import ShapeBlock from './ShapeBlock.svelte';
 	import {
-		boundsProblem,
 		generatorsFor,
 		initialDraft,
 		newDraft,
 		retype,
 		settingsWithoutEditor,
+		shapeProblem,
 		specOfDraft,
+		takesResource,
 		writeBody,
-		type BoundedShape,
 		type DraftDefault
 	} from './fieldDraft';
 	import { blockerPhrase, removeDialogText, summarizeUsage, type UsageSummary } from './fieldUsage';
@@ -106,12 +109,10 @@
 	const generators = $derived(generatorsFor(definition, draft.fieldType));
 	const pendingSettings = $derived(settingsWithoutEditor(definition, draft.fieldType));
 	const nameValid = $derived(existing !== null || draft.name.trim() !== '');
-	// The bounds the draft carries, when its type has any; what is wrong
-	// with them, when something is, greys out Save.
-	const bounds = $derived<BoundedShape | null>(
-		draft.shape.kind === 'numeric' || draft.shape.kind === 'duration' ? draft.shape : null
-	);
-	const boundsIssue = $derived(bounds === null ? null : boundsProblem(bounds));
+	// What is wrong with the type-specific settings, when something the
+	// browser can judge is; greys out Save with the reason.
+	const shapeIssue = $derived(shapeProblem(draft.shape));
+	const showsResource = $derived(takesResource(definition, draft.fieldType));
 	// What stands in the way of Remove, as the button's explanation;
 	// `null` once nothing does, or while the answer is not in.
 	const blockedBy = $derived(usage.status === 'loaded' ? blockerPhrase(usage.summary) : null);
@@ -191,8 +192,12 @@
 		draft.default = next;
 	}
 
-	function onBoundsChange(next: BoundedShape): void {
+	function onShapeChange(next: FieldShape): void {
 		draft.shape = next;
+	}
+
+	function onResourceChange(next: string | null): void {
+		draft.resource = next;
 	}
 
 	// The remove confirmation: one answer, or two once items hold a
@@ -302,13 +307,20 @@
 
 					<!-- ── Type-specific block ──────────────────────────────── -->
 
-					{#if bounds !== null}
-						<BoundsBlock
-							shape={bounds}
-							fieldType={draft.fieldType}
-							problem={boundsIssue}
+					<ShapeBlock
+						shape={draft.shape}
+						fieldType={draft.fieldType}
+						problem={shapeIssue}
+						disabled={saving}
+						onchange={onShapeChange}
+					/>
+
+					{#if showsResource}
+						<ResourceControl
+							value={draft.resource}
+							names={schemaStore.resourceNames}
 							disabled={saving}
-							onchange={onBoundsChange}
+							onchange={onResourceChange}
 						/>
 					{/if}
 
@@ -393,8 +405,8 @@
 				<button
 					type="submit"
 					class="primary"
-					disabled={saving || !nameValid || boundsIssue !== null}
-					title={boundsIssue ?? undefined}
+					disabled={saving || !nameValid || shapeIssue !== null}
+					title={shapeIssue ?? undefined}
 				>
 					{#if existing === null}
 						{saving ? 'Adding…' : 'Add field'}
