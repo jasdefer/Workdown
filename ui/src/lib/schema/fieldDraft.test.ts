@@ -2,17 +2,19 @@ import { describe, it, expect } from 'vitest';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import {
 	emptyShape,
+	forbidsCycles,
 	generatorsFor,
 	initialDraft,
 	newDraft,
 	retype,
-	settingsWithoutEditor,
 	shapeKindOf,
 	shapeProblem,
 	specOfDraft,
 	takesResource,
 	valueProblem,
 	withBound,
+	withForbidCycles,
+	withInverse,
 	withPattern,
 	withValueAdded,
 	withValueMoved,
@@ -21,6 +23,7 @@ import {
 	writeBody,
 	type BoundedShape,
 	type FieldDraft,
+	type RelationShape,
 	type TypeTables,
 	type ValuesShape
 } from './fieldDraft';
@@ -173,15 +176,6 @@ describe('the type tables', () => {
 		expect(generatorsFor(tables, 'link')).toEqual([]);
 	});
 
-	it('leave the recipe keys and the edited settings out of those edited in the file', () => {
-		expect(settingsWithoutEditor(tables, 'link')).toEqual(['allow_cycles', 'inverse']);
-		expect(settingsWithoutEditor(tables, 'string')).toEqual([]);
-		expect(settingsWithoutEditor(tables, 'choice')).toEqual([]);
-		expect(settingsWithoutEditor(tables, 'integer')).toEqual([]);
-		expect(settingsWithoutEditor(tables, 'duration')).toEqual([]);
-		expect(settingsWithoutEditor(tables, 'date')).toEqual([]);
-	});
-
 	it('say which types may name a resource', () => {
 		expect(takesResource(tables, 'string')).toBe(true);
 		expect(takesResource(tables, 'list')).toBe(true);
@@ -194,6 +188,30 @@ describe('withPattern', () => {
 		const shape = { kind: 'text', pattern: null } as const;
 		expect(withPattern(shape, '^[a-z-]+$')).toEqual({ kind: 'text', pattern: '^[a-z-]+$' });
 		expect(withPattern({ kind: 'text', pattern: '^x' }, '   ')).toEqual(shape);
+	});
+});
+
+describe('the relation shape', () => {
+	const unset: RelationShape = { kind: 'relation', allow_cycles: null, inverse: null };
+
+	it('reads only an explicit false as forbidding cycles', () => {
+		expect(forbidsCycles({ ...unset, allow_cycles: false })).toBe(true);
+		expect(forbidsCycles({ ...unset, allow_cycles: true })).toBe(false);
+		expect(forbidsCycles(unset)).toBe(false);
+	});
+
+	it('writes false when forbidding and removes the key otherwise', () => {
+		expect(withForbidCycles(unset, true)).toEqual({ ...unset, allow_cycles: false });
+		expect(withForbidCycles({ ...unset, allow_cycles: false }, false)).toEqual(unset);
+	});
+
+	it('sets the inverse trimmed and clears it on blank', () => {
+		expect(withInverse(unset, '  children ')).toEqual({ ...unset, inverse: 'children' });
+		expect(withInverse({ ...unset, inverse: 'children' }, '   ')).toEqual(unset);
+	});
+
+	it('leaves the inverse name to the server', () => {
+		expect(shapeProblem({ ...unset, inverse: 'Not An Identifier' })).toBeNull();
 	});
 });
 

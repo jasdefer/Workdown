@@ -87,6 +87,16 @@ its source — internal refactors are deliberately absent.
   as they are, with a warning on each after the save, which the block
   says; a default naming a value that is no longer listed is refused
   on save with the parser's message. An empty list greys out *Save*.
+- The field editor edits the settings of `link` and `links` fields.
+  A *Forbid cycles* box writes `allow_cycles: false` when checked and
+  removes the key when not, the one distinction the cycle check and
+  the rollup and pull recipes make; a field that said `true` is
+  written without the key on its next save. An *Inverse* input takes
+  the name the relation has from the other side, blank for none; a
+  name that is not an identifier or that collides with a field or
+  another inverse is refused on save with the parser's message. With
+  this, every type-specific setting has a control and the panel's
+  "edited in schema.yaml for now" note is gone.
 
 ### Changed
 

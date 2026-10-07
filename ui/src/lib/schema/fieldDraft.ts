@@ -155,26 +155,6 @@ export function generatorsFor(tables: TypeTables, fieldType: FieldType): Generat
 	);
 }
 
-/** The recipe keys: set by a fill mechanism, never by this editor. */
-const RECIPE_PROPERTIES: FieldProperty[] = ['compute', 'aggregate', 'pull'];
-
-/** The properties the panel has a control for: the bounds, text and values blocks, the resource control. */
-const PROPERTIES_WITH_EDITOR: FieldProperty[] = ['min', 'max', 'pattern', 'resource', 'values'];
-
-/**
- * The properties of `fieldType` this editor has no control for yet,
- * so the panel can say they are edited in the file for now. The
- * type-specific blocks each add their properties to
- * `PROPERTIES_WITH_EDITOR` as they land; the recipe keys never appear,
- * they are not plain properties.
- */
-export function settingsWithoutEditor(tables: TypeTables, fieldType: FieldType): FieldProperty[] {
-	return propertiesOf(tables, fieldType).filter(
-		(property) =>
-			!RECIPE_PROPERTIES.includes(property) && !PROPERTIES_WITH_EDITOR.includes(property)
-	);
-}
-
 /** Whether a field of `fieldType` may name a resource list. */
 export function takesResource(tables: TypeTables, fieldType: FieldType): boolean {
 	return propertiesOf(tables, fieldType).includes('resource');
@@ -218,6 +198,43 @@ export function withBound(
  */
 export function withPattern(shape: TextShape, pattern: string): TextShape {
 	return { ...shape, pattern: pattern.trim() === '' ? null : pattern };
+}
+
+/** The shape of a `link` or `links`: the cycle policy and the name the relation has from the other side. */
+export type RelationShape = Extract<FieldShape, { kind: 'relation' }>;
+
+/**
+ * Whether the block's "Forbid cycles" box is checked for `shape`. The
+ * file has three spellings — `false`, `true` and nothing — but only
+ * `false` turns the cycle check on, and only `false` lets a recipe
+ * climb the relation; `true` and nothing behave the same. The block
+ * therefore offers the one choice that matters.
+ */
+export function forbidsCycles(shape: RelationShape): boolean {
+	return shape.allow_cycles === false;
+}
+
+/**
+ * The shape with the cycle policy set from the box: checked writes
+ * `allow_cycles: false`, unchecked removes the key. A field that said
+ * `true` is written without the key on its next save, which means the
+ * same thing (see `forbidsCycles`).
+ */
+export function withForbidCycles(shape: RelationShape, forbid: boolean): RelationShape {
+	return { ...shape, allow_cycles: forbid ? false : null };
+}
+
+/**
+ * The shape with its inverse replaced by what was typed, trimmed;
+ * blank means no inverse, which removes the key from the file. Whether
+ * the name is a valid identifier, or collides with a field or another
+ * inverse, is the server's call — the same rules the field name itself
+ * is judged by, kept in one place — and its message comes back to the
+ * panel on save.
+ */
+export function withInverse(shape: RelationShape, text: string): RelationShape {
+	const inverse = text.trim();
+	return { ...shape, inverse: inverse === '' ? null : inverse };
 }
 
 /** The shape of a `choice` or `multichoice`: the allowed values, in the order boards and dropdowns show them. */

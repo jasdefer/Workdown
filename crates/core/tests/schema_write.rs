@@ -322,6 +322,48 @@ fn update_field_widens_the_type_and_drops_the_old_type_properties() {
 }
 
 #[test]
+fn update_field_writes_the_relation_settings_and_clearing_them_removes_the_keys() {
+    let (_directory, root, config) = setup();
+    let before = fields_tree(&root);
+    let forbidding = definition(
+        FieldType::Links,
+        FieldShape::Relation {
+            allow_cycles: Some(false),
+            inverse: Some("linked_from".to_owned()),
+        },
+    );
+
+    update_field(&config, &root, config_path(), "related_to", &forbidding).unwrap();
+
+    let after = fields_tree(&root);
+    assert_untouched(&before, &after, &["related_to"]);
+    let entry = after["related_to"].as_mapping().unwrap();
+    assert_eq!(
+        entry.get("allow_cycles"),
+        Some(&serde_yaml::Value::Bool(false))
+    );
+    assert_eq!(
+        entry.get("inverse"),
+        Some(&serde_yaml::Value::String("linked_from".to_owned()))
+    );
+
+    let cleared = definition(
+        FieldType::Links,
+        FieldShape::Relation {
+            allow_cycles: None,
+            inverse: None,
+        },
+    );
+
+    update_field(&config, &root, config_path(), "related_to", &cleared).unwrap();
+
+    assert_eq!(
+        property_keys(&fields_tree(&root), "related_to"),
+        ["type", "required"]
+    );
+}
+
+#[test]
 fn update_field_of_a_recipe_field_cannot_change_its_type() {
     let (_directory, root, config) = setup();
     let original = schema_text(&root);

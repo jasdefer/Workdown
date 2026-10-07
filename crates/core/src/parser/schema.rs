@@ -1523,6 +1523,46 @@ rules:
             .contains("'values' must not contain an empty value")));
     }
 
+    // The three refusals of `validate_inverse_property`. The web
+    // editor's relation block leaves the inverse name to these, so
+    // each is pinned with its message.
+
+    fn inverse_errors(yaml: &str) -> Vec<SchemaValidationError> {
+        match parse_schema(yaml).unwrap_err() {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        }
+    }
+
+    #[test]
+    fn inverse_that_is_not_an_identifier_rejected() {
+        let errors =
+            inverse_errors("fields:\n  parent:\n    type: link\n    inverse: Child Items\n");
+        assert!(errors.iter().any(|e| e.message.contains(
+            "inverse name 'Child Items' must be lowercase letters, digits, and underscores"
+        )));
+    }
+
+    #[test]
+    fn inverse_colliding_with_a_field_name_rejected() {
+        let errors = inverse_errors(
+            "fields:\n  parent:\n    type: link\n    inverse: title\n  title:\n    type: string\n",
+        );
+        assert!(errors.iter().any(|e| e
+            .message
+            .contains("inverse name 'title' conflicts with a defined field name")));
+    }
+
+    #[test]
+    fn inverse_used_by_two_fields_rejected() {
+        let errors = inverse_errors(
+            "fields:\n  parent:\n    type: link\n    inverse: children\n  owner:\n    type: link\n    inverse: children\n",
+        );
+        assert!(errors.iter().any(|e| e
+            .message
+            .contains("inverse name 'children' is already used by field 'parent'")));
+    }
+
     #[test]
     fn min_on_string_rejected() {
         let yaml = "\

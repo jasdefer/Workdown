@@ -84,7 +84,7 @@ the property table in the schema model:
 | Numeric | integer, float, duration | min, max |
 | Text | string, list | pattern; resource picker over `resources.yaml` |
 | Value list | choice, multichoice | ordered values: add, remove, reorder, edit |
-| Relation | link, links | allow cycles toggle; inverse picker over the other link fields |
+| Relation | link, links | forbid-cycles box; inverse as free text (a new name, judged by the server — revised 2026-10-07) |
 
 Editing a value in the value list does not rewrite items holding the
 old value; the save preview reports how many would warn.

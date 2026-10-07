@@ -23,9 +23,7 @@
 
   The type-specific part is `ShapeBlock`, dispatched on the shape the
   type is edited as, plus the `resource:` picker for the types that
-  take one — a property of the field, not of its shape. The block for
-  link settings is a later item, and until it lands the panel says
-  which settings are edited in the file for now.
+  take one — a property of the field, not of its shape.
 -->
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
@@ -46,7 +44,6 @@
 		initialDraft,
 		newDraft,
 		retype,
-		settingsWithoutEditor,
 		shapeProblem,
 		specOfDraft,
 		takesResource,
@@ -107,7 +104,6 @@
 
 	const fieldTypes = $derived(definition.properties_by_type.map((row) => row.field_type));
 	const generators = $derived(generatorsFor(definition, draft.fieldType));
-	const pendingSettings = $derived(settingsWithoutEditor(definition, draft.fieldType));
 	const nameValid = $derived(existing !== null || draft.name.trim() !== '');
 	// What is wrong with the type-specific settings, when something the
 	// browser can judge is; greys out Save with the reason.
@@ -322,16 +318,6 @@
 							disabled={saving}
 							onchange={onResourceChange}
 						/>
-					{/if}
-
-					{#if pendingSettings.length > 0}
-						<p class="hint">
-							{pendingSettings.length === 1 ? 'The setting' : 'The settings'}
-							{#each pendingSettings as setting, index (setting)}
-								{index > 0 ? ', ' : ''}<code>{setting}</code>
-							{/each}
-							{pendingSettings.length === 1 ? 'is' : 'are'} edited in schema.yaml for now.
-						</p>
 					{/if}
 				</div>
 
