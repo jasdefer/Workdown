@@ -38,9 +38,10 @@ live in `resources.yaml` and get their own editor later.
 **Fields** is a table in declaration order, one row per field: name,
 type, required, default, the first line of the description, and badges
 for anything the row cannot express as a plain property — *computed*,
-*conditional*, *pulled*, *aggregated*, *resource-backed*. Rows have a
-drag handle; dropping a row rewrites the order in the file, because
-declaration order drives form layout and board columns. An **Add
+*conditional*, *pulled*, *aggregated*, *resource-backed*. Rows have Up and
+Down buttons (a drag handle until revised 2026-10-08); a click
+rewrites the order in the file, because declaration order drives form
+layout and board columns. An **Add
 field** button sits below the table. Clicking a row opens the field
 editor.
 
@@ -228,6 +229,10 @@ otherwise silently overwrite someone's edit to the same field.
 10. **Save per field definition.** Not live, not per page.
 11. **Reorder in the first cut.** Cheap on the splice write, and order
     is user-visible in every form and board.
+    *Revised 2026-10-08:* Up and Down buttons per row instead of a
+    drag handle, as the value list has. The feature is rarely used;
+    buttons need no drag code and work with keyboard and touch. See
+    [[schema-field-reorder]].
 12. **Type changes: forbid by default, allow widening.** A hand-kept
     table in Rust of changes that cannot invalidate a value.
 13. **Only fields and rules on the page.** Resources and constants wait

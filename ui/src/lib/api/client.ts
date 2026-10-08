@@ -28,6 +28,7 @@ import type { GitStatus } from './generated/GitStatus';
 import type { FieldMutationResult } from './generated/FieldMutationResult';
 import type { ItemDetail } from './generated/ItemDetail';
 import type { ProjectIdentity } from './generated/ProjectIdentity';
+import type { ReorderFields } from './generated/ReorderFields';
 import type { SchemaData } from './generated/SchemaData';
 import type { SchemaDefinitionData } from './generated/SchemaDefinitionData';
 import type { SchemaMutationResult } from './generated/SchemaMutationResult';
@@ -203,6 +204,14 @@ export const api = {
 	 */
 	getFieldUsage: (name: string) =>
 		request<FieldUsage>('GET', `/api/schema/fields/${encodeURIComponent(name)}/usage`),
+	/**
+	 * Rewrite the order of `fields:` from the full name list. A list that
+	 * is not a permutation of the current names (stale after another tab
+	 * added or removed a field) is a `422`. Not `/fields/order`: a field
+	 * named `order` would clash with it.
+	 */
+	reorderFields: (body: ReorderFields) =>
+		request<SchemaMutationResult>('PUT', '/api/schema/field-order', body),
 	/**
 	 * The project's identity — name and description. Answered from the
 	 * config the server read at start, so it survives a project that

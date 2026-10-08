@@ -97,6 +97,13 @@ its source — internal refactors are deliberately absent.
   another inverse is refused on save with the parser's message. With
   this, every type-specific setting has a control and the panel's
   "edited in schema.yaml for now" note is gone.
+- The schema page moves fields. Each row of the fields table has Up
+  and Down buttons; a click moves the field one place in
+  `schema.yaml`, so the create form, the detail panel and the board's
+  columns follow. `id` stays first and has no buttons. One write per
+  click; a write refused because the list is out of date (another tab
+  removed a field meanwhile) shows above the table and the page
+  refetches.
 
 ### Changed
 

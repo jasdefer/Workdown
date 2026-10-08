@@ -18,9 +18,7 @@ flowchart TD
     end
     subgraph schema-editor-web ["See and edit the schema in the web app"]
         schema-derived-field-editor["Edit compute, when, pull and aggregate blocks in the field editor"]
-        schema-field-editor-relation["Field editor block for link and links"]
         schema-field-rename["Rename a field and everything that names it"]
-        schema-field-reorder["Drag fields into a new order on the schema page"]
         schema-field-type-change["Let an existing field change type, but only to a type that keeps every value valid"]
         schema-rules-editor["Edit rules on the schema page"]
         schema-string-to-choice["Turn a free-text field into a choice, with the values it already holds"]

@@ -13,9 +13,7 @@ Hierarchical outline following `parent` upward to roots.
   - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — status: to_do
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md) — status: in_progress
   - [Edit compute, when, pull and aggregate blocks in the field editor](../workdown-items/schema-derived-field-editor.md) — status: on_hold
-  - [Field editor block for link and links](../workdown-items/schema-field-editor-relation.md) — status: to_do
   - [Rename a field and everything that names it](../workdown-items/schema-field-rename.md) — status: on_hold
-  - [Drag fields into a new order on the schema page](../workdown-items/schema-field-reorder.md) — status: to_do
   - [Let an existing field change type, but only to a type that keeps every value valid](../workdown-items/schema-field-type-change.md) — status: to_do
   - [Edit rules on the schema page](../workdown-items/schema-rules-editor.md) — status: to_do
   - [Turn a free-text field into a choice, with the values it already holds](../workdown-items/schema-string-to-choice.md) — status: on_hold

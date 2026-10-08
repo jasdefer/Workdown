@@ -7,6 +7,7 @@ import {
 	firstLine,
 	idFirst,
 	loadFailure,
+	movedFieldOrder,
 	panelTarget,
 	settingsLine,
 	typeSummary
@@ -28,6 +29,39 @@ describe('idFirst', () => {
 	it('leaves a schema without an id field unchanged', () => {
 		const fields = [{ name: 'title' }, { name: 'status' }];
 		expect(idFirst(fields)).toBe(fields);
+	});
+});
+
+describe('movedFieldOrder', () => {
+	const fields = [{ name: 'id' }, { name: 'title' }, { name: 'status' }, { name: 'owner' }];
+
+	it('moves a field one row down', () => {
+		expect(movedFieldOrder(fields, 'title', 'down')).toEqual(['id', 'status', 'title', 'owner']);
+	});
+
+	it('moves a field one row up', () => {
+		expect(movedFieldOrder(fields, 'owner', 'up')).toEqual(['id', 'title', 'owner', 'status']);
+	});
+
+	it('refuses to move the last row down', () => {
+		expect(movedFieldOrder(fields, 'owner', 'down')).toBeNull();
+	});
+
+	it('refuses to move the row below id up, so id stays first', () => {
+		expect(movedFieldOrder(fields, 'title', 'up')).toBeNull();
+	});
+
+	it('refuses to move id', () => {
+		expect(movedFieldOrder(fields, 'id', 'down')).toBeNull();
+	});
+
+	it('refuses a name the table does not have', () => {
+		expect(movedFieldOrder(fields, 'priority', 'up')).toBeNull();
+	});
+
+	it('leaves the given list unchanged', () => {
+		movedFieldOrder(fields, 'status', 'up');
+		expect(fields.map((field) => field.name)).toEqual(['id', 'title', 'status', 'owner']);
 	});
 });
 

@@ -31,6 +31,30 @@ export function idFirst<Field extends Pick<FieldDefinitionData, 'name'>>(fields:
 }
 
 /**
+ * The name list to send for moving `name` one row up or down in the
+ * table order, or `null` when the move is not possible: the row is at
+ * that end of the table, the row is `id`, the move would put a row
+ * above `id`, or no row has that name. `null` is what greys a button
+ * out, so a click that somehow lands sends nothing.
+ */
+export function movedFieldOrder(
+	fields: Pick<FieldDefinitionData, 'name'>[],
+	name: string,
+	direction: 'up' | 'down'
+): string[] | null {
+	const index = fields.findIndex((field) => field.name === name);
+	if (index < 0) return null;
+	const target = direction === 'up' ? index - 1 : index + 1;
+	if (target < 0 || target >= fields.length) return null;
+	if (fields[index]?.name === 'id' || fields[target]?.name === 'id') return null;
+	const names = fields.map((field) => field.name);
+	const [moved] = names.splice(index, 1);
+	if (moved === undefined) return null;
+	names.splice(target, 0, moved);
+	return names;
+}
+
+/**
  * Where a field's value comes from when nobody types it: the fill
  * mechanisms the field declares. The "Filled by" column lists them;
  * blank means the value is written by hand.

@@ -7,6 +7,9 @@
   URL state (`?field=<name>`, `?add`), so the panel survives the
   watcher's refetch and the back button closes it. A save closes the
   panel and leaves its warnings above the table until the next save.
+  The Up and Down buttons on a row move the field one place in the
+  file: one write per click, then a refetch, as on the board. `id` has
+  no buttons and nothing moves above it.
 
   The frontend learns nothing about types here. Every badge, summary
   line and default comes from the payload; the type system stays in
@@ -21,15 +24,18 @@
   refreshes the page.
 -->
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
+	import { tick } from 'svelte';
 	import type { PageData } from './$types';
 	import type { Diagnostic } from '$lib/api/generated/Diagnostic';
+	import { api } from '$lib/api/client';
 	import FieldPanel from '$lib/schema/FieldPanel.svelte';
 	import {
 		fillMechanisms,
 		firstLine,
 		idFirst,
 		loadFailure,
+		movedFieldOrder,
 		panelTarget,
 		settingsLine
 	} from '$lib/schema/schemaPage';
@@ -63,6 +69,38 @@
 		lastWarnings = warnings;
 		void goto('/schema', { invalidateAll: true, keepFocus: true, noScroll: true });
 	}
+
+	// A move is one write and a refetch, as the board does it; the row
+	// jumps when the new order arrives. The buttons are greyed out while
+	// the write is in flight: a second click before the refetch would be
+	// computed from the old order and send the same move again.
+	let reordering = $state(false);
+	let reorderError = $state<string | null>(null);
+
+	async function moveField(name: string, direction: 'up' | 'down'): Promise<void> {
+		if (reordering) return;
+		const order = movedFieldOrder(fields, name, direction);
+		if (order === null) return;
+		reordering = true;
+		reorderError = null;
+		const result = await api.reorderFields({ order });
+		reordering = false;
+		if (result.error !== undefined) {
+			// A stale list (another tab removed a field) is refused as not
+			// a permutation of the file's names; the refetch repairs it.
+			reorderError = result.error;
+			await invalidateAll();
+			return;
+		}
+		lastWarnings = result.diagnostics;
+		await invalidateAll();
+		// The buttons travel with their row (rows are keyed by name), but
+		// a node moved in the DOM can drop focus; put it back so Enter
+		// keeps walking the row.
+		await tick();
+		const selector = `[data-move="${CSS.escape(`${name}:${direction}`)}"]`;
+		document.querySelector<HTMLElement>(selector)?.focus();
+	}
 </script>
 
 <!-- A row: the page, and beside it the docked field editor when one is
@@ -86,6 +124,9 @@
 					<p class="muted">Fix the file in a text editor; this page refreshes when it changes.</p>
 				</section>
 			{:else if definition !== null}
+				{#if reorderError !== null}
+					<p class="reorder-error" role="alert">{reorderError}</p>
+				{/if}
 				<DiagnosticList diagnostics={lastWarnings} label="Warnings from the last change" />
 
 				<section aria-labelledby="fields-heading">
@@ -97,6 +138,7 @@
 					     table never grows past its container and the ellipsis
 					     cut happens inside the available space. -->
 							<colgroup>
+								<col class="col-move" />
 								<col class="col-name" />
 								<col class="col-type" />
 								<col class="col-filled" />
@@ -106,6 +148,7 @@
 							</colgroup>
 							<thead>
 								<tr>
+									<th scope="col"><span class="sr-only">Order</span></th>
 									<th scope="col">Field</th>
 									<th scope="col">Type</th>
 									<th scope="col">Filled by</th>
@@ -127,6 +170,28 @@
 											void goto(fieldHref(field.name), { keepFocus: true, noScroll: true });
 										}}
 									>
+										<!-- `id` is pinned to the top: no buttons, and the helper
+											 refuses any move that would put a row above it. -->
+										<td class="move-cell">
+											{#if field.name !== 'id'}
+												{#each ['up', 'down'] as const as direction (direction)}
+													<button
+														type="button"
+														class="move"
+														class:busy={reordering}
+														aria-label="Move '{field.name}' {direction}"
+														aria-disabled={reordering}
+														title="Move {direction}"
+														data-move="{field.name}:{direction}"
+														disabled={movedFieldOrder(fields, field.name, direction) === null}
+														onclick={(event) => {
+															event.stopPropagation();
+															void moveField(field.name, direction);
+														}}>{direction === 'up' ? '↑' : '↓'}</button
+													>
+												{/each}
+											{/if}
+										</td>
 										<td class="name-cell">
 											<a
 												class="field-name"
@@ -320,6 +385,10 @@
 		table-layout: fixed;
 	}
 
+	.col-move {
+		width: 4.75rem;
+	}
+
 	.col-name {
 		width: 18%;
 	}
@@ -374,6 +443,44 @@
 	.field-row.open td {
 		background-color: var(--color-surface);
 		box-shadow: inset 3px 0 0 var(--color-accent);
+	}
+
+	.reorder-error {
+		margin: 0;
+		padding: var(--space-2) var(--space-3);
+		border: 1px solid var(--color-error-fg);
+		border-radius: var(--radius-md);
+		color: var(--color-error-fg);
+		font-size: var(--text-sm);
+	}
+
+	.move-cell {
+		white-space: nowrap;
+		padding-right: 0;
+	}
+
+	/* The value list's buttons, so the two reorder controls on the
+	   schema pages read as one. */
+	.move {
+		width: 1.75rem;
+		padding: 0.25rem 0;
+		background-color: var(--color-surface);
+		color: var(--color-fg-muted);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		font-size: var(--text-sm);
+		line-height: 1;
+		cursor: pointer;
+	}
+
+	.move:not(:disabled):not(.busy):hover {
+		color: var(--color-fg);
+	}
+
+	.move:disabled,
+	.move.busy {
+		opacity: 0.5;
+		cursor: default;
 	}
 
 	.name-cell {
