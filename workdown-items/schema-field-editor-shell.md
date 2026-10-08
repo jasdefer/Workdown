@@ -24,8 +24,8 @@ The field editor as defined in [[schema-editor-web-design]].
   **Add field** button opens it empty.
 - **Header block.** Name (free for a new field, locked for an
   existing one), type selector (every type for a new field; for an
-  existing field only the current type until
-  [[schema-field-type-change]]), required toggle, description.
+  existing field only the current type, a change is made in
+  `schema.yaml`), required toggle, description.
 - **Default control.** Three-way: none, a fixed value entered with the
   same type-dispatched editor the item panel uses, or a generator
   chosen from those the API lists as valid for the type.
@@ -59,7 +59,9 @@ The field editor as defined in [[schema-editor-web-design]].
 - The numeric, text, value-list and relation blocks:
   [[schema-field-editor-numeric]], [[schema-field-editor-text]],
   [[schema-field-editor-values]], [[schema-field-editor-relation]].
-- Changing an existing field's type: [[schema-field-type-change]].
+- Changing an existing field's type. Done in `schema.yaml`; the item
+  for it was removed on 2026-10-08 (decision 12 of
+  [[schema-editor-web-design]]).
 
 ## Decisions taken
 

@@ -19,7 +19,6 @@ flowchart TD
     subgraph schema-editor-web ["See and edit the schema in the web app"]
         schema-derived-field-editor["Edit compute, when, pull and aggregate blocks in the field editor"]
         schema-field-rename["Rename a field and everything that names it"]
-        schema-field-type-change["Let an existing field change type, but only to a type that keeps every value valid"]
         schema-rules-editor["Edit rules on the schema page"]
         schema-string-to-choice["Turn a free-text field into a choice, with the values it already holds"]
     end
@@ -29,6 +28,4 @@ flowchart TD
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end
     status-transition-dates["Fill in a date when a status changes, instead of typing it by hand"]
-    schema-rules-editor --> schema-field-type-change
-    schema-string-to-choice --> schema-field-type-change
 ```

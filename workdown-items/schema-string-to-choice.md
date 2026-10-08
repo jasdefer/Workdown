@@ -2,7 +2,7 @@
 id: schema-string-to-choice
 status: on_hold
 parent: schema-editor-web
-depends_on: [schema-field-type-change, schema-field-editor-values]
+depends_on: [schema-field-editor-values]
 title: Turn a free-text field into a choice, with the values it already holds
 ---
 
@@ -15,10 +15,12 @@ not on the new list becomes invalid. But the tool can see which values
 are in use — offer them as the starting list, and the change is safe
 by construction.
 
-**Parked until** [[schema-field-type-change]] and
-[[schema-field-editor-values]] have shipped. Noted in
-[[schema-editor-web-design]] as the one forbidden conversion worth
-making possible.
+**Parked.** The value-list editor it builds on has shipped; the
+general type-change item it was to extend was removed on 2026-10-08
+(the editor changes no types, see decision 12 of
+[[schema-editor-web-design]]), so this would be the editor's only type
+change and needs its own selector path. Noted in the design item as
+the one forbidden conversion worth making possible.
 
 ## What has to be settled when it is picked up
 

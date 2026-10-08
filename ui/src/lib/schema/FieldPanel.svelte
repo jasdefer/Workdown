@@ -92,9 +92,10 @@
 	const isId = existing?.name === 'id';
 	const recipe = existing === null ? [] : fillMechanisms(existing);
 	const hasRecipe = recipe.length > 0;
-	// Every existing field keeps its type until `schema-field-type-change`
-	// lands; a field with a recipe keeps it for good, the recipe was
-	// type-checked against it.
+	// Every existing field keeps its type here; a change is made in
+	// `schema.yaml`, where any pair is possible and judged at load (the
+	// write route's widening table stays as its guard). A field with a
+	// recipe keeps it for good, the recipe was type-checked against it.
 	const typeLocked = existing !== null;
 	// On a conditional field `default:` is the recipe's fallback and the
 	// write leaves it untouched, so the control would appear to work and

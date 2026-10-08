@@ -1,6 +1,6 @@
 ---
 id: schema-field-reorder
-status: done
+                                                                      status: done
 parent: schema-editor-web
 depends_on: [schema-page-read-view, schema-field-write-backend]
 title: Move fields up and down on the schema page

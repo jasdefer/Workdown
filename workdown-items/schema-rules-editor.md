@@ -2,7 +2,7 @@
 id: schema-rules-editor
 status: to_do
 parent: schema-editor-web
-depends_on: [schema-page-read-view, schema-field-write-backend, schema-field-type-change]
+depends_on: [schema-page-read-view, schema-field-write-backend]
 title: Edit rules on the schema page
 ---
 

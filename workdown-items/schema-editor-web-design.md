@@ -235,6 +235,11 @@ otherwise silently overwrite someone's edit to the same field.
     [[schema-field-reorder]].
 12. **Type changes: forbid by default, allow widening.** A hand-kept
     table in Rust of changes that cannot invalidate a value.
+    *Revised 2026-10-08:* the editor does not change types at all; the
+    item was removed. The safe list is short (integer to float, a few
+    types to string or list) and nobody has asked for it; the selector
+    points at `schema.yaml`, where any change is possible and judged at
+    load. The table stays in Rust as the write route's guard.
 13. **Only fields and rules on the page.** Resources and constants wait
     for a resources editor.
 14. **Comment-blind editor** (2026-09-10). No comment note in the
@@ -268,9 +273,10 @@ Cut on 2026-09-09 as children of [[schema-editor-web]], in build order:
 6. [[schema-field-editor-text]] — pattern, resource picker.
 7. [[schema-field-editor-values]] — the ordered value-list editor.
 8. [[schema-field-editor-relation]] — allow cycles, inverse picker.
-9. [[schema-field-reorder]] — drag handle on the table.
-10. [[schema-field-type-change]] — widening table, greyed selector,
-    confirm on dropped properties.
+9. [[schema-field-reorder]] — Up and Down buttons on the table.
+10. `schema-field-type-change` — widening table, greyed selector,
+    confirm on dropped properties. Removed 2026-10-08, see decision
+    12; the file is in git history.
 11. [[schema-rules-editor]] — its UX designed once the field editor
     exists; adds the structured rule shape to the definition endpoint.
 
