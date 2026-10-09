@@ -20,11 +20,11 @@ flowchart TD
     subgraph schema-editor-web ["See and edit the schema in the web app"]
         schema-derived-field-editor["Edit compute, when, pull and aggregate blocks in the field editor"]
         schema-field-rename["Rename a field and everything that names it"]
-        schema-rules-editor["Edit rules on the schema page"]
         schema-string-to-choice["Turn a free-text field into a choice, with the values it already holds"]
     end
     subgraph schema-expressions ["Derived field expressions"]
         expression-logical-combinators["`and` / `or` / `not` in the expression grammar"]
+        rule-literal-comparisons["Compare a field with a literal in a rule's match block"]
         when-map-shorthand["`map:` — lookup-table shorthand over the `when:` evaluator"]
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end

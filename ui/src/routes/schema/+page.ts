@@ -12,9 +12,10 @@
 // the page for free, while the store is never re-fetched by the ping. No
 // other page needs this payload.
 //
-// The field editor's state is the URL, as the item panel's is on a view
-// page: `?field=<name>` opens the panel on that field, `?add` opens it
-// empty. Both are read here so the page re-runs when they change.
+// The editors' state is the URL, as the item panel's is on a view page:
+// `?field=<name>` opens the field panel on that field, `?add` opens it
+// empty, `?rule=<name>` and `?add-rule` do the same for the rule panel.
+// All four are read here so the page re-runs when they change.
 
 import { api } from '$lib/api/client';
 import type { PageLoad } from './$types';
@@ -24,6 +25,8 @@ export const load: PageLoad = async ({ url }) => {
 	return {
 		result,
 		fieldName: url.searchParams.get('field'),
-		adding: url.searchParams.has('add')
+		adding: url.searchParams.has('add'),
+		ruleName: url.searchParams.get('rule'),
+		addingRule: url.searchParams.has('add-rule')
 	};
 };

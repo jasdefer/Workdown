@@ -11,13 +11,13 @@ Cards grouped into columns by `status`.
 - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md)
 - [Check comparison references in rules at schema load](../workdown-items/rule-comparison-reference-check.md)
+- [Compare a field with a literal in a rule's match block](../workdown-items/rule-literal-comparisons.md)
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md)
 
 ## in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
-- [Edit rules on the schema page](../workdown-items/schema-rules-editor.md)
 
 ## on_hold
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
@@ -134,6 +134,7 @@ Cards grouped into columns by `status`.
 - [Expose schema metadata so the UI can offer valid choices](../workdown-items/schema-metadata-api.md)
 - [A schema page that shows the fields and rules](../workdown-items/schema-page-read-view.md)
 - [Table-drive the "is this property allowed on this field type?" check](../workdown-items/schema-property-table.md)
+- [Edit rules on the schema page](../workdown-items/schema-rules-editor.md)
 - [Interactive UI (workdown serve)](../workdown-items/server.md)
 - [One git layer for the server and the CLI, in its own crate](../workdown-items/shared-git-crate.md)
 - [Fix the documentation that is actively wrong](../workdown-items/stale-docs-refresh.md)

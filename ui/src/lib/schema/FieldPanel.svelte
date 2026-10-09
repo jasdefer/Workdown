@@ -51,11 +51,11 @@
 		type DraftDefault
 	} from './fieldDraft';
 	import { blockerPhrase, removeDialogText, summarizeUsage, type UsageSummary } from './fieldUsage';
-	import { fillMechanisms, type PanelTarget } from './schemaPage';
+	import { fillMechanisms, type FieldPanelTarget } from './schemaPage';
 
 	interface Props {
 		definition: SchemaDefinitionData;
-		target: PanelTarget;
+		target: FieldPanelTarget;
 		onclose: () => void;
 		/** The write happened; the host shows `warnings` and closes the panel. */
 		onsaved: (warnings: Diagnostic[]) => void;

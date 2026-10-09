@@ -3,10 +3,12 @@
   `GET /api/schema/definition` and shown as the file has it. Two
   sections in file order — Fields, a table with one row per field, and
   Rules, one entry per rule. A row click opens the field editor
-  (`FieldPanel`) as a slide-over, Add field opens it empty; both are
-  URL state (`?field=<name>`, `?add`), so the panel survives the
-  watcher's refetch and the back button closes it. A save closes the
-  panel and leaves its warnings above the table until the next save.
+  (`FieldPanel`) docked beside the page, Add field opens it empty; a
+  rule entry opens the rule editor (`RulePanel`) the same way, Add rule
+  opens it empty. All four are URL state (`?field=<name>`, `?add`,
+  `?rule=<name>`, `?add-rule`), so the panel survives the watcher's
+  refetch and the back button closes it. A save closes the panel and
+  leaves its warnings above the table until the next save.
   The Up and Down buttons on a row move the field one place in the
   file: one write per click, then a refetch, as on the board. `id` has
   no buttons and nothing moves above it.
@@ -30,10 +32,12 @@
 	import type { Diagnostic } from '$lib/api/generated/Diagnostic';
 	import { api } from '$lib/api/client';
 	import FieldPanel from '$lib/schema/FieldPanel.svelte';
+	import RulePanel from '$lib/schema/RulePanel.svelte';
 	import {
 		fillMechanisms,
 		firstLine,
 		idFirst,
+		isFieldTarget,
 		loadFailure,
 		movedFieldOrder,
 		panelTarget,
@@ -57,6 +61,10 @@
 
 	function fieldHref(name: string): string {
 		return `/schema?field=${encodeURIComponent(name)}`;
+	}
+
+	function ruleHref(name: string): string {
+		return `/schema?rule=${encodeURIComponent(name)}`;
 	}
 
 	// Closing the panel drops the query — load() depends on it, so this
@@ -248,39 +256,53 @@
 					{:else}
 						<ul class="rules">
 							{#each definition.rules as rule (rule.name)}
-								<li class="rule">
-									<div class="rule-header">
-										<code class="rule-name">{rule.name}</code>
-										<span
-											class="severity"
-											class:error={rule.severity === 'error'}
-											title={rule.severity === 'error'
-												? 'An item breaking this rule fails validation'
-												: 'An item breaking this rule only gets a warning'}
-										>
-											{rule.severity}
-										</span>
-									</div>
-									{#if rule.description !== null}
-										<p class="rule-description">{rule.description}</p>
-									{/if}
-									{#if rule.body !== ''}
-										<pre class="rule-body">{rule.body}</pre>
-									{/if}
+								<!-- The whole entry is the link that opens the editor, so
+								     the keyboard and the URL get it for free. -->
+								<li>
+									<a
+										class="rule"
+										class:open={panel?.kind === 'edit-rule' && panel.name === rule.name}
+										href={ruleHref(rule.name)}
+									>
+										<div class="rule-header">
+											<code class="rule-name">{rule.name}</code>
+											<span
+												class="severity"
+												class:error={rule.severity === 'error'}
+												title={rule.severity === 'error'
+													? 'An item breaking this rule fails validation'
+													: 'An item breaking this rule only gets a warning'}
+											>
+												{rule.severity}
+											</span>
+										</div>
+										{#if rule.description !== null}
+											<p class="rule-description">{rule.description}</p>
+										{/if}
+										{#if rule.body !== ''}
+											<pre class="rule-body">{rule.body}</pre>
+										{/if}
+									</a>
 								</li>
 							{/each}
 						</ul>
 					{/if}
+					<a class="add-field" href="/schema?add-rule">+ Add rule</a>
 				</section>
 			{/if}
 		</div>
 	</div>
 
-	<!-- Keyed by the field so moving between rows remounts the panel with a
-     fresh draft, while a refetch of the same field leaves it alone. -->
+	<!-- Keyed by the field or rule so moving between entries remounts the
+     panel with a fresh draft, while a refetch of the same one leaves it
+     alone. -->
 	{#if definition !== null && panel !== null}
-		{#key panel.kind === 'edit' ? panel.name : ''}
-			<FieldPanel {definition} target={panel} onclose={closePanel} {onsaved} />
+		{#key `${panel.kind}:${'name' in panel ? panel.name : ''}`}
+			{#if isFieldTarget(panel)}
+				<FieldPanel {definition} target={panel} onclose={closePanel} {onsaved} />
+			{:else}
+				<RulePanel {definition} target={panel} onclose={closePanel} {onsaved} />
+			{/if}
 		{/key}
 	{/if}
 </div>
@@ -579,6 +601,16 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
 		background-color: var(--color-surface);
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.rule:hover {
+		border-color: var(--color-fg-muted);
+	}
+
+	.rule.open {
+		box-shadow: inset 3px 0 0 var(--color-accent);
 	}
 
 	.rule-header {

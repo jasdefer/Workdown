@@ -178,18 +178,30 @@ export function loadFailure(result: ApiResult<SchemaDefinitionData>): LoadFailur
 }
 
 /**
- * Which field the editor panel is for, from the page's URL: `?field=`
- * names an existing field, `?add` asks for a new one, neither keeps the
- * panel closed. Both at once is a URL nobody writes; adding wins so the
- * empty form is what shows.
+ * Which editor panel is open and for what, from the page's URL:
+ * `?field=` names an existing field, `?add` asks for a new one,
+ * `?rule=` names an existing rule, `?add-rule` asks for a new one;
+ * none keeps the panel closed. Two at once is a URL nobody writes;
+ * adding wins over editing and a field over a rule, so one panel shows.
  */
-export type PanelTarget = { kind: 'add' } | { kind: 'edit'; name: string };
+export type FieldPanelTarget = { kind: 'add' } | { kind: 'edit'; name: string };
+export type RulePanelTarget = { kind: 'add-rule' } | { kind: 'edit-rule'; name: string };
+export type PanelTarget = FieldPanelTarget | RulePanelTarget;
 
 export function panelTarget(search: {
 	fieldName: string | null;
 	adding: boolean;
+	ruleName: string | null;
+	addingRule: boolean;
 }): PanelTarget | null {
 	if (search.adding) return { kind: 'add' };
+	if (search.addingRule) return { kind: 'add-rule' };
 	if (search.fieldName !== null) return { kind: 'edit', name: search.fieldName };
+	if (search.ruleName !== null) return { kind: 'edit-rule', name: search.ruleName };
 	return null;
+}
+
+/** Whether a panel target is one of the field editor's. */
+export function isFieldTarget(target: PanelTarget): target is FieldPanelTarget {
+	return target.kind === 'add' || target.kind === 'edit';
 }

@@ -212,18 +212,37 @@ describe('loadFailure', () => {
 });
 
 describe('panelTarget', () => {
+	const closed = { fieldName: null, adding: false, ruleName: null, addingRule: false };
+
 	it('is closed without a query', () => {
-		expect(panelTarget({ fieldName: null, adding: false })).toBeNull();
+		expect(panelTarget(closed)).toBeNull();
 	});
 
 	it('names the field to edit', () => {
-		expect(panelTarget({ fieldName: 'status', adding: false })).toEqual({
+		expect(panelTarget({ ...closed, fieldName: 'status' })).toEqual({
 			kind: 'edit',
 			name: 'status'
 		});
 	});
 
 	it('opens empty for add, even beside a field name', () => {
-		expect(panelTarget({ fieldName: 'status', adding: true })).toEqual({ kind: 'add' });
+		expect(panelTarget({ ...closed, fieldName: 'status', adding: true })).toEqual({ kind: 'add' });
+	});
+
+	it('names the rule to edit and opens empty for add-rule', () => {
+		expect(panelTarget({ ...closed, ruleName: 'needs-owner' })).toEqual({
+			kind: 'edit-rule',
+			name: 'needs-owner'
+		});
+		expect(panelTarget({ ...closed, ruleName: 'needs-owner', addingRule: true })).toEqual({
+			kind: 'add-rule'
+		});
+	});
+
+	it('lets a field win over a rule when both are named', () => {
+		expect(panelTarget({ ...closed, fieldName: 'status', ruleName: 'needs-owner' })).toEqual({
+			kind: 'edit',
+			name: 'status'
+		});
 	});
 });

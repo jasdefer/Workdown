@@ -1,6 +1,6 @@
 ---
 id: schema-rules-editor
-status: in_progress
+status: done
 parent: schema-editor-web
 depends_on: [schema-page-read-view, schema-field-write-backend]
 title: Edit rules on the schema page
@@ -171,3 +171,34 @@ and gets its own backlog entry.
 
 Next: the panel and the row components (step two), then the preview
 wiring (step three).
+
+**2026-10-09, the UI half** (steps two and three). All
+five gates green; clicked through by the user on 2026-10-09, after which
+the match test picker gained "is set" / "is not set" as two entries in
+place of a yes/no cell. A literal comparison in a condition (`points >
+5`) is not in the rule grammar at all; parked as
+[[rule-literal-comparisons]].
+
+- `ui/src/lib/schema/ruleDraft.ts` (+ tests): the draft, the form's
+  view of a reference (anchor + field ⇄ `children.status`), which
+  tests a reference takes by what it points at and the target type,
+  value conversions for the shared `ValueEditor`, row helpers, and
+  `ruleProblem` — what the browser greys Save out for.
+- `ReferencePicker.svelte` (anchor and field selects, stray field kept
+  and marked), `MatchRows.svelte` (quantifier only through a
+  many-valued anchor, test picker, value cell by test kind),
+  `RequireRows.svelte` (requirement picker by target type, comparison
+  with same-type fields plus `$today`, counts only on the related
+  items), `RulePanel.svelte` (docked wide panel, header, rows, count
+  block, YAML pane fed by a 300 ms-debounced `POST
+  /api/schema/rule-preview`, Save also greyed while the preview for
+  the current draft reports a problem; unrepresentable rule shown as
+  text with Remove only; remove behind `ConfirmDialog`).
+- Page: a rule entry is now a link to `?rule=<name>`, "Add rule" to
+  `?add-rule`; `panelTarget` grew the two rule kinds and
+  `isFieldTarget` picks the panel. Labels for quantifiers, tests,
+  comparisons and severities are `Record<Union, string>` tables, so a
+  variant added in Rust fails the UI build until it has a label.
+- Lint lesson: inline handler parameters on component props and on
+  elements inside `{#each}` with `{@const}` lint as `any`; they are
+  annotated explicitly throughout.

@@ -9,6 +9,16 @@ its source — internal refactors are deliberately absent.
 
 ### Added
 
+- The web app's schema page edits rules. A rule entry opens the rule
+  editor beside the page; Add rule opens it empty. A rule is edited as
+  rows — through which relation, which field, which test, which value
+  — with the pickers offering only what the schema has: the fields,
+  a choice's values, the relations and their inverses, a quantifier
+  only through a many-valued relation, a comparison only on a date or
+  a number, a count only on the related items. Beside the rows the
+  panel shows the YAML the save would write, rendered by the server
+  from the rows, and the parser's verdict on it before Save. A rule
+  the rows cannot carry is shown as text and can only be removed.
 - `workdown serve` can write one rule of `schema.yaml` at a time:
   `POST /api/schema/rules` adds a rule, `PUT` and `DELETE
   /api/schema/rules/{name}` replace (and may rename) or remove one.
