@@ -287,7 +287,10 @@ Parked (`on_hold`) until the above has shaped the UX:
 
 - [[schema-derived-field-editor]] — `compute`, `when`, `pull`,
   `aggregate`.
-- [[schema-field-rename]] — rename with rewrite of items, views, rules
-  and expressions.
-- [[schema-string-to-choice]] — conversion with values pre-filled from
-  existing item values.
+- `schema-field-rename` — rename with rewrite of items, views, rules
+  and expressions. Removed 2026-10-09: the editor shipped and nobody
+  asked; the file is in git history.
+- `schema-string-to-choice` — conversion with values pre-filled from
+  existing item values. Removed 2026-10-09: decision 12 made the
+  editor change no types, and this would have been the one exception;
+  the file is in git history.

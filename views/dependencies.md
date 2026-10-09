@@ -19,8 +19,6 @@ flowchart TD
     end
     subgraph schema-editor-web ["See and edit the schema in the web app"]
         schema-derived-field-editor["Edit compute, when, pull and aggregate blocks in the field editor"]
-        schema-field-rename["Rename a field and everything that names it"]
-        schema-string-to-choice["Turn a free-text field into a choice, with the values it already holds"]
     end
     subgraph schema-expressions ["Derived field expressions"]
         expression-logical-combinators["`and` / `or` / `not` in the expression grammar"]

@@ -23,8 +23,6 @@ Cards grouped into columns by `status`.
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
 - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
 - [Edit compute, when, pull and aggregate blocks in the field editor](../workdown-items/schema-derived-field-editor.md)
-- [Rename a field and everything that names it](../workdown-items/schema-field-rename.md)
-- [Turn a free-text field into a choice, with the values it already holds](../workdown-items/schema-string-to-choice.md)
 - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md)
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
