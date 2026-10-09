@@ -13,13 +13,18 @@ use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use workdown_core::model::config::Config;
 use workdown_core::model::diagnostic::{DiagnosticBody, ItemDiagnosticKind};
+use workdown_core::model::rule::{CountConstraint, Severity};
 use workdown_core::model::schema::{DefaultValue, FieldType, FieldTypeConfig};
 use workdown_core::operations::schema_write::{
-    add_field, field_usage, remove_field, reorder_fields, update_field, DefaultWrite,
-    FieldDefinitionWrite, RemovedValues, SchemaWriteError,
+    add_field, add_rule, field_usage, preview_rule, remove_field, remove_rule, reorder_fields,
+    update_field, update_rule, DefaultWrite, FieldDefinitionWrite, RemovedValues,
+    RuleDefinitionWrite, SchemaWriteError,
 };
 use workdown_core::parser::config::load_config;
 use workdown_core::parser::schema::load_schema;
+use workdown_core::rule_shape::{
+    MatchRow, RequireRow, RequireTest, RuleShape, ScalarTest, ScalarValue,
+};
 use workdown_core::schema_definition_data::FieldShape;
 
 const CONFIG: &str = include_str!("../defaults/config.yaml");
@@ -662,4 +667,352 @@ fn field_usage_of_an_unknown_field_is_refused() {
     let error = field_usage(&config, &root, config_path(), "nope").unwrap_err();
 
     assert!(matches!(error, SchemaWriteError::FieldNotFound { name } if name == "nope"));
+}
+
+// ── Rules ────────────────────────────────────────────────────────
+
+/// The `rules:` sequence of the file on disk, as a generic tree.
+fn rules_tree(root: &Path) -> Vec<serde_yaml::Value> {
+    let document: serde_yaml::Value = serde_yaml::from_str(&schema_text(root)).unwrap();
+    document["rules"].as_sequence().unwrap().clone()
+}
+
+fn rule(name: &str, shape: RuleShape) -> RuleDefinitionWrite {
+    RuleDefinitionWrite {
+        name: name.to_owned(),
+        description: None,
+        severity: Severity::default(),
+        shape,
+    }
+}
+
+/// `match: {status: open}`, `require: {priority: required}`.
+fn open_needs_priority() -> RuleShape {
+    RuleShape {
+        match_rows: vec![MatchRow {
+            reference: "status".to_owned(),
+            quantifier: None,
+            test: ScalarTest::Equals {
+                value: ScalarValue::Text("open".to_owned()),
+            },
+        }],
+        require_rows: vec![RequireRow {
+            reference: "priority".to_owned(),
+            test: RequireTest::Required,
+        }],
+        count: None,
+    }
+}
+
+fn require_only(reference: &str) -> RuleShape {
+    RuleShape {
+        match_rows: Vec::new(),
+        require_rows: vec![RequireRow {
+            reference: reference.to_owned(),
+            test: RequireTest::Required,
+        }],
+        count: None,
+    }
+}
+
+/// An equality beside another test on one reference: rows the writer
+/// cannot express as one condition.
+fn unwritable_rows() -> RuleShape {
+    RuleShape {
+        match_rows: vec![
+            MatchRow {
+                reference: "status".to_owned(),
+                quantifier: None,
+                test: ScalarTest::Equals {
+                    value: ScalarValue::Text("open".to_owned()),
+                },
+            },
+            MatchRow {
+                reference: "status".to_owned(),
+                quantifier: None,
+                test: ScalarTest::IsSet { value: true },
+            },
+        ],
+        require_rows: vec![RequireRow {
+            reference: "priority".to_owned(),
+            test: RequireTest::Required,
+        }],
+        count: None,
+    }
+}
+
+#[test]
+fn add_rule_appends_and_leaves_fields_and_other_rules_untouched() {
+    let (_directory, root, config) = setup();
+    let before_fields = fields_tree(&root);
+    let before_rules = rules_tree(&root);
+    let mut definition = rule("open-needs-priority", open_needs_priority());
+    definition.description = Some("Open items carry a priority".to_owned());
+    definition.severity = Severity::Warning;
+
+    let outcome = add_rule(&config, &root, config_path(), &definition).unwrap();
+
+    assert_eq!(outcome.rule_name.as_deref(), Some("open-needs-priority"));
+    assert_eq!(outcome.field_name, None);
+    let after_rules = rules_tree(&root);
+    assert_eq!(after_rules.len(), before_rules.len() + 1);
+    assert_eq!(&after_rules[..before_rules.len()], &before_rules[..]);
+    let added = after_rules.last().unwrap();
+    assert_eq!(added["name"], "open-needs-priority");
+    assert_eq!(added["description"], "Open items carry a priority");
+    assert_eq!(added["severity"], "warning");
+    assert_eq!(added["match"]["status"], "open");
+    assert_eq!(added["require"]["priority"], "required");
+    assert_eq!(fields_tree(&root), before_fields);
+    let schema = load_schema(&root.join(".workdown/schema.yaml")).unwrap();
+    assert!(schema
+        .rules
+        .iter()
+        .any(|rule| rule.name == "open-needs-priority"));
+}
+
+#[test]
+fn add_rule_reports_the_items_it_now_flags() {
+    let (_directory, root, config) = setup();
+    write_item(&root, "alpha", "");
+
+    let outcome = add_rule(
+        &config,
+        &root,
+        config_path(),
+        &rule("open-needs-priority", open_needs_priority()),
+    )
+    .unwrap();
+
+    assert!(outcome.mutation_caused_warning);
+    assert!(!outcome.warnings.is_empty());
+}
+
+#[test]
+fn add_rule_refuses_a_taken_or_invalid_name() {
+    let (_directory, root, config) = setup();
+    let before = schema_text(&root);
+
+    let taken = add_rule(
+        &config,
+        &root,
+        config_path(),
+        &rule("in-progress-needs-assignee", require_only("assignee")),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(taken, SchemaWriteError::DuplicateRuleName { .. }),
+        "{taken}"
+    );
+
+    let invalid = add_rule(
+        &config,
+        &root,
+        config_path(),
+        &rule("Needs_Assignee", require_only("assignee")),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(invalid, SchemaWriteError::InvalidRuleName { .. }),
+        "{invalid}"
+    );
+    assert_eq!(schema_text(&root), before);
+}
+
+#[test]
+fn add_rule_refuses_rows_that_cannot_be_written() {
+    let (_directory, root, config) = setup();
+    let before = schema_text(&root);
+
+    let error = add_rule(
+        &config,
+        &root,
+        config_path(),
+        &rule("open-is-set", unwritable_rows()),
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(error, SchemaWriteError::InvalidRule { .. }),
+        "{error}"
+    );
+    assert!(error.to_string().contains("'status'"), "{error}");
+    assert_eq!(schema_text(&root), before);
+}
+
+#[test]
+fn add_rule_refuses_a_candidate_the_parser_rejects() {
+    let (_directory, root, config) = setup();
+    let before = schema_text(&root);
+
+    let error = add_rule(
+        &config,
+        &root,
+        config_path(),
+        &rule("needs-nothing", require_only("no_such_field")),
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(error, SchemaWriteError::Unloadable { .. }),
+        "{error}"
+    );
+    assert!(error.to_string().contains("no_such_field"), "{error}");
+    assert_eq!(schema_text(&root), before);
+}
+
+#[test]
+fn update_rule_replaces_in_place_and_may_rename() {
+    let (_directory, root, config) = setup();
+    let before_rules = rules_tree(&root);
+    let mut shape = require_only("assignee");
+    shape.count = Some(CountConstraint {
+        min: None,
+        max: Some(5),
+    });
+
+    let outcome = update_rule(
+        &config,
+        &root,
+        config_path(),
+        "in-progress-needs-assignee",
+        &rule("in-progress-capped", shape),
+    )
+    .unwrap();
+
+    assert_eq!(outcome.rule_name.as_deref(), Some("in-progress-capped"));
+    let after_rules = rules_tree(&root);
+    assert_eq!(after_rules.len(), before_rules.len());
+    assert_eq!(after_rules[0]["name"], "in-progress-capped");
+    assert_eq!(after_rules[0]["require"]["assignee"], "required");
+    assert_eq!(after_rules[0]["count"]["max"], 5);
+    assert!(after_rules[0].get("match").is_none());
+    assert!(after_rules[0].get("severity").is_none());
+    assert_eq!(after_rules[1..], before_rules[1..]);
+}
+
+#[test]
+fn update_rule_refuses_renaming_onto_another_rule() {
+    let (_directory, root, config) = setup();
+    let before = schema_text(&root);
+
+    let error = update_rule(
+        &config,
+        &root,
+        config_path(),
+        "in-progress-needs-assignee",
+        &rule("bugs-need-priority", require_only("assignee")),
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(error, SchemaWriteError::DuplicateRuleName { .. }),
+        "{error}"
+    );
+    assert_eq!(schema_text(&root), before);
+}
+
+#[test]
+fn remove_rule_cuts_the_entry_and_keeps_the_rest() {
+    let (_directory, root, config) = setup();
+    let before_fields = fields_tree(&root);
+    let before_rules = rules_tree(&root);
+
+    let outcome = remove_rule(&config, &root, config_path(), "in-progress-needs-assignee").unwrap();
+
+    assert_eq!(
+        outcome.rule_name.as_deref(),
+        Some("in-progress-needs-assignee")
+    );
+    let after_rules = rules_tree(&root);
+    assert_eq!(after_rules, before_rules[1..]);
+    assert_eq!(fields_tree(&root), before_fields);
+}
+
+#[test]
+fn an_unknown_rule_is_not_found() {
+    let (_directory, root, config) = setup();
+
+    let removed = remove_rule(&config, &root, config_path(), "no-such-rule").unwrap_err();
+    assert!(
+        matches!(removed, SchemaWriteError::RuleNotFound { .. }),
+        "{removed}"
+    );
+
+    let updated = update_rule(
+        &config,
+        &root,
+        config_path(),
+        "no-such-rule",
+        &rule("no-such-rule", require_only("assignee")),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(updated, SchemaWriteError::RuleNotFound { .. }),
+        "{updated}"
+    );
+}
+
+#[test]
+fn preview_rule_shows_the_entry_and_the_parsers_verdict_without_writing() {
+    let (_directory, root, config) = setup();
+    let before = schema_text(&root);
+
+    let addition = preview_rule(
+        &config,
+        &root,
+        None,
+        &rule("open-needs-priority", open_needs_priority()),
+    )
+    .unwrap();
+    assert_eq!(
+        addition.yaml,
+        "name: open-needs-priority\nmatch:\n  status: open\nrequire:\n  priority: required"
+    );
+    assert_eq!(addition.problem, None);
+
+    let taken_name = preview_rule(
+        &config,
+        &root,
+        None,
+        &rule("in-progress-needs-assignee", require_only("assignee")),
+    )
+    .unwrap();
+    let problem = taken_name
+        .problem
+        .expect("a second rule with that name is a parse error");
+    assert!(problem.contains("duplicate rule name"), "{problem}");
+
+    let replacing_itself = preview_rule(
+        &config,
+        &root,
+        Some("in-progress-needs-assignee"),
+        &rule("in-progress-needs-assignee", require_only("assignee")),
+    )
+    .unwrap();
+    assert_eq!(replacing_itself.problem, None);
+
+    let unknown_field = preview_rule(
+        &config,
+        &root,
+        None,
+        &rule("needs-nothing", require_only("no_such_field")),
+    )
+    .unwrap();
+    let problem = unknown_field
+        .problem
+        .expect("a reference to no field is a parse error");
+    assert!(problem.contains("no_such_field"), "{problem}");
+
+    let unwritable = preview_rule(
+        &config,
+        &root,
+        None,
+        &rule("open-is-set", unwritable_rows()),
+    )
+    .unwrap();
+    assert_eq!(unwritable.yaml, "");
+    assert!(unwritable.problem.unwrap().contains("cannot share"));
+
+    assert_eq!(schema_text(&root), before);
 }

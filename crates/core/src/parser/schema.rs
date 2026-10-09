@@ -165,7 +165,7 @@ pub(crate) fn is_valid_field_name(name: &str) -> bool {
 
 /// Valid rule name: kebab-case, starting with a lowercase letter.
 /// Mirrors `^[a-z][a-z0-9-]*$` in `defaults/schema.schema.json`.
-fn is_valid_rule_name(name: &str) -> bool {
+pub(crate) fn is_valid_rule_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
         Some(c) if c.is_ascii_lowercase() => {}

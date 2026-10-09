@@ -19,9 +19,13 @@
 //! then works while the items directory is broken.
 //!
 //! The writes — `POST /schema/fields`, `PUT` and `DELETE
-//! /schema/fields/{name}`, `PUT /schema/field-order` — are thin wrappers
-//! over `core::operations::schema_write`, which owns every refusal; this
-//! module only maps each to a status (see `schema_write_error_status`).
+//! /schema/fields/{name}`, `PUT /schema/field-order`, and for rules
+//! `POST /schema/rules`, `PUT` and `DELETE /schema/rules/{name}` — are
+//! thin wrappers over `core::operations::schema_write`, which owns every
+//! refusal; this module only maps each to a status (see
+//! `schema_write_error_status`). `POST /schema/rule-preview` is the
+//! rule write without the write: the YAML a draft would become and the
+//! parser's verdict, for the editor's preview pane.
 //! Save-with-warning applies as for items and views: a write that loads
 //! but fails a cross-file check is written and answers `200`/`201` with
 //! the findings in `diagnostics`; only a write that would leave
@@ -47,10 +51,11 @@ use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use serde::Deserialize;
 
-use workdown_core::mutation_data::{CreateField, ReorderFields, SchemaMutationResult};
+use workdown_core::mutation_data::{CreateField, PreviewRule, ReorderFields, SchemaMutationResult};
 use workdown_core::operations::schema_write::{
-    add_field, field_usage, remove_field, reorder_fields, update_field, FieldDefinitionWrite,
-    FieldUsage, RemovedValues, SchemaWriteError, SchemaWriteOutcome,
+    add_field, add_rule, field_usage, preview_rule, remove_field, remove_rule, reorder_fields,
+    update_field, update_rule, FieldDefinitionWrite, FieldUsage, RemovedValues,
+    RuleDefinitionWrite, RulePreview, SchemaWriteError, SchemaWriteOutcome,
 };
 use workdown_core::schema_data::{self, SchemaData};
 use workdown_core::schema_definition_data::{self, SchemaDefinitionData};
@@ -59,8 +64,9 @@ use crate::envelope::ApiResponse;
 use crate::state::{load_state_project, AppState};
 
 /// Router for `/schema`, `/schema/definition`, `/schema/fields`,
-/// `/schema/fields/{name}`, `/schema/fields/{name}/usage` and
-/// `/schema/field-order` under `/api`.
+/// `/schema/fields/{name}`, `/schema/fields/{name}/usage`,
+/// `/schema/field-order`, `/schema/rules`, `/schema/rules/{name}` and
+/// `/schema/rule-preview` under `/api`.
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/schema", get(get_schema))
@@ -72,6 +78,12 @@ pub fn router() -> Router<AppState> {
         )
         .route("/schema/fields/{name}/usage", get(get_field_usage))
         .route("/schema/field-order", put(reorder_fields_handler))
+        .route("/schema/rules", post(create_rule_handler))
+        .route(
+            "/schema/rules/{name}",
+            put(update_rule_handler).delete(delete_rule_handler),
+        )
+        .route("/schema/rule-preview", post(preview_rule_handler))
 }
 
 async fn get_schema_definition(State(state): State<AppState>) -> ApiResponse<SchemaDefinitionData> {
@@ -196,6 +208,78 @@ async fn get_field_usage(
     }
 }
 
+/// `POST /api/schema/rules` — add a rule at the end of `rules:`. `201`
+/// with the rule's name; `409` when the name is taken.
+async fn create_rule_handler(
+    State(state): State<AppState>,
+    Json(definition): Json<RuleDefinitionWrite>,
+) -> ApiResponse<SchemaMutationResult> {
+    match add_rule(
+        &state.config,
+        &state.project_root,
+        &state.config_path,
+        &definition,
+    ) {
+        Ok(outcome) => {
+            let result = SchemaMutationResult::from_outcome(&outcome);
+            ApiResponse::created(result, outcome.warnings)
+        }
+        Err(error) => ApiResponse::failed(schema_write_error_status(&error), error.to_string()),
+    }
+}
+
+/// `PUT /api/schema/rules/{name}` — replace the rule, keeping its
+/// position; a different name in the body renames it. An unknown name
+/// is a `404`; a new name another rule has is a `409`.
+async fn update_rule_handler(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Json(definition): Json<RuleDefinitionWrite>,
+) -> ApiResponse<SchemaMutationResult> {
+    schema_mutation_response(update_rule(
+        &state.config,
+        &state.project_root,
+        &state.config_path,
+        &name,
+        &definition,
+    ))
+}
+
+/// `DELETE /api/schema/rules/{name}` — remove the rule. An unknown name
+/// is a `404`.
+async fn delete_rule_handler(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> ApiResponse<SchemaMutationResult> {
+    schema_mutation_response(remove_rule(
+        &state.config,
+        &state.project_root,
+        &state.config_path,
+        &name,
+    ))
+}
+
+/// `POST /api/schema/rule-preview` — the YAML a rule draft would be
+/// written as, and the parser's verdict on the schema with it, without
+/// writing. `200` whatever the draft's problems, which ride in the
+/// answer; `422` only when the existing `schema.yaml` does not load.
+/// Its own address, like `/schema/field-order`, so that a rule named
+/// `preview` stays addressable under `/schema/rules/{name}`.
+async fn preview_rule_handler(
+    State(state): State<AppState>,
+    Json(request): Json<PreviewRule>,
+) -> ApiResponse<RulePreview> {
+    match preview_rule(
+        &state.config,
+        &state.project_root,
+        request.replacing.as_deref(),
+        &request.definition,
+    ) {
+        Ok(preview) => ApiResponse::ok(preview),
+        Err(error) => ApiResponse::failed(schema_write_error_status(&error), error.to_string()),
+    }
+}
+
 /// The shared outcome-to-envelope mapping for the schema mutation
 /// handlers: a success carries its save-with-warning diagnostics, a hard
 /// error maps to its HTTP status. Create stays inline — it differs in
@@ -215,9 +299,10 @@ fn schema_mutation_response(
 /// Map a hard [`SchemaWriteError`] to its HTTP status. Save-with-warning
 /// never reaches here — it's an `Ok` outcome.
 ///
-/// - `404` — the field name in the path doesn't exist (update, delete,
-///   usage).
-/// - `409` — adding a field whose name is already taken.
+/// - `404` — the field or rule name in the path doesn't exist (update,
+///   delete, usage).
+/// - `409` — adding a field or a rule whose name is already taken, or
+///   renaming a rule onto another's name.
 /// - `422` — well-formed but unprocessable: the existing `schema.yaml` or
 ///   the work items won't load, the candidate would not load, the name
 ///   is invalid, the `id` field or a field a config role names is being
@@ -226,9 +311,13 @@ fn schema_mutation_response(
 /// - `500` — a server-side failure: serialization or a write I/O error.
 fn schema_write_error_status(error: &SchemaWriteError) -> StatusCode {
     match error {
-        SchemaWriteError::FieldNotFound { .. } => StatusCode::NOT_FOUND,
+        SchemaWriteError::FieldNotFound { .. } | SchemaWriteError::RuleNotFound { .. } => {
+            StatusCode::NOT_FOUND
+        }
 
-        SchemaWriteError::DuplicateName { .. } => StatusCode::CONFLICT,
+        SchemaWriteError::DuplicateName { .. } | SchemaWriteError::DuplicateRuleName { .. } => {
+            StatusCode::CONFLICT
+        }
 
         SchemaWriteError::ExistingInvalid { .. }
         | SchemaWriteError::ProjectLoad(_)
@@ -238,6 +327,8 @@ fn schema_write_error_status(error: &SchemaWriteError) -> StatusCode {
         | SchemaWriteError::RecipeTypeLocked { .. }
         | SchemaWriteError::TypeChangeNotAllowed { .. }
         | SchemaWriteError::InvalidOrder { .. }
+        | SchemaWriteError::InvalidRuleName { .. }
+        | SchemaWriteError::InvalidRule { .. }
         | SchemaWriteError::Unloadable { .. } => StatusCode::UNPROCESSABLE_ENTITY,
 
         SchemaWriteError::Serialize(_) | SchemaWriteError::WriteFile { .. } => {

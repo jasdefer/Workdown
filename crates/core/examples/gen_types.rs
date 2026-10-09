@@ -38,6 +38,7 @@ use workdown_core::model::diagnostic::{
     FilesDiagnostic, FilesDiagnosticKind, ItemDiagnostic, ItemDiagnosticKind, RangeBound,
 };
 use workdown_core::model::field_value::FieldValue;
+use workdown_core::model::rule::CountConstraint;
 use workdown_core::model::schema::{
     AggregateFunction, FieldProperty, FieldType, Generator, Severity,
 };
@@ -46,20 +47,25 @@ use workdown_core::model::views::{Aggregate, Bucket, DisplayConfig, ViewSummary,
 use workdown_core::model::WorkItemId;
 use workdown_core::mutation_data::{
     CreateField, CreateItem, CreateItemResult, CreateView, FieldMutation, FieldMutationResult,
-    ReorderFields, SchemaMutationResult, SetViewFilter, UpdateView, ViewDefinition,
+    PreviewRule, ReorderFields, SchemaMutationResult, SetViewFilter, UpdateView, ViewDefinition,
     ViewMutationResult,
 };
-use workdown_core::operations::schema_write::{DefaultWrite, FieldDefinitionWrite, FieldUsage};
+use workdown_core::operations::schema_write::{
+    DefaultWrite, FieldDefinitionWrite, FieldUsage, RuleDefinitionWrite, RulePreview,
+};
 use workdown_core::project_data::ProjectIdentity;
 use workdown_core::query::clause::{Clause, Condition};
 use workdown_core::query::types::Operator;
+use workdown_core::rule_shape::{
+    Comparison, MatchRow, Quantifier, RequireRow, RequireTest, RuleShape, ScalarTest, ScalarValue,
+};
 use workdown_core::schema_data::{
     FieldSchema, FieldTypeOperators, PaletteColor, ResourceList, ResourceOption, SchemaData,
 };
 use workdown_core::schema_definition_data::{
     DefaultData, DerivedBlocks, FieldDefinitionData, FieldShape, FieldTypeAggregateFunctions,
-    FieldTypeGenerators, FieldTypeProperties, FieldTypeWidening, RuleData, SchemaDefinitionData,
-    ShapeKind,
+    FieldTypeGenerators, FieldTypeProperties, FieldTypeWidening, RuleData, RuleShapeData,
+    SchemaDefinitionData, ShapeKind,
 };
 use workdown_core::timer_data::{
     EffortFieldState, StartTimer, TimerMode, TimerPhase, TimerStartOutcome, TimerState,
@@ -182,6 +188,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<DefaultData>();
     exports.add::<DerivedBlocks>();
     exports.add::<RuleData>();
+    exports.add::<RuleShapeData>();
+    exports.add::<RuleShape>();
+    exports.add::<MatchRow>();
+    exports.add::<Quantifier>();
+    exports.add::<ScalarTest>();
+    exports.add::<RequireRow>();
+    exports.add::<RequireTest>();
+    exports.add::<Comparison>();
+    exports.add::<ScalarValue>();
+    exports.add::<CountConstraint>();
+    exports.add::<RuleDefinitionWrite>();
+    exports.add::<RulePreview>();
+    exports.add::<PreviewRule>();
     exports.add::<FieldTypeProperties>();
     exports.add::<ShapeKind>();
     exports.add::<FieldTypeAggregateFunctions>();

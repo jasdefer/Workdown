@@ -1,13 +1,14 @@
-//! Persist single field definitions to `schema.yaml`.
+//! Persist single field and rule definitions to `schema.yaml`.
 //!
 //! The read side of the schema is [`crate::parser::schema`] and, for the
 //! web app, [`crate::schema_definition_data`]; this module is the write
 //! side. It supports what the schema editor needs: adding a field,
 //! replacing a field's plain properties, removing a field, reordering
-//! the fields, and saying what a field is used by
-//! ([`field_usage`]). Renaming a field and editing a recipe (`compute`,
-//! `when`, `pull`, `aggregate`) are not offered; the design item
-//! `schema-editor-web-design` explains why.
+//! the fields, saying what a field is used by ([`field_usage`]), and
+//! adding, replacing, removing and previewing a rule. Renaming a field
+//! and editing a recipe (`compute`, `when`, `pull`, `aggregate`) are
+//! not offered; the design item `schema-editor-web-design` explains
+//! why.
 //!
 //! Like every other mutation in the tool, the repo stays the source of
 //! truth: writes update the working tree only, nothing is staged or
@@ -27,6 +28,17 @@
 //! formatting. Because only one entry is ever replaced, a stale editor
 //! tab can overwrite that field and nothing else: last write wins, per
 //! field, and there is no conflict detection.
+//!
+//! ## Rules
+//!
+//! A rule write is the same generic-tree edit on the `rules:` sequence,
+//! addressed by name since names are unique. The rule arrives as the
+//! rows [`crate::rule_shape`] defines and is written in the shortest
+//! form the parser reads; a rule may be renamed on replace, because
+//! nothing outside validation output names a rule. [`preview_rule`]
+//! runs the same conversion and the same parse without writing, so the
+//! editor's YAML pane and its pre-save verdict come from the code the
+//! save uses (`schema-rules-editor`, decisions 12 to 14).
 //!
 //! ## Dropping a removed field's values
 //!
@@ -92,8 +104,11 @@ use crate::model::schema::{widening_targets, FieldType, Generator, Schema, Sever
 use crate::model::work_item::WorkItem;
 use crate::operations::diagnostics::{introduced_by_mutation, introduced_diagnostics};
 use crate::operations::frontmatter_io::{remove_frontmatter_key, write_file_atomically};
-use crate::parser::schema::{is_valid_field_name, parse_schema, SchemaLoadError};
+use crate::parser::schema::{
+    is_valid_field_name, is_valid_rule_name, parse_schema, SchemaLoadError,
+};
 use crate::project::{load_project_with_schema, LoadError};
+use crate::rule_shape::RuleShape;
 use crate::schema_definition_data::FieldShape;
 
 // ── Public types ─────────────────────────────────────────────────────
@@ -148,6 +163,40 @@ pub enum DefaultWrite {
     },
 }
 
+/// One rule as the editor writes it: the header plus the rows of
+/// [`RuleShape`]. The read payload's
+/// [`RuleData`](crate::schema_definition_data::RuleData) with its rows
+/// in place of the text body. What the form GETs is what it PUTs back;
+/// on a replace, `name` may differ from the name in the path, which
+/// renames the rule.
+#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
+pub struct RuleDefinitionWrite {
+    /// Unique kebab-case identifier.
+    pub name: String,
+    /// Human-readable explanation; `None` clears it.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Whether a violation is an error or a warning. Written only when
+    /// it is not the default.
+    #[serde(default)]
+    pub severity: Severity,
+    /// The `match`, `require` and `count` blocks as rows.
+    pub shape: RuleShape,
+}
+
+/// What [`preview_rule`] answers: the rule's entry as the write would
+/// put it in the file, and the parser's verdict on the file with it.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+pub struct RulePreview {
+    /// The rule's mapping as YAML text, without the list dash. Empty
+    /// when the rows cannot be written as one rule at all; `problem`
+    /// says why.
+    pub yaml: String,
+    /// Why `schema.yaml` would not load with this rule in it, in the
+    /// parser's words; `None` when it would.
+    pub problem: Option<String>,
+}
+
 /// What depends on a field: the answer [`field_usage`] gives.
 ///
 /// The schema's own references come by name — the rules and the
@@ -187,8 +236,12 @@ pub struct SchemaWriteOutcome {
     /// Path to the `schema.yaml` that was written.
     pub path: PathBuf,
     /// The field that was added, changed or removed; `None` for a
-    /// reorder, which touches every field and none.
+    /// reorder, which touches every field and none, and for a rule
+    /// write.
     pub field_name: Option<String>,
+    /// The rule that was added, changed or removed (its new name after
+    /// a rename); `None` for a field write.
+    pub rule_name: Option<String>,
     /// Every diagnostic from loading the project against the written
     /// schema. Includes any problem this write introduced as well as
     /// pre-existing ones (surfaced, per the "always show all"
@@ -271,6 +324,21 @@ pub enum SchemaWriteError {
     #[error("field order must list every current field exactly once: {detail}")]
     InvalidOrder { detail: String },
 
+    #[error("invalid rule name '{name}': must be kebab-case (lowercase letters, digits, hyphens), starting with a letter")]
+    InvalidRuleName { name: String },
+
+    #[error("a rule named '{name}' already exists")]
+    DuplicateRuleName { name: String },
+
+    #[error("no rule named '{name}'")]
+    RuleNotFound { name: String },
+
+    /// The rows cannot be written as one rule: an operator twice on a
+    /// reference, or an equality beside another test on the same
+    /// reference. See [`RuleShape::to_yaml_entries`].
+    #[error("the rule's rows cannot be written: {detail}")]
+    InvalidRule { detail: String },
+
     /// The candidate schema does not parse. Carries the parser's message
     /// so the editor can show what the file would have said.
     #[error("the change would leave schema.yaml unable to load; nothing was written: {detail}")]
@@ -319,7 +387,7 @@ pub fn add_field(
     }
     fields.insert(yaml_key(name), serde_yaml::Value::Mapping(entry));
 
-    finalize(context, Some(name.to_owned()))
+    finalize(context, Written::Field(name.to_owned()))
 }
 
 /// Replace a field's plain properties, keeping its position and its
@@ -391,7 +459,7 @@ pub fn update_field(
         }
     }
 
-    finalize(context, Some(name.to_owned()))
+    finalize(context, Written::Field(name.to_owned()))
 }
 
 /// Remove a field. What happens to the values items hold for it is
@@ -428,7 +496,11 @@ pub fn remove_field(
         RemovedValues::Keep => None,
         RemovedValues::Drop => Some(name),
     };
-    finalize_then_rewrite_items(context, Some(name.to_owned()), drop_key_from_items)
+    finalize_then_rewrite_items(
+        context,
+        Written::Field(name.to_owned()),
+        drop_key_from_items,
+    )
 }
 
 /// Rewrite the order of `fields:` from a full ordered list of the
@@ -458,7 +530,190 @@ pub fn reorder_fields(
     }
     *fields = reordered;
 
-    finalize(context, None)
+    finalize(context, Written::Order)
+}
+
+// ── Rules ────────────────────────────────────────────────────────────
+
+/// Add a rule, appended at the end of `rules:`.
+///
+/// The name is checked here so a bad one gets its own refusal rather
+/// than the parser's; everything else about the rule — its references,
+/// its quantifiers, that it has a `require` or a `count` — is the
+/// parser's verdict on the candidate, as for a hand-edited file.
+pub fn add_rule(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+    definition: &RuleDefinitionWrite,
+) -> Result<SchemaWriteOutcome, SchemaWriteError> {
+    check_rule_name(&definition.name)?;
+    let mut context = load_for_write(config, project_root, config_path)?;
+
+    if rule_index(&context.current, &definition.name).is_some() {
+        return Err(SchemaWriteError::DuplicateRuleName {
+            name: definition.name.clone(),
+        });
+    }
+    let entry = rule_entry(definition)?;
+    rules_mut(&mut context.document).push(entry);
+
+    finalize(context, Written::Rule(definition.name.clone()))
+}
+
+/// Replace the rule named `name`, keeping its position. The
+/// definition's own name may differ, which renames the rule; the new
+/// name must not be another rule's.
+pub fn update_rule(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+    name: &str,
+    definition: &RuleDefinitionWrite,
+) -> Result<SchemaWriteOutcome, SchemaWriteError> {
+    check_rule_name(&definition.name)?;
+    let mut context = load_for_write(config, project_root, config_path)?;
+
+    let index =
+        rule_index(&context.current, name).ok_or_else(|| SchemaWriteError::RuleNotFound {
+            name: name.to_owned(),
+        })?;
+    if definition.name != name && rule_index(&context.current, &definition.name).is_some() {
+        return Err(SchemaWriteError::DuplicateRuleName {
+            name: definition.name.clone(),
+        });
+    }
+    let entry = rule_entry(definition)?;
+    rules_mut(&mut context.document)[index] = entry;
+
+    finalize(context, Written::Rule(definition.name.clone()))
+}
+
+/// Remove the rule named `name`.
+pub fn remove_rule(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+    name: &str,
+) -> Result<SchemaWriteOutcome, SchemaWriteError> {
+    let mut context = load_for_write(config, project_root, config_path)?;
+
+    let index =
+        rule_index(&context.current, name).ok_or_else(|| SchemaWriteError::RuleNotFound {
+            name: name.to_owned(),
+        })?;
+    rules_mut(&mut context.document).remove(index);
+
+    finalize(context, Written::Rule(name.to_owned()))
+}
+
+/// What a rule write would put in the file, and whether the file would
+/// still load, without writing anything.
+///
+/// Reads `schema.yaml` alone, like the definition payload: the verdict
+/// is the parser's, which needs no items. A draft's own problems — rows
+/// that cannot be written, a name the parser rejects, a name another
+/// rule has, a reference to no field — come back in the preview as
+/// `problem`, never as an error; only a file that cannot be read or
+/// serialized is one. `replacing` names the rule the draft would
+/// replace, so that its own name is not a duplicate of itself; a name
+/// no rule has is treated as an addition.
+pub fn preview_rule(
+    config: &Config,
+    project_root: &Path,
+    replacing: Option<&str>,
+    definition: &RuleDefinitionWrite,
+) -> Result<RulePreview, SchemaWriteError> {
+    let schema_path = project_root.join(&config.schema);
+    let existing_invalid = |error: SchemaLoadError| SchemaWriteError::ExistingInvalid {
+        path: schema_path.clone(),
+        detail: error.to_string(),
+    };
+    let text = std::fs::read_to_string(&schema_path)
+        .map_err(|error| existing_invalid(SchemaLoadError::ReadFailed(error)))?;
+    let current = parse_schema(&text).map_err(existing_invalid)?;
+    let mut document: serde_yaml::Value = serde_yaml::from_str(&text)
+        .map_err(|error| existing_invalid(SchemaLoadError::InvalidYaml(error)))?;
+
+    let entry = match rule_entry(definition) {
+        Ok(entry) => entry,
+        Err(SchemaWriteError::InvalidRule { detail }) => {
+            return Ok(RulePreview {
+                yaml: String::new(),
+                problem: Some(detail),
+            })
+        }
+        Err(other) => return Err(other),
+    };
+    let yaml = serde_yaml::to_string(&entry)
+        .map_err(SchemaWriteError::Serialize)?
+        .trim_end()
+        .to_owned();
+
+    let rules = rules_mut(&mut document);
+    match replacing.and_then(|name| rule_index(&current, name)) {
+        Some(index) => rules[index] = entry,
+        None => rules.push(entry),
+    }
+    let candidate_text = serde_yaml::to_string(&document).map_err(SchemaWriteError::Serialize)?;
+    let problem = parse_schema(&candidate_text)
+        .err()
+        .map(|error| error.to_string());
+
+    Ok(RulePreview { yaml, problem })
+}
+
+fn check_rule_name(name: &str) -> Result<(), SchemaWriteError> {
+    if is_valid_rule_name(name) {
+        Ok(())
+    } else {
+        Err(SchemaWriteError::InvalidRuleName {
+            name: name.to_owned(),
+        })
+    }
+}
+
+/// The position of the rule named `name` in the file's `rules:`
+/// sequence. The typed schema's rules are the sequence's entries in
+/// order, so an index into one addresses the other.
+fn rule_index(schema: &Schema, name: &str) -> Option<usize> {
+    schema.rules.iter().position(|rule| rule.name == name)
+}
+
+/// The `rules:` sequence of a loaded schema's tree, created empty when
+/// the file has none (or has the key with no value).
+fn rules_mut(document: &mut serde_yaml::Value) -> &mut serde_yaml::Sequence {
+    let mapping = document
+        .as_mapping_mut()
+        .expect("a loaded schema is a mapping");
+    let key = yaml_key("rules");
+    if !matches!(mapping.get(&key), Some(serde_yaml::Value::Sequence(_))) {
+        mapping.insert(key.clone(), serde_yaml::Value::Sequence(Vec::new()));
+    }
+    mapping
+        .get_mut(&key)
+        .and_then(serde_yaml::Value::as_sequence_mut)
+        .expect("the rules key was just made a sequence")
+}
+
+/// A rule's entry in the file: name, description, severity when not the
+/// default, then the rows as [`RuleShape::to_yaml_entries`] writes them.
+fn rule_entry(definition: &RuleDefinitionWrite) -> Result<serde_yaml::Value, SchemaWriteError> {
+    let invalid = |detail: String| SchemaWriteError::InvalidRule { detail };
+    let mut entry = serde_yaml::Mapping::new();
+    entry.insert(yaml_key("name"), yaml_key(&definition.name));
+    if let Some(description) = &definition.description {
+        entry.insert(yaml_key("description"), yaml_key(description));
+    }
+    if definition.severity != Severity::default() {
+        let severity =
+            serde_yaml::to_value(definition.severity).map_err(SchemaWriteError::Serialize)?;
+        entry.insert(yaml_key("severity"), severity);
+    }
+    for (key, value) in definition.shape.to_yaml_entries().map_err(invalid)? {
+        entry.insert(yaml_key(key), value);
+    }
+    Ok(serde_yaml::Value::Mapping(entry))
 }
 
 /// What depends on `name`: the parse error removing it would cause, or
@@ -592,6 +847,14 @@ const PLAIN_PROPERTY_KEYS: [&str; 11] = [
     "description",
     "resource",
 ];
+
+/// What a write concerned, for the outcome's `field_name` and
+/// `rule_name`.
+enum Written {
+    Field(String),
+    Rule(String),
+    Order,
+}
 
 /// Everything a write starts from, loaded once: the current file as a
 /// generic tree (what gets edited), as a typed schema (what the
@@ -758,9 +1021,9 @@ fn check_permutation(current: &[String], order: &[String]) -> Result<(), SchemaW
 /// whether this write introduced a new problem.
 fn finalize(
     context: WriteContext<'_>,
-    field_name: Option<String>,
+    written: Written,
 ) -> Result<SchemaWriteOutcome, SchemaWriteError> {
-    finalize_then_rewrite_items(context, field_name, None)
+    finalize_then_rewrite_items(context, written, None)
 }
 
 /// [`finalize`], then — when `drop_key_from_items` names a field — the
@@ -769,7 +1032,7 @@ fn finalize(
 /// after both writes.
 fn finalize_then_rewrite_items(
     context: WriteContext<'_>,
-    field_name: Option<String>,
+    written: Written,
     drop_key_from_items: Option<&str>,
 ) -> Result<SchemaWriteOutcome, SchemaWriteError> {
     let WriteContext {
@@ -813,9 +1076,15 @@ fn finalize_then_rewrite_items(
     };
 
     let mutation_caused_warning = introduced_by_mutation(&pre_diagnostics, &project.diagnostics);
+    let (field_name, rule_name) = match written {
+        Written::Field(name) => (Some(name), None),
+        Written::Rule(name) => (None, Some(name)),
+        Written::Order => (None, None),
+    };
     Ok(SchemaWriteOutcome {
         path: schema_path,
         field_name,
+        rule_name,
         warnings: project.diagnostics,
         mutation_caused_warning,
         rewritten_items,

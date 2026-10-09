@@ -272,14 +272,28 @@ pub struct ReorderFields {
     pub order: Vec<String>,
 }
 
+/// A request to preview a rule without writing it. Sent to `POST
+/// /api/schema/rule-preview`.
+#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
+pub struct PreviewRule {
+    /// The rule the draft would replace, when editing one; `None` for a
+    /// draft that would be added. Decides which name a duplicate-name
+    /// verdict ignores.
+    #[serde(default)]
+    pub replacing: Option<String>,
+    pub definition: crate::operations::schema_write::RuleDefinitionWrite,
+}
+
 /// The result of a successful schema mutation (add, update, remove,
-/// reorder) — the field it concerned (`null` for a reorder), whether
-/// the write introduced a diagnostic, and the items a removal that
-/// dropped the field's values rewrote (empty for every other write).
-/// Warnings themselves ride in the envelope's `diagnostics`.
+/// reorder a field; add, update, remove a rule) — the field or the rule
+/// it concerned (both `null` for a reorder), whether the write
+/// introduced a diagnostic, and the items a removal that dropped the
+/// field's values rewrote (empty for every other write). Warnings
+/// themselves ride in the envelope's `diagnostics`.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct SchemaMutationResult {
     pub field_name: Option<String>,
+    pub rule_name: Option<String>,
     pub mutation_caused_warning: bool,
     pub rewritten_items: Vec<String>,
 }
@@ -288,6 +302,7 @@ impl SchemaMutationResult {
     pub fn from_outcome(outcome: &SchemaWriteOutcome) -> Self {
         Self {
             field_name: outcome.field_name.clone(),
+            rule_name: outcome.rule_name.clone(),
             mutation_caused_warning: outcome.mutation_caused_warning,
             rewritten_items: outcome.rewritten_items.clone(),
         }

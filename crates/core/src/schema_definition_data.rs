@@ -48,6 +48,7 @@ use crate::model::schema::{
 use crate::model::FieldValue;
 use crate::parser::schema::{parse_schema, SchemaLoadError};
 use crate::project::LoadError;
+use crate::rule_shape::RuleShape;
 
 // ── Wire types ────────────────────────────────────────────────────────
 
@@ -176,12 +177,13 @@ pub struct DerivedBlocks {
     pub aggregate: Option<String>,
 }
 
-/// One rule: its header as data, its body as YAML text.
+/// One rule: its header as data, its body both as YAML text and as the
+/// rows the rules editor edits.
 ///
 /// The header is what the rules list shows in columns. The body —
-/// `match`, `require`, `count` — is displayed as the file has it; the
-/// structured shape a rule *form* needs is defined with the rules
-/// editor and added beside this text then.
+/// `match`, `require`, `count` — is displayed as the file has it and
+/// edited as `shape`, built by [`crate::rule_shape`] from the parsed
+/// rule.
 #[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
 pub struct RuleData {
     /// Unique kebab-case identifier.
@@ -193,6 +195,20 @@ pub struct RuleData {
     /// The rule mapping minus its header keys, serialized as YAML.
     /// Empty when the rule has no body.
     pub body: String,
+    /// The body as rows, or why it has none.
+    pub shape: RuleShapeData,
+}
+
+/// A rule's body as the editor needs it, or why it cannot have one.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RuleShapeData {
+    /// The body as rows: what the form edits and sends back.
+    Rows { shape: RuleShape },
+    /// The body holds what the rows cannot carry (a quantifier nested
+    /// in a quantifier, `required: false`); the client shows `body` as
+    /// text and offers removal only.
+    Unrepresentable { reason: String },
 }
 
 /// The type-restricted properties one type accepts, and the shape its
@@ -330,6 +346,10 @@ pub fn build(yaml: &str) -> Result<SchemaDefinitionData, SchemaLoadError> {
                 .and_then(|rules| rules.get(index))
                 .map(rule_body_yaml)
                 .unwrap_or_default(),
+            shape: match RuleShape::from_rule(rule) {
+                Ok(shape) => RuleShapeData::Rows { shape },
+                Err(reason) => RuleShapeData::Unrepresentable { reason },
+            },
         })
         .collect();
 
@@ -746,7 +766,9 @@ rules:
     }
 
     #[test]
-    fn rules_carry_header_as_data_and_body_as_yaml() {
+    fn rules_carry_header_as_data_and_body_as_yaml_and_rows() {
+        use crate::rule_shape::{MatchRow, RequireRow, RequireTest, ScalarTest, ScalarValue};
+
         let data = built();
         assert_eq!(data.rules.len(), 2);
         assert_eq!(
@@ -756,10 +778,30 @@ rules:
                 description: Some("Finished work is sized".to_owned()),
                 severity: Severity::Error,
                 body: "match:\n  status: done\nrequire:\n  points: required".to_owned(),
+                shape: RuleShapeData::Rows {
+                    shape: RuleShape {
+                        match_rows: vec![MatchRow {
+                            reference: "status".to_owned(),
+                            quantifier: None,
+                            test: ScalarTest::Equals {
+                                value: ScalarValue::Text("done".to_owned()),
+                            },
+                        }],
+                        require_rows: vec![RequireRow {
+                            reference: "points".to_owned(),
+                            test: RequireTest::Required,
+                        }],
+                        count: None,
+                    }
+                },
             }
         );
         assert_eq!(data.rules[1].severity, Severity::Warning);
         assert_eq!(data.rules[1].body, "count:\n  min: 1");
+        assert!(matches!(
+            &data.rules[1].shape,
+            RuleShapeData::Rows { shape } if shape.count.as_ref().and_then(|count| count.min) == Some(1)
+        ));
     }
 
     #[test]

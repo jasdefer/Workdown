@@ -317,3 +317,207 @@ async fn get_usage_of_unknown_field_returns_404() {
     let response = send(state, "GET", "/api/schema/fields/nope/usage", None).await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
+
+// ── /api/schema/rules ────────────────────────────────────────────────
+
+/// `match: {status: in_progress}`, `require: {<reference>: required}`,
+/// as the rows the editor sends.
+fn title_rule(name: &str, require_reference: &str) -> Value {
+    json!({
+        "name": name,
+        "description": null,
+        "severity": "error",
+        "shape": {
+            "match_rows": [
+                { "reference": "status", "quantifier": null,
+                  "test": { "kind": "equals", "value": "in_progress" } }
+            ],
+            "require_rows": [
+                { "reference": require_reference, "test": { "kind": "required" } }
+            ],
+            "count": null
+        }
+    })
+}
+
+#[tokio::test]
+async fn post_rule_writes_and_returns_201() {
+    let (directory, state) = temp_project();
+
+    let response = send(
+        state,
+        "POST",
+        "/api/schema/rules",
+        Some(title_rule("in-progress-needs-title", "title")),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let envelope = body_json(response).await;
+    assert_eq!(envelope["data"]["rule_name"], "in-progress-needs-title");
+    assert_eq!(envelope["data"]["field_name"], Value::Null);
+    assert_eq!(envelope["data"]["mutation_caused_warning"], false);
+    assert!(envelope["diagnostics"].is_array());
+    let written = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
+    assert!(
+        written.contains("name: in-progress-needs-title"),
+        "{written}"
+    );
+}
+
+#[tokio::test]
+async fn post_existing_rule_returns_409() {
+    let (_directory, state) = temp_project();
+    let rule = title_rule("in-progress-needs-title", "title");
+    let first = send(
+        state.clone(),
+        "POST",
+        "/api/schema/rules",
+        Some(rule.clone()),
+    )
+    .await;
+    assert_eq!(first.status(), StatusCode::CREATED);
+
+    let response = send(state, "POST", "/api/schema/rules", Some(rule)).await;
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let envelope = body_json(response).await;
+    assert!(envelope["error"]
+        .as_str()
+        .unwrap()
+        .contains("already exists"));
+}
+
+#[tokio::test]
+async fn post_rule_naming_no_field_returns_422() {
+    let (_directory, state) = temp_project();
+
+    let response = send(
+        state,
+        "POST",
+        "/api/schema/rules",
+        Some(title_rule("needs-nothing", "no_such_field")),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let envelope = body_json(response).await;
+    assert!(envelope["error"]
+        .as_str()
+        .unwrap()
+        .contains("no_such_field"));
+}
+
+#[tokio::test]
+async fn put_rule_replaces_and_returns_200() {
+    let (directory, state) = temp_project();
+    let created = send(
+        state.clone(),
+        "POST",
+        "/api/schema/rules",
+        Some(title_rule("in-progress-needs-title", "title")),
+    )
+    .await;
+    assert_eq!(created.status(), StatusCode::CREATED);
+
+    let response = send(
+        state,
+        "PUT",
+        "/api/schema/rules/in-progress-needs-title",
+        Some(title_rule("in-progress-needs-parent", "parent")),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope = body_json(response).await;
+    assert_eq!(envelope["data"]["rule_name"], "in-progress-needs-parent");
+    let written = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
+    assert!(
+        written.contains("name: in-progress-needs-parent"),
+        "{written}"
+    );
+    assert!(!written.contains("in-progress-needs-title"), "{written}");
+}
+
+#[tokio::test]
+async fn put_unknown_rule_returns_404() {
+    let (_directory, state) = temp_project();
+
+    let response = send(
+        state,
+        "PUT",
+        "/api/schema/rules/no-such-rule",
+        Some(title_rule("no-such-rule", "title")),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn delete_rule_returns_200() {
+    let (directory, state) = temp_project();
+    let created = send(
+        state.clone(),
+        "POST",
+        "/api/schema/rules",
+        Some(title_rule("in-progress-needs-title", "title")),
+    )
+    .await;
+    assert_eq!(created.status(), StatusCode::CREATED);
+
+    let response = send(
+        state,
+        "DELETE",
+        "/api/schema/rules/in-progress-needs-title",
+        None,
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope = body_json(response).await;
+    assert_eq!(envelope["data"]["rule_name"], "in-progress-needs-title");
+    let written = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
+    assert!(!written.contains("in-progress-needs-title"), "{written}");
+}
+
+#[tokio::test]
+async fn post_rule_preview_returns_200_with_the_yaml_and_the_verdict() {
+    let (directory, state) = temp_project();
+    let before = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
+
+    let response = send(
+        state.clone(),
+        "POST",
+        "/api/schema/rule-preview",
+        Some(json!({
+            "replacing": null,
+            "definition": title_rule("in-progress-needs-title", "title")
+        })),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope = body_json(response).await;
+    assert!(envelope["data"]["yaml"]
+        .as_str()
+        .unwrap()
+        .starts_with("name: in-progress-needs-title\n"));
+    assert_eq!(envelope["data"]["problem"], Value::Null);
+
+    let response = send(
+        state,
+        "POST",
+        "/api/schema/rule-preview",
+        Some(json!({ "definition": title_rule("needs-nothing", "no_such_field") })),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope = body_json(response).await;
+    assert!(envelope["data"]["problem"]
+        .as_str()
+        .unwrap()
+        .contains("no_such_field"));
+
+    let after = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
+    assert_eq!(after, before);
+}

@@ -9,12 +9,13 @@ Hierarchical outline following `parent` upward to roots.
   - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md) — status: to_do
   - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md) — status: on_hold
   - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md) — status: to_do
+  - [Check comparison references in rules at schema load](../workdown-items/rule-comparison-reference-check.md) — status: to_do
 - [Multi-project support](../workdown-items/multi-project-support.md) — status: to_do
   - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — status: to_do
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md) — status: in_progress
   - [Edit compute, when, pull and aggregate blocks in the field editor](../workdown-items/schema-derived-field-editor.md) — status: on_hold
   - [Rename a field and everything that names it](../workdown-items/schema-field-rename.md) — status: on_hold
-  - [Edit rules on the schema page](../workdown-items/schema-rules-editor.md) — status: to_do
+  - [Edit rules on the schema page](../workdown-items/schema-rules-editor.md) — status: in_progress
   - [Turn a free-text field into a choice, with the values it already holds](../workdown-items/schema-string-to-choice.md) — status: on_hold
 - [Derived field expressions](../workdown-items/schema-expressions.md) — status: in_progress
   - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md) — status: on_hold

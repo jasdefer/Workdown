@@ -251,6 +251,9 @@ otherwise silently overwrite someone's edit to the same field.
     fixed property set per type while a rule is a small language
     (paths, quantifiers, comparisons, counts) whose form is designed
     against the finished page.
+    *Settled 2026-10-09:* decisions 1-16 in [[schema-rules-editor]] —
+    row editor, grammar served from the Rust rule types, YAML pane and
+    pre-save verdict from a server preview endpoint.
 
 ## Breakdown
 

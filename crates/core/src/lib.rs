@@ -21,6 +21,7 @@ pub mod project_data;
 pub mod query;
 pub mod resolve;
 pub mod resources_check;
+pub mod rule_shape;
 pub mod rules;
 pub mod schema_data;
 pub mod schema_definition_data;

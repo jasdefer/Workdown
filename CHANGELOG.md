@@ -9,6 +9,19 @@ its source — internal refactors are deliberately absent.
 
 ### Added
 
+- `workdown serve` can write one rule of `schema.yaml` at a time:
+  `POST /api/schema/rules` adds a rule, `PUT` and `DELETE
+  /api/schema/rules/{name}` replace (and may rename) or remove one.
+  A rule travels as rows — one field reference, one test, one value
+  per row — so a form can edit it without knowing the YAML; the
+  server writes the rows back in the shortest form the parser reads
+  and refuses a combination it cannot write. `GET
+  /api/schema/definition` now serves every rule as those rows beside
+  its text, or says why a rule has none (a quantifier nested in a
+  quantifier). `POST /api/schema/rule-preview` answers what a draft
+  would be written as and whether the schema would still load with it,
+  without writing, so an editor can show the YAML and the parser's
+  verdict before Save.
 - `workdown serve` answers `GET /api/schema/definition`: every field's
   full definition as `schema.yaml` has it, every rule, the type
   system's own tables (which properties, default generators and

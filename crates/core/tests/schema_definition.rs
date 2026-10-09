@@ -100,3 +100,40 @@ fn load_reports_an_invalid_schema_with_the_parser_detail() {
         other => panic!("expected LoadError::Schema, got {other:?}"),
     }
 }
+
+#[test]
+fn rules_carry_their_rows_or_the_reason_they_cannot() {
+    use workdown_core::rule_shape::{
+        MatchRow, RequireRow, RequireTest, RuleShape, ScalarTest, ScalarValue,
+    };
+    use workdown_core::schema_definition_data::RuleShapeData;
+
+    let data = workdown_core::schema_definition_data::build(
+        "fields:\n  id:\n    type: string\n  status:\n    type: choice\n    values: [open, done]\n  parent:\n    type: link\n    inverse: children\nrules:\n  - name: plain\n    match:\n      status: open\n    require:\n      parent: required\n  - name: nested\n    match:\n      children.status:\n        any: { all: done }\n    require:\n      parent: required\n",
+    )
+    .unwrap();
+
+    assert_eq!(
+        data.rules[0].shape,
+        RuleShapeData::Rows {
+            shape: RuleShape {
+                match_rows: vec![MatchRow {
+                    reference: "status".to_owned(),
+                    quantifier: None,
+                    test: ScalarTest::Equals {
+                        value: ScalarValue::Text("open".to_owned())
+                    },
+                }],
+                require_rows: vec![RequireRow {
+                    reference: "parent".to_owned(),
+                    test: RequireTest::Required,
+                }],
+                count: None,
+            }
+        }
+    );
+    assert!(matches!(
+        &data.rules[1].shape,
+        RuleShapeData::Unrepresentable { reason } if reason.contains("nests a quantifier")
+    ));
+}

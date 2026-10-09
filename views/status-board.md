@@ -10,13 +10,14 @@ Cards grouped into columns by `status`.
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md)
-- [Edit rules on the schema page](../workdown-items/schema-rules-editor.md)
+- [Check comparison references in rules at schema load](../workdown-items/rule-comparison-reference-check.md)
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md)
 
 ## in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
+- [Edit rules on the schema page](../workdown-items/schema-rules-editor.md)
 
 ## on_hold
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
@@ -128,6 +129,7 @@ Cards grouped into columns by `status`.
 - [Field editor block for string and list, with the resource picker](../workdown-items/schema-field-editor-text.md)
 - [Field editor block for choice and multichoice — the ordered value list](../workdown-items/schema-field-editor-values.md)
 - [Offer to drop a removed field's values from every item](../workdown-items/schema-field-remove-values.md)
+- [Move fields up and down on the schema page](../workdown-items/schema-field-reorder.md)
 - [Write one field definition into schema.yaml and say what uses a field](../workdown-items/schema-field-write-backend.md)
 - [Expose schema metadata so the UI can offer valid choices](../workdown-items/schema-metadata-api.md)
 - [A schema page that shows the fields and rules](../workdown-items/schema-page-read-view.md)
