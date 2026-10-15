@@ -2,8 +2,19 @@
   The field editor: the slide-over the schema page opens on a row click
   (`?field=<name>`) or on Add field (`?add`). A header block every type
   shares — name, type, required, description, default — then the
-  type-specific block, the field's recipe when it has one, what the
-  field is used by, and the footer with Save, Cancel and Remove.
+  type-specific block, the rollup section for the types that take one,
+  and beside them the YAML the save would write, the recipe blocks not
+  edited here, what the field is used by, and the footer with Save,
+  Cancel and Remove.
+
+  The YAML pane and the pre-save verdict come from the server, as in
+  the rule panel: on every pause in editing the draft goes to the
+  preview endpoint, which answers with the entry the write would
+  produce and whether the schema would load with it and keep the
+  field. A problem it reports greys out Save: the person is right
+  there, so a draft the load would disable is not written and warned
+  about afterwards, as an item would be (`schema-derived-field-editor`,
+  decision 10).
 
   The panel copies the field into a draft when it mounts and never
   reads the field again: the page behind it refetches on every file
@@ -28,30 +39,37 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { api } from '$lib/api/client';
+	import type { AggregateConfig } from '$lib/api/generated/AggregateConfig';
 	import type { Diagnostic } from '$lib/api/generated/Diagnostic';
 	import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
+	import type { FieldDefinitionWrite } from '$lib/api/generated/FieldDefinitionWrite';
 	import type { FieldShape } from '$lib/api/generated/FieldShape';
 	import type { FieldType } from '$lib/api/generated/FieldType';
 	import type { SchemaDefinitionData } from '$lib/api/generated/SchemaDefinitionData';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
 	import SlideOver from '$lib/ui/SlideOver.svelte';
+	import AggregateBlock from './AggregateBlock.svelte';
 	import DefaultControl from './DefaultControl.svelte';
 	import ResourceControl from './ResourceControl.svelte';
 	import ShapeBlock from './ShapeBlock.svelte';
 	import {
+		aggregateFunctionsFor,
 		generatorsFor,
 		initialDraft,
 		newDraft,
+		newRollup,
 		retype,
+		rollupRelations,
 		shapeProblem,
 		specOfDraft,
+		takesAggregate,
 		takesResource,
 		writeBody,
 		type DraftDefault
 	} from './fieldDraft';
 	import { blockerPhrase, removeDialogText, summarizeUsage, type UsageSummary } from './fieldUsage';
-	import { fillMechanisms, type FieldPanelTarget } from './schemaPage';
+	import type { FieldPanelTarget } from './schemaPage';
 
 	interface Props {
 		definition: SchemaDefinitionData;
@@ -90,8 +108,12 @@
 	let usage = $state<UsageState>({ status: 'loading' });
 
 	const isId = existing?.name === 'id';
-	const recipe = existing === null ? [] : fillMechanisms(existing);
-	const hasRecipe = recipe.length > 0;
+	// The recipe blocks still edited in the file, shown as text; the
+	// rollup has its own section on the left.
+	const textBlocks =
+		existing === null
+			? []
+			: (['compute', 'when', 'pull'] as const).filter((block) => existing.derived[block] !== null);
 	// Every existing field keeps its type here; a change is made in
 	// `schema.yaml`, where any pair is possible and judged at load (the
 	// write route's widening table stays as its guard). A field with a
@@ -110,6 +132,61 @@
 	// browser can judge is; greys out Save with the reason.
 	const shapeIssue = $derived(shapeProblem(draft.shape));
 	const showsResource = $derived(takesResource(definition, draft.fieldType));
+	const showsRollup = $derived(takesAggregate(definition, draft.fieldType));
+	const rollupFunctions = $derived(aggregateFunctionsFor(definition, draft.fieldType));
+	const rollupRelationNames = $derived(rollupRelations(definition.fields));
+	const rollupStart = $derived(newRollup(definition, definition.fields, draft.fieldType));
+
+	// The server's rendering of the draft: the YAML and its verdict. Keyed
+	// by the request it answered, so an answer to an older draft is
+	// dropped and the Save guard only trusts an answer to the current one.
+	type Preview =
+		| { status: 'idle' }
+		| { status: 'failed'; message: string }
+		| { status: 'loaded'; key: string; yaml: string; problem: string | null };
+	let preview = $state<Preview>({ status: 'idle' });
+	let previewTimer: ReturnType<typeof setTimeout> | undefined;
+	let latestKey = '';
+
+	// A new field without a name has no entry to show yet; the pane says
+	// so instead of relaying the server's refusal of the empty name.
+	const previewRequest = $derived.by(() => {
+		const name = existing?.name ?? draft.name.trim();
+		if (name === '') return null;
+		return { name, replacing: existing !== null, definition: writeBody(draft) };
+	});
+	const currentKey = $derived(previewRequest === null ? '' : JSON.stringify(previewRequest));
+	const previewForCurrent = $derived(
+		preview.status === 'loaded' && preview.key === currentKey ? preview : null
+	);
+
+	$effect(() => {
+		const key = currentKey;
+		if (missingName !== null || key === '') return;
+		latestKey = key;
+		clearTimeout(previewTimer);
+		previewTimer = setTimeout(() => {
+			void loadPreview(key);
+		}, 300);
+		return () => {
+			clearTimeout(previewTimer);
+		};
+	});
+
+	async function loadPreview(key: string): Promise<void> {
+		const request = JSON.parse(key) as {
+			name: string;
+			replacing: boolean;
+			definition: FieldDefinitionWrite;
+		};
+		const result = await api.previewField(request);
+		if (key !== latestKey) return;
+		if (result.data === undefined) {
+			preview = { status: 'failed', message: result.error ?? 'The preview could not be loaded.' };
+			return;
+		}
+		preview = { status: 'loaded', key, yaml: result.data.yaml, problem: result.data.problem };
+	}
 	// What stands in the way of Remove, as the button's explanation;
 	// `null` once nothing does, or while the answer is not in.
 	const blockedBy = $derived(usage.status === 'loaded' ? blockerPhrase(usage.summary) : null);
@@ -195,6 +272,10 @@
 
 	function onResourceChange(next: string | null): void {
 		draft.resource = next;
+	}
+
+	function onRollupChange(next: AggregateConfig | null): void {
+		draft.aggregate = next;
 	}
 
 	// The remove confirmation: one answer, or two once items hold a
@@ -320,24 +401,56 @@
 							onchange={onResourceChange}
 						/>
 					{/if}
+
+					<!-- ── Rollup ───────────────────────────────────────────── -->
+
+					{#if showsRollup}
+						<AggregateBlock
+							value={draft.aggregate}
+							functions={rollupFunctions}
+							relations={rollupRelationNames}
+							starting={rollupStart}
+							disabled={saving}
+							onchange={onRollupChange}
+						/>
+					{/if}
 				</div>
 
 				<aside class="side">
+					<!-- ── YAML ─────────────────────────────────────────────── -->
+
+					<section class="preview" aria-label="YAML">
+						<div class="section-head">
+							<span class="label">In schema.yaml</span>
+							<span class="hint">As the save writes it.</span>
+						</div>
+						{#if previewRequest === null}
+							<span class="hint">Enter a name to see the entry.</span>
+						{:else if preview.status === 'failed'}
+							<span class="hint warning">Could not preview: {preview.message}</span>
+						{:else if preview.status === 'loaded'}
+							<pre class="yaml">{preview.yaml}</pre>
+							{#if preview.problem !== null}
+								<span class="hint warning" role="alert">{preview.problem}</span>
+							{/if}
+						{:else}
+							<span class="hint">…</span>
+						{/if}
+					</section>
+
 					<!-- ── Recipe ───────────────────────────────────────────── -->
 
-					{#if existing !== null && hasRecipe}
+					{#if existing !== null && textBlocks.length > 0}
 						<section class="recipe" aria-label="Recipe">
 							<div class="section-head">
 								<span class="label">Filled by</span>
 								<span class="hint">Edit in schema.yaml.</span>
 							</div>
-							{#each ['compute', 'when', 'pull', 'aggregate'] as const as block (block)}
-								{#if existing.derived[block] !== null}
-									<div class="block">
-										<code class="block-name">{block}</code>
-										<pre>{existing.derived[block]}</pre>
-									</div>
-								{/if}
+							{#each textBlocks as block (block)}
+								<div class="block">
+									<code class="block-name">{block}</code>
+									<pre>{existing.derived[block]}</pre>
+								</div>
 							{/each}
 						</section>
 					{/if}
@@ -392,8 +505,11 @@
 				<button
 					type="submit"
 					class="primary"
-					disabled={saving || !nameValid || shapeIssue !== null}
-					title={shapeIssue ?? undefined}
+					disabled={saving ||
+						!nameValid ||
+						shapeIssue !== null ||
+						previewForCurrent?.problem != null}
+					title={shapeIssue ?? previewForCurrent?.problem ?? undefined}
 				>
 					{#if existing === null}
 						{saving ? 'Adding…' : 'Add field'}
@@ -518,6 +634,7 @@
 		gap: var(--space-2);
 	}
 
+	.preview,
 	.recipe,
 	.usage {
 		display: flex;
@@ -548,6 +665,10 @@
 		background-color: var(--color-bg);
 		font-size: var(--text-sm);
 		overflow-x: auto;
+	}
+
+	.yaml {
+		white-space: pre;
 	}
 
 	.columns {

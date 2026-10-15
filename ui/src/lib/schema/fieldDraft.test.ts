@@ -2,15 +2,19 @@ import { describe, it, expect } from 'vitest';
 import type { AggregateConfig } from '$lib/api/generated/AggregateConfig';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import {
+	aggregateFunctionsFor,
 	emptyShape,
 	forbidsCycles,
 	generatorsFor,
 	initialDraft,
 	newDraft,
+	newRollup,
 	retype,
+	rollupRelations,
 	shapeKindOf,
 	shapeProblem,
 	specOfDraft,
+	takesAggregate,
 	takesResource,
 	valueProblem,
 	withBound,
@@ -51,6 +55,11 @@ const tables: TypeTables = {
 		{ field_type: 'date', generators: ['$today'] },
 		{ field_type: 'integer', generators: ['$max_plus_one'] },
 		{ field_type: 'color', generators: [] }
+	],
+	aggregate_functions_by_type: [
+		{ field_type: 'integer', functions: ['sum', 'min', 'max', 'average', 'median', 'count'] },
+		{ field_type: 'date', functions: ['min', 'max', 'average'] },
+		{ field_type: 'string', functions: [] }
 	]
 };
 
@@ -347,6 +356,51 @@ describe('writeBody', () => {
 	it('sends the rollup as it came', () => {
 		const rollup: AggregateConfig = { function: 'max', error_on_missing: true, over: 'parent' };
 		expect(writeBody({ ...draft, aggregate: rollup }).aggregate).toEqual(rollup);
+	});
+});
+
+describe('rollups', () => {
+	const parent = served({
+		name: 'parent',
+		field_type: 'link',
+		shape: { kind: 'relation', allow_cycles: false, inverse: 'children' }
+	});
+	const related = served({
+		name: 'related_to',
+		field_type: 'links',
+		shape: { kind: 'relation', allow_cycles: false, inverse: null }
+	});
+	const loose = served({
+		name: 'follows',
+		field_type: 'link',
+		shape: { kind: 'relation', allow_cycles: null, inverse: null }
+	});
+
+	it('offers a rollup to the types with aggregate functions', () => {
+		expect(takesAggregate(tables, 'integer')).toBe(true);
+		expect(takesAggregate(tables, 'string')).toBe(false);
+	});
+
+	it('reads the functions from the served table', () => {
+		expect(aggregateFunctionsFor(tables, 'date')).toEqual(['min', 'max', 'average']);
+		expect(aggregateFunctionsFor(tables, 'color')).toEqual([]);
+	});
+
+	it('climbs only link fields that forbid cycles', () => {
+		expect(rollupRelations([related, loose, parent, served({})])).toEqual(['parent']);
+	});
+
+	it('starts with the first function over the first relation', () => {
+		expect(newRollup(tables, [parent], 'integer')).toEqual({
+			function: 'sum',
+			error_on_missing: false,
+			over: 'parent'
+		});
+	});
+
+	it('has nothing to start with when no relation can be climbed or the type has no functions', () => {
+		expect(newRollup(tables, [loose], 'integer')).toBeNull();
+		expect(newRollup(tables, [parent], 'string')).toBeNull();
 	});
 });
 

@@ -12,6 +12,7 @@
 // this file.
 
 import type { AggregateConfig } from '$lib/api/generated/AggregateConfig';
+import type { AggregateFunction } from '$lib/api/generated/AggregateFunction';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import type { FieldDefinitionWrite } from '$lib/api/generated/FieldDefinitionWrite';
 import type { FieldProperty } from '$lib/api/generated/FieldProperty';
@@ -43,15 +44,15 @@ export interface FieldDraft {
 	default: DraftDefault | null;
 	resource: string | null;
 	shape: FieldShape;
-	/**
-	 * The rollup, as served. Sent back as it came until the panel edits
-	 * it (`schema-derived-field-editor`), so a save keeps the block.
-	 */
+	/** The rollup (`aggregate:`), or none. */
 	aggregate: AggregateConfig | null;
 }
 
 /** The tables the draft functions read, as the definition payload serves them. */
-export type TypeTables = Pick<SchemaDefinitionData, 'properties_by_type' | 'generators_by_type'>;
+export type TypeTables = Pick<
+	SchemaDefinitionData,
+	'properties_by_type' | 'generators_by_type' | 'aggregate_functions_by_type'
+>;
 
 /**
  * The draft a panel opens with for an existing field. An invalid
@@ -168,6 +169,58 @@ export function generatorsFor(tables: TypeTables, fieldType: FieldType): Generat
 /** Whether a field of `fieldType` may name a resource list. */
 export function takesResource(tables: TypeTables, fieldType: FieldType): boolean {
 	return propertiesOf(tables, fieldType).includes('resource');
+}
+
+/** Whether a field of `fieldType` may carry a rollup (`aggregate:`). */
+export function takesAggregate(tables: TypeTables, fieldType: FieldType): boolean {
+	return propertiesOf(tables, fieldType).includes('aggregate');
+}
+
+/** The functions a rollup of a `fieldType` field may reduce with, in the server's order. */
+export function aggregateFunctionsFor(
+	tables: TypeTables,
+	fieldType: FieldType
+): AggregateFunction[] {
+	return (
+		tables.aggregate_functions_by_type.find((entry) => entry.field_type === fieldType)?.functions ??
+		[]
+	);
+}
+
+/**
+ * The names of the relations a rollup may climb: the `link` fields
+ * that forbid cycles, in declaration order. A `links` field cannot be
+ * climbed (a parent is one item), and a relation that allows cycles
+ * has no acyclic hierarchy to roll up in; the parser refuses both, so
+ * the picker offers neither.
+ */
+export function rollupRelations(fields: FieldDefinitionData[]): string[] {
+	return fields
+		.filter(
+			(field) =>
+				field.field_type === 'link' &&
+				field.shape.kind === 'relation' &&
+				field.shape.allow_cycles === false
+		)
+		.map((field) => field.name);
+}
+
+/**
+ * The rollup the panel starts with when it is switched on: the type's
+ * first function over the first relation, so the draft is whole from
+ * the first keystroke and the pickers show a choice rather than a
+ * blank. `null` when there is nothing to choose from — the type has no
+ * functions, or no relation forbids cycles.
+ */
+export function newRollup(
+	tables: TypeTables,
+	fields: FieldDefinitionData[],
+	fieldType: FieldType
+): AggregateConfig | null {
+	const [firstFunction] = aggregateFunctionsFor(tables, fieldType);
+	const [firstRelation] = rollupRelations(fields);
+	if (firstFunction === undefined || firstRelation === undefined) return null;
+	return { function: firstFunction, error_on_missing: false, over: firstRelation };
 }
 
 /** A shape with inclusive bounds: numbers for `integer` and `float`, shorthand text for `duration`. */

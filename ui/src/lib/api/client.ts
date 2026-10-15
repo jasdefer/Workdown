@@ -18,6 +18,7 @@ import type { CreateView } from './generated/CreateView';
 import type { Diagnostic } from './generated/Diagnostic';
 import type { FieldDefinitionWrite } from './generated/FieldDefinitionWrite';
 import type { FieldMutation } from './generated/FieldMutation';
+import type { FieldPreview } from './generated/FieldPreview';
 import type { FieldUsage } from './generated/FieldUsage';
 import type { GitCommitPreview } from './generated/GitCommitPreview';
 import type { GitCommitRequest } from './generated/GitCommitRequest';
@@ -27,6 +28,7 @@ import type { GitPushResult } from './generated/GitPushResult';
 import type { GitStatus } from './generated/GitStatus';
 import type { FieldMutationResult } from './generated/FieldMutationResult';
 import type { ItemDetail } from './generated/ItemDetail';
+import type { PreviewField } from './generated/PreviewField';
 import type { PreviewRule } from './generated/PreviewRule';
 import type { ProjectIdentity } from './generated/ProjectIdentity';
 import type { ReorderFields } from './generated/ReorderFields';
@@ -234,6 +236,15 @@ export const api = {
 	/** Remove a rule. An unknown name is a `404`. */
 	deleteRule: (name: string) =>
 		request<SchemaMutationResult>('DELETE', `/api/schema/rules/${encodeURIComponent(name)}`),
+	/**
+	 * What a field draft would be written as, and whether the schema would
+	 * load with it and keep the field, without writing. `200` whatever
+	 * the draft's problems, which come back in `problem`; the panel's
+	 * YAML pane and pre-save verdict. Not `/fields/preview`: a field
+	 * named `preview` would clash with it.
+	 */
+	previewField: (body: PreviewField) =>
+		request<FieldPreview>('POST', '/api/schema/field-preview', body),
 	/**
 	 * What a rule draft would be written as, and whether the schema would
 	 * still load with it, without writing. `200` whatever the draft's

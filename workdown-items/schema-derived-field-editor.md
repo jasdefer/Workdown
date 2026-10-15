@@ -166,5 +166,30 @@ in conditions, and a resources editor for constants.
   field named `preview` stays addressable.
 - The field panel sends the rollup back as served (`FieldDraft.aggregate`),
   so a save keeps the block; `retype` drops it where the new type has
-  no aggregate functions. No editor yet.
+  no aggregate functions.
 - `compute`, `when`, `pull` stay as the file has them on a replace.
+
+**2026-10-15, aggregate, the panel** (decision 11, step one, UI half).
+
+- `ui/src/lib/schema/AggregateBlock.svelte`: the "Roll up from the
+  items below" section, shown where `properties_by_type` lists
+  `aggregate`. Function picker from `aggregate_functions_by_type`,
+  relation picker from `rollupRelations` (the `link` fields with
+  `allow_cycles: false`), `error_on_missing` as a box. Switching the
+  rollup on starts from `newRollup` (first function, first relation);
+  the box is disabled with a hint when nothing can be climbed. A
+  relation the file names but the picker cannot offer stays as
+  "(not climbable)", the server refuses the save. Stateless, like the
+  other blocks.
+- `FieldPanel.svelte`: the YAML pane ("In schema.yaml") on the right,
+  fed by `POST /api/schema/field-preview` after a 300 ms pause, keyed
+  by the request so a stale answer is dropped; a `problem` greys Save
+  out with the reason (decision 10). Skipped while a new field has no
+  name. The read-only "Filled by" blocks are now `compute`, `when`,
+  `pull`; the table's "Filled by" column still lists all four.
+- `fieldDraft.ts`: `takesAggregate`, `aggregateFunctionsFor`,
+  `rollupRelations`, `newRollup`; `TypeTables` gained
+  `aggregate_functions_by_type`.
+- Clicked through against this repo's schema: rollup switched on and off
+  on an integer field, function and relation picked, the YAML pane and
+  the Save verdict followed. Nothing was saved.

@@ -9,6 +9,15 @@ its source — internal refactors are deliberately absent.
 
 ### Added
 
+- The web app's field editor edits a field's rollup. On a type that
+  can be rolled up, a "Roll up from the items below" box opens two
+  pickers — the function, from the type's own list, and the `link`
+  field to climb, from those that forbid cycles — and a box for
+  reporting items below without a value. Beside the form the panel
+  shows the entry the save would write to `schema.yaml`, rendered by
+  the server, and its verdict before Save: a draft the schema would
+  not load with greys Save out with the reason. The `compute`, `when`
+  and `pull` blocks stay read-only for now.
 - `workdown serve` edits a field's rollup. `GET /api/schema/definition`
   serves each field's `aggregate` block as data beside its text; the
   field writes (`POST /api/schema/fields`, `PUT
