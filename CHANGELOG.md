@@ -9,21 +9,26 @@ its source — internal refactors are deliberately absent.
 
 ### Added
 
-- The web app's field editor edits a field's rollup and its pull. On a
-  type that can be rolled up, a "Roll up from the items below" box
-  opens two pickers — the function, from the type's own list, and the
-  `link` field to climb, from those that forbid cycles — and a box for
-  reporting items below without a value. On a type that can be pulled
-  into, a "Value" selector offers "Pulled from linked items" beside
-  "Set by hand": the relation to follow, from the `link` and `links`
-  fields that forbid cycles, the field to read, from those a function
-  can reduce into this type, and that function; choosing it drops the
-  default, which a pulled field cannot have, and says so. Beside the
-  form the panel shows the entry the save would write to
-  `schema.yaml`, rendered by the server, and its verdict before Save:
-  a draft the schema would not load with, or would load and disable,
-  greys Save out with the reason. The `compute` and `when` blocks stay
-  read-only for now.
+- The web app's field editor edits a field's rollup, its pull and its
+  formula. On a type that can be rolled up, a "Roll up from the items
+  below" box opens two pickers — the function, from the type's own
+  list, and the `link` field to climb, from those that forbid cycles —
+  and a box for reporting items below without a value. On a type that
+  can be derived, a "Value" selector offers "Computed by a formula"
+  and "Pulled from linked items" beside "Set by hand". A formula is
+  typed as text, with the fields it may read, the project constants
+  and `$today` listed under the box for a click to insert, the
+  rounding on a date field and the box for reporting items missing an
+  input; a formula the server rejects is pointed at, with a caret
+  under the column the message names. A pull picks the relation to
+  follow, from the `link` and `links` fields that forbid cycles, the
+  field to read, from those a function can reduce into this type, and
+  that function. Choosing either drops the default, which a derived
+  field cannot have, and says so. Beside the form the panel shows the
+  entry the save would write to `schema.yaml`, rendered by the server,
+  and its verdict before Save: a draft the schema would not load with,
+  or would load and disable, greys Save out with the reason. The
+  `when` block stays read-only for now.
 - `workdown serve` edits a field's rollup, its pull and its formula.
   `GET /api/schema/definition` serves each field's `aggregate` block
   and, as its `recipe`, its `pull` or `compute` block as data beside

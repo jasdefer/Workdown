@@ -5,9 +5,12 @@ import type { PullConfig } from '$lib/api/generated/PullConfig';
 import {
 	aggregateFunctionsFor,
 	emptyShape,
+	expressionReferences,
 	forbidsCycles,
 	generatorsFor,
 	initialDraft,
+	insertAt,
+	newCompute,
 	newDraft,
 	newPull,
 	newRollup,
@@ -19,6 +22,7 @@ import {
 	shapeProblem,
 	specOfDraft,
 	takesAggregate,
+	takesCompute,
 	takesPull,
 	takesResource,
 	valueProblem,
@@ -77,7 +81,8 @@ const tables: TypeTables = {
 		},
 		{ field_type: 'date', sources: [{ field_type: 'date', functions: ['min', 'max', 'average'] }] },
 		{ field_type: 'string', sources: [] }
-	]
+	],
+	expression_readable_types: ['string', 'choice', 'integer', 'float', 'date', 'duration', 'boolean']
 };
 
 function served(overrides: Partial<FieldDefinitionData>): FieldDefinitionData {
@@ -426,6 +431,52 @@ describe('rollups', () => {
 	it('has nothing to start with when no relation can be climbed or the type has no functions', () => {
 		expect(newRollup(tables, [loose], 'integer')).toBeNull();
 		expect(newRollup(tables, [parent], 'string')).toBeNull();
+	});
+});
+
+describe('formulas', () => {
+	const points = served({ name: 'points', field_type: 'integer' });
+	const due = served({ name: 'due', field_type: 'date', shape: { kind: 'scalar' } });
+	const tags = served({ name: 'tags', field_type: 'list', shape: { kind: 'scalar' } });
+	const parent = served({
+		name: 'parent',
+		field_type: 'link',
+		shape: { kind: 'relation', allow_cycles: false, inverse: null }
+	});
+
+	it('offers a formula to the types the server lists it for', () => {
+		expect(takesCompute(tables, 'integer')).toBe(true);
+		expect(takesCompute(tables, 'string')).toBe(false);
+	});
+
+	it('starts empty with no options', () => {
+		expect(newCompute()).toEqual({
+			kind: 'compute',
+			expression: '',
+			round: 'nearest',
+			error_on_missing: false
+		});
+	});
+
+	it('lists the readable fields but itself, then the constants, then today', () => {
+		const constants = [{ name: 'daily_rate', value: 800 }];
+		expect(expressionReferences(tables, [points, due, tags, parent], constants, 'due')).toEqual([
+			{ text: 'points', detail: 'integer' },
+			{ text: '$constants.daily_rate', detail: '= 800' },
+			{ text: '$today', detail: 'the date the project is evaluated on' }
+		]);
+		expect(expressionReferences(tables, [], [], null)).toEqual([
+			{ text: '$today', detail: 'the date the project is evaluated on' }
+		]);
+	});
+
+	it('inserts a token with the spaces a run-on would need', () => {
+		expect(insertAt('', 0, 0, 'points')).toEqual({ expression: 'points', caret: 6 });
+		expect(insertAt('points *', 8, 8, '2')).toEqual({ expression: 'points * 2', caret: 10 });
+		expect(insertAt('points * ', 9, 9, '2')).toEqual({ expression: 'points * 2', caret: 10 });
+		expect(insertAt('(points)', 1, 1, 'due')).toEqual({ expression: '(due points)', caret: 5 });
+		expect(insertAt('a + b', 4, 5, 'c')).toEqual({ expression: 'a + c', caret: 5 });
+		expect(insertAt('a', 9, 9, 'b')).toEqual({ expression: 'a b', caret: 3 });
 	});
 });
 

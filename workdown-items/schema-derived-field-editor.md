@@ -270,3 +270,24 @@ in conditions, and a resources editor for constants.
   alone by design.
 - The panel already sends the recipe back as served, so a save keeps
   a formula; the "Value" selector still shows "Computed" locked.
+
+**2026-10-16, compute, the panel** (decision 11, step three, UI half).
+
+- "Computed by a formula" in the "Value" selector, where the type
+  takes `compute`; choosing it drops the default and says so
+  (decision 7). Only `when` is still locked.
+- `ui/src/lib/schema/ComputeBlock.svelte`: the formula as a monospace
+  text box (decision 1); under it the server's objection with a caret
+  line under the column it names (`problem_column`), the insert list
+  — the readable fields from `expression_readable_types`, the field
+  itself left out, the constants from `GET /api/schema` with their
+  values, `$today` — where a click puts the token at the caret with
+  the spaces a run-on would need (`insertAt`); `round` on a date
+  field only, `error_on_missing` as a box with what it changes spelled
+  out. The grammar stays in Rust: nothing in the browser parses the
+  text.
+- `fieldDraft.ts`: `ComputeRecipe`, `takesCompute`, `newCompute`,
+  `expressionReferences`, `insertAt`; `TypeTables` gained
+  `expression_readable_types`. `schemaStore.constants`.
+- Clicked through in a browser against this repo's schema; nothing to
+  report, and `schema.yaml` came out unchanged.

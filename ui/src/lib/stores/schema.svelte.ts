@@ -9,6 +9,7 @@
 // after a successful create.
 
 import { api } from '$lib/api/client';
+import type { ConstantData } from '$lib/api/generated/ConstantData';
 import type { FieldSchema } from '$lib/api/generated/FieldSchema';
 import type { FieldType } from '$lib/api/generated/FieldType';
 import type { Operator } from '$lib/api/generated/Operator';
@@ -68,6 +69,13 @@ export const schemaStore = {
 	 */
 	get resourceNames(): string[] {
 		return data?.resources.map((list) => list.name) ?? [];
+	},
+	/**
+	 * The project constants of `resources.yaml`, in file order — what a
+	 * formula may name as `$constants.<name>`. Empty until loaded.
+	 */
+	get constants(): ConstantData[] {
+		return data?.constants ?? [];
 	},
 	/** Set when the last load failed; `null` otherwise. */
 	get error(): string | null {

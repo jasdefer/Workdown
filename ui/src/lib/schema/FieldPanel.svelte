@@ -3,8 +3,8 @@
   (`?field=<name>`) or on Add field (`?add`). A header block every type
   shares — name, type, required, description, default — then the
   type-specific block, the "Value" section with the way the value is
-  filled (by hand, or pulled from linked items; a computed or
-  conditional field still says so and sends to the file), the rollup
+  filled (by hand, pulled from linked items, or computed by a formula;
+  a conditional field still says so and sends to the file), the rollup
   section for the types that take one, and beside them the YAML the
   save would write, the recipe blocks not edited here, what the field
   is used by, and the footer with Save, Cancel and Remove.
@@ -53,14 +53,17 @@
 	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
 	import SlideOver from '$lib/ui/SlideOver.svelte';
 	import AggregateBlock from './AggregateBlock.svelte';
+	import ComputeBlock from './ComputeBlock.svelte';
 	import DefaultControl from './DefaultControl.svelte';
 	import PullBlock from './PullBlock.svelte';
 	import ResourceControl from './ResourceControl.svelte';
 	import ShapeBlock from './ShapeBlock.svelte';
 	import {
 		aggregateFunctionsFor,
+		expressionReferences,
 		generatorsFor,
 		initialDraft,
+		newCompute,
 		newDraft,
 		newPull,
 		newRollup,
@@ -71,9 +74,11 @@
 		shapeProblem,
 		specOfDraft,
 		takesAggregate,
+		takesCompute,
 		takesPull,
 		takesResource,
 		writeBody,
+		type ComputeRecipe,
 		type DraftDefault
 	} from './fieldDraft';
 	import { blockerPhrase, removeDialogText, summarizeUsage, type UsageSummary } from './fieldUsage';
@@ -117,16 +122,16 @@
 
 	const isId = existing?.name === 'id';
 	// The recipe blocks still edited in the file, shown as text; the
-	// pull and the rollup have their sections on the left.
+	// pull, the formula and the rollup have their sections on the left.
 	const textBlocks =
 		existing === null
 			? []
-			: (['compute', 'when'] as const).filter((block) => existing.derived[block] !== null);
-	// A computed or conditional field's recipe is not on the wire yet:
-	// the "Value" selector names it and stays locked, the text is on the
-	// right. The parser makes the three recipes exclusive, so a field
-	// has at most one.
-	const lockedRecipe: 'compute' | 'when' | null = textBlocks[0] ?? null;
+			: (['when'] as const).filter((block) => existing.derived[block] !== null);
+	// A conditional field's recipe is not on the wire yet: the "Value"
+	// selector names it and stays locked, the text is on the right. The
+	// parser makes the three recipes exclusive, so a field has at most
+	// one.
+	const lockedRecipe: 'when' | null = textBlocks[0] ?? null;
 	// Every existing field keeps its type here; a change is made in
 	// `schema.yaml`, where any pair is possible and judged at load (the
 	// write route's widening table stays as its guard). A field with a
@@ -149,16 +154,29 @@
 	const rollupFunctions = $derived(aggregateFunctionsFor(definition, draft.fieldType));
 	const rollupRelationNames = $derived(rollupRelations(definition.fields));
 	const rollupStart = $derived(newRollup(definition, definition.fields, draft.fieldType));
-	// The "Value" section: shown where the type can be pulled into, and
-	// on a field whose recipe is locked, so the panel says what fills it.
-	const showsValue = $derived(lockedRecipe !== null || takesPull(definition, draft.fieldType));
+	// The "Value" section: shown where the type can be pulled into or
+	// computed, and on a field whose recipe is locked, so the panel says
+	// what fills it.
+	const computeAllowed = $derived(takesCompute(definition, draft.fieldType));
+	const showsValue = $derived(
+		lockedRecipe !== null || computeAllowed || takesPull(definition, draft.fieldType)
+	);
 	const pullRelationNames = $derived(pullRelations(definition.fields));
 	const pullSourceFields = $derived(pullSources(definition, definition.fields, draft.fieldType));
 	const pullStart = $derived(newPull(definition, definition.fields, draft.fieldType));
+	const references = $derived(
+		expressionReferences(
+			definition,
+			definition.fields,
+			schemaStore.constants,
+			existing?.name ?? null
+		)
+	);
 	type ValueKind = 'hand' | 'pull' | 'compute' | 'when';
 	const valueKind = $derived<ValueKind>(lockedRecipe ?? draft.recipe?.kind ?? 'hand');
-	// Whether choosing "pulled" dropped a default the draft had: a pulled
-	// field has none, and the panel says what happened to it (decision 7).
+	// Whether choosing "pulled" or "computed" dropped a default the draft
+	// had: such a field has none, and the panel says what happened to it
+	// (decision 7).
 	let defaultDropped = $state(false);
 
 	// The server's rendering of the draft: the YAML and its verdict. Keyed
@@ -167,7 +185,13 @@
 	type Preview =
 		| { status: 'idle' }
 		| { status: 'failed'; message: string }
-		| { status: 'loaded'; key: string; yaml: string; problem: string | null };
+		| {
+				status: 'loaded';
+				key: string;
+				yaml: string;
+				problem: string | null;
+				problemColumn: number | null;
+		  };
 	let preview = $state<Preview>({ status: 'idle' });
 	let previewTimer: ReturnType<typeof setTimeout> | undefined;
 	let latestKey = '';
@@ -209,7 +233,13 @@
 			preview = { status: 'failed', message: result.error ?? 'The preview could not be loaded.' };
 			return;
 		}
-		preview = { status: 'loaded', key, yaml: result.data.yaml, problem: result.data.problem };
+		preview = {
+			status: 'loaded',
+			key,
+			yaml: result.data.yaml,
+			problem: result.data.problem,
+			problemColumn: result.data.problem_column
+		};
 	}
 	// What stands in the way of Remove, as the button's explanation;
 	// `null` once nothing does, or while the answer is not in.
@@ -310,11 +340,19 @@
 			defaultDropped = draft.default !== null;
 			draft.default = null;
 			draft.recipe = { kind: 'pull', ...pullStart };
+		} else if (next === 'compute' && computeAllowed) {
+			defaultDropped = draft.default !== null;
+			draft.default = null;
+			draft.recipe = newCompute();
 		}
 	}
 
 	function onPullChange(next: PullConfig): void {
 		draft.recipe = { kind: 'pull', ...next };
+	}
+
+	function onComputeChange(next: ComputeRecipe): void {
+		draft.recipe = next;
 	}
 
 	// The remove confirmation: one answer, or two once items hold a
@@ -405,9 +443,9 @@
 							<span class="hint">
 								The default is the fallback of the <code>when</code> recipe. Edit it in schema.yaml.
 							</span>
-						{:else if valueKind === 'pull'}
+						{:else if valueKind === 'pull' || valueKind === 'compute'}
 							<span class="hint">
-								None: a pulled field has no default.{defaultDropped
+								None: a {valueKind === 'pull' ? 'pulled' : 'computed'} field has no default.{defaultDropped
 									? ' The one set before was dropped.'
 									: ''}
 							</span>
@@ -460,12 +498,23 @@
 									onchange={onValueKindChange}
 								>
 									<option value="hand">Set by hand</option>
-									<option value="pull" disabled={pullStart === null && valueKind !== 'pull'}>
+									<option
+										value="compute"
+										disabled={!computeAllowed && valueKind !== 'compute'}
+										title={computeAllowed ? undefined : 'This type cannot be computed'}
+									>
+										Computed by a formula
+									</option>
+									<option
+										value="pull"
+										disabled={pullStart === null && valueKind !== 'pull'}
+										title={pullStart === null
+											? 'Needs a link or links field that forbids cycles and a field that reduces into this type'
+											: undefined}
+									>
 										Pulled from linked items
 									</option>
-									{#if lockedRecipe === 'compute'}
-										<option value="compute">Computed</option>
-									{:else if lockedRecipe === 'when'}
+									{#if lockedRecipe === 'when'}
 										<option value="when">Conditional</option>
 									{/if}
 								</select>
@@ -482,15 +531,20 @@
 									disabled={saving}
 									onchange={onPullChange}
 								/>
-							{:else if pullStart === null}
-								<span class="hint">
-									Pulling needs a <code>link</code> or <code>links</code> field that forbids cycles and
-									a field that can be reduced into this type; the schema has no such pair yet.
-								</span>
+							{:else if draft.recipe?.kind === 'compute'}
+								<ComputeBlock
+									value={draft.recipe}
+									fieldType={draft.fieldType}
+									{references}
+									problem={previewForCurrent?.problem ?? null}
+									problemColumn={previewForCurrent?.problemColumn ?? null}
+									disabled={saving}
+									onchange={onComputeChange}
+								/>
 							{:else}
 								<span class="hint">
-									Written on each item, or pulled: read from the items a relation points at and
-									combined.
+									Written on each item, or derived: computed by a formula over the item's own
+									fields, or pulled from the items a relation points at.
 								</span>
 							{/if}
 						</fieldset>

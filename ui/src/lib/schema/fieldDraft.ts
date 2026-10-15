@@ -13,6 +13,7 @@
 
 import type { AggregateConfig } from '$lib/api/generated/AggregateConfig';
 import type { AggregateFunction } from '$lib/api/generated/AggregateFunction';
+import type { ConstantData } from '$lib/api/generated/ConstantData';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import type { FieldDefinitionWrite } from '$lib/api/generated/FieldDefinitionWrite';
 import type { FieldProperty } from '$lib/api/generated/FieldProperty';
@@ -62,6 +63,7 @@ export type TypeTables = Pick<
 	| 'generators_by_type'
 	| 'aggregate_functions_by_type'
 	| 'pull_sources_by_type'
+	| 'expression_readable_types'
 >;
 
 /**
@@ -311,6 +313,79 @@ export function newPull(
 		function: firstFunction,
 		error_on_missing: false
 	};
+}
+
+/** The `compute:` recipe as the panel edits it: the formula as text and its options. */
+export type ComputeRecipe = Extract<FieldRecipe, { kind: 'compute' }>;
+
+/** Whether a field of `fieldType` may be computed by a formula (`compute:`). */
+export function takesCompute(tables: TypeTables, fieldType: FieldType): boolean {
+	return propertiesOf(tables, fieldType).includes('compute');
+}
+
+/** The formula the panel starts with when "Computed" is chosen: empty, no options. */
+export function newCompute(): ComputeRecipe {
+	return { kind: 'compute', expression: '', round: 'nearest', error_on_missing: false };
+}
+
+/** Something a formula may name, offered for insertion: the text and a word on what it is. */
+export interface ExpressionReference {
+	text: string;
+	detail: string;
+}
+
+/**
+ * What a formula on the field named `self` may read, in the order the
+ * insert list shows them: the schema's fields whose type the server
+ * lists as readable, the field itself left out (a formula reading its
+ * own field is a cycle), then the project constants as
+ * `$constants.<name>` with their values, then `$today`. The algebra
+ * stays in Rust: the server's lists say what is readable, this only
+ * joins them with the schema's fields.
+ */
+export function expressionReferences(
+	tables: TypeTables,
+	fields: FieldDefinitionData[],
+	constants: ConstantData[],
+	self: string | null
+): ExpressionReference[] {
+	const readable = fields
+		.filter(
+			(field) => field.name !== self && tables.expression_readable_types.includes(field.field_type)
+		)
+		.map((field) => ({ text: field.name, detail: field.field_type }));
+	const named = constants.map((constant) => ({
+		text: `$constants.${constant.name}`,
+		detail: `= ${String(constant.value)}`
+	}));
+	return [
+		...readable,
+		...named,
+		{ text: '$today', detail: 'the date the project is evaluated on' }
+	];
+}
+
+/**
+ * `expression` with `text` put in place of the selection from `start`
+ * to `end`, a space added on either side where the neighbour is not
+ * one already (and not a bracket), so a click lands a token, not a
+ * run-on. `caret` is where typing continues: after the inserted text
+ * and its trailing space, if any.
+ */
+export function insertAt(
+	expression: string,
+	start: number,
+	end: number,
+	text: string
+): { expression: string; caret: number } {
+	const from = Math.max(0, Math.min(start, expression.length));
+	const to = Math.max(from, Math.min(end, expression.length));
+	const before = expression.slice(0, from);
+	const after = expression.slice(to);
+	const needsSpaceBefore = before !== '' && !/[\s(]$/.test(before);
+	const needsSpaceAfter = after !== '' && !/^[\s)]/.test(after);
+	const inserted = (needsSpaceBefore ? ' ' : '') + text + (needsSpaceAfter ? ' ' : '');
+	return { expression: before + inserted + after, caret: before.length + inserted.length };
 }
 
 /**
