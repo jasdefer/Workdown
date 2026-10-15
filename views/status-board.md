@@ -16,13 +16,13 @@ Cards grouped into columns by `status`.
 
 ## in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
+- [Edit compute, when, pull and aggregate blocks in the field editor](../workdown-items/schema-derived-field-editor.md)
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
 
 ## on_hold
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
 - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md)
-- [Edit compute, when, pull and aggregate blocks in the field editor](../workdown-items/schema-derived-field-editor.md)
 - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md)
 - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md)
 
