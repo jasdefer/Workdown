@@ -18,15 +18,19 @@ its source — internal refactors are deliberately absent.
   the server, and its verdict before Save: a draft the schema would
   not load with greys Save out with the reason. The `compute`, `when`
   and `pull` blocks stay read-only for now.
-- `workdown serve` edits a field's rollup. `GET /api/schema/definition`
-  serves each field's `aggregate` block as data beside its text; the
-  field writes (`POST /api/schema/fields`, `PUT
-  /api/schema/fields/{name}`) take an `aggregate` and write or clear
-  the block, so a field can be created with a rollup. `POST
-  /api/schema/field-preview` answers what a field draft would be
-  written as and whether the schema would load with it and keep the
-  field, without writing. The web app's field panel sends the rollup
-  back as served; editing it there is the next step.
+- `workdown serve` edits a field's rollup and its pull. `GET
+  /api/schema/definition` serves each field's `aggregate` block and,
+  as its `recipe`, its `pull` block as data beside their text, plus
+  the table of which source types a pull into each type may read with
+  which functions; the field writes (`POST /api/schema/fields`, `PUT
+  /api/schema/fields/{name}`) take an `aggregate` and a `recipe` and
+  write or clear the blocks, so a field can be created with a rollup
+  or a pull. `POST /api/schema/field-preview` answers what a field
+  draft would be written as and whether the schema would load with it
+  and keep the field, without writing: a pull whose reduction does not
+  fit the field is reported there, before any save. The web app's
+  field panel sends the pull back as served; editing it there is the
+  next step.
 
 - The web app's schema page edits rules. A rule entry opens the rule
   editor beside the page; Add rule opens it empty. A rule is edited as

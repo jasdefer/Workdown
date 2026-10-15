@@ -28,9 +28,9 @@
 //!   (comments inside the block do not survive). That is enough for
 //!   read-only display, and it needs no span-aware parser. A block the
 //!   editor edits is served as data beside its text — `aggregate` as
-//!   the parsed [`AggregateConfig`] — the way a rule's body is served
-//!   as rows beside it; the editor never reads the YAML itself
-//!   (`schema-derived-field-editor`, decision 8).
+//!   the parsed [`AggregateConfig`], `pull` as a [`FieldRecipe`] — the
+//!   way a rule's body is served as rows beside it; the editor never
+//!   reads the YAML itself (`schema-derived-field-editor`, decision 8).
 //!
 //! Every type here carries a `ts_rs` derive; `cargo xtask gen-types`
 //! emits the TypeScript. A new type needs its `exports.add` line in
@@ -45,9 +45,9 @@ use strum::VariantArray;
 use crate::coerce::coerce_value;
 use crate::model::duration::format_duration_seconds;
 use crate::model::schema::{
-    allowed_aggregate_functions, allowed_generators, field_property_allowed, widening_targets,
-    AggregateConfig, AggregateFunction, DefaultValue, FieldDefinition, FieldProperty, FieldType,
-    FieldTypeConfig, Generator, Severity,
+    allowed_aggregate_functions, allowed_generators, field_property_allowed, pull_functions,
+    widening_targets, AggregateConfig, AggregateFunction, DefaultValue, FieldDefinition,
+    FieldProperty, FieldType, FieldTypeConfig, Generator, PullConfig, Severity,
 };
 use crate::model::FieldValue;
 use crate::parser::schema::{parse_schema, SchemaLoadError};
@@ -75,6 +75,11 @@ pub struct SchemaDefinitionData {
     /// Which aggregate functions reduce values of each type; an empty
     /// list means the type cannot be aggregated or pulled at all.
     pub aggregate_functions_by_type: Vec<FieldTypeAggregateFunctions>,
+    /// Which source types a `pull:` on a field of each type may read,
+    /// and with which functions: the reductions whose result the
+    /// field's type holds. One entry per [`FieldType`]; a type that
+    /// cannot be pulled into has no sources.
+    pub pull_sources_by_type: Vec<FieldTypePullSources>,
     /// Which `$`-generators may be the `default:` of each type.
     pub generators_by_type: Vec<FieldTypeGenerators>,
     /// Which types each type may be changed to without invalidating an
@@ -121,6 +126,12 @@ pub struct FieldDefinitionData {
     /// section edits and the write takes back. The same block is in
     /// `derived.aggregate` as text.
     pub aggregate: Option<AggregateConfig>,
+    /// The recipe that fills the field's value as data — what the
+    /// editor's "Value" selector edits and the write takes back. `None`
+    /// for a field set by hand, and still `None` for a `compute:` or a
+    /// `when:` field until those are served as data; their text is in
+    /// `derived`.
+    pub recipe: Option<FieldRecipe>,
 }
 
 /// The type-specific part of a field definition. One variant per
@@ -168,6 +179,21 @@ pub enum DefaultData {
     /// two ever disagree, kept as text so the page can show what the
     /// file says and why the editor cannot.
     Invalid { text: String, reason: String },
+}
+
+/// The way a field's value is derived rather than written: one of the
+/// recipes the parser makes mutually exclusive, `pull`, `compute` and
+/// `when`, as the editor edits it and the write takes it back. A
+/// tagged union, so the "Value" selector's choice and the block are
+/// one value and a field cannot carry two of them on the wire. Only
+/// `pull` is served and written so far (`schema-derived-field-editor`,
+/// decision 11 lands them one at a time); `aggregate` is a separate
+/// block, because a rollup combines with any recipe.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum FieldRecipe {
+    /// The `pull:` block: a field read through a forward link, reduced.
+    Pull(PullConfig),
 }
 
 /// The fill-mechanism blocks of a field, each as YAML text for
@@ -285,6 +311,24 @@ pub struct FieldTypeAggregateFunctions {
     pub functions: Vec<AggregateFunction>,
 }
 
+/// What a `pull:` on a field of one type may read: the source types
+/// with a reduction into it, each with its functions.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+pub struct FieldTypePullSources {
+    pub field_type: FieldType,
+    /// Only the source types with at least one function, in
+    /// [`FieldType`] declaration order.
+    pub sources: Vec<PullSource>,
+}
+
+/// One source type a pull may read, with the functions that reduce it
+/// into the pulling field's type.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+pub struct PullSource {
+    pub field_type: FieldType,
+    pub functions: Vec<AggregateFunction>,
+}
+
 /// The generators that may default one type.
 #[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
 pub struct FieldTypeGenerators {
@@ -385,6 +429,20 @@ pub fn build(yaml: &str) -> Result<SchemaDefinitionData, SchemaLoadError> {
                     .unwrap_or_default(),
             })
             .collect(),
+        pull_sources_by_type: FieldType::VARIANTS
+            .iter()
+            .map(|&field_type| FieldTypePullSources {
+                field_type,
+                sources: FieldType::VARIANTS
+                    .iter()
+                    .map(|&source_type| PullSource {
+                        field_type: source_type,
+                        functions: pull_functions(source_type, field_type),
+                    })
+                    .filter(|source| !source.functions.is_empty())
+                    .collect(),
+            })
+            .collect(),
         generators_by_type: FieldType::VARIANTS
             .iter()
             .map(|&field_type| FieldTypeGenerators {
@@ -435,6 +493,7 @@ impl FieldDefinitionData {
                 aggregate: block_text("aggregate"),
             },
             aggregate: definition.aggregate.clone(),
+            recipe: definition.pull.clone().map(FieldRecipe::Pull),
         }
     }
 }
@@ -786,6 +845,66 @@ rules:
             })
         );
         assert_eq!(field(&data, "title").aggregate, None);
+    }
+
+    #[test]
+    fn the_pull_block_is_served_as_the_recipe_and_the_others_are_not_yet() {
+        let data = built();
+        assert_eq!(
+            field(&data, "earliest").recipe,
+            Some(FieldRecipe::Pull(PullConfig {
+                over: "depends_on".to_owned(),
+                field: "start".to_owned(),
+                function: AggregateFunction::Min,
+                error_on_missing: false,
+            }))
+        );
+        assert_eq!(field(&data, "total").recipe, None);
+        assert_eq!(field(&data, "when_done").recipe, None);
+        assert_eq!(field(&data, "color").recipe, None);
+        assert_eq!(
+            serde_json::to_value(field(&data, "earliest").recipe.as_ref()).unwrap()["kind"],
+            "pull"
+        );
+    }
+
+    #[test]
+    fn pull_sources_list_the_source_types_whose_reduction_fits_the_field() {
+        let data = built();
+        let sources = |field_type| {
+            data.pull_sources_by_type
+                .iter()
+                .find(|row| row.field_type == field_type)
+                .unwrap()
+                .sources
+                .clone()
+        };
+        assert_eq!(data.pull_sources_by_type.len(), FieldType::VARIANTS.len());
+        assert_eq!(
+            sources(FieldType::Date),
+            vec![PullSource {
+                field_type: FieldType::Date,
+                functions: vec![
+                    AggregateFunction::Min,
+                    AggregateFunction::Max,
+                    AggregateFunction::Average
+                ],
+            }]
+        );
+        // A count of anything reducible is an integer.
+        assert_eq!(
+            sources(FieldType::Integer)
+                .iter()
+                .map(|source| source.field_type)
+                .collect::<Vec<_>>(),
+            vec![
+                FieldType::Integer,
+                FieldType::Float,
+                FieldType::Duration,
+                FieldType::Boolean
+            ]
+        );
+        assert!(sources(FieldType::Choice).is_empty());
     }
 
     #[test]

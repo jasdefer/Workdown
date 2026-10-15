@@ -92,6 +92,7 @@ async fn get_schema_definition_returns_definitions_tables_and_hash() {
     for table in [
         "properties_by_type",
         "aggregate_functions_by_type",
+        "pull_sources_by_type",
         "generators_by_type",
         "widening_by_type",
     ] {

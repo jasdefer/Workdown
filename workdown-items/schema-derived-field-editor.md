@@ -193,3 +193,28 @@ in conditions, and a resources editor for constants.
 - Clicked through against this repo's schema: rollup switched on and off
   on an integer field, function and relation picked, the YAML pane and
   the Save verdict followed. Nothing was saved.
+
+**2026-10-15, pull, the Rust half** (decision 11, step two).
+
+- `FieldRecipe`, a tagged union in `schema_definition_data`, is how a
+  recipe travels: `GET /api/schema/definition` serves it as `recipe`
+  on every field (`None` by hand; `compute` and `when` still `None`
+  until their step, their text in `derived`), `FieldDefinitionWrite`
+  takes it back (`None` clears `pull`; `compute` and `when` in the file
+  stay). One value for the "Value" selector's choice and its block, so
+  two recipes cannot be sent at once. `PullConfig` is the variant's
+  payload and the wire type, like `AggregateConfig`.
+- The writer spells `pull` in its shortest form from an exhaustive
+  destructuring, before `aggregate`; `WRITTEN_KEYS` gained `pull`.
+- `pull_sources_by_type`: for each field type, the source types a pull
+  into it may read, each with its functions, from `pull_functions` in
+  the model. The "integer fits float" rule moved into
+  `aggregate_result_fits`, which the pull check and the table share,
+  so the browser copies no type rule (decision 6: pull's `field` from
+  the fields whose reduction fits).
+- The preview reports its first "rejected recipe" (decision 10): a
+  pull whose reduction does not fit the field is a load diagnostic,
+  not a parse error, and comes back as the problem.
+- The field panel sends the recipe back as served (`FieldDraft.recipe`),
+  so a save keeps a pull; `retype` drops it where the new type has no
+  `pull` property.

@@ -3,13 +3,13 @@
 //! The read side of the schema is [`crate::parser::schema`] and, for the
 //! web app, [`crate::schema_definition_data`]; this module is the write
 //! side. It supports what the schema editor needs: adding a field,
-//! replacing a field's plain properties and its `aggregate` block,
-//! previewing a field, removing a field, reordering the fields, saying
-//! what a field is used by ([`field_usage`]), and adding, replacing,
-//! removing and previewing a rule. Renaming a field is not offered;
-//! the design item `schema-editor-web-design` explains why. Of the
-//! recipes, `compute`, `when` and `pull` are not edited yet and a
-//! write leaves them as the file has them (`schema-derived-field-editor`
+//! replacing a field's plain properties, its `aggregate` block and its
+//! recipe, previewing a field, removing a field, reordering the fields,
+//! saying what a field is used by ([`field_usage`]), and adding,
+//! replacing, removing and previewing a rule. Renaming a field is not
+//! offered; the design item `schema-editor-web-design` explains why. Of
+//! the recipes, only `pull` is edited so far; `compute` and `when` a
+//! write leaves as the file has them (`schema-derived-field-editor`
 //! lands them one at a time).
 //!
 //! Like every other mutation in the tool, the repo stays the source of
@@ -118,7 +118,7 @@ use crate::config_check;
 use crate::model::config::Config;
 use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic};
 use crate::model::schema::{
-    widening_targets, AggregateConfig, FieldType, Generator, Schema, Severity,
+    widening_targets, AggregateConfig, FieldType, Generator, PullConfig, Schema, Severity,
 };
 use crate::model::work_item::WorkItem;
 use crate::operations::diagnostics::{introduced_by_mutation, introduced_diagnostics};
@@ -128,7 +128,7 @@ use crate::parser::schema::{
 };
 use crate::project::{load_project_with_schema, LoadError};
 use crate::rule_shape::RuleShape;
-use crate::schema_definition_data::FieldShape;
+use crate::schema_definition_data::{FieldRecipe, FieldShape};
 
 // ── Public types ─────────────────────────────────────────────────────
 
@@ -169,6 +169,13 @@ pub struct FieldDefinitionWrite {
     /// the type and `over` against the link fields.
     #[serde(default)]
     pub aggregate: Option<AggregateConfig>,
+    /// The recipe filling the value; `None` means set by hand and clears
+    /// the recipe keys the editor writes (`pull` so far; a `compute` or
+    /// `when` the file has stays). Written as sent; the parser judges
+    /// the combination with `default`, and the load the references and
+    /// the types, which the preview reports as the draft's problem.
+    #[serde(default)]
+    pub recipe: Option<FieldRecipe>,
 }
 
 /// What [`preview_field`] answers: the field's entry as the write would
@@ -982,8 +989,8 @@ fn recipes_naming_field(schema: &Schema, name: &str) -> Vec<String> {
 // ── Internals ────────────────────────────────────────────────────────
 
 /// Every key the editor may set or clear on a field. The complement —
-/// `compute`, `when`, `pull` — a replace never touches.
-const WRITTEN_KEYS: [&str; 12] = [
+/// `compute`, `when` — a replace never touches.
+const WRITTEN_KEYS: [&str; 13] = [
     "type",
     "values",
     "pattern",
@@ -995,6 +1002,7 @@ const WRITTEN_KEYS: [&str; 12] = [
     "default",
     "description",
     "resource",
+    "pull",
     "aggregate",
 ];
 
@@ -1134,10 +1142,34 @@ fn written_properties(definition: &FieldDefinitionWrite) -> Vec<(&'static str, s
     if let Some(resource) = &definition.resource {
         properties.push(("resource", Value::String(resource.clone())));
     }
+    match &definition.recipe {
+        None => {}
+        Some(FieldRecipe::Pull(pull)) => properties.push(("pull", pull_entry(pull))),
+    }
     if let Some(aggregate) = &definition.aggregate {
         properties.push(("aggregate", aggregate_entry(aggregate)));
     }
     properties
+}
+
+/// The `pull:` block as the file spells it, in the shortest form the
+/// parser reads: `error_on_missing` only when set. Exhaustive like
+/// [`aggregate_entry`], for the same reason.
+fn pull_entry(pull: &PullConfig) -> serde_yaml::Value {
+    let PullConfig {
+        over,
+        field,
+        function,
+        error_on_missing,
+    } = pull;
+    let mut entry = serde_yaml::Mapping::new();
+    entry.insert(yaml_key("over"), yaml_key(over));
+    entry.insert(yaml_key("field"), yaml_key(field));
+    entry.insert(yaml_key("function"), yaml_key(&function.to_string()));
+    if *error_on_missing {
+        entry.insert(yaml_key("error_on_missing"), serde_yaml::Value::Bool(true));
+    }
+    serde_yaml::Value::Mapping(entry)
 }
 
 /// The `aggregate:` block as the file spells it, in the shortest form
@@ -1301,6 +1333,7 @@ mod tests {
             resource: None,
             shape,
             aggregate: None,
+            recipe: None,
         }
     }
 
@@ -1420,6 +1453,12 @@ rules:
             error_on_missing: false,
             over: "parent".to_owned(),
         });
+        full.recipe = Some(FieldRecipe::Pull(PullConfig {
+            over: "depends_on".to_owned(),
+            field: "points".to_owned(),
+            function: AggregateFunction::Count,
+            error_on_missing: false,
+        }));
         assert_eq!(
             keys(&written_properties(&full)),
             [
@@ -1429,8 +1468,34 @@ rules:
                 "default",
                 "description",
                 "resource",
+                "pull",
                 "aggregate"
             ]
+        );
+    }
+
+    #[test]
+    fn the_pull_block_is_written_in_its_shortest_form() {
+        let plain = pull_entry(&PullConfig {
+            over: "depends_on".to_owned(),
+            field: "end".to_owned(),
+            function: AggregateFunction::Max,
+            error_on_missing: false,
+        });
+        assert_eq!(
+            serde_yaml::to_string(&plain).unwrap(),
+            "over: depends_on\nfield: end\nfunction: max\n"
+        );
+
+        let strict = pull_entry(&PullConfig {
+            over: "depends_on".to_owned(),
+            field: "end".to_owned(),
+            function: AggregateFunction::Max,
+            error_on_missing: true,
+        });
+        assert_eq!(
+            serde_yaml::to_string(&strict).unwrap(),
+            "over: depends_on\nfield: end\nfunction: max\nerror_on_missing: true\n"
         );
     }
 

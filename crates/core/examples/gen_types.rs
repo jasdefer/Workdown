@@ -40,7 +40,7 @@ use workdown_core::model::diagnostic::{
 use workdown_core::model::field_value::FieldValue;
 use workdown_core::model::rule::CountConstraint;
 use workdown_core::model::schema::{
-    AggregateConfig, AggregateFunction, FieldProperty, FieldType, Generator, Severity,
+    AggregateConfig, AggregateFunction, FieldProperty, FieldType, Generator, PullConfig, Severity,
 };
 use workdown_core::model::view_slots;
 use workdown_core::model::views::{Aggregate, Bucket, DisplayConfig, ViewSummary, ViewType};
@@ -63,9 +63,9 @@ use workdown_core::schema_data::{
     FieldSchema, FieldTypeOperators, PaletteColor, ResourceList, ResourceOption, SchemaData,
 };
 use workdown_core::schema_definition_data::{
-    DefaultData, DerivedBlocks, FieldDefinitionData, FieldShape, FieldTypeAggregateFunctions,
-    FieldTypeGenerators, FieldTypeProperties, FieldTypeWidening, RuleData, RuleShapeData,
-    SchemaDefinitionData, ShapeKind,
+    DefaultData, DerivedBlocks, FieldDefinitionData, FieldRecipe, FieldShape,
+    FieldTypeAggregateFunctions, FieldTypeGenerators, FieldTypeProperties, FieldTypePullSources,
+    FieldTypeWidening, PullSource, RuleData, RuleShapeData, SchemaDefinitionData, ShapeKind,
 };
 use workdown_core::timer_data::{
     EffortFieldState, StartTimer, TimerMode, TimerPhase, TimerStartOutcome, TimerState,
@@ -204,12 +204,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<FieldTypeProperties>();
     exports.add::<ShapeKind>();
     exports.add::<FieldTypeAggregateFunctions>();
+    exports.add::<FieldTypePullSources>();
+    exports.add::<PullSource>();
+    exports.add::<FieldRecipe>();
     exports.add::<FieldTypeGenerators>();
     exports.add::<FieldTypeWidening>();
     exports.add::<FieldProperty>();
     exports.add::<Generator>();
     exports.add::<AggregateFunction>();
     exports.add::<AggregateConfig>();
+    exports.add::<PullConfig>();
     exports.add::<ResourceList>();
     exports.add::<ResourceOption>();
     exports.add::<PaletteColor>();

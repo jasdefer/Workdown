@@ -664,6 +664,31 @@ pub(crate) fn aggregate_result_type(
     }
 }
 
+/// Whether a reduction producing `result_type` may land in a field
+/// declared `declared_type`: the same type, or a whole number in a
+/// `float` field. The one place this is spelled; the pull check and the
+/// pull-source table the web app is served both ask here.
+pub(crate) fn aggregate_result_fits(result_type: FieldType, declared_type: FieldType) -> bool {
+    result_type == declared_type
+        || (result_type == FieldType::Integer && declared_type == FieldType::Float)
+}
+
+/// The functions that reduce values of `source_type` into a field
+/// declared `declared_type` — what a `pull:` on such a field may name
+/// for a source of that type, in the order [`allowed_aggregate_functions`]
+/// lists them. Empty when nothing fits.
+pub fn pull_functions(source_type: FieldType, declared_type: FieldType) -> Vec<AggregateFunction> {
+    allowed_aggregate_functions(source_type)
+        .unwrap_or_default()
+        .iter()
+        .copied()
+        .filter(|&function| {
+            aggregate_result_type(function, source_type)
+                .is_some_and(|result_type| aggregate_result_fits(result_type, declared_type))
+        })
+        .collect()
+}
+
 // ── Type-restricted field properties ─────────────────────────────────
 
 /// A property in `schema.yaml` whose validity depends on the field's
@@ -856,7 +881,12 @@ pub fn widening_targets(field_type: FieldType) -> &'static [FieldType] {
 /// `field` exist, do the types line up) happens in `compute_check`,
 /// to the same one-diagnostic-disables-the-field standard as compute
 /// expressions.
-#[derive(Debug, Clone, Deserialize)]
+///
+/// Also the wire type the schema editor reads and writes the block as,
+/// like [`AggregateConfig`]: served inside
+/// [`crate::schema_definition_data::FieldRecipe`] and taken back by the
+/// field writes; `cargo xtask gen-types` emits the TypeScript.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
 pub struct PullConfig {
     /// The link/links field followed forward. Must declare
@@ -1060,5 +1090,33 @@ mod tests {
                 "FieldType::{field_type:?} serializes as {parsed} but displays as `{written}`"
             );
         }
+    }
+
+    #[test]
+    fn pull_functions_are_the_reductions_whose_result_fits_the_field() {
+        // Whole-number reductions fit a float field; nothing else crosses
+        // types but `count`, which is always an integer.
+        assert_eq!(
+            pull_functions(FieldType::Integer, FieldType::Float),
+            allowed_aggregate_functions(FieldType::Integer).unwrap()
+        );
+        assert_eq!(
+            pull_functions(FieldType::Float, FieldType::Integer),
+            vec![AggregateFunction::Count]
+        );
+        assert_eq!(
+            pull_functions(FieldType::Date, FieldType::Date),
+            vec![
+                AggregateFunction::Min,
+                AggregateFunction::Max,
+                AggregateFunction::Average
+            ]
+        );
+        assert_eq!(
+            pull_functions(FieldType::Boolean, FieldType::Integer),
+            vec![AggregateFunction::Count]
+        );
+        assert!(pull_functions(FieldType::Choice, FieldType::Integer).is_empty());
+        assert!(pull_functions(FieldType::Integer, FieldType::Date).is_empty());
     }
 }

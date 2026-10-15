@@ -28,8 +28,8 @@ use crate::expression::{check_types, ExpressionType, ReferenceResolution, TypeCo
 use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic};
 use crate::model::resources::Resources;
 use crate::model::schema::{
-    aggregate_result_type, allowed_aggregate_functions, FieldDefinition, FieldType,
-    FieldTypeConfig, PullConfig, Schema, Severity,
+    aggregate_result_fits, aggregate_result_type, allowed_aggregate_functions, FieldDefinition,
+    FieldType, FieldTypeConfig, PullConfig, Schema, Severity,
 };
 use crate::model::FieldValue;
 
@@ -210,9 +210,7 @@ fn pull_config_problem(
     };
 
     let declared_type = field_definition.field_type();
-    let fits = result_type == declared_type
-        || (result_type == FieldType::Integer && declared_type == FieldType::Float);
-    if !fits {
+    if !aggregate_result_fits(result_type, declared_type) {
         return Some(format!(
             "{} of '{}' produces {result_type}, but the field is declared {declared_type}",
             pull.function, pull.field

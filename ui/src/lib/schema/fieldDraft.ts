@@ -16,6 +16,7 @@ import type { AggregateFunction } from '$lib/api/generated/AggregateFunction';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import type { FieldDefinitionWrite } from '$lib/api/generated/FieldDefinitionWrite';
 import type { FieldProperty } from '$lib/api/generated/FieldProperty';
+import type { FieldRecipe } from '$lib/api/generated/FieldRecipe';
 import type { FieldShape } from '$lib/api/generated/FieldShape';
 import type { FieldType } from '$lib/api/generated/FieldType';
 import type { FieldValue } from '$lib/api/generated/FieldValue';
@@ -46,6 +47,12 @@ export interface FieldDraft {
 	shape: FieldShape;
 	/** The rollup (`aggregate:`), or none. */
 	aggregate: AggregateConfig | null;
+	/**
+	 * The recipe filling the value (`pull:` so far), or none for a
+	 * field set by hand. Sent back as served; editing it is the next
+	 * step.
+	 */
+	recipe: FieldRecipe | null;
 }
 
 /** The tables the draft functions read, as the definition payload serves them. */
@@ -69,7 +76,8 @@ export function initialDraft(field: FieldDefinitionData): FieldDraft {
 		default: draftDefaultOf(field),
 		resource: field.resource,
 		shape: field.shape,
-		aggregate: field.aggregate
+		aggregate: field.aggregate,
+		recipe: field.recipe
 	};
 }
 
@@ -96,7 +104,8 @@ export function newDraft(tables: TypeTables, fieldType: FieldType): FieldDraft {
 		default: null,
 		resource: null,
 		shape: emptyShape(shapeKindOf(tables, fieldType)),
-		aggregate: null
+		aggregate: null,
+		recipe: null
 	};
 }
 
@@ -106,7 +115,8 @@ export function newDraft(tables: TypeTables, fieldType: FieldType): FieldDraft {
  * (`integer` to `float` keeps the bounds) and replaced by the empty one
  * otherwise. The default is dropped: a literal of the old type need not
  * fit the new one, and a generator need not be allowed for it. The
- * resource and the rollup are kept only where the new type takes one.
+ * resource, the rollup and the recipe are kept only where the new type
+ * takes one.
  */
 export function retype(tables: TypeTables, draft: FieldDraft, fieldType: FieldType): FieldDraft {
 	const kind = shapeKindOf(tables, fieldType);
@@ -117,7 +127,8 @@ export function retype(tables: TypeTables, draft: FieldDraft, fieldType: FieldTy
 		default: null,
 		resource: properties.includes('resource') ? draft.resource : null,
 		shape: draft.shape.kind === kind ? draft.shape : emptyShape(kind),
-		aggregate: properties.includes('aggregate') ? draft.aggregate : null
+		aggregate: properties.includes('aggregate') ? draft.aggregate : null,
+		recipe: draft.recipe !== null && properties.includes(draft.recipe.kind) ? draft.recipe : null
 	};
 }
 
@@ -404,7 +415,8 @@ export function writeBody(draft: FieldDraft): FieldDefinitionWrite {
 		default: writeDefaultOf(draft.default),
 		resource: resource === '' ? null : resource,
 		shape: draft.shape,
-		aggregate: draft.aggregate
+		aggregate: draft.aggregate,
+		recipe: draft.recipe
 	};
 }
 

@@ -141,6 +141,68 @@ async fn post_field_writes_and_returns_201() {
 }
 
 #[tokio::test]
+async fn post_field_with_a_pull_recipe_writes_the_block_and_the_preview_judges_one() {
+    let (directory, state) = temp_project();
+    let integer = |recipe: Value| {
+        json!({
+            "field_type": "integer",
+            "required": false,
+            "shape": { "kind": "numeric", "min": null, "max": null },
+            "recipe": recipe
+        })
+    };
+
+    let response = send(
+        state.clone(),
+        "POST",
+        "/api/schema/fields",
+        Some(json!({ "name": "points", "definition": integer(Value::Null) })),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let pull = json!({
+        "kind": "pull",
+        "over": "depends_on",
+        "field": "points",
+        "function": "sum",
+        "error_on_missing": false
+    });
+    let response = send(
+        state.clone(),
+        "POST",
+        "/api/schema/fields",
+        Some(json!({ "name": "blocked_points", "definition": integer(pull) })),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let schema = load_schema(&directory.path().join(".workdown/schema.yaml")).unwrap();
+    let written = schema.fields["blocked_points"].pull.as_ref().unwrap();
+    assert_eq!(
+        (written.over.as_str(), written.field.as_str()),
+        ("depends_on", "points")
+    );
+
+    // A pull the parser takes but the load disables is the preview's
+    // problem, not a parse error.
+    let unreducible =
+        json!({ "kind": "pull", "over": "parent", "field": "status", "function": "count" });
+    let response = send(
+        state,
+        "POST",
+        "/api/schema/field-preview",
+        Some(json!({ "name": "blocked_points", "replacing": true, "definition": integer(unreducible) })),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope = body_json(response).await;
+    assert!(envelope["data"]["problem"]
+        .as_str()
+        .unwrap()
+        .contains("no function can reduce"));
+}
+
+#[tokio::test]
 async fn post_existing_field_returns_409() {
     let (_directory, state) = temp_project();
 

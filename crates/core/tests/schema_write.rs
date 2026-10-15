@@ -15,7 +15,7 @@ use workdown_core::model::config::Config;
 use workdown_core::model::diagnostic::{DiagnosticBody, ItemDiagnosticKind};
 use workdown_core::model::rule::{CountConstraint, Severity};
 use workdown_core::model::schema::{
-    AggregateConfig, AggregateFunction, DefaultValue, FieldType, FieldTypeConfig,
+    AggregateConfig, AggregateFunction, DefaultValue, FieldType, FieldTypeConfig, PullConfig,
 };
 use workdown_core::operations::schema_write::{
     add_field, add_rule, field_usage, preview_field, preview_rule, remove_field, remove_rule,
@@ -27,7 +27,7 @@ use workdown_core::parser::schema::load_schema;
 use workdown_core::rule_shape::{
     MatchRow, RequireRow, RequireTest, RuleShape, ScalarTest, ScalarValue,
 };
-use workdown_core::schema_definition_data::FieldShape;
+use workdown_core::schema_definition_data::{FieldRecipe, FieldShape};
 
 const CONFIG: &str = include_str!("../defaults/config.yaml");
 const SCHEMA: &str = include_str!("../defaults/schema.yaml");
@@ -116,6 +116,7 @@ fn definition(field_type: FieldType, shape: FieldShape) -> FieldDefinitionWrite 
         resource: None,
         shape,
         aggregate: None,
+        recipe: None,
     }
 }
 
@@ -134,6 +135,18 @@ fn rollup(over: &str) -> FieldDefinitionWrite {
         over: over.to_owned(),
     });
     points
+}
+
+/// A date field pulling the earliest `field` of its dependencies.
+fn pulled(field: &str) -> FieldDefinitionWrite {
+    let mut earliest = definition(FieldType::Date, FieldShape::Scalar);
+    earliest.recipe = Some(FieldRecipe::Pull(PullConfig {
+        over: "depends_on".to_owned(),
+        field: field.to_owned(),
+        function: AggregateFunction::Min,
+        error_on_missing: false,
+    }));
+    earliest
 }
 
 // ── add_field ────────────────────────────────────────────────────
@@ -362,6 +375,48 @@ fn add_field_with_a_rollup_writes_the_aggregate_block_and_clearing_it_removes_th
     );
     let reloaded = load_schema(&root.join(".workdown/schema.yaml")).unwrap();
     assert_eq!(reloaded.fields["points"].aggregate, None);
+}
+
+#[test]
+fn add_field_with_a_pull_writes_the_block_and_clearing_the_recipe_removes_it() {
+    let (_directory, root, config) = setup();
+    write_item(&root, "a", "");
+    write_item(&root, "b", "depends_on: [a]\n");
+
+    add_field(
+        &config,
+        &root,
+        config_path(),
+        "earliest",
+        &pulled("created"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        property_keys(&fields_tree(&root), "earliest"),
+        ["type", "required", "pull"]
+    );
+    let reloaded = load_schema(&root.join(".workdown/schema.yaml")).unwrap();
+    assert_eq!(
+        reloaded.fields["earliest"].pull,
+        Some(PullConfig {
+            over: "depends_on".to_owned(),
+            field: "created".to_owned(),
+            function: AggregateFunction::Min,
+            error_on_missing: false,
+        })
+    );
+
+    let mut by_hand = pulled("created");
+    by_hand.recipe = None;
+    update_field(&config, &root, config_path(), "earliest", &by_hand).unwrap();
+
+    assert_eq!(
+        property_keys(&fields_tree(&root), "earliest"),
+        ["type", "required"]
+    );
+    let reloaded = load_schema(&root.join(".workdown/schema.yaml")).unwrap();
+    assert_eq!(reloaded.fields["earliest"].pull, None);
 }
 
 #[test]
@@ -1081,6 +1136,67 @@ fn preview_field_shows_the_entry_and_the_verdict_without_writing() {
 
     let unknown = preview_field(&config, &root, config_path(), "no_such", true, &tint).unwrap();
     assert!(unknown.problem.unwrap().contains("no field named"));
+
+    assert_eq!(schema_text(&root), before);
+}
+
+#[test]
+fn preview_field_reports_a_pull_the_load_would_disable() {
+    let (_directory, root, config) = setup();
+    let before = schema_text(&root);
+
+    let sound = preview_field(
+        &config,
+        &root,
+        config_path(),
+        "earliest",
+        false,
+        &pulled("created"),
+    )
+    .unwrap();
+    assert_eq!(
+        sound.yaml,
+        "type: date\nrequired: false\npull:\n  over: depends_on\n  field: created\n  function: min"
+    );
+    assert_eq!(sound.problem, None);
+
+    // The parser takes the block as written; it is the load's config
+    // check that disables the field. Decision 10's rejected recipe.
+    let mut mismatched = pulled("created");
+    mismatched.field_type = FieldType::Integer;
+    mismatched.shape = FieldShape::Numeric {
+        min: None,
+        max: None,
+    };
+    let problem = preview_field(
+        &config,
+        &root,
+        config_path(),
+        "earliest",
+        false,
+        &mismatched,
+    )
+    .unwrap()
+    .problem
+    .expect("a date reduced into an integer field is a problem");
+    assert!(
+        problem.contains("produces date, but the field is declared integer"),
+        "{problem}"
+    );
+
+    // A default beside a pull is the parser's refusal.
+    let mut defaulted = pulled("created");
+    defaulted.default = Some(DefaultWrite::Literal {
+        value: serde_yaml::Value::String("2026-01-01".to_owned()),
+    });
+    let problem = preview_field(&config, &root, config_path(), "earliest", false, &defaulted)
+        .unwrap()
+        .problem
+        .expect("a default beside a pull is a problem");
+    assert!(
+        problem.contains("'pull' and 'default' cannot be combined"),
+        "{problem}"
+    );
 
     assert_eq!(schema_text(&root), before);
 }

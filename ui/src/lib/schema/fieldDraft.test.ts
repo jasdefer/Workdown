@@ -74,6 +74,7 @@ function served(overrides: Partial<FieldDefinitionData>): FieldDefinitionData {
 		shape: { kind: 'numeric', min: 0, max: 100 },
 		derived: { compute: null, when: null, pull: null, aggregate: null },
 		aggregate: null,
+		recipe: null,
 		...overrides
 	};
 }
@@ -89,6 +90,7 @@ describe('initialDraft', () => {
 			default: null,
 			resource: null,
 			shape: { kind: 'numeric', min: 0, max: 100 },
+			recipe: null,
 			aggregate: null
 		});
 	});
@@ -121,6 +123,7 @@ describe('newDraft', () => {
 			default: null,
 			resource: null,
 			shape: { kind: 'values', values: [] },
+			recipe: null,
 			aggregate: null
 		});
 	});
@@ -135,6 +138,7 @@ describe('retype', () => {
 		default: { kind: 'generator', generator: '$filename' },
 		resource: 'people',
 		shape: { kind: 'text', pattern: '^[a-z]+$' },
+		recipe: null,
 		aggregate: null
 	};
 
@@ -147,6 +151,7 @@ describe('retype', () => {
 			default: null,
 			resource: null,
 			shape: { kind: 'scalar' },
+			recipe: null,
 			aggregate: null
 		});
 	});
@@ -170,6 +175,7 @@ describe('retype', () => {
 			...draft,
 			fieldType: 'float',
 			shape: { kind: 'numeric', min: null, max: null },
+			recipe: null,
 			aggregate: rollup
 		};
 		expect(retype(tables, total, 'integer').aggregate).toEqual(rollup);
@@ -320,6 +326,7 @@ describe('writeBody', () => {
 		default: { kind: 'literal', value: 3 },
 		resource: null,
 		shape: { kind: 'numeric', min: 0, max: null },
+		recipe: null,
 		aggregate: null
 	};
 
@@ -331,6 +338,7 @@ describe('writeBody', () => {
 			default: { kind: 'literal', value: 3 },
 			resource: null,
 			shape: { kind: 'numeric', min: 0, max: null },
+			recipe: null,
 			aggregate: null
 		});
 	});

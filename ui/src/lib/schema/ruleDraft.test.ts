@@ -46,7 +46,8 @@ function field(
 		resource: null,
 		shape,
 		derived: plain,
-		aggregate: null
+		aggregate: null,
+		recipe: null
 	};
 }
 
