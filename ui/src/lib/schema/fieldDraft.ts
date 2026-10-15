@@ -13,6 +13,7 @@
 
 import type { AggregateConfig } from '$lib/api/generated/AggregateConfig';
 import type { AggregateFunction } from '$lib/api/generated/AggregateFunction';
+import type { ConditionLiteral } from '$lib/api/generated/ConditionLiteral';
 import type { ConstantData } from '$lib/api/generated/ConstantData';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import type { FieldDefinitionWrite } from '$lib/api/generated/FieldDefinitionWrite';
@@ -22,9 +23,11 @@ import type { FieldShape } from '$lib/api/generated/FieldShape';
 import type { FieldType } from '$lib/api/generated/FieldType';
 import type { FieldValue } from '$lib/api/generated/FieldValue';
 import type { Generator } from '$lib/api/generated/Generator';
+import type { Operand } from '$lib/api/generated/Operand';
 import type { PullConfig } from '$lib/api/generated/PullConfig';
 import type { SchemaDefinitionData } from '$lib/api/generated/SchemaDefinitionData';
 import type { ShapeKind } from '$lib/api/generated/ShapeKind';
+import type { WhenBranchData } from '$lib/api/generated/WhenBranchData';
 import type { ValueSpec } from '$lib/values/valueSpec';
 
 /**
@@ -421,6 +424,191 @@ export function withPullSource(
 	return { ...value, field: name, function: kept ?? value.function };
 }
 
+/** The `when:` recipe as the panel edits it: the branches in order, first match wins. */
+export type WhenRecipe = Extract<FieldRecipe, { kind: 'when' }>;
+
+/** Whether a field of `fieldType` may be conditional (`when:`): the server lists the types. */
+export function takesWhen(tables: TypeTables, fieldType: FieldType): boolean {
+	return tables.conditional_types.includes(fieldType);
+}
+
+/** One entry of an operand picker: a key a select can hold, its label, and the operand it stands for. */
+export interface OperandChoice {
+	key: string;
+	label: string;
+	operand: Operand;
+}
+
+/**
+ * What a condition's operand may be, in the order the picker shows
+ * them: the readable fields (the field itself left out, a condition
+ * reading its own field is a cycle), the project constants, `$today`,
+ * and "a value" entered through the value editor. Which fields are
+ * readable the server's list says.
+ */
+export function operandChoices(
+	tables: TypeTables,
+	fields: FieldDefinitionData[],
+	constants: ConstantData[],
+	self: string | null
+): OperandChoice[] {
+	const fieldChoices: OperandChoice[] = fields
+		.filter(
+			(field) => field.name !== self && tables.expression_readable_types.includes(field.field_type)
+		)
+		.map((field) => ({
+			key: `field:${field.name}`,
+			label: field.name,
+			operand: { kind: 'field', name: field.name }
+		}));
+	const constantChoices: OperandChoice[] = constants.map((constant) => ({
+		key: `constant:${constant.name}`,
+		label: `$constants.${constant.name}`,
+		operand: { kind: 'constant', name: constant.name }
+	}));
+	return [
+		...fieldChoices,
+		...constantChoices,
+		{ key: 'today', label: '$today', operand: { kind: 'today' } },
+		{ key: 'literal', label: 'a value', operand: { kind: 'literal', value: '' } }
+	];
+}
+
+/** The picker key of `operand`, the inverse of `operandChoices`' keys. */
+export function operandKey(operand: Operand): string {
+	switch (operand.kind) {
+		case 'field':
+			return `field:${operand.name}`;
+		case 'constant':
+			return `constant:${operand.name}`;
+		case 'today':
+			return 'today';
+		case 'literal':
+			return 'literal';
+	}
+}
+
+/**
+ * What a literal compared against `other` is edited as: the other
+ * field's own spec (a choice offers its values, a number its bounds), a
+ * constant's type read off its value, a date against `$today`, free
+ * text against another literal. The server type-checks the comparison;
+ * this only picks the editor.
+ */
+export function literalSpecFor(
+	other: Operand,
+	fields: FieldDefinitionData[],
+	constants: ConstantData[]
+): ValueSpec {
+	const text: ValueSpec = {
+		fieldType: 'string',
+		required: false,
+		values: [],
+		min: null,
+		max: null
+	};
+	switch (other.kind) {
+		case 'field': {
+			const field = fields.find((entry) => entry.name === other.name);
+			return field === undefined
+				? text
+				: {
+						fieldType: field.field_type,
+						required: false,
+						values: field.shape.kind === 'values' ? field.shape.values : [],
+						min: field.shape.kind === 'numeric' ? field.shape.min : null,
+						max: field.shape.kind === 'numeric' ? field.shape.max : null
+					};
+		}
+		case 'constant': {
+			const value = constants.find((entry) => entry.name === other.name)?.value;
+			if (typeof value === 'number') {
+				return { ...text, fieldType: Number.isInteger(value) ? 'integer' : 'float' };
+			}
+			if (typeof value === 'boolean') return { ...text, fieldType: 'boolean' };
+			return text;
+		}
+		case 'today':
+			return { ...text, fieldType: 'date' };
+		case 'literal':
+			return text;
+	}
+}
+
+/**
+ * The literal the value editor's output stands for: a number, a
+ * boolean or text as they are, a cleared value as empty text. The
+ * grammar has no date or collection literal, so those read as text
+ * and the server's type check says so.
+ */
+export function literalOf(value: FieldValue | null): ConditionLiteral {
+	if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'string') {
+		return value;
+	}
+	if (typeof value === 'bigint') return Number(value);
+	return '';
+}
+
+/** The literal as the value editor shows it. */
+export function valueOfLiteral(literal: ConditionLiteral): FieldValue {
+	return typeof literal === 'bigint' ? Number(literal) : literal;
+}
+
+/** The branch's `then`, which the wire types as unknown, as the value editor's input. */
+export function thenOf(branch: WhenBranchData): FieldValue | null {
+	return branch.then as FieldValue | null;
+}
+
+/**
+ * A fresh branch: the first operand choice compared for equality
+ * against a value not yet entered, and no `then` yet.
+ */
+export function newBranch(choices: OperandChoice[]): WhenBranchData {
+	const left: Operand = choices[0]?.operand ?? { kind: 'today' };
+	return {
+		condition: {
+			kind: 'row',
+			left,
+			operator: 'equal',
+			right: { kind: 'literal', value: '' }
+		},
+		then: null
+	};
+}
+
+/** The recipe "Conditional" starts with: one fresh branch. */
+export function newWhen(choices: OperandChoice[]): WhenRecipe {
+	return { kind: 'when', branches: [newBranch(choices)] };
+}
+
+/** The recipe with the branch at `index` replaced. */
+export function withBranch(recipe: WhenRecipe, index: number, branch: WhenBranchData): WhenRecipe {
+	return {
+		...recipe,
+		branches: recipe.branches.map((entry, at) => (at === index ? branch : entry))
+	};
+}
+
+/** The recipe with `branch` appended. */
+export function withBranchAdded(recipe: WhenRecipe, branch: WhenBranchData): WhenRecipe {
+	return { ...recipe, branches: [...recipe.branches, branch] };
+}
+
+/** The recipe without the branch at `index`. */
+export function withBranchRemoved(recipe: WhenRecipe, index: number): WhenRecipe {
+	return { ...recipe, branches: recipe.branches.filter((_, at) => at !== index) };
+}
+
+/** The recipe with the branch at `index` moved one up or down; order is meaning, first match wins. */
+export function withBranchMoved(
+	recipe: WhenRecipe,
+	index: number,
+	direction: 'up' | 'down'
+): WhenRecipe {
+	const branches = moved(recipe.branches, index, direction);
+	return branches === recipe.branches ? recipe : { ...recipe, branches };
+}
+
 /** A shape with inclusive bounds: numbers for `integer` and `float`, shorthand text for `duration`. */
 export type BoundedShape = Extract<FieldShape, { kind: 'numeric' | 'duration' }>;
 
@@ -551,14 +739,24 @@ export function withValueMoved(
 	index: number,
 	direction: 'up' | 'down'
 ): ValuesShape {
+	const values = moved(shape.values, index, direction);
+	return values === shape.values ? shape : { ...shape, values };
+}
+
+/**
+ * `list` with the entry at `index` swapped with its neighbour above
+ * (`'up'`) or below (`'down'`). Unchanged at the list's ends, so a
+ * button that is somehow clicked there does nothing.
+ */
+export function moved<T>(list: T[], index: number, direction: 'up' | 'down'): T[] {
 	const target = direction === 'up' ? index - 1 : index + 1;
-	if (index < 0 || index >= shape.values.length || target < 0 || target >= shape.values.length) {
-		return shape;
+	if (index < 0 || index >= list.length || target < 0 || target >= list.length) {
+		return list;
 	}
-	const values = [...shape.values];
-	const moved = values.splice(index, 1);
-	values.splice(target, 0, ...moved);
-	return { ...shape, values };
+	const next = [...list];
+	const taken = next.splice(index, 1);
+	next.splice(target, 0, ...taken);
+	return next;
 }
 
 /**

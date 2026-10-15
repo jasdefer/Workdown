@@ -3,11 +3,10 @@
   (`?field=<name>`) or on Add field (`?add`). A header block every type
   shares — name, type, required, description, default — then the
   type-specific block, the "Value" section with the way the value is
-  filled (by hand, pulled from linked items, or computed by a formula;
-  a conditional field still says so and sends to the file), the rollup
-  section for the types that take one, and beside them the YAML the
-  save would write, the recipe blocks not edited here, what the field
-  is used by, and the footer with Save, Cancel and Remove.
+  filled (by hand, by the first condition that holds, by a formula, or
+  pulled from linked items), the rollup section for the types that
+  take one, and beside them the YAML the save would write, what the
+  field is used by, and the footer with Save, Cancel and Remove.
 
   The YAML pane and the pre-save verdict come from the server, as in
   the rule panel: on every pause in editing the draft goes to the
@@ -58,6 +57,7 @@
 	import PullBlock from './PullBlock.svelte';
 	import ResourceControl from './ResourceControl.svelte';
 	import ShapeBlock from './ShapeBlock.svelte';
+	import WhenBlock from './WhenBlock.svelte';
 	import {
 		aggregateFunctionsFor,
 		expressionReferences,
@@ -67,6 +67,8 @@
 		newDraft,
 		newPull,
 		newRollup,
+		newWhen,
+		operandChoices,
 		pullRelations,
 		pullSources,
 		retype,
@@ -77,9 +79,11 @@
 		takesCompute,
 		takesPull,
 		takesResource,
+		takesWhen,
 		writeBody,
 		type ComputeRecipe,
-		type DraftDefault
+		type DraftDefault,
+		type WhenRecipe
 	} from './fieldDraft';
 	import { blockerPhrase, removeDialogText, summarizeUsage, type UsageSummary } from './fieldUsage';
 	import type { FieldPanelTarget } from './schemaPage';
@@ -121,26 +125,11 @@
 	let usage = $state<UsageState>({ status: 'loading' });
 
 	const isId = existing?.name === 'id';
-	// The recipe blocks still edited in the file, shown as text; the
-	// pull, the formula and the rollup have their sections on the left.
-	const textBlocks =
-		existing === null
-			? []
-			: (['when'] as const).filter((block) => existing.derived[block] !== null);
-	// A conditional field's recipe is not on the wire yet: the "Value"
-	// selector names it and stays locked, the text is on the right. The
-	// parser makes the three recipes exclusive, so a field has at most
-	// one.
-	const lockedRecipe: 'when' | null = textBlocks[0] ?? null;
 	// Every existing field keeps its type here; a change is made in
 	// `schema.yaml`, where any pair is possible and judged at load (the
 	// write route's widening table stays as its guard). A field with a
 	// recipe keeps it for good, the recipe was type-checked against it.
 	const typeLocked = existing !== null;
-	// On a conditional field `default:` is the recipe's fallback and the
-	// write leaves it untouched, so the control would appear to work and
-	// do nothing.
-	const defaultLocked = existing?.derived.when != null;
 	const invalidDefault = existing?.default?.kind === 'invalid' ? existing.default.reason : null;
 
 	const fieldTypes = $derived(definition.properties_by_type.map((row) => row.field_type));
@@ -154,12 +143,14 @@
 	const rollupFunctions = $derived(aggregateFunctionsFor(definition, draft.fieldType));
 	const rollupRelationNames = $derived(rollupRelations(definition.fields));
 	const rollupStart = $derived(newRollup(definition, definition.fields, draft.fieldType));
-	// The "Value" section: shown where the type can be pulled into or
-	// computed, and on a field whose recipe is locked, so the panel says
-	// what fills it.
+	// The "Value" section: shown where the type can be derived at all.
 	const computeAllowed = $derived(takesCompute(definition, draft.fieldType));
+	const whenAllowed = $derived(takesWhen(definition, draft.fieldType));
 	const showsValue = $derived(
-		lockedRecipe !== null || computeAllowed || takesPull(definition, draft.fieldType)
+		computeAllowed || whenAllowed || takesPull(definition, draft.fieldType)
+	);
+	const choices = $derived(
+		operandChoices(definition, definition.fields, schemaStore.constants, existing?.name ?? null)
 	);
 	const pullRelationNames = $derived(pullRelations(definition.fields));
 	const pullSourceFields = $derived(pullSources(definition, definition.fields, draft.fieldType));
@@ -173,11 +164,15 @@
 		)
 	);
 	type ValueKind = 'hand' | 'pull' | 'compute' | 'when';
-	const valueKind = $derived<ValueKind>(lockedRecipe ?? draft.recipe?.kind ?? 'hand');
+	const valueKind = $derived<ValueKind>(draft.recipe?.kind ?? 'hand');
 	// Whether choosing "pulled" or "computed" dropped a default the draft
-	// had: such a field has none, and the panel says what happened to it
-	// (decision 7).
+	// had (such a field has none), or choosing "conditional" dropped a
+	// generated one (the fallback is a literal); and whether leaving
+	// "conditional" dropped the fallback, which would otherwise turn
+	// into an add-time default, a different meaning. The panel says what
+	// happened either way (decision 7).
 	let defaultDropped = $state(false);
+	let fallbackDropped = $state(false);
 
 	// The server's rendering of the draft: the YAML and its verdict. Keyed
 	// by the request it answered, so an answer to an older draft is
@@ -334,8 +329,18 @@
 
 	function onValueKindChange(event: Event & { currentTarget: HTMLSelectElement }): void {
 		const next = event.currentTarget.value as ValueKind;
+		if (valueKind === 'when' && next !== 'when') {
+			fallbackDropped = draft.default !== null;
+			draft.default = null;
+		}
 		if (next === 'hand') {
 			draft.recipe = null;
+		} else if (next === 'when' && whenAllowed) {
+			if (draft.default?.kind === 'generator') {
+				defaultDropped = true;
+				draft.default = null;
+			}
+			draft.recipe = newWhen(choices);
 		} else if (next === 'pull' && pullStart !== null) {
 			defaultDropped = draft.default !== null;
 			draft.default = null;
@@ -352,6 +357,10 @@
 	}
 
 	function onComputeChange(next: ComputeRecipe): void {
+		draft.recipe = next;
+	}
+
+	function onWhenChange(next: WhenRecipe): void {
 		draft.recipe = next;
 	}
 
@@ -438,28 +447,38 @@
 					</label>
 
 					<div class="row">
-						<span class="label">Default</span>
-						{#if defaultLocked}
-							<span class="hint">
-								The default is the fallback of the <code>when</code> recipe. Edit it in schema.yaml.
-							</span>
-						{:else if valueKind === 'pull' || valueKind === 'compute'}
+						<span class="label"
+							>{valueKind === 'when' ? 'Default when no branch holds' : 'Default'}</span
+						>
+						{#if valueKind === 'pull' || valueKind === 'compute'}
 							<span class="hint">
 								None: a {valueKind === 'pull' ? 'pulled' : 'computed'} field has no default.{defaultDropped
 									? ' The one set before was dropped.'
 									: ''}
 							</span>
 						{:else}
+							<!-- Beside conditions the default is the evaluated fallback, a
+							     literal only: the generator choice is withheld. -->
 							<DefaultControl
 								value={draft.default}
 								spec={specOfDraft(draft)}
-								{generators}
+								generators={valueKind === 'when' ? [] : generators}
 								items={schemaStore.items}
 								palette={schemaStore.palette}
 								resourceOptions={schemaStore.optionsOfResource(draft.resource)}
 								disabled={saving}
 								onchange={onDefaultChange}
 							/>
+							{#if valueKind === 'when' && defaultDropped}
+								<span class="hint"
+									>The generated default was dropped: the fallback is a fixed value.</span
+								>
+							{:else if valueKind === 'hand' && fallbackDropped}
+								<span class="hint">
+									The fallback of the conditions was dropped: it would have become a default stamped
+									on new items.
+								</span>
+							{/if}
 							{#if invalidDefault !== null}
 								<span class="hint warning">The saved default is invalid: {invalidDefault}</span>
 							{/if}
@@ -491,13 +510,15 @@
 						<fieldset class="value" aria-label="Value">
 							<label class="row">
 								<span class="label">Value</span>
-								<select
-									value={valueKind}
-									disabled={saving || lockedRecipe !== null}
-									title={lockedRecipe !== null ? 'Edit the recipe in schema.yaml' : undefined}
-									onchange={onValueKindChange}
-								>
+								<select value={valueKind} disabled={saving} onchange={onValueKindChange}>
 									<option value="hand">Set by hand</option>
+									<option
+										value="when"
+										disabled={!whenAllowed && valueKind !== 'when'}
+										title={whenAllowed ? undefined : 'This type cannot be conditional'}
+									>
+										Conditional: by the first condition that holds
+									</option>
 									<option
 										value="compute"
 										disabled={!computeAllowed && valueKind !== 'compute'}
@@ -514,15 +535,22 @@
 									>
 										Pulled from linked items
 									</option>
-									{#if lockedRecipe === 'when'}
-										<option value="when">Conditional</option>
-									{/if}
 								</select>
 							</label>
-							{#if lockedRecipe !== null}
-								<span class="hint">
-									Filled by the <code>{lockedRecipe}</code> recipe shown beside. Edit it in schema.yaml.
-								</span>
+							{#if draft.recipe?.kind === 'when'}
+								<WhenBlock
+									value={draft.recipe}
+									spec={specOfDraft(draft)}
+									{choices}
+									operators={definition.comparison_operators}
+									fields={definition.fields}
+									constants={schemaStore.constants}
+									items={schemaStore.items}
+									palette={schemaStore.palette}
+									problem={previewForCurrent?.problem ?? null}
+									disabled={saving}
+									onchange={onWhenChange}
+								/>
 							{:else if draft.recipe?.kind === 'pull'}
 								<PullBlock
 									value={draft.recipe}
@@ -543,8 +571,8 @@
 								/>
 							{:else}
 								<span class="hint">
-									Written on each item, or derived: computed by a formula over the item's own
-									fields, or pulled from the items a relation points at.
+									Written on each item, or derived: chosen by conditions, computed by a formula over
+									the item's own fields, or pulled from the items a relation points at.
 								</span>
 							{/if}
 						</fieldset>
@@ -585,23 +613,6 @@
 							<span class="hint">…</span>
 						{/if}
 					</section>
-
-					<!-- ── Recipe ───────────────────────────────────────────── -->
-
-					{#if existing !== null && textBlocks.length > 0}
-						<section class="recipe" aria-label="Recipe">
-							<div class="section-head">
-								<span class="label">Filled by</span>
-								<span class="hint">Edit in schema.yaml.</span>
-							</div>
-							{#each textBlocks as block (block)}
-								<div class="block">
-									<code class="block-name">{block}</code>
-									<pre>{existing.derived[block]}</pre>
-								</div>
-							{/each}
-						</section>
-					{/if}
 
 					<!-- ── Usage ────────────────────────────────────────────── -->
 
@@ -775,11 +786,6 @@
 		margin: 0;
 	}
 
-	.hint code {
-		background-color: transparent;
-		padding: 0;
-	}
-
 	.hint.warning {
 		color: var(--color-warning-fg);
 	}
@@ -792,7 +798,6 @@
 	}
 
 	.preview,
-	.recipe,
 	.usage {
 		display: flex;
 		flex-direction: column;
@@ -801,18 +806,6 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
 		background-color: var(--color-surface);
-	}
-
-	.block {
-		display: flex;
-		flex-direction: column;
-		gap: 0.15rem;
-	}
-
-	.block-name {
-		background-color: transparent;
-		padding: 0;
-		font-size: var(--text-sm);
 	}
 
 	pre {

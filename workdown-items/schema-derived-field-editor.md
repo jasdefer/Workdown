@@ -315,3 +315,30 @@ in conditions, and a resources editor for constants.
   left alone.
 - The panel sends a `when` back as served and keeps its "Conditional"
   entry locked until the panel half; `retype` asks `takesRecipe`.
+
+**2026-10-16, when, the panel** (decision 11, step four, UI half; the
+last step).
+
+- "Conditional: by the first condition that holds" in the "Value"
+  selector where the type is in `conditional_types`. Nothing in the
+  panel is locked any more; the read-only "Filled by" section is gone.
+- `ui/src/lib/schema/WhenBlock.svelte`: one row per branch with Up,
+  Down and Remove (decision 5), Add branch below. A row condition is
+  two operand pickers around an operator picker (symbols from
+  `comparison_operators`); an operand is a readable field (the field
+  itself left out), a constant, `$today`, or "a value" edited with
+  `ValueEditor` built for the other side's type (`literalSpecFor`: a
+  choice offers its values, a constant's type is read off its value,
+  `$today` makes it a date). A text condition is a monospace input. A
+  row turns into a text line and back, each starting empty: the
+  browser does not spell the grammar, so it does not translate between
+  them (decision 2, kept strict). `then` is `ValueEditor` with the
+  field's own spec. The default control stays, relabelled "Default
+  when no branch holds", with the generator choice withheld.
+- Decision 7 in the panel: leaving "Conditional" clears the default
+  and says why; choosing it drops a generated default and says so.
+- `fieldDraft.ts`: `WhenRecipe`, `takesWhen`, `operandChoices`,
+  `operandKey`, `literalSpecFor`, `literalOf`, `valueOfLiteral`,
+  `thenOf`, `newBranch`, `newWhen`, `withBranch*`; `moved` shared
+  with the values list.
+- Not clicked through in a browser at the time of writing.

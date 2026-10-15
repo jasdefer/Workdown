@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { AggregateConfig } from '$lib/api/generated/AggregateConfig';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import type { PullConfig } from '$lib/api/generated/PullConfig';
+import type { WhenBranchData } from '$lib/api/generated/WhenBranchData';
 import {
 	aggregateFunctionsFor,
 	emptyShape,
@@ -10,10 +11,16 @@ import {
 	generatorsFor,
 	initialDraft,
 	insertAt,
+	literalOf,
+	literalSpecFor,
+	newBranch,
 	newCompute,
 	newDraft,
 	newPull,
 	newRollup,
+	newWhen,
+	operandChoices,
+	operandKey,
 	pullRelations,
 	pullSources,
 	retype,
@@ -25,8 +32,14 @@ import {
 	takesCompute,
 	takesPull,
 	takesResource,
+	takesWhen,
+	valueOfLiteral,
 	valueProblem,
 	withBound,
+	withBranch,
+	withBranchAdded,
+	withBranchMoved,
+	withBranchRemoved,
 	withForbidCycles,
 	withInverse,
 	withPattern,
@@ -486,6 +499,105 @@ describe('formulas', () => {
 		expect(insertAt('(points)', 1, 1, 'due')).toEqual({ expression: '(due points)', caret: 5 });
 		expect(insertAt('a + b', 4, 5, 'c')).toEqual({ expression: 'a + c', caret: 5 });
 		expect(insertAt('a', 9, 9, 'b')).toEqual({ expression: 'a b', caret: 3 });
+	});
+});
+
+describe('conditions', () => {
+	const status = served({
+		name: 'status',
+		field_type: 'choice',
+		shape: { kind: 'values', values: ['open', 'done'] }
+	});
+	const points = served({ name: 'points', field_type: 'integer' });
+	const tags = served({ name: 'tags', field_type: 'list', shape: { kind: 'scalar' } });
+	const fields = [status, points, tags];
+	const constants = [
+		{ name: 'limit', value: 3 },
+		{ name: 'ratio', value: 0.5 },
+		{ name: 'strict', value: true }
+	];
+	const choices = operandChoices(tables, fields, constants, 'points');
+
+	it('offers conditions to the types the server lists', () => {
+		expect(takesWhen(tables, 'color')).toBe(true);
+		expect(takesWhen(tables, 'link')).toBe(false);
+	});
+
+	it('lists the readable fields but itself, the constants, today and a value', () => {
+		expect(choices.map((choice) => choice.key)).toEqual([
+			'field:status',
+			'constant:limit',
+			'constant:ratio',
+			'constant:strict',
+			'today',
+			'literal'
+		]);
+		expect(choices[0]?.operand).toEqual({ kind: 'field', name: 'status' });
+		for (const choice of choices) expect(operandKey(choice.operand)).toBe(choice.key);
+	});
+
+	it('starts with the first choice compared for equality against a value', () => {
+		expect(newWhen(choices)).toEqual({
+			kind: 'when',
+			branches: [
+				{
+					condition: {
+						kind: 'row',
+						left: { kind: 'field', name: 'status' },
+						operator: 'equal',
+						right: { kind: 'literal', value: '' }
+					},
+					then: null
+				}
+			]
+		});
+		expect(newBranch([]).condition).toMatchObject({ left: { kind: 'today' } });
+	});
+
+	it('edits a literal with the other side in mind', () => {
+		expect(literalSpecFor({ kind: 'field', name: 'status' }, fields, constants)).toMatchObject({
+			fieldType: 'choice',
+			values: ['open', 'done']
+		});
+		expect(literalSpecFor({ kind: 'constant', name: 'limit' }, fields, constants).fieldType).toBe(
+			'integer'
+		);
+		expect(literalSpecFor({ kind: 'constant', name: 'ratio' }, fields, constants).fieldType).toBe(
+			'float'
+		);
+		expect(literalSpecFor({ kind: 'constant', name: 'strict' }, fields, constants).fieldType).toBe(
+			'boolean'
+		);
+		expect(literalSpecFor({ kind: 'today' }, fields, constants).fieldType).toBe('date');
+		expect(literalSpecFor({ kind: 'literal', value: 1 }, fields, constants).fieldType).toBe(
+			'string'
+		);
+		expect(literalSpecFor({ kind: 'field', name: 'gone' }, fields, constants).fieldType).toBe(
+			'string'
+		);
+	});
+
+	it('turns the value editor output into a literal and back', () => {
+		expect(literalOf(3)).toBe(3);
+		expect(literalOf('done')).toBe('done');
+		expect(literalOf(true)).toBe(true);
+		expect(literalOf(null)).toBe('');
+		expect(literalOf(['a'])).toBe('');
+		expect(valueOfLiteral(2.5)).toBe(2.5);
+	});
+
+	it('adds, moves and removes branches, order being meaning', () => {
+		const first = newBranch(choices);
+		const second: WhenBranchData = {
+			condition: { kind: 'text', source: 'points > 1' },
+			then: 'red'
+		};
+		const two = withBranchAdded(newWhen(choices), second);
+		expect(two.branches).toEqual([first, second]);
+		expect(withBranchMoved(two, 1, 'up').branches).toEqual([second, first]);
+		expect(withBranchMoved(two, 1, 'down')).toBe(two);
+		expect(withBranchRemoved(two, 0).branches).toEqual([second]);
+		expect(withBranch(two, 1, { ...second, then: 'blue' }).branches[1]?.then).toBe('blue');
 	});
 });
 

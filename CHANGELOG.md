@@ -9,26 +9,33 @@ its source — internal refactors are deliberately absent.
 
 ### Added
 
-- The web app's field editor edits a field's rollup, its pull and its
-  formula. On a type that can be rolled up, a "Roll up from the items
+- The web app's field editor edits every way a field's value is
+  derived. On a type that can be rolled up, a "Roll up from the items
   below" box opens two pickers — the function, from the type's own
   list, and the `link` field to climb, from those that forbid cycles —
   and a box for reporting items below without a value. On a type that
-  can be derived, a "Value" selector offers "Computed by a formula"
-  and "Pulled from linked items" beside "Set by hand". A formula is
-  typed as text, with the fields it may read, the project constants
+  can be derived, a "Value" selector offers "Conditional", "Computed
+  by a formula" and "Pulled from linked items" beside "Set by hand".
+  Conditions are a list of branches, tried top to bottom with Up and
+  Down to order them: each condition a row of field, operator and
+  value, where the value is entered with the editor of the other
+  side's type (a choice offers its values), or a line of text for what
+  a row cannot hold; each `then` the field's own value editor; the
+  default control becomes the fallback when no branch holds. A formula
+  is typed as text, with the fields it may read, the project constants
   and `$today` listed under the box for a click to insert, the
   rounding on a date field and the box for reporting items missing an
   input; a formula the server rejects is pointed at, with a caret
   under the column the message names. A pull picks the relation to
   follow, from the `link` and `links` fields that forbid cycles, the
   field to read, from those a function can reduce into this type, and
-  that function. Choosing either drops the default, which a derived
-  field cannot have, and says so. Beside the form the panel shows the
-  entry the save would write to `schema.yaml`, rendered by the server,
-  and its verdict before Save: a draft the schema would not load with,
-  or would load and disable, greys Save out with the reason. The
-  `when` block stays read-only for now.
+  that function. Choosing a formula or a pull drops the default, which
+  such a field cannot have; leaving conditions drops their fallback,
+  which would otherwise become a default stamped on new items; the
+  panel says so either way. Beside the form the panel shows the entry
+  the save would write to `schema.yaml`, rendered by the server, and
+  its verdict before Save: a draft the schema would not load with, or
+  would load and disable, greys Save out with the reason.
 - `workdown serve` edits a field's rollup, its pull, its formula and
   its conditions. `GET /api/schema/definition` serves each field's
   `aggregate` block and, as its `recipe`, its `pull`, `compute` or
