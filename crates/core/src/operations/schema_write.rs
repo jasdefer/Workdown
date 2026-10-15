@@ -7,10 +7,10 @@
 //! recipe, previewing a field, removing a field, reordering the fields,
 //! saying what a field is used by ([`field_usage`]), and adding,
 //! replacing, removing and previewing a rule. Renaming a field is not
-//! offered; the design item `schema-editor-web-design` explains why. Of
-//! the recipes, `pull` and `compute` are edited; `when` a write leaves
-//! as the file has it (`schema-derived-field-editor` lands them one at
-//! a time).
+//! offered; the design item `schema-editor-web-design` explains why.
+//! Every recipe is edited: `pull` and `aggregate` as their settings,
+//! `compute` as text with its options, `when` as rows or text per
+//! branch (`schema-derived-field-editor`).
 //!
 //! Like every other mutation in the tool, the repo stays the source of
 //! truth: writes update the working tree only, nothing is staged or
@@ -22,9 +22,9 @@
 //! `serde_yaml` tree, changes the one entry under `fields:` and writes
 //! the whole tree back. The typed [`Schema`] model has no writer, and
 //! one would have to turn compiled expressions back into text; editing
-//! the tree cannot damage what it does not touch, so a field's recipe
-//! keys survive a replace untouched and every other field keeps its
-//! content and its position. What is given up is formatting: comments
+//! the tree cannot damage what it does not touch, so a key the editor
+//! does not write survives a replace untouched and every other field
+//! keeps its content and its position. What is given up is formatting: comments
 //! are not preserved, and compact `[a, b]` lists come back one entry per
 //! line. The file is the source of truth for *content*, not for
 //! formatting. Because only one entry is ever replaced, a stale editor
@@ -132,7 +132,7 @@ use crate::parser::schema::{
 };
 use crate::project::{load_project_with_schema, LoadError};
 use crate::rule_shape::RuleShape;
-use crate::schema_definition_data::{FieldRecipe, FieldShape};
+use crate::schema_definition_data::{FieldRecipe, FieldShape, WhenBranchData};
 
 // ── Public types ─────────────────────────────────────────────────────
 
@@ -158,8 +158,9 @@ pub struct FieldDefinitionWrite {
     #[serde(default)]
     pub description: Option<String>,
     /// The `default:` applied at `workdown add` time; `None` clears it.
-    /// Left untouched on a field with a `when:` recipe, where `default:`
-    /// is the recipe's evaluated fallback rather than an add-time value.
+    /// Beside a `when` recipe it is the recipe's evaluated fallback
+    /// instead, the same key in the file: a literal only, the parser
+    /// refuses a generator there, which the preview reports.
     #[serde(default)]
     pub default: Option<DefaultWrite>,
     /// Resource section in `resources.yaml` that constrains the values;
@@ -174,11 +175,10 @@ pub struct FieldDefinitionWrite {
     #[serde(default)]
     pub aggregate: Option<AggregateConfig>,
     /// The recipe filling the value; `None` means set by hand and clears
-    /// the recipe keys the editor writes (`pull` and `compute`; a `when`
-    /// the file has stays). Written as sent; the parser judges the
-    /// combination with `default` and the formula's syntax, and the
-    /// load the references and the types, which the preview reports as
-    /// the draft's problem.
+    /// every recipe key. Written as sent; the parser judges the
+    /// combination with `default` and the syntax, and the load the
+    /// references and the types, which the preview reports as the
+    /// draft's problem.
     #[serde(default)]
     pub recipe: Option<FieldRecipe>,
 }
@@ -489,12 +489,11 @@ pub fn update_field(
             });
         }
     }
-    let default_is_recipe = current.when.is_some();
     let entry = fields_mut(&mut context.document)
         .get_mut(name)
         .and_then(serde_yaml::Value::as_mapping_mut)
         .expect("a field the typed schema knows is a mapping in the tree");
-    replace_field_entry(entry, definition, default_is_recipe);
+    replace_field_entry(entry, definition);
 
     finalize(context, Written::Field(name.to_owned()))
 }
@@ -519,26 +518,19 @@ pub fn preview_field(
     definition: &FieldDefinitionWrite,
 ) -> Result<FieldPreview, SchemaWriteError> {
     let mut context = load_for_write(config, project_root, config_path)?;
-    // Whether the field exists and, if so, whether it has a `when`.
-    let existing_has_when = context
-        .current
-        .fields
-        .get(name)
-        .map(|field| field.when.is_some());
-
-    let refusal = match (replacing, existing_has_when) {
-        (true, None) => Some(SchemaWriteError::FieldNotFound {
+    let exists = context.current.fields.contains_key(name);
+    let refusal = match (replacing, exists) {
+        (true, false) => Some(SchemaWriteError::FieldNotFound {
             name: name.to_owned(),
         }),
         (false, _) if !is_valid_field_name(name) => Some(SchemaWriteError::InvalidName {
             name: name.to_owned(),
         }),
-        (false, Some(_)) => Some(SchemaWriteError::DuplicateName {
+        (false, true) => Some(SchemaWriteError::DuplicateName {
             name: name.to_owned(),
         }),
-        (true, Some(_)) | (false, None) => None,
+        (true, true) | (false, false) => None,
     };
-    let default_is_recipe = existing_has_when.unwrap_or(false);
 
     let fields = fields_mut(&mut context.document);
     let entry = match fields
@@ -546,7 +538,7 @@ pub fn preview_field(
         .and_then(serde_yaml::Value::as_mapping_mut)
     {
         Some(entry) if replacing => {
-            replace_field_entry(entry, definition, default_is_recipe);
+            replace_field_entry(entry, definition);
             serde_yaml::Value::Mapping(entry.clone())
         }
         _ => {
@@ -574,7 +566,7 @@ pub fn preview_field(
         Some(FieldRecipe::Compute { expression, .. }) => parse_expression(expression)
             .err()
             .and_then(|error| error.column()),
-        Some(FieldRecipe::Pull(_)) | None => None,
+        Some(FieldRecipe::Pull(_)) | Some(FieldRecipe::When { .. }) | None => None,
     };
     let candidate_text =
         serde_yaml::to_string(&context.document).map_err(SchemaWriteError::Serialize)?;
@@ -637,26 +629,20 @@ fn new_field_entry(definition: &FieldDefinitionWrite) -> serde_yaml::Value {
 /// Overwrite a field's existing entry with the definition: every key
 /// the editor writes is set in place or removed when no longer set,
 /// every other key stays. Beside `when`, `default:` is the recipe's
-/// evaluated fallback (see `parser::schema::attach_when_configs`), not
-/// an add-time default: it belongs to the recipe and stays as written,
-/// which `default_is_recipe` says.
-fn replace_field_entry(
-    entry: &mut serde_yaml::Mapping,
-    definition: &FieldDefinitionWrite,
-    default_is_recipe: bool,
-) {
+/// evaluated fallback (see `parser::schema::attach_when_configs`); the
+/// editor sends it through the same slot, so dropping the `when` drops
+/// it too unless the draft still carries one
+/// (`schema-derived-field-editor`, decision 7).
+fn replace_field_entry(entry: &mut serde_yaml::Mapping, definition: &FieldDefinitionWrite) {
     let properties = written_properties(definition);
-    let is_editable = |key: &str| !(default_is_recipe && key == "default");
     for key in WRITTEN_KEYS {
         let still_set = properties.iter().any(|(set_key, _)| *set_key == key);
-        if is_editable(key) && !still_set {
+        if !still_set {
             entry.shift_remove(key);
         }
     }
     for (key, value) in properties {
-        if is_editable(key) {
-            entry.insert(yaml_key(key), value);
-        }
+        entry.insert(yaml_key(key), value);
     }
 }
 
@@ -1029,9 +1015,10 @@ fn recipes_naming_field(schema: &Schema, name: &str) -> Vec<String> {
 
 // ── Internals ────────────────────────────────────────────────────────
 
-/// Every key the editor may set or clear on a field. The complement —
-/// `compute`, `when` — a replace never touches.
-const WRITTEN_KEYS: [&str; 14] = [
+/// Every key the editor may set or clear on a field; a replace removes
+/// each one the definition no longer spells and leaves any other key
+/// alone.
+const WRITTEN_KEYS: [&str; 15] = [
     "type",
     "values",
     "pattern",
@@ -1044,6 +1031,7 @@ const WRITTEN_KEYS: [&str; 14] = [
     "description",
     "resource",
     "compute",
+    "when",
     "pull",
     "aggregate",
 ];
@@ -1195,6 +1183,7 @@ fn written_properties(definition: &FieldDefinitionWrite) -> Vec<(&'static str, s
             "compute",
             compute_entry(expression, *round, *error_on_missing),
         )),
+        Some(FieldRecipe::When { branches }) => properties.push(("when", when_entry(branches))),
     }
     if let Some(aggregate) = &definition.aggregate {
         properties.push(("aggregate", aggregate_entry(aggregate)));
@@ -1220,6 +1209,24 @@ fn compute_entry(expression: &str, round: RoundMode, error_on_missing: bool) -> 
         entry.insert(yaml_key("error_on_missing"), serde_yaml::Value::Bool(true));
     }
     serde_yaml::Value::Mapping(entry)
+}
+
+/// The `when:` block as the file spells it: one `if`/`then` mapping per
+/// branch, in order, the condition as the source its row or text spells
+/// (`ConditionShape::to_source`) and the value as sent.
+fn when_entry(branches: &[WhenBranchData]) -> serde_yaml::Value {
+    serde_yaml::Value::Sequence(
+        branches
+            .iter()
+            .map(|branch| {
+                let WhenBranchData { condition, then } = branch;
+                let mut entry = serde_yaml::Mapping::new();
+                entry.insert(yaml_key("if"), yaml_key(&condition.to_source()));
+                entry.insert(yaml_key("then"), then.clone());
+                serde_yaml::Value::Mapping(entry)
+            })
+            .collect(),
+    )
 }
 
 /// The `pull:` block as the file spells it, in the shortest form the
@@ -1559,6 +1566,37 @@ rules:
         assert_eq!(
             serde_yaml::to_string(&strict).unwrap(),
             "expression: start + effort\nerror_on_missing: true\n"
+        );
+    }
+
+    #[test]
+    fn the_when_block_is_one_if_then_mapping_per_branch_in_order() {
+        use crate::condition_shape::{ConditionLiteral, ConditionShape, Operand};
+        use crate::expression::ComparisonOperator;
+
+        let entry = when_entry(&[
+            WhenBranchData {
+                condition: ConditionShape::Row {
+                    left: Operand::Field {
+                        name: "status".to_owned(),
+                    },
+                    operator: ComparisonOperator::Equal,
+                    right: Operand::Literal {
+                        value: ConditionLiteral::Text("done".to_owned()),
+                    },
+                },
+                then: serde_yaml::Value::String("green".to_owned()),
+            },
+            WhenBranchData {
+                condition: ConditionShape::Text {
+                    source: "points + 1 > 3".to_owned(),
+                },
+                then: serde_yaml::Value::String("red".to_owned()),
+            },
+        ]);
+        assert_eq!(
+            serde_yaml::to_string(&entry).unwrap(),
+            "- if: status == \"done\"\n  then: green\n- if: points + 1 > 3\n  then: red\n"
         );
     }
 

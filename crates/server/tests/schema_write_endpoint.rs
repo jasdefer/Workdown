@@ -267,6 +267,54 @@ async fn post_field_with_a_compute_recipe_writes_the_block_and_the_preview_point
 }
 
 #[tokio::test]
+async fn post_field_with_a_when_recipe_writes_the_branches_and_the_fallback() {
+    let (directory, state) = temp_project();
+
+    let response = send(
+        state,
+        "POST",
+        "/api/schema/fields",
+        Some(json!({
+            "name": "tint",
+            "definition": {
+                "field_type": "color",
+                "required": false,
+                "default": { "kind": "literal", "value": "gray" },
+                "shape": { "kind": "scalar" },
+                "recipe": {
+                    "kind": "when",
+                    "branches": [
+                        {
+                            "condition": {
+                                "kind": "row",
+                                "left": { "kind": "field", "name": "status" },
+                                "operator": "equal",
+                                "right": { "kind": "literal", "value": "done" }
+                            },
+                            "then": "green"
+                        },
+                        { "condition": { "kind": "text", "source": "status != \"open\"" }, "then": "blue" }
+                    ]
+                }
+            }
+        })),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let schema = load_schema(&directory.path().join(".workdown/schema.yaml")).unwrap();
+    let when = schema.fields["tint"].when.as_ref().unwrap();
+    assert_eq!(
+        when.branches
+            .iter()
+            .map(|branch| branch.condition_source.as_str())
+            .collect::<Vec<_>>(),
+        vec!["status == \"done\"", "status != \"open\""]
+    );
+    assert!(when.default.is_some());
+}
+
+#[tokio::test]
 async fn post_existing_field_returns_409() {
     let (_directory, state) = temp_project();
 

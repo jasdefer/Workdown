@@ -26,6 +26,8 @@ use std::path::Path;
 use ts_rs::TS;
 
 use strum::VariantArray;
+use workdown_core::condition_shape::{ConditionLiteral, ConditionShape, Operand};
+use workdown_core::expression::ComparisonOperator;
 use workdown_core::git_data::{
     GitChangeKind, GitChangedFile, GitCommitPreview, GitCommitRequest, GitCommitResult,
     GitPullResult, GitPullStep, GitPushResult, GitPushStep, GitStatus,
@@ -65,9 +67,10 @@ use workdown_core::schema_data::{
     SchemaData,
 };
 use workdown_core::schema_definition_data::{
-    DefaultData, DerivedBlocks, FieldDefinitionData, FieldRecipe, FieldShape,
-    FieldTypeAggregateFunctions, FieldTypeGenerators, FieldTypeProperties, FieldTypePullSources,
-    FieldTypeWidening, PullSource, RuleData, RuleShapeData, SchemaDefinitionData, ShapeKind,
+    ComparisonOperatorData, DefaultData, DerivedBlocks, FieldDefinitionData, FieldRecipe,
+    FieldShape, FieldTypeAggregateFunctions, FieldTypeGenerators, FieldTypeProperties,
+    FieldTypePullSources, FieldTypeWidening, PullSource, RuleData, RuleShapeData,
+    SchemaDefinitionData, ShapeKind, WhenBranchData,
 };
 use workdown_core::timer_data::{
     EffortFieldState, StartTimer, TimerMode, TimerPhase, TimerStartOutcome, TimerState,
@@ -209,6 +212,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<FieldTypePullSources>();
     exports.add::<PullSource>();
     exports.add::<FieldRecipe>();
+    exports.add::<WhenBranchData>();
+    exports.add::<ConditionShape>();
+    exports.add::<Operand>();
+    exports.add::<ConditionLiteral>();
+    exports.add::<ComparisonOperator>();
+    exports.add::<ComparisonOperatorData>();
     exports.add::<FieldTypeGenerators>();
     exports.add::<FieldTypeWidening>();
     exports.add::<FieldProperty>();

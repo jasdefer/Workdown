@@ -291,3 +291,27 @@ in conditions, and a resources editor for constants.
   `expression_readable_types`. `schemaStore.constants`.
 - Clicked through in a browser against this repo's schema; nothing to
   report, and `schema.yaml` came out unchanged.
+
+**2026-10-16, when, the Rust half** (decision 11, step four).
+
+- `crates/core/src/condition_shape.rs`: a branch condition as a row
+  (left operand, operator, right operand; an operand a field, a
+  constant, `$today` or a literal) when the parsed expression is one
+  comparison between plain operands, as text otherwise, by an
+  exhaustive match on `Expression` (decisions 1 and 2); `to_source`
+  spells a row back, a fraction keeping its dot. `ComparisonOperator`
+  is on the wire in `snake_case`, with the grammar's symbols served
+  as `comparison_operators`.
+- `FieldRecipe::When { branches }`, each `WhenBranchData { condition,
+  then }`; the fallback travels through the `default` slot, served as
+  the coerced literal, written as sent, the parser refusing a
+  generator there (decision 5). `FieldValue::to_yaml` spells a coerced
+  value as a file does. `conditional_types` on the definition payload
+  from `when_allowed`, which the parser's own check now uses too.
+- The writer spells `when` as one `if`/`then` mapping per branch and
+  no longer treats `default` as untouchable beside a `when`: the editor
+  sends the fallback with the recipe, and a draft without the recipe
+  drops both (decision 7). Every recipe key is now written; nothing is
+  left alone.
+- The panel sends a `when` back as served and keeps its "Conditional"
+  entry locked until the panel half; `retype` asks `takesRecipe`.

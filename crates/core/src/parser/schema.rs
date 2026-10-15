@@ -13,10 +13,10 @@ use crate::model::date::parse_date;
 use crate::model::message::one_of;
 use crate::model::schema::{
     allowed_aggregate_functions, allowed_generators, field_property_allowed, field_types_allowing,
-    field_types_allowing_generator, is_defined_inverse, is_relation_anchor, Assertion,
-    CompiledPattern, ComputeConfig, Condition, ConditionValue, CountConstraint, DefaultValue,
-    FieldDefinition, FieldProperty, FieldType, FieldTypeConfig, NegationValue, RawFieldDefinition,
-    RawRule, RawSchema, RoundMode, Rule, Schema, WhenBranch, WhenConfig,
+    field_types_allowing_generator, is_defined_inverse, is_relation_anchor, when_allowed,
+    Assertion, CompiledPattern, ComputeConfig, Condition, ConditionValue, CountConstraint,
+    DefaultValue, FieldDefinition, FieldProperty, FieldType, FieldTypeConfig, NegationValue,
+    RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema, WhenBranch, WhenConfig,
 };
 use crate::model::views::COLOR_NONE_SENTINEL;
 use strum::VariantArray;
@@ -239,7 +239,7 @@ fn validate_when_compatibility(
         ));
     }
 
-    if field.when.is_some() && matches!(field.field_type, FieldType::Link | FieldType::Links) {
+    if field.when.is_some() && !when_allowed(field.field_type) {
         errors.push(field_error(
             name,
             format!(

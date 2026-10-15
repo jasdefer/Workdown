@@ -673,6 +673,15 @@ pub(crate) fn aggregate_result_fits(result_type: FieldType, declared_type: Field
         || (result_type == FieldType::Integer && declared_type == FieldType::Float)
 }
 
+/// Whether a field of `field_type` may carry a `when:` recipe. Every
+/// type but the relations: reverse links and broken-link detection are
+/// built from hand-written values before the derive passes run, so a
+/// derived link would be invisible to them. The parser's check and the
+/// type list the web app is served both ask here.
+pub fn when_allowed(field_type: FieldType) -> bool {
+    !matches!(field_type, FieldType::Link | FieldType::Links)
+}
+
 /// The functions that reduce values of `source_type` into a field
 /// declared `declared_type` — what a `pull:` on such a field may name
 /// for a source of that type, in the order [`allowed_aggregate_functions`]

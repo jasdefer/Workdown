@@ -75,6 +75,36 @@ mod duration_seconds {
     }
 }
 
+impl FieldValue {
+    /// The value as `schema.yaml` or an item's frontmatter spells it: a
+    /// date as `YYYY-MM-DD`, a duration as its shorthand, a reference
+    /// as its id, a collection as a sequence. The inverse of the
+    /// coercion that produced the value, for writing one back into a
+    /// file — a `when` branch's `then`, a fallback default.
+    pub fn to_yaml(&self) -> serde_yaml::Value {
+        use serde_yaml::Value;
+        match self {
+            FieldValue::String(text) | FieldValue::Choice(text) | FieldValue::Color(text) => {
+                Value::String(text.clone())
+            }
+            FieldValue::Multichoice(values) | FieldValue::List(values) => {
+                Value::Sequence(values.iter().cloned().map(Value::String).collect())
+            }
+            FieldValue::Integer(integer) => Value::Number((*integer).into()),
+            FieldValue::Float(float) => Value::Number((*float).into()),
+            FieldValue::Date(date) => Value::String(date.format("%Y-%m-%d").to_string()),
+            FieldValue::Duration(seconds) => Value::String(format_duration_seconds(*seconds)),
+            FieldValue::Boolean(boolean) => Value::Bool(*boolean),
+            FieldValue::Link(id) => Value::String(id.as_str().to_owned()),
+            FieldValue::Links(ids) => Value::Sequence(
+                ids.iter()
+                    .map(|id| Value::String(id.as_str().to_owned()))
+                    .collect(),
+            ),
+        }
+    }
+}
+
 // ── Display formatting ──────────────────────────────────────────────
 
 /// Format a field value as a human-readable display string.
@@ -141,6 +171,26 @@ fn format_with(value: &FieldValue, bracketed: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn to_yaml_spells_each_value_as_a_file_does() {
+        use serde_yaml::Value;
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        assert_eq!(
+            FieldValue::Date(date).to_yaml(),
+            Value::String("2026-03-01".to_owned())
+        );
+        assert_eq!(
+            FieldValue::Duration(86_400).to_yaml(),
+            Value::String("1d".to_owned())
+        );
+        assert_eq!(FieldValue::Integer(3).to_yaml(), Value::Number(3.into()));
+        assert_eq!(FieldValue::Boolean(true).to_yaml(), Value::Bool(true));
+        assert_eq!(
+            FieldValue::Links(vec![WorkItemId::from("a".to_owned())]).to_yaml(),
+            Value::Sequence(vec![Value::String("a".to_owned())])
+        );
+    }
 
     #[test]
     fn format_string_value() {

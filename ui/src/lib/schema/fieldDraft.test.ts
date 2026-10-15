@@ -82,7 +82,16 @@ const tables: TypeTables = {
 		{ field_type: 'date', sources: [{ field_type: 'date', functions: ['min', 'max', 'average'] }] },
 		{ field_type: 'string', sources: [] }
 	],
-	expression_readable_types: ['string', 'choice', 'integer', 'float', 'date', 'duration', 'boolean']
+	expression_readable_types: [
+		'string',
+		'choice',
+		'integer',
+		'float',
+		'date',
+		'duration',
+		'boolean'
+	],
+	conditional_types: ['string', 'choice', 'integer', 'float', 'date', 'duration', 'color', 'list']
 };
 
 function served(overrides: Partial<FieldDefinitionData>): FieldDefinitionData {

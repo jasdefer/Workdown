@@ -28,9 +28,10 @@
 //!   (comments inside the block do not survive). That is enough for
 //!   read-only display, and it needs no span-aware parser. A block the
 //!   editor edits is served as data beside its text — `aggregate` as
-//!   the parsed [`AggregateConfig`], `pull` as a [`FieldRecipe`] — the
-//!   way a rule's body is served as rows beside it; the editor never
-//!   reads the YAML itself (`schema-derived-field-editor`, decision 8).
+//!   the parsed [`AggregateConfig`], the recipe as a [`FieldRecipe`] —
+//!   the way a rule's body is served as rows beside it; the editor
+//!   never reads the YAML itself (`schema-derived-field-editor`,
+//!   decision 8).
 //!
 //! Every type here carries a `ts_rs` derive; `cargo xtask gen-types`
 //! emits the TypeScript. A new type needs its `exports.add` line in
@@ -44,11 +45,14 @@ use strum::VariantArray;
 
 use crate::coerce::coerce_value;
 use crate::compute_check::expression_type_of;
+use crate::condition_shape::ConditionShape;
+use crate::expression::ComparisonOperator;
 use crate::model::duration::format_duration_seconds;
 use crate::model::schema::{
     allowed_aggregate_functions, allowed_generators, field_property_allowed, pull_functions,
-    widening_targets, AggregateConfig, AggregateFunction, DefaultValue, FieldDefinition,
-    FieldProperty, FieldType, FieldTypeConfig, Generator, PullConfig, RoundMode, Severity,
+    when_allowed, widening_targets, AggregateConfig, AggregateFunction, DefaultValue,
+    FieldDefinition, FieldProperty, FieldType, FieldTypeConfig, Generator, PullConfig, RoundMode,
+    Severity,
 };
 use crate::model::FieldValue;
 use crate::parser::schema::{parse_schema, SchemaLoadError};
@@ -84,6 +88,13 @@ pub struct SchemaDefinitionData {
     /// The types whose fields a formula may read: those with a place in
     /// the expression algebra. In [`FieldType`] declaration order.
     pub expression_readable_types: Vec<FieldType>,
+    /// The types a field may carry a `when:` recipe on, in [`FieldType`]
+    /// declaration order. Not in `properties_by_type`: the parser polices
+    /// `when` with its own check and its own message.
+    pub conditional_types: Vec<FieldType>,
+    /// The comparison operators a condition row may use, each with the
+    /// symbol the grammar spells it as, in the grammar's order.
+    pub comparison_operators: Vec<ComparisonOperatorData>,
     /// Which `$`-generators may be the `default:` of each type.
     pub generators_by_type: Vec<FieldTypeGenerators>,
     /// Which types each type may be changed to without invalidating an
@@ -132,8 +143,7 @@ pub struct FieldDefinitionData {
     pub aggregate: Option<AggregateConfig>,
     /// The recipe that fills the field's value as data — what the
     /// editor's "Value" selector edits and the write takes back. `None`
-    /// for a field set by hand, and still `None` for a `when:` field
-    /// until that is served as data; its text is in `derived`.
+    /// for a field set by hand.
     pub recipe: Option<FieldRecipe>,
 }
 
@@ -192,11 +202,16 @@ pub enum DefaultData {
 /// `pull` is served and written so far (`schema-derived-field-editor`,
 /// decision 11 lands them one at a time); `aggregate` is a separate
 /// block, because a rollup combines with any recipe.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FieldRecipe {
     /// The `pull:` block: a field read through a forward link, reduced.
     Pull(PullConfig),
+    /// The `when:` block: the branches in order, first match wins. The
+    /// fallback beside it is the field's `default`, served and written
+    /// through the same slot as an add-time default (a literal only;
+    /// the parser refuses a generator there).
+    When { branches: Vec<WhenBranchData> },
     /// The `compute:` block: a formula over the item's own fields and
     /// the project constants, as text (`schema-derived-field-editor`,
     /// decision 1), with its options. `round` matters on `date` fields
@@ -206,6 +221,28 @@ pub enum FieldRecipe {
         round: RoundMode,
         error_on_missing: bool,
     },
+}
+
+/// One `when:` branch as the editor edits it: the condition as a row or
+/// as text ([`crate::condition_shape`]), and the value the field takes
+/// when it is the first to hold.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, ts_rs::TS)]
+pub struct WhenBranchData {
+    pub condition: ConditionShape,
+    /// The `then:` literal as the file spells it — served from the
+    /// coerced value, written back as sent and judged by the parser,
+    /// which coerces it to the field's type. The value editor's output
+    /// for the field's own type.
+    #[ts(type = "unknown")]
+    pub then: serde_yaml::Value,
+}
+
+/// One comparison operator with the symbol the grammar spells it as,
+/// for the row editor's picker.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+pub struct ComparisonOperatorData {
+    pub operator: ComparisonOperator,
+    pub symbol: String,
 }
 
 /// The fill-mechanism blocks of a field, each as YAML text for
@@ -460,6 +497,18 @@ pub fn build(yaml: &str) -> Result<SchemaDefinitionData, SchemaLoadError> {
             .copied()
             .filter(|&field_type| expression_type_of(field_type).is_some())
             .collect(),
+        conditional_types: FieldType::VARIANTS
+            .iter()
+            .copied()
+            .filter(|&field_type| when_allowed(field_type))
+            .collect(),
+        comparison_operators: ComparisonOperator::VARIANTS
+            .iter()
+            .map(|&operator| ComparisonOperatorData {
+                operator,
+                symbol: operator.to_string(),
+            })
+            .collect(),
         generators_by_type: FieldType::VARIANTS
             .iter()
             .map(|&field_type| FieldTypeGenerators {
@@ -516,11 +565,22 @@ impl FieldDefinitionData {
 }
 
 /// The recipe the typed definition carries, as the editor edits it.
-/// The parser makes `pull` and `compute` exclusive, so at most one is
-/// set; `when` is not served as data yet.
+/// The parser makes the three exclusive, so at most one is set.
 fn recipe_of(definition: &FieldDefinition) -> Option<FieldRecipe> {
     if let Some(pull) = &definition.pull {
         return Some(FieldRecipe::Pull(pull.clone()));
+    }
+    if let Some(when) = &definition.when {
+        return Some(FieldRecipe::When {
+            branches: when
+                .branches
+                .iter()
+                .map(|branch| WhenBranchData {
+                    condition: ConditionShape::of(&branch.condition, &branch.condition_source),
+                    then: branch.value.to_yaml(),
+                })
+                .collect(),
+        });
     }
     definition
         .compute
@@ -575,6 +635,15 @@ impl FieldShape {
 /// The field's `default:` on the wire: a literal is run through the
 /// field's own coercion so the client gets a typed value.
 fn default_data(definition: &FieldDefinition) -> Option<DefaultData> {
+    // Beside `when`, the parser moved the default into the config as the
+    // evaluated fallback, already coerced; it is served through the same
+    // slot, so the editor's default control edits it as the fallback.
+    if let Some(when) = &definition.when {
+        return when
+            .default
+            .clone()
+            .map(|value| DefaultData::Literal { value });
+    }
     let literal = match definition.default.as_ref()? {
         DefaultValue::Generator(generator) => {
             return Some(DefaultData::Generator {
@@ -673,6 +742,9 @@ fields:
     when:
       - if: status == \"done\"
         then: green
+      - if: points + 1 > 3
+        then: red
+    default: gray
   labels:
     type: list
   parent:
@@ -855,7 +927,7 @@ rules:
         );
         assert_eq!(
             field(&data, "color").derived.when.as_deref(),
-            Some("- if: status == \"done\"\n  then: green")
+            Some("- if: status == \"done\"\n  then: green\n- if: points + 1 > 3\n  then: red")
         );
         assert_eq!(
             field(&data, "total").derived.aggregate.as_deref(),
@@ -882,7 +954,60 @@ rules:
     }
 
     #[test]
-    fn the_pull_and_compute_blocks_are_served_as_the_recipe_and_when_is_not_yet() {
+    fn the_when_block_is_served_as_rows_or_text_with_its_fallback_as_the_default() {
+        use crate::condition_shape::{ConditionLiteral, Operand};
+
+        let data = built();
+        assert_eq!(
+            field(&data, "color").recipe,
+            Some(FieldRecipe::When {
+                branches: vec![
+                    WhenBranchData {
+                        condition: ConditionShape::Row {
+                            left: Operand::Field {
+                                name: "status".to_owned()
+                            },
+                            operator: ComparisonOperator::Equal,
+                            right: Operand::Literal {
+                                value: ConditionLiteral::Text("done".to_owned())
+                            },
+                        },
+                        then: serde_yaml::Value::String("green".to_owned()),
+                    },
+                    WhenBranchData {
+                        condition: ConditionShape::Text {
+                            source: "points + 1 > 3".to_owned()
+                        },
+                        then: serde_yaml::Value::String("red".to_owned()),
+                    },
+                ],
+            })
+        );
+        assert_eq!(
+            field(&data, "color").default,
+            Some(DefaultData::Literal {
+                value: FieldValue::Color("gray".to_owned())
+            })
+        );
+        let as_json = serde_json::to_value(field(&data, "color").recipe.as_ref()).unwrap();
+        assert_eq!(as_json["kind"], "when");
+        assert_eq!(as_json["branches"][0]["condition"]["kind"], "row");
+        assert_eq!(as_json["branches"][1]["condition"]["kind"], "text");
+
+        assert!(data.conditional_types.contains(&FieldType::Color));
+        assert!(!data.conditional_types.contains(&FieldType::Link));
+        assert_eq!(
+            data.comparison_operators[0],
+            ComparisonOperatorData {
+                operator: ComparisonOperator::Equal,
+                symbol: "==".to_owned()
+            }
+        );
+        assert_eq!(data.comparison_operators.len(), 6);
+    }
+
+    #[test]
+    fn the_pull_and_compute_blocks_are_served_as_the_recipe() {
         let data = built();
         assert_eq!(
             field(&data, "earliest").recipe,
@@ -902,7 +1027,6 @@ rules:
             })
         );
         assert_eq!(field(&data, "total").recipe, None);
-        assert_eq!(field(&data, "color").recipe, None);
         let as_json =
             |name: &str| serde_json::to_value(field(&data, name).recipe.as_ref()).unwrap();
         assert_eq!(as_json("earliest")["kind"], "pull");

@@ -6,6 +6,7 @@
 pub mod change_summary;
 pub(crate) mod coerce;
 pub mod compute_check;
+pub mod condition_shape;
 pub mod config_check;
 mod display_check;
 pub mod expression;

@@ -102,6 +102,12 @@ async fn get_schema_definition_returns_definitions_tables_and_hash() {
             "{table} has one row per field type"
         );
     }
+    assert!(data["expression_readable_types"].is_array());
+    assert!(data["conditional_types"].is_array());
+    assert_eq!(
+        data["comparison_operators"].as_array().map(Vec::len),
+        Some(6)
+    );
     assert_eq!(data["hash"].as_str().map(str::len), Some(64));
 
     // Envelope always carries diagnostics, even when empty.

@@ -11,13 +11,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
+use workdown_core::condition_shape::{ConditionLiteral, ConditionShape, Operand};
+use workdown_core::expression::ComparisonOperator;
 use workdown_core::model::config::Config;
 use workdown_core::model::diagnostic::{DiagnosticBody, ItemDiagnosticKind};
 use workdown_core::model::rule::{CountConstraint, Severity};
 use workdown_core::model::schema::{
-    AggregateConfig, AggregateFunction, DefaultValue, FieldType, FieldTypeConfig, PullConfig,
-    RoundMode,
+    AggregateConfig, AggregateFunction, DefaultValue, FieldType, FieldTypeConfig, Generator,
+    PullConfig, RoundMode,
 };
+use workdown_core::model::FieldValue;
 use workdown_core::operations::schema_write::{
     add_field, add_rule, field_usage, preview_field, preview_rule, remove_field, remove_rule,
     reorder_fields, update_field, update_rule, DefaultWrite, FieldDefinitionWrite, RemovedValues,
@@ -28,7 +31,7 @@ use workdown_core::parser::schema::load_schema;
 use workdown_core::rule_shape::{
     MatchRow, RequireRow, RequireTest, RuleShape, ScalarTest, ScalarValue,
 };
-use workdown_core::schema_definition_data::{FieldRecipe, FieldShape};
+use workdown_core::schema_definition_data::{FieldRecipe, FieldShape, WhenBranchData};
 
 const CONFIG: &str = include_str!("../defaults/config.yaml");
 const SCHEMA: &str = include_str!("../defaults/schema.yaml");
@@ -147,6 +150,30 @@ fn computed(expression: &str) -> FieldDefinitionWrite {
         error_on_missing: false,
     });
     when_done
+}
+
+/// A color field that is green while `status` is `open`, gray
+/// otherwise: one row branch and the fallback through the default slot.
+fn conditional() -> FieldDefinitionWrite {
+    let mut tint = definition(FieldType::Color, FieldShape::Scalar);
+    tint.recipe = Some(FieldRecipe::When {
+        branches: vec![WhenBranchData {
+            condition: ConditionShape::Row {
+                left: Operand::Field {
+                    name: "status".to_owned(),
+                },
+                operator: ComparisonOperator::Equal,
+                right: Operand::Literal {
+                    value: ConditionLiteral::Text("open".to_owned()),
+                },
+            },
+            then: serde_yaml::Value::String("green".to_owned()),
+        }],
+    });
+    tint.default = Some(DefaultWrite::Literal {
+        value: serde_yaml::Value::String("gray".to_owned()),
+    });
+    tint
 }
 
 /// A date field pulling the earliest `field` of its dependencies.
@@ -314,7 +341,7 @@ fn bounds_the_parser_rejects_are_refused_with_its_message() {
 // ── update_field ─────────────────────────────────────────────────
 
 #[test]
-fn update_field_replaces_plain_properties_and_keeps_the_recipe() {
+fn update_field_without_a_recipe_drops_the_when_block_and_its_fallback() {
     let (_directory, root, config) = setup();
     let before = fields_tree(&root);
     let position = field_names(&before)
@@ -335,17 +362,11 @@ fn update_field_replaces_plain_properties_and_keeps_the_recipe() {
         "the field keeps its position"
     );
     let entry = after["status_color"].as_mapping().unwrap();
-    assert_eq!(
-        entry.get("when"),
-        before["status_color"].as_mapping().unwrap().get("when"),
-        "the recipe survives untouched"
-    );
-    // Beside `when`, `default:` is the recipe's fallback, not an add-time
-    // default: the definition's `default: None` must not clear it.
-    assert_eq!(
-        entry.get("default"),
-        Some(&serde_yaml::Value::String("gray".to_owned()))
-    );
+    // The draft says "by hand": the `when` goes, and with it the
+    // `default` beside it, which was its fallback, not an add-time
+    // default (`schema-derived-field-editor`, decision 7).
+    assert_eq!(entry.get("when"), None);
+    assert_eq!(entry.get("default"), None);
     assert_eq!(
         entry.get("description"),
         Some(&serde_yaml::Value::String("Tint".to_owned()))
@@ -429,6 +450,92 @@ fn add_field_with_a_compute_writes_the_bare_expression_and_its_options_when_set(
         property_keys(&fields_tree(&root), "copy"),
         ["type", "required"]
     );
+}
+
+#[test]
+fn add_field_with_a_when_writes_the_branches_and_the_fallback_and_a_replace_rewrites_them() {
+    let (_directory, root, config) = setup();
+    write_item(&root, "a", "");
+
+    add_field(&config, &root, config_path(), "tint", &conditional()).unwrap();
+
+    assert_eq!(
+        property_keys(&fields_tree(&root), "tint"),
+        ["type", "required", "default", "when"]
+    );
+    let reloaded = load_schema(&root.join(".workdown/schema.yaml")).unwrap();
+    let when = reloaded.fields["tint"].when.as_ref().unwrap();
+    assert_eq!(when.branches.len(), 1);
+    assert_eq!(when.branches[0].condition_source, "status == \"open\"");
+    assert_eq!(
+        when.branches[0].value,
+        FieldValue::Color("green".to_owned())
+    );
+    assert_eq!(when.default, Some(FieldValue::Color("gray".to_owned())));
+
+    // A second branch as text, and the fallback gone.
+    let mut two_branches = conditional();
+    let Some(FieldRecipe::When { branches }) = &mut two_branches.recipe else {
+        unreachable!("the helper builds a when recipe");
+    };
+    branches.push(WhenBranchData {
+        condition: ConditionShape::Text {
+            source: "status != \"done\"".to_owned(),
+        },
+        then: serde_yaml::Value::String("blue".to_owned()),
+    });
+    two_branches.default = None;
+    update_field(&config, &root, config_path(), "tint", &two_branches).unwrap();
+    assert_eq!(
+        property_keys(&fields_tree(&root), "tint"),
+        ["type", "required", "when"]
+    );
+    let reloaded = load_schema(&root.join(".workdown/schema.yaml")).unwrap();
+    let when = reloaded.fields["tint"].when.as_ref().unwrap();
+    assert_eq!(when.branches[1].condition_source, "status != \"done\"");
+    assert_eq!(when.default, None);
+}
+
+#[test]
+fn preview_field_reports_a_when_the_parser_or_the_load_rejects() {
+    let (_directory, root, config) = setup();
+    let before = schema_text(&root);
+    let preview = |definition: &FieldDefinitionWrite| {
+        preview_field(&config, &root, config_path(), "tint", false, definition).unwrap()
+    };
+
+    let sound = preview(&conditional());
+    assert_eq!(
+        sound.yaml,
+        "type: color\nrequired: false\ndefault: gray\nwhen:\n- if: status == \"open\"\n  then: green"
+    );
+    assert_eq!(sound.problem, None);
+
+    // A generator is no fallback: the parser's refusal.
+    let mut generated = conditional();
+    generated.default = Some(DefaultWrite::Generator {
+        generator: Generator::Today,
+    });
+    let problem = preview(&generated)
+        .problem
+        .expect("a generator beside a when is a problem");
+    assert!(problem.contains("must be a plain value"), "{problem}");
+
+    // A condition that is not boolean passes the parser; the load
+    // disables the field, naming the branch.
+    let mut not_boolean = conditional();
+    let Some(FieldRecipe::When { branches }) = &mut not_boolean.recipe else {
+        unreachable!("the helper builds a when recipe");
+    };
+    branches[0].condition = ConditionShape::Text {
+        source: "status".to_owned(),
+    };
+    let problem = preview(&not_boolean)
+        .problem
+        .expect("a text condition is a problem");
+    assert!(problem.contains("branch 1"), "{problem}");
+
+    assert_eq!(schema_text(&root), before);
 }
 
 #[test]
@@ -1169,16 +1276,16 @@ fn preview_field_shows_the_entry_and_the_verdict_without_writing() {
         .expect("a rollup over a links field is a parse error");
     assert!(problem.contains("must be 'link'"), "{problem}");
 
-    // Replacing keeps what the write keeps: the `when` block and, beside
-    // it, the `default`, both of which the draft does not carry.
+    // Replacing shows what the write would leave: a draft without a
+    // recipe drops the `when` block and the `default` beside it.
     let mut tint = definition(FieldType::Color, FieldShape::Scalar);
     tint.description = Some("Tint".to_owned());
     let replacement =
         preview_field(&config, &root, config_path(), "status_color", true, &tint).unwrap();
     assert_eq!(replacement.problem, None);
-    assert!(replacement.yaml.contains("when:"), "{}", replacement.yaml);
+    assert!(!replacement.yaml.contains("when:"), "{}", replacement.yaml);
     assert!(
-        replacement.yaml.contains("default: gray"),
+        !replacement.yaml.contains("default:"),
         "{}",
         replacement.yaml
     );

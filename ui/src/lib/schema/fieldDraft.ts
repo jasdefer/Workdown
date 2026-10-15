@@ -64,6 +64,7 @@ export type TypeTables = Pick<
 	| 'aggregate_functions_by_type'
 	| 'pull_sources_by_type'
 	| 'expression_readable_types'
+	| 'conditional_types'
 >;
 
 /**
@@ -133,8 +134,24 @@ export function retype(tables: TypeTables, draft: FieldDraft, fieldType: FieldTy
 		resource: properties.includes('resource') ? draft.resource : null,
 		shape: draft.shape.kind === kind ? draft.shape : emptyShape(kind),
 		aggregate: properties.includes('aggregate') ? draft.aggregate : null,
-		recipe: draft.recipe !== null && properties.includes(draft.recipe.kind) ? draft.recipe : null
+		recipe:
+			draft.recipe !== null && takesRecipe(tables, fieldType, draft.recipe) ? draft.recipe : null
 	};
+}
+
+/**
+ * Whether a field of `fieldType` may carry `recipe`: a `when` where the
+ * server lists the type as conditional (the parser polices `when` with
+ * its own check, so it is not a property of the type), the others
+ * where the type lists the property.
+ */
+export function takesRecipe(
+	tables: TypeTables,
+	fieldType: FieldType,
+	recipe: FieldRecipe
+): boolean {
+	if (recipe.kind === 'when') return tables.conditional_types.includes(fieldType);
+	return propertiesOf(tables, fieldType).includes(recipe.kind);
 }
 
 /** The shape with every setting unset. */
