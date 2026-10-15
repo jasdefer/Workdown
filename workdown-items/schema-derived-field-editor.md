@@ -218,3 +218,30 @@ in conditions, and a resources editor for constants.
 - The field panel sends the recipe back as served (`FieldDraft.recipe`),
   so a save keeps a pull; `retype` drops it where the new type has no
   `pull` property.
+
+**2026-10-15, pull, the panel** (decision 11, step two, UI half).
+
+- The "Value" section (decision 3) in `FieldPanel.svelte`, after the
+  type-specific block: a selector with "Set by hand" and "Pulled from
+  linked items", shown where the type can be pulled into. A computed
+  or conditional field shows "Computed" / "Conditional", locked, with
+  its text still on the right; those entries unlock in their steps.
+- `ui/src/lib/schema/PullBlock.svelte`: Through (the `link` and
+  `links` fields that forbid cycles, `pullRelations`), Read (the
+  fields whose type the served `pull_sources_by_type` lists,
+  `pullSources`), Combine with (that field's functions), and the
+  `error_on_missing` box with what it changes spelled out. A choice
+  the file names but the pickers cannot offer stays as "(not
+  followable)" / "(cannot be read)" / "(does not fit)"; the preview
+  reports the problem. Switching the field read keeps the function
+  where the new field offers it (`withPullSource`). Stateless.
+- Choosing "pulled" starts from `newPull` (first relation, first
+  readable field, its first function), drops the default and says so
+  in the Default row (decision 7). "Set by hand" clears the recipe.
+- `fieldDraft.ts`: `takesPull`, `pullRelations`, `pullSources`,
+  `newPull`, `withPullSource`; `TypeTables` gained
+  `pull_sources_by_type`.
+- Clicked through against this repo's schema: an integer field added,
+  a second one pulling it along `depends_on`, and a date field whose
+  pull of it the preview refused with Save greyed out. The rewritten
+  `schema.yaml` was restored afterwards.

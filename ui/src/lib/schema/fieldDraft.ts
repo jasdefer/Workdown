@@ -21,6 +21,7 @@ import type { FieldShape } from '$lib/api/generated/FieldShape';
 import type { FieldType } from '$lib/api/generated/FieldType';
 import type { FieldValue } from '$lib/api/generated/FieldValue';
 import type { Generator } from '$lib/api/generated/Generator';
+import type { PullConfig } from '$lib/api/generated/PullConfig';
 import type { SchemaDefinitionData } from '$lib/api/generated/SchemaDefinitionData';
 import type { ShapeKind } from '$lib/api/generated/ShapeKind';
 import type { ValueSpec } from '$lib/values/valueSpec';
@@ -49,8 +50,7 @@ export interface FieldDraft {
 	aggregate: AggregateConfig | null;
 	/**
 	 * The recipe filling the value (`pull:` so far), or none for a
-	 * field set by hand. Sent back as served; editing it is the next
-	 * step.
+	 * field set by hand.
 	 */
 	recipe: FieldRecipe | null;
 }
@@ -58,7 +58,10 @@ export interface FieldDraft {
 /** The tables the draft functions read, as the definition payload serves them. */
 export type TypeTables = Pick<
 	SchemaDefinitionData,
-	'properties_by_type' | 'generators_by_type' | 'aggregate_functions_by_type'
+	| 'properties_by_type'
+	| 'generators_by_type'
+	| 'aggregate_functions_by_type'
+	| 'pull_sources_by_type'
 >;
 
 /**
@@ -232,6 +235,98 @@ export function newRollup(
 	const [firstRelation] = rollupRelations(fields);
 	if (firstFunction === undefined || firstRelation === undefined) return null;
 	return { function: firstFunction, error_on_missing: false, over: firstRelation };
+}
+
+/** Whether a field of `fieldType` may pull its value from linked items (`pull:`). */
+export function takesPull(tables: TypeTables, fieldType: FieldType): boolean {
+	return propertiesOf(tables, fieldType).includes('pull');
+}
+
+/**
+ * The names of the relations a pull may follow: the `link` and `links`
+ * fields that forbid cycles, in declaration order. A pull follows a
+ * link forward, one hop, so a many-valued relation is fine; one that
+ * allows cycles has no acyclic graph to evaluate in, and the load
+ * disables the field, so the picker leaves it out.
+ */
+export function pullRelations(fields: FieldDefinitionData[]): string[] {
+	return fields
+		.filter(
+			(field) =>
+				(field.field_type === 'link' || field.field_type === 'links') &&
+				field.shape.kind === 'relation' &&
+				field.shape.allow_cycles === false
+		)
+		.map((field) => field.name);
+}
+
+/** A field a pull may read, with the functions that reduce it into the pulling field's type. */
+export interface PullSourceField {
+	name: string;
+	functions: AggregateFunction[];
+}
+
+/**
+ * The fields a pull into a `fieldType` field may read, in declaration
+ * order: every field whose type the served table lists as a source,
+ * each with the functions whose result the pulling field holds. The
+ * rule — which function over which type yields which type, and that a
+ * whole number fits a `float` field — is the server's; this only joins
+ * its table with the schema's fields.
+ */
+export function pullSources(
+	tables: TypeTables,
+	fields: FieldDefinitionData[],
+	fieldType: FieldType
+): PullSourceField[] {
+	const sources =
+		tables.pull_sources_by_type.find((entry) => entry.field_type === fieldType)?.sources ?? [];
+	return fields.flatMap((field) => {
+		const source = sources.find((entry) => entry.field_type === field.field_type);
+		return source === undefined ? [] : [{ name: field.name, functions: source.functions }];
+	});
+}
+
+/**
+ * The pull the panel starts with when it is chosen: the first relation,
+ * the first readable field and that field's first function, so the
+ * draft is whole at once. `null` when there is nothing to choose from —
+ * no relation forbids cycles, or no field can be reduced into the
+ * type.
+ */
+export function newPull(
+	tables: TypeTables,
+	fields: FieldDefinitionData[],
+	fieldType: FieldType
+): PullConfig | null {
+	const [firstRelation] = pullRelations(fields);
+	const [firstSource] = pullSources(tables, fields, fieldType);
+	const firstFunction = firstSource?.functions[0];
+	if (firstRelation === undefined || firstSource === undefined || firstFunction === undefined) {
+		return null;
+	}
+	return {
+		over: firstRelation,
+		field: firstSource.name,
+		function: firstFunction,
+		error_on_missing: false
+	};
+}
+
+/**
+ * The pull reading `name` instead. The function is kept when the new
+ * source offers it and replaced by the source's first one otherwise,
+ * so a `sum` survives a switch between two numbers and a date source
+ * does not keep a function it cannot be reduced with.
+ */
+export function withPullSource(
+	value: PullConfig,
+	sources: PullSourceField[],
+	name: string
+): PullConfig {
+	const functions = sources.find((source) => source.name === name)?.functions ?? [];
+	const kept = functions.includes(value.function) ? value.function : functions[0];
+	return { ...value, field: name, function: kept ?? value.function };
 }
 
 /** A shape with inclusive bounds: numbers for `integer` and `float`, shorthand text for `duration`. */

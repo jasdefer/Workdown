@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { AggregateConfig } from '$lib/api/generated/AggregateConfig';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
+import type { PullConfig } from '$lib/api/generated/PullConfig';
 import {
 	aggregateFunctionsFor,
 	emptyShape,
@@ -8,19 +9,24 @@ import {
 	generatorsFor,
 	initialDraft,
 	newDraft,
+	newPull,
 	newRollup,
+	pullRelations,
+	pullSources,
 	retype,
 	rollupRelations,
 	shapeKindOf,
 	shapeProblem,
 	specOfDraft,
 	takesAggregate,
+	takesPull,
 	takesResource,
 	valueProblem,
 	withBound,
 	withForbidCycles,
 	withInverse,
 	withPattern,
+	withPullSource,
 	withValueAdded,
 	withValueMoved,
 	withValueRemoved,
@@ -60,6 +66,17 @@ const tables: TypeTables = {
 		{ field_type: 'integer', functions: ['sum', 'min', 'max', 'average', 'median', 'count'] },
 		{ field_type: 'date', functions: ['min', 'max', 'average'] },
 		{ field_type: 'string', functions: [] }
+	],
+	pull_sources_by_type: [
+		{
+			field_type: 'integer',
+			sources: [
+				{ field_type: 'integer', functions: ['sum', 'min', 'max', 'count'] },
+				{ field_type: 'date', functions: ['count'] }
+			]
+		},
+		{ field_type: 'date', sources: [{ field_type: 'date', functions: ['min', 'max', 'average'] }] },
+		{ field_type: 'string', sources: [] }
 	]
 };
 
@@ -409,6 +426,104 @@ describe('rollups', () => {
 	it('has nothing to start with when no relation can be climbed or the type has no functions', () => {
 		expect(newRollup(tables, [loose], 'integer')).toBeNull();
 		expect(newRollup(tables, [parent], 'string')).toBeNull();
+	});
+});
+
+describe('pulls', () => {
+	const parent = served({
+		name: 'parent',
+		field_type: 'link',
+		shape: { kind: 'relation', allow_cycles: false, inverse: 'children' }
+	});
+	const dependsOn = served({
+		name: 'depends_on',
+		field_type: 'links',
+		shape: { kind: 'relation', allow_cycles: false, inverse: null }
+	});
+	const loose = served({
+		name: 'related_to',
+		field_type: 'links',
+		shape: { kind: 'relation', allow_cycles: true, inverse: null }
+	});
+	const points = served({ name: 'points', field_type: 'integer' });
+	const due = served({ name: 'due', field_type: 'date', shape: { kind: 'scalar' } });
+	const title = served({
+		name: 'title',
+		field_type: 'string',
+		shape: { kind: 'text', pattern: null }
+	});
+	const fields = [title, parent, dependsOn, loose, points, due];
+
+	it('offers a pull to the types the server lists it for', () => {
+		expect(takesPull(tables, 'integer')).toBe(true);
+		expect(takesPull(tables, 'date')).toBe(false);
+	});
+
+	it('follows link and links fields that forbid cycles', () => {
+		expect(pullRelations(fields)).toEqual(['parent', 'depends_on']);
+	});
+
+	it('reads the fields whose type the served table lists, with its functions', () => {
+		expect(pullSources(tables, fields, 'integer')).toEqual([
+			{ name: 'points', functions: ['sum', 'min', 'max', 'count'] },
+			{ name: 'due', functions: ['count'] }
+		]);
+		expect(pullSources(tables, fields, 'date')).toEqual([
+			{ name: 'due', functions: ['min', 'max', 'average'] }
+		]);
+		expect(pullSources(tables, fields, 'string')).toEqual([]);
+	});
+
+	it('starts with the first relation, the first source and its first function', () => {
+		expect(newPull(tables, fields, 'integer')).toEqual({
+			over: 'parent',
+			field: 'points',
+			function: 'sum',
+			error_on_missing: false
+		});
+	});
+
+	it('has nothing to start with when no relation or no source fits', () => {
+		expect(newPull(tables, [loose, points], 'integer')).toBeNull();
+		expect(newPull(tables, [parent, title], 'integer')).toBeNull();
+	});
+
+	it('keeps the function across a source switch when the new source offers it', () => {
+		const sources = pullSources(tables, fields, 'integer');
+		const counted: PullConfig = {
+			over: 'parent',
+			field: 'points',
+			function: 'count',
+			error_on_missing: true
+		};
+		expect(withPullSource(counted, sources, 'due')).toEqual({ ...counted, field: 'due' });
+		expect(withPullSource({ ...counted, function: 'sum' }, sources, 'due')).toEqual({
+			...counted,
+			field: 'due',
+			function: 'count'
+		});
+	});
+
+	it('is kept on retype only where the new type takes a pull', () => {
+		const pulled: FieldDraft = {
+			name: 'blocked_points',
+			fieldType: 'integer',
+			required: false,
+			description: '',
+			default: null,
+			resource: null,
+			shape: { kind: 'numeric', min: null, max: null },
+			aggregate: null,
+			recipe: {
+				kind: 'pull',
+				over: 'parent',
+				field: 'points',
+				function: 'sum',
+				error_on_missing: false
+			}
+		};
+		expect(retype(tables, pulled, 'integer').recipe).toEqual(pulled.recipe);
+		expect(retype(tables, pulled, 'date').recipe).toBeNull();
 	});
 });
 

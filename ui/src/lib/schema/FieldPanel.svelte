@@ -2,10 +2,12 @@
   The field editor: the slide-over the schema page opens on a row click
   (`?field=<name>`) or on Add field (`?add`). A header block every type
   shares — name, type, required, description, default — then the
-  type-specific block, the rollup section for the types that take one,
-  and beside them the YAML the save would write, the recipe blocks not
-  edited here, what the field is used by, and the footer with Save,
-  Cancel and Remove.
+  type-specific block, the "Value" section with the way the value is
+  filled (by hand, or pulled from linked items; a computed or
+  conditional field still says so and sends to the file), the rollup
+  section for the types that take one, and beside them the YAML the
+  save would write, the recipe blocks not edited here, what the field
+  is used by, and the footer with Save, Cancel and Remove.
 
   The YAML pane and the pre-save verdict come from the server, as in
   the rule panel: on every pause in editing the draft goes to the
@@ -45,12 +47,14 @@
 	import type { FieldDefinitionWrite } from '$lib/api/generated/FieldDefinitionWrite';
 	import type { FieldShape } from '$lib/api/generated/FieldShape';
 	import type { FieldType } from '$lib/api/generated/FieldType';
+	import type { PullConfig } from '$lib/api/generated/PullConfig';
 	import type { SchemaDefinitionData } from '$lib/api/generated/SchemaDefinitionData';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
 	import SlideOver from '$lib/ui/SlideOver.svelte';
 	import AggregateBlock from './AggregateBlock.svelte';
 	import DefaultControl from './DefaultControl.svelte';
+	import PullBlock from './PullBlock.svelte';
 	import ResourceControl from './ResourceControl.svelte';
 	import ShapeBlock from './ShapeBlock.svelte';
 	import {
@@ -58,12 +62,16 @@
 		generatorsFor,
 		initialDraft,
 		newDraft,
+		newPull,
 		newRollup,
+		pullRelations,
+		pullSources,
 		retype,
 		rollupRelations,
 		shapeProblem,
 		specOfDraft,
 		takesAggregate,
+		takesPull,
 		takesResource,
 		writeBody,
 		type DraftDefault
@@ -109,11 +117,16 @@
 
 	const isId = existing?.name === 'id';
 	// The recipe blocks still edited in the file, shown as text; the
-	// rollup has its own section on the left.
+	// pull and the rollup have their sections on the left.
 	const textBlocks =
 		existing === null
 			? []
-			: (['compute', 'when', 'pull'] as const).filter((block) => existing.derived[block] !== null);
+			: (['compute', 'when'] as const).filter((block) => existing.derived[block] !== null);
+	// A computed or conditional field's recipe is not on the wire yet:
+	// the "Value" selector names it and stays locked, the text is on the
+	// right. The parser makes the three recipes exclusive, so a field
+	// has at most one.
+	const lockedRecipe: 'compute' | 'when' | null = textBlocks[0] ?? null;
 	// Every existing field keeps its type here; a change is made in
 	// `schema.yaml`, where any pair is possible and judged at load (the
 	// write route's widening table stays as its guard). A field with a
@@ -136,6 +149,17 @@
 	const rollupFunctions = $derived(aggregateFunctionsFor(definition, draft.fieldType));
 	const rollupRelationNames = $derived(rollupRelations(definition.fields));
 	const rollupStart = $derived(newRollup(definition, definition.fields, draft.fieldType));
+	// The "Value" section: shown where the type can be pulled into, and
+	// on a field whose recipe is locked, so the panel says what fills it.
+	const showsValue = $derived(lockedRecipe !== null || takesPull(definition, draft.fieldType));
+	const pullRelationNames = $derived(pullRelations(definition.fields));
+	const pullSourceFields = $derived(pullSources(definition, definition.fields, draft.fieldType));
+	const pullStart = $derived(newPull(definition, definition.fields, draft.fieldType));
+	type ValueKind = 'hand' | 'pull' | 'compute' | 'when';
+	const valueKind = $derived<ValueKind>(lockedRecipe ?? draft.recipe?.kind ?? 'hand');
+	// Whether choosing "pulled" dropped a default the draft had: a pulled
+	// field has none, and the panel says what happened to it (decision 7).
+	let defaultDropped = $state(false);
 
 	// The server's rendering of the draft: the YAML and its verdict. Keyed
 	// by the request it answered, so an answer to an older draft is
@@ -278,6 +302,21 @@
 		draft.aggregate = next;
 	}
 
+	function onValueKindChange(event: Event & { currentTarget: HTMLSelectElement }): void {
+		const next = event.currentTarget.value as ValueKind;
+		if (next === 'hand') {
+			draft.recipe = null;
+		} else if (next === 'pull' && pullStart !== null) {
+			defaultDropped = draft.default !== null;
+			draft.default = null;
+			draft.recipe = { kind: 'pull', ...pullStart };
+		}
+	}
+
+	function onPullChange(next: PullConfig): void {
+		draft.recipe = { kind: 'pull', ...next };
+	}
+
 	// The remove confirmation: one answer, or two once items hold a
 	// value — remove the field and keep them, or drop them as well.
 	const removeText = $derived(
@@ -366,6 +405,12 @@
 							<span class="hint">
 								The default is the fallback of the <code>when</code> recipe. Edit it in schema.yaml.
 							</span>
+						{:else if valueKind === 'pull'}
+							<span class="hint">
+								None: a pulled field has no default.{defaultDropped
+									? ' The one set before was dropped.'
+									: ''}
+							</span>
 						{:else}
 							<DefaultControl
 								value={draft.default}
@@ -400,6 +445,55 @@
 							disabled={saving}
 							onchange={onResourceChange}
 						/>
+					{/if}
+
+					<!-- ── Value ────────────────────────────────────────────── -->
+
+					{#if showsValue}
+						<fieldset class="value" aria-label="Value">
+							<label class="row">
+								<span class="label">Value</span>
+								<select
+									value={valueKind}
+									disabled={saving || lockedRecipe !== null}
+									title={lockedRecipe !== null ? 'Edit the recipe in schema.yaml' : undefined}
+									onchange={onValueKindChange}
+								>
+									<option value="hand">Set by hand</option>
+									<option value="pull" disabled={pullStart === null && valueKind !== 'pull'}>
+										Pulled from linked items
+									</option>
+									{#if lockedRecipe === 'compute'}
+										<option value="compute">Computed</option>
+									{:else if lockedRecipe === 'when'}
+										<option value="when">Conditional</option>
+									{/if}
+								</select>
+							</label>
+							{#if lockedRecipe !== null}
+								<span class="hint">
+									Filled by the <code>{lockedRecipe}</code> recipe shown beside. Edit it in schema.yaml.
+								</span>
+							{:else if draft.recipe?.kind === 'pull'}
+								<PullBlock
+									value={draft.recipe}
+									relations={pullRelationNames}
+									sources={pullSourceFields}
+									disabled={saving}
+									onchange={onPullChange}
+								/>
+							{:else if pullStart === null}
+								<span class="hint">
+									Pulling needs a <code>link</code> or <code>links</code> field that forbids cycles and
+									a field that can be reduced into this type; the schema has no such pair yet.
+								</span>
+							{:else}
+								<span class="hint">
+									Written on each item, or pulled: read from the items a relation points at and
+									combined.
+								</span>
+							{/if}
+						</fieldset>
 					{/if}
 
 					<!-- ── Rollup ───────────────────────────────────────────── -->
@@ -604,6 +698,15 @@
 
 	textarea {
 		resize: vertical;
+	}
+
+	.value {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+		margin: 0;
+		padding: 0;
+		border: none;
 	}
 
 	.locked-name {
