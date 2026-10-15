@@ -16,6 +16,7 @@ use workdown_core::model::diagnostic::{DiagnosticBody, ItemDiagnosticKind};
 use workdown_core::model::rule::{CountConstraint, Severity};
 use workdown_core::model::schema::{
     AggregateConfig, AggregateFunction, DefaultValue, FieldType, FieldTypeConfig, PullConfig,
+    RoundMode,
 };
 use workdown_core::operations::schema_write::{
     add_field, add_rule, field_usage, preview_field, preview_rule, remove_field, remove_rule,
@@ -135,6 +136,17 @@ fn rollup(over: &str) -> FieldDefinitionWrite {
         over: over.to_owned(),
     });
     points
+}
+
+/// A date field computed from `expression`, with no options set.
+fn computed(expression: &str) -> FieldDefinitionWrite {
+    let mut when_done = definition(FieldType::Date, FieldShape::Scalar);
+    when_done.recipe = Some(FieldRecipe::Compute {
+        expression: expression.to_owned(),
+        round: RoundMode::Nearest,
+        error_on_missing: false,
+    });
+    when_done
 }
 
 /// A date field pulling the earliest `field` of its dependencies.
@@ -375,6 +387,48 @@ fn add_field_with_a_rollup_writes_the_aggregate_block_and_clearing_it_removes_th
     );
     let reloaded = load_schema(&root.join(".workdown/schema.yaml")).unwrap();
     assert_eq!(reloaded.fields["points"].aggregate, None);
+}
+
+#[test]
+fn add_field_with_a_compute_writes_the_bare_expression_and_its_options_when_set() {
+    let (_directory, root, config) = setup();
+    write_item(&root, "a", "");
+
+    add_field(&config, &root, config_path(), "copy", &computed("created")).unwrap();
+
+    assert_eq!(
+        property_keys(&fields_tree(&root), "copy"),
+        ["type", "required", "compute"]
+    );
+    assert!(schema_text(&root).contains("compute: created\n"));
+    let reloaded = load_schema(&root.join(".workdown/schema.yaml")).unwrap();
+    let compute = reloaded.fields["copy"].compute.as_ref().unwrap();
+    assert_eq!(
+        (compute.source.as_str(), compute.round),
+        ("created", RoundMode::Nearest)
+    );
+
+    let mut strict = computed("created");
+    strict.recipe = Some(FieldRecipe::Compute {
+        expression: "created".to_owned(),
+        round: RoundMode::Ceil,
+        error_on_missing: true,
+    });
+    update_field(&config, &root, config_path(), "copy", &strict).unwrap();
+    let reloaded = load_schema(&root.join(".workdown/schema.yaml")).unwrap();
+    let compute = reloaded.fields["copy"].compute.as_ref().unwrap();
+    assert_eq!(
+        (compute.round, compute.error_on_missing),
+        (RoundMode::Ceil, true)
+    );
+
+    let mut by_hand = computed("created");
+    by_hand.recipe = None;
+    update_field(&config, &root, config_path(), "copy", &by_hand).unwrap();
+    assert_eq!(
+        property_keys(&fields_tree(&root), "copy"),
+        ["type", "required"]
+    );
 }
 
 #[test]
@@ -1136,6 +1190,53 @@ fn preview_field_shows_the_entry_and_the_verdict_without_writing() {
 
     let unknown = preview_field(&config, &root, config_path(), "no_such", true, &tint).unwrap();
     assert!(unknown.problem.unwrap().contains("no field named"));
+
+    assert_eq!(schema_text(&root), before);
+}
+
+#[test]
+fn preview_field_reports_a_formulas_problem_with_the_column_the_text_names() {
+    let (_directory, root, config) = setup();
+    let before = schema_text(&root);
+    let preview = |definition: &FieldDefinitionWrite| {
+        preview_field(&config, &root, config_path(), "copy", false, definition).unwrap()
+    };
+
+    let sound = preview(&computed("created"));
+    assert_eq!(sound.yaml, "type: date\nrequired: false\ncompute: created");
+    assert_eq!((sound.problem, sound.problem_column), (None, None));
+
+    // A syntax error is the schema parser's refusal; the column comes
+    // from the expression parser and matches the text.
+    let unparsable = preview(&computed("created + )"));
+    let problem = unparsable
+        .problem
+        .expect("a formula with a stray ')' is a problem");
+    let column = unparsable
+        .problem_column
+        .expect("a stray token has a column");
+    assert!(
+        problem.contains(&format!("at column {column}")),
+        "{problem}"
+    );
+
+    // A type error passes the parser and comes from the load; the column
+    // is the type check's.
+    let mistyped = preview(&computed("created + created"));
+    let problem = mistyped.problem.expect("adding two dates is a problem");
+    let column = mistyped
+        .problem_column
+        .expect("an invalid operation has a column");
+    assert!(problem.contains("cannot apply '+'"), "{problem}");
+    assert!(
+        problem.contains(&format!("at column {column}")),
+        "{problem}"
+    );
+
+    // A formula that ends early has no spot to point at.
+    let unfinished = preview(&computed("created +"));
+    assert!(unfinished.problem.is_some());
+    assert_eq!(unfinished.problem_column, None);
 
     assert_eq!(schema_text(&root), before);
 }

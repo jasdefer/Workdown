@@ -488,11 +488,14 @@ pub enum ConfigDiagnosticKind {
     /// A `compute:` expression in `schema.yaml` failed type checking:
     /// an unknown field or constant reference, a reference to a type
     /// without arithmetic, or an operator applied outside the algebra.
-    /// `detail` is the rendered type-check error, column included.
+    /// `detail` is the rendered type-check error, column included;
+    /// `column` is that one-based column as data, for an editor that
+    /// marks the spot, `None` when the error has no position.
     ComputeInvalidExpression {
         field: String,
         expression: String,
         detail: String,
+        column: Option<usize>,
     },
 
     /// A `compute:` expression type-checks, but its result type doesn't
@@ -1119,6 +1122,7 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                 field,
                 expression,
                 detail,
+                ..
             } => write!(
                 f,
                 "field '{field}', compute expression '{expression}': {detail}"

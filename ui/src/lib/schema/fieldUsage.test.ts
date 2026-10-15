@@ -30,6 +30,7 @@ const computeReadsIt: Diagnostic = {
 	scope: 'config',
 	source_path: '.workdown/schema.yaml',
 	type: 'compute_invalid_expression',
+	column: null,
 	field: 'total',
 	expression: 'points * 2',
 	detail: 'unknown field points'

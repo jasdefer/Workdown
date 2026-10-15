@@ -43,11 +43,12 @@ use sha2::{Digest, Sha256};
 use strum::VariantArray;
 
 use crate::coerce::coerce_value;
+use crate::compute_check::expression_type_of;
 use crate::model::duration::format_duration_seconds;
 use crate::model::schema::{
     allowed_aggregate_functions, allowed_generators, field_property_allowed, pull_functions,
     widening_targets, AggregateConfig, AggregateFunction, DefaultValue, FieldDefinition,
-    FieldProperty, FieldType, FieldTypeConfig, Generator, PullConfig, Severity,
+    FieldProperty, FieldType, FieldTypeConfig, Generator, PullConfig, RoundMode, Severity,
 };
 use crate::model::FieldValue;
 use crate::parser::schema::{parse_schema, SchemaLoadError};
@@ -80,6 +81,9 @@ pub struct SchemaDefinitionData {
     /// field's type holds. One entry per [`FieldType`]; a type that
     /// cannot be pulled into has no sources.
     pub pull_sources_by_type: Vec<FieldTypePullSources>,
+    /// The types whose fields a formula may read: those with a place in
+    /// the expression algebra. In [`FieldType`] declaration order.
+    pub expression_readable_types: Vec<FieldType>,
     /// Which `$`-generators may be the `default:` of each type.
     pub generators_by_type: Vec<FieldTypeGenerators>,
     /// Which types each type may be changed to without invalidating an
@@ -128,9 +132,8 @@ pub struct FieldDefinitionData {
     pub aggregate: Option<AggregateConfig>,
     /// The recipe that fills the field's value as data — what the
     /// editor's "Value" selector edits and the write takes back. `None`
-    /// for a field set by hand, and still `None` for a `compute:` or a
-    /// `when:` field until those are served as data; their text is in
-    /// `derived`.
+    /// for a field set by hand, and still `None` for a `when:` field
+    /// until that is served as data; its text is in `derived`.
     pub recipe: Option<FieldRecipe>,
 }
 
@@ -194,6 +197,15 @@ pub enum DefaultData {
 pub enum FieldRecipe {
     /// The `pull:` block: a field read through a forward link, reduced.
     Pull(PullConfig),
+    /// The `compute:` block: a formula over the item's own fields and
+    /// the project constants, as text (`schema-derived-field-editor`,
+    /// decision 1), with its options. `round` matters on `date` fields
+    /// only; the parser refuses it elsewhere.
+    Compute {
+        expression: String,
+        round: RoundMode,
+        error_on_missing: bool,
+    },
 }
 
 /// The fill-mechanism blocks of a field, each as YAML text for
@@ -443,6 +455,11 @@ pub fn build(yaml: &str) -> Result<SchemaDefinitionData, SchemaLoadError> {
                     .collect(),
             })
             .collect(),
+        expression_readable_types: FieldType::VARIANTS
+            .iter()
+            .copied()
+            .filter(|&field_type| expression_type_of(field_type).is_some())
+            .collect(),
         generators_by_type: FieldType::VARIANTS
             .iter()
             .map(|&field_type| FieldTypeGenerators {
@@ -493,9 +510,26 @@ impl FieldDefinitionData {
                 aggregate: block_text("aggregate"),
             },
             aggregate: definition.aggregate.clone(),
-            recipe: definition.pull.clone().map(FieldRecipe::Pull),
+            recipe: recipe_of(definition),
         }
     }
+}
+
+/// The recipe the typed definition carries, as the editor edits it.
+/// The parser makes `pull` and `compute` exclusive, so at most one is
+/// set; `when` is not served as data yet.
+fn recipe_of(definition: &FieldDefinition) -> Option<FieldRecipe> {
+    if let Some(pull) = &definition.pull {
+        return Some(FieldRecipe::Pull(pull.clone()));
+    }
+    definition
+        .compute
+        .as_ref()
+        .map(|compute| FieldRecipe::Compute {
+            expression: compute.source.clone(),
+            round: compute.round,
+            error_on_missing: compute.error_on_missing,
+        })
 }
 
 impl FieldShape {
@@ -848,7 +882,7 @@ rules:
     }
 
     #[test]
-    fn the_pull_block_is_served_as_the_recipe_and_the_others_are_not_yet() {
+    fn the_pull_and_compute_blocks_are_served_as_the_recipe_and_when_is_not_yet() {
         let data = built();
         assert_eq!(
             field(&data, "earliest").recipe,
@@ -859,12 +893,38 @@ rules:
                 error_on_missing: false,
             }))
         );
-        assert_eq!(field(&data, "total").recipe, None);
-        assert_eq!(field(&data, "when_done").recipe, None);
-        assert_eq!(field(&data, "color").recipe, None);
         assert_eq!(
-            serde_json::to_value(field(&data, "earliest").recipe.as_ref()).unwrap()["kind"],
-            "pull"
+            field(&data, "when_done").recipe,
+            Some(FieldRecipe::Compute {
+                expression: "start + effort".to_owned(),
+                round: RoundMode::Ceil,
+                error_on_missing: false,
+            })
+        );
+        assert_eq!(field(&data, "total").recipe, None);
+        assert_eq!(field(&data, "color").recipe, None);
+        let as_json =
+            |name: &str| serde_json::to_value(field(&data, name).recipe.as_ref()).unwrap();
+        assert_eq!(as_json("earliest")["kind"], "pull");
+        assert_eq!(as_json("when_done")["kind"], "compute");
+        assert_eq!(as_json("when_done")["round"], "ceil");
+    }
+
+    #[test]
+    fn a_formula_may_read_the_types_with_a_place_in_the_algebra() {
+        let data = built();
+        assert_eq!(
+            data.expression_readable_types,
+            vec![
+                FieldType::String,
+                FieldType::Choice,
+                FieldType::Integer,
+                FieldType::Float,
+                FieldType::Date,
+                FieldType::Duration,
+                FieldType::Color,
+                FieldType::Boolean
+            ]
         );
     }
 

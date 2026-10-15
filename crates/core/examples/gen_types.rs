@@ -40,7 +40,8 @@ use workdown_core::model::diagnostic::{
 use workdown_core::model::field_value::FieldValue;
 use workdown_core::model::rule::CountConstraint;
 use workdown_core::model::schema::{
-    AggregateConfig, AggregateFunction, FieldProperty, FieldType, Generator, PullConfig, Severity,
+    AggregateConfig, AggregateFunction, FieldProperty, FieldType, Generator, PullConfig, RoundMode,
+    Severity,
 };
 use workdown_core::model::view_slots;
 use workdown_core::model::views::{Aggregate, Bucket, DisplayConfig, ViewSummary, ViewType};
@@ -60,7 +61,8 @@ use workdown_core::rule_shape::{
     Comparison, MatchRow, Quantifier, RequireRow, RequireTest, RuleShape, ScalarTest, ScalarValue,
 };
 use workdown_core::schema_data::{
-    FieldSchema, FieldTypeOperators, PaletteColor, ResourceList, ResourceOption, SchemaData,
+    ConstantData, FieldSchema, FieldTypeOperators, PaletteColor, ResourceList, ResourceOption,
+    SchemaData,
 };
 use workdown_core::schema_definition_data::{
     DefaultData, DerivedBlocks, FieldDefinitionData, FieldRecipe, FieldShape,
@@ -214,7 +216,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<AggregateFunction>();
     exports.add::<AggregateConfig>();
     exports.add::<PullConfig>();
+    exports.add::<RoundMode>();
     exports.add::<ResourceList>();
+    exports.add::<ConstantData>();
     exports.add::<ResourceOption>();
     exports.add::<PaletteColor>();
     exports.add::<FieldTypeOperators>();

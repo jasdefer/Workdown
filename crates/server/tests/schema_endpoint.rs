@@ -82,6 +82,10 @@ async fn get_schema_returns_fields_in_declaration_order() {
         ]
     );
 
+    // The constants a formula may name ride along, even when there are
+    // none.
+    assert!(envelope["data"]["constants"].is_array());
+
     // Envelope always carries diagnostics, even when empty.
     assert!(envelope["diagnostics"].is_array());
 }

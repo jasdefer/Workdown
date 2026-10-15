@@ -79,6 +79,7 @@ fn findings(schema: &Schema, resources: &Resources) -> Vec<Finding> {
                         field: field_name.clone(),
                         expression: compute.source.clone(),
                         detail: error.to_string(),
+                        column: Some(error.column()),
                     },
                 });
                 continue;
@@ -263,8 +264,9 @@ impl TypeContext for ProjectTypeContext<'_> {
 
 /// The [`ExpressionType`] a declared field type participates as, or
 /// `None` for the collection types, which no expression operator
-/// accepts.
-fn expression_type_of(field_type: FieldType) -> Option<ExpressionType> {
+/// accepts. Also decides which fields the schema editor offers a
+/// formula to read (`schema_definition_data::expression_readable_types`).
+pub(crate) fn expression_type_of(field_type: FieldType) -> Option<ExpressionType> {
     match field_type {
         FieldType::Integer => Some(ExpressionType::Integer),
         FieldType::Float => Some(ExpressionType::Float),

@@ -936,12 +936,27 @@ pub struct ComputeConfig {
 /// Rounding for date-valued compute results with a sub-day remainder.
 /// `Floor` means "the last fully-used day", `Ceil` means "the day the
 /// work spills into".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+///
+/// Serialized in lowercase, the spelling `schema.yaml` uses and the
+/// schema editor's wire carries (`Display` is the same, pinned by a
+/// unit test).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, ts_rs::TS)]
+#[serde(rename_all = "lowercase")]
 pub enum RoundMode {
     #[default]
     Nearest,
     Floor,
     Ceil,
+}
+
+impl std::fmt::Display for RoundMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Nearest => "nearest",
+            Self::Floor => "floor",
+            Self::Ceil => "ceil",
+        })
+    }
 }
 
 /// Configuration of a conditional field (`when:` in `schema.yaml`): the

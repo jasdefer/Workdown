@@ -24,19 +24,23 @@ its source — internal refactors are deliberately absent.
   a draft the schema would not load with, or would load and disable,
   greys Save out with the reason. The `compute` and `when` blocks stay
   read-only for now.
-- `workdown serve` edits a field's rollup and its pull. `GET
-  /api/schema/definition` serves each field's `aggregate` block and,
-  as its `recipe`, its `pull` block as data beside their text, plus
-  the table of which source types a pull into each type may read with
-  which functions; the field writes (`POST /api/schema/fields`, `PUT
+- `workdown serve` edits a field's rollup, its pull and its formula.
+  `GET /api/schema/definition` serves each field's `aggregate` block
+  and, as its `recipe`, its `pull` or `compute` block as data beside
+  their text, plus the table of which source types a pull into each
+  type may read with which functions and the list of types a formula
+  may read; `GET /api/schema` serves the project constants a formula
+  may name. The field writes (`POST /api/schema/fields`, `PUT
   /api/schema/fields/{name}`) take an `aggregate` and a `recipe` and
-  write or clear the blocks, so a field can be created with a rollup
-  or a pull. `POST /api/schema/field-preview` answers what a field
-  draft would be written as and whether the schema would load with it
-  and keep the field, without writing: a pull whose reduction does not
-  fit the field is reported there, before any save. The web app's
-  field panel sends the pull back as served; editing it there is the
-  next step.
+  write or clear the blocks, so a field can be created with a rollup,
+  a pull or a formula; a formula is written as the bare expression
+  until an option is set. `POST /api/schema/field-preview` answers
+  what a field draft would be written as and whether the schema would
+  load with it and keep the field, without writing: a pull whose
+  reduction does not fit the field, or a formula the parser or the
+  type check rejects, is reported there before any save, with the
+  column the formula goes wrong at. The web app's field panel sends
+  the formula back as served; editing it there is the next step.
 
 - The web app's schema page edits rules. A rule entry opens the rule
   editor beside the page; Add rule opens it empty. A rule is edited as

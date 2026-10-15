@@ -131,6 +131,21 @@ pub enum ExpressionTypeError {
     },
 }
 
+impl ExpressionTypeError {
+    /// The one-based column the error points at, the same one the
+    /// message names, as data for an editor that marks the spot.
+    pub fn column(&self) -> usize {
+        match self {
+            Self::UnknownField { column, .. }
+            | Self::UnknownConstant { column, .. }
+            | Self::UnsupportedReferenceType { column, .. }
+            | Self::InvalidOperation { column, .. }
+            | Self::InvalidComparison { column, .. }
+            | Self::InvalidNegation { column, .. } => *column,
+        }
+    }
+}
+
 /// Infer the result type of `expression`, resolving references through
 /// `context`.
 pub fn check_types(

@@ -245,3 +245,28 @@ in conditions, and a resources editor for constants.
   a second one pulling it along `depends_on`, and a date field whose
   pull of it the preview refused with Save greyed out. The rewritten
   `schema.yaml` was restored afterwards.
+
+**2026-10-15, compute, the Rust half** (decision 11, step three).
+
+- `FieldRecipe::Compute { expression, round, error_on_missing }`: the
+  formula as text (decision 1) with its options, served from
+  `ComputeConfig.source` and taken back by the write. The writer
+  spells the bare expression until an option is set (decision 4).
+  `RoundMode` is on the wire in lowercase. `WRITTEN_KEYS` gained
+  `compute`; `when` is the one key a write still leaves alone.
+- The column (decision 1, "the error at the exact character"):
+  `FieldPreview.problem_column`, the one-based column the problem's
+  text names, as data. A syntax error's column comes from the
+  expression parser, asked directly because the schema parser only
+  relays its text; a type error's from the load's diagnostic, which
+  now carries `column` (`ComputeInvalidExpression`). Both error types
+  gained a `column()` accessor; an empty or early-ending formula has
+  none.
+- For the formula's insert list: `expression_readable_types` on the
+  definition payload (the types with a place in the algebra, from
+  `expression_type_of`), and `constants` on `GET /api/schema` with
+  their typed values, since that payload already reads
+  `resources.yaml` and the definition payload reads `schema.yaml`
+  alone by design.
+- The panel already sends the recipe back as served, so a save keeps
+  a formula; the "Value" selector still shows "Computed" locked.

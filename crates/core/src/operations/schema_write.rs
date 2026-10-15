@@ -8,9 +8,9 @@
 //! saying what a field is used by ([`field_usage`]), and adding,
 //! replacing, removing and previewing a rule. Renaming a field is not
 //! offered; the design item `schema-editor-web-design` explains why. Of
-//! the recipes, only `pull` is edited so far; `compute` and `when` a
-//! write leaves as the file has them (`schema-derived-field-editor`
-//! lands them one at a time).
+//! the recipes, `pull` and `compute` are edited; `when` a write leaves
+//! as the file has it (`schema-derived-field-editor` lands them one at
+//! a time).
 //!
 //! Like every other mutation in the tool, the repo stays the source of
 //! truth: writes update the working tree only, nothing is staged or
@@ -115,10 +115,14 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::config_check;
+use crate::expression::parse_expression;
 use crate::model::config::Config;
-use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic};
+use crate::model::diagnostic::{
+    ConfigDiagnostic, ConfigDiagnosticKind, Diagnostic, DiagnosticBody,
+};
 use crate::model::schema::{
-    widening_targets, AggregateConfig, FieldType, Generator, PullConfig, Schema, Severity,
+    widening_targets, AggregateConfig, FieldType, Generator, PullConfig, RoundMode, Schema,
+    Severity,
 };
 use crate::model::work_item::WorkItem;
 use crate::operations::diagnostics::{introduced_by_mutation, introduced_diagnostics};
@@ -170,10 +174,11 @@ pub struct FieldDefinitionWrite {
     #[serde(default)]
     pub aggregate: Option<AggregateConfig>,
     /// The recipe filling the value; `None` means set by hand and clears
-    /// the recipe keys the editor writes (`pull` so far; a `compute` or
-    /// `when` the file has stays). Written as sent; the parser judges
-    /// the combination with `default`, and the load the references and
-    /// the types, which the preview reports as the draft's problem.
+    /// the recipe keys the editor writes (`pull` and `compute`; a `when`
+    /// the file has stays). Written as sent; the parser judges the
+    /// combination with `default` and the formula's syntax, and the
+    /// load the references and the types, which the preview reports as
+    /// the draft's problem.
     #[serde(default)]
     pub recipe: Option<FieldRecipe>,
 }
@@ -192,6 +197,11 @@ pub struct FieldPreview {
     /// disables), one per line. `None` when the write would go through,
     /// with or without warnings.
     pub problem: Option<String>,
+    /// Where in the draft's formula the problem sits, as a one-based
+    /// column, when it is a `compute` expression the parser or the type
+    /// check rejects at a spot: the same column the text names, as
+    /// data for the editor to mark. `None` for every other problem.
+    pub problem_column: Option<usize>,
 }
 
 /// A field's `default:` as the editor sends it.
@@ -553,9 +563,19 @@ pub fn preview_field(
         return Ok(FieldPreview {
             yaml,
             problem: Some(refusal.to_string()),
+            problem_column: None,
         });
     }
 
+    // Where a formula the schema parser refuses goes wrong: the parser
+    // relays the expression parser's text, so the column is asked of
+    // the expression parser directly.
+    let syntax_column = match &definition.recipe {
+        Some(FieldRecipe::Compute { expression, .. }) => parse_expression(expression)
+            .err()
+            .and_then(|error| error.column()),
+        Some(FieldRecipe::Pull(_)) | None => None,
+    };
     let candidate_text =
         serde_yaml::to_string(&context.document).map_err(SchemaWriteError::Serialize)?;
     let candidate = match parse_schema(&candidate_text) {
@@ -564,23 +584,44 @@ pub fn preview_field(
             return Ok(FieldPreview {
                 yaml,
                 problem: Some(error.to_string()),
+                problem_column: syntax_column,
             })
         }
     };
     let project = load_project_with_schema(config, project_root, config_path, candidate, None)?;
-    let schema_problems: Vec<String> =
-        introduced_diagnostics(&context.pre_diagnostics, &project.diagnostics)
-            .iter()
-            .filter(|diagnostic| diagnostic.source_path() == Some(context.schema_path.as_path()))
-            .map(ToString::to_string)
-            .collect();
-    let problem = if schema_problems.is_empty() {
+    let introduced = introduced_diagnostics(&context.pre_diagnostics, &project.diagnostics);
+    let schema_diagnostics: Vec<&Diagnostic> = introduced
+        .iter()
+        .filter(|diagnostic| diagnostic.source_path() == Some(context.schema_path.as_path()))
+        .collect();
+    let problem = if schema_diagnostics.is_empty() {
         None
     } else {
-        Some(schema_problems.join("\n"))
+        Some(
+            schema_diagnostics
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
     };
+    // The type check's column for this field's formula, when that is
+    // what the load objected to.
+    let problem_column = schema_diagnostics
+        .iter()
+        .find_map(|diagnostic| match &diagnostic.body {
+            DiagnosticBody::Config(ConfigDiagnostic {
+                kind: ConfigDiagnosticKind::ComputeInvalidExpression { field, column, .. },
+                ..
+            }) if field == name => *column,
+            _ => None,
+        });
 
-    Ok(FieldPreview { yaml, problem })
+    Ok(FieldPreview {
+        yaml,
+        problem,
+        problem_column,
+    })
 }
 
 /// The entry an add writes: the definition's properties in the fixed
@@ -990,7 +1031,7 @@ fn recipes_naming_field(schema: &Schema, name: &str) -> Vec<String> {
 
 /// Every key the editor may set or clear on a field. The complement —
 /// `compute`, `when` — a replace never touches.
-const WRITTEN_KEYS: [&str; 13] = [
+const WRITTEN_KEYS: [&str; 14] = [
     "type",
     "values",
     "pattern",
@@ -1002,6 +1043,7 @@ const WRITTEN_KEYS: [&str; 13] = [
     "default",
     "description",
     "resource",
+    "compute",
     "pull",
     "aggregate",
 ];
@@ -1145,11 +1187,39 @@ fn written_properties(definition: &FieldDefinitionWrite) -> Vec<(&'static str, s
     match &definition.recipe {
         None => {}
         Some(FieldRecipe::Pull(pull)) => properties.push(("pull", pull_entry(pull))),
+        Some(FieldRecipe::Compute {
+            expression,
+            round,
+            error_on_missing,
+        }) => properties.push((
+            "compute",
+            compute_entry(expression, *round, *error_on_missing),
+        )),
     }
     if let Some(aggregate) = &definition.aggregate {
         properties.push(("aggregate", aggregate_entry(aggregate)));
     }
     properties
+}
+
+/// The `compute:` value as the file spells it, in the shortest form the
+/// parser reads: the bare expression when neither option is set (the
+/// default rounding and `error_on_missing: false` are what the parser
+/// assumes), else a mapping with only the options that differ
+/// (`schema-derived-field-editor`, decision 4).
+fn compute_entry(expression: &str, round: RoundMode, error_on_missing: bool) -> serde_yaml::Value {
+    if round == RoundMode::default() && !error_on_missing {
+        return serde_yaml::Value::String(expression.to_owned());
+    }
+    let mut entry = serde_yaml::Mapping::new();
+    entry.insert(yaml_key("expression"), yaml_key(expression));
+    if round != RoundMode::default() {
+        entry.insert(yaml_key("round"), yaml_key(&round.to_string()));
+    }
+    if error_on_missing {
+        entry.insert(yaml_key("error_on_missing"), serde_yaml::Value::Bool(true));
+    }
+    serde_yaml::Value::Mapping(entry)
 }
 
 /// The `pull:` block as the file spells it, in the shortest form the
@@ -1471,6 +1541,24 @@ rules:
                 "pull",
                 "aggregate"
             ]
+        );
+    }
+
+    #[test]
+    fn the_compute_block_is_the_bare_expression_until_an_option_is_set() {
+        let bare = compute_entry("start + effort", RoundMode::Nearest, false);
+        assert_eq!(serde_yaml::to_string(&bare).unwrap(), "start + effort\n");
+
+        let rounded = compute_entry("start + effort", RoundMode::Ceil, false);
+        assert_eq!(
+            serde_yaml::to_string(&rounded).unwrap(),
+            "expression: start + effort\nround: ceil\n"
+        );
+
+        let strict = compute_entry("start + effort", RoundMode::Nearest, true);
+        assert_eq!(
+            serde_yaml::to_string(&strict).unwrap(),
+            "expression: start + effort\nerror_on_missing: true\n"
         );
     }
 

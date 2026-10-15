@@ -74,6 +74,21 @@ pub enum LexError {
     IncompleteComparison { found: char, column: usize },
 }
 
+impl LexError {
+    /// The one-based column the error points at, the same one the
+    /// message names.
+    pub fn column(&self) -> usize {
+        match self {
+            Self::UnexpectedCharacter { column, .. }
+            | Self::MalformedDollarReference { column }
+            | Self::NumberOutOfRange { column, .. }
+            | Self::MalformedNumber { column, .. }
+            | Self::UnterminatedString { column }
+            | Self::IncompleteComparison { column, .. } => *column,
+        }
+    }
+}
+
 /// The exact prefix a constant reference must carry.
 const CONSTANT_PREFIX: &str = "constants.";
 

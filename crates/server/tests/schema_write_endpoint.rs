@@ -203,6 +203,70 @@ async fn post_field_with_a_pull_recipe_writes_the_block_and_the_preview_judges_o
 }
 
 #[tokio::test]
+async fn post_field_with_a_compute_recipe_writes_the_block_and_the_preview_points_at_the_column() {
+    let (directory, state) = temp_project();
+    let integer = |recipe: Value| {
+        json!({
+            "field_type": "integer",
+            "required": false,
+            "shape": { "kind": "numeric", "min": null, "max": null },
+            "recipe": recipe
+        })
+    };
+    let compute = |expression: &str| {
+        json!({
+            "kind": "compute",
+            "expression": expression,
+            "round": "nearest",
+            "error_on_missing": false
+        })
+    };
+
+    let response = send(
+        state.clone(),
+        "POST",
+        "/api/schema/fields",
+        Some(json!({ "name": "points", "definition": integer(Value::Null) })),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let response = send(
+        state.clone(),
+        "POST",
+        "/api/schema/fields",
+        Some(json!({ "name": "doubled", "definition": integer(compute("points * 2")) })),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let schema = load_schema(&directory.path().join(".workdown/schema.yaml")).unwrap();
+    assert_eq!(
+        schema.fields["doubled"].compute.as_ref().unwrap().source,
+        "points * 2"
+    );
+
+    let response = send(
+        state,
+        "POST",
+        "/api/schema/field-preview",
+        Some(json!({
+            "name": "doubled",
+            "replacing": true,
+            "definition": integer(compute("points + title"))
+        })),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope = body_json(response).await;
+    let problem = envelope["data"]["problem"].as_str().unwrap();
+    assert!(problem.contains("cannot apply '+'"), "{problem}");
+    let column = envelope["data"]["problem_column"].as_u64().unwrap();
+    assert!(
+        problem.contains(&format!("at column {column}")),
+        "{problem}"
+    );
+}
+
+#[tokio::test]
 async fn post_existing_field_returns_409() {
     let (_directory, state) = temp_project();
 
