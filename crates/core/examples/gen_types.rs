@@ -40,18 +40,18 @@ use workdown_core::model::diagnostic::{
 use workdown_core::model::field_value::FieldValue;
 use workdown_core::model::rule::CountConstraint;
 use workdown_core::model::schema::{
-    AggregateFunction, FieldProperty, FieldType, Generator, Severity,
+    AggregateConfig, AggregateFunction, FieldProperty, FieldType, Generator, Severity,
 };
 use workdown_core::model::view_slots;
 use workdown_core::model::views::{Aggregate, Bucket, DisplayConfig, ViewSummary, ViewType};
 use workdown_core::model::WorkItemId;
 use workdown_core::mutation_data::{
     CreateField, CreateItem, CreateItemResult, CreateView, FieldMutation, FieldMutationResult,
-    PreviewRule, ReorderFields, SchemaMutationResult, SetViewFilter, UpdateView, ViewDefinition,
-    ViewMutationResult,
+    PreviewField, PreviewRule, ReorderFields, SchemaMutationResult, SetViewFilter, UpdateView,
+    ViewDefinition, ViewMutationResult,
 };
 use workdown_core::operations::schema_write::{
-    DefaultWrite, FieldDefinitionWrite, FieldUsage, RuleDefinitionWrite, RulePreview,
+    DefaultWrite, FieldDefinitionWrite, FieldPreview, FieldUsage, RuleDefinitionWrite, RulePreview,
 };
 use workdown_core::project_data::ProjectIdentity;
 use workdown_core::query::clause::{Clause, Condition};
@@ -209,6 +209,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<FieldProperty>();
     exports.add::<Generator>();
     exports.add::<AggregateFunction>();
+    exports.add::<AggregateConfig>();
     exports.add::<ResourceList>();
     exports.add::<ResourceOption>();
     exports.add::<PaletteColor>();
@@ -238,6 +239,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<ReorderFields>();
     exports.add::<SchemaMutationResult>();
     exports.add::<FieldUsage>();
+    exports.add::<PreviewField>();
+    exports.add::<FieldPreview>();
 
     // Timer contracts (GET /api/timer, POST /api/timer/start, POST /api/timer/stop).
     exports.add::<EffortFieldState>();

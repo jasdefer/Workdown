@@ -272,6 +272,20 @@ pub struct ReorderFields {
     pub order: Vec<String>,
 }
 
+/// A request to preview a field without writing it. Sent to `POST
+/// /api/schema/field-preview`.
+#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
+pub struct PreviewField {
+    /// The field's name: the one being edited, or the name the add
+    /// would create.
+    pub name: String,
+    /// `true` when the draft replaces the field named `name`; `false`
+    /// when it would be added, so a taken or invalid name is a problem.
+    #[serde(default)]
+    pub replacing: bool,
+    pub definition: FieldDefinitionWrite,
+}
+
 /// A request to preview a rule without writing it. Sent to `POST
 /// /api/schema/rule-preview`.
 #[derive(Debug, Clone, Deserialize, ts_rs::TS)]

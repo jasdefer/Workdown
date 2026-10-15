@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import type { AggregateConfig } from '$lib/api/generated/AggregateConfig';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import {
 	emptyShape,
@@ -63,6 +64,7 @@ function served(overrides: Partial<FieldDefinitionData>): FieldDefinitionData {
 		resource: null,
 		shape: { kind: 'numeric', min: 0, max: 100 },
 		derived: { compute: null, when: null, pull: null, aggregate: null },
+		aggregate: null,
 		...overrides
 	};
 }
@@ -77,7 +79,8 @@ describe('initialDraft', () => {
 			description: '',
 			default: null,
 			resource: null,
-			shape: { kind: 'numeric', min: 0, max: 100 }
+			shape: { kind: 'numeric', min: 0, max: 100 },
+			aggregate: null
 		});
 	});
 
@@ -108,7 +111,8 @@ describe('newDraft', () => {
 			description: '',
 			default: null,
 			resource: null,
-			shape: { kind: 'values', values: [] }
+			shape: { kind: 'values', values: [] },
+			aggregate: null
 		});
 	});
 });
@@ -121,7 +125,8 @@ describe('retype', () => {
 		description: 'Who has it',
 		default: { kind: 'generator', generator: '$filename' },
 		resource: 'people',
-		shape: { kind: 'text', pattern: '^[a-z]+$' }
+		shape: { kind: 'text', pattern: '^[a-z]+$' },
+		aggregate: null
 	};
 
 	it('keeps the header, drops the default and swaps the shape', () => {
@@ -132,7 +137,8 @@ describe('retype', () => {
 			description: 'Who has it',
 			default: null,
 			resource: null,
-			shape: { kind: 'scalar' }
+			shape: { kind: 'scalar' },
+			aggregate: null
 		});
 	});
 
@@ -147,6 +153,18 @@ describe('retype', () => {
 
 	it('keeps the resource where the new type takes one', () => {
 		expect(retype(tables, draft, 'list').resource).toBe('people');
+	});
+
+	it('keeps the rollup only where the new type takes one', () => {
+		const rollup: AggregateConfig = { function: 'sum', error_on_missing: false, over: 'parent' };
+		const total: FieldDraft = {
+			...draft,
+			fieldType: 'float',
+			shape: { kind: 'numeric', min: null, max: null },
+			aggregate: rollup
+		};
+		expect(retype(tables, total, 'integer').aggregate).toEqual(rollup);
+		expect(retype(tables, total, 'string').aggregate).toBeNull();
 	});
 });
 
@@ -292,7 +310,8 @@ describe('writeBody', () => {
 		description: '  Story points  ',
 		default: { kind: 'literal', value: 3 },
 		resource: null,
-		shape: { kind: 'numeric', min: 0, max: null }
+		shape: { kind: 'numeric', min: 0, max: null },
+		aggregate: null
 	};
 
 	it('sends the plain properties without the name, trimmed', () => {
@@ -302,7 +321,8 @@ describe('writeBody', () => {
 			description: 'Story points',
 			default: { kind: 'literal', value: 3 },
 			resource: null,
-			shape: { kind: 'numeric', min: 0, max: null }
+			shape: { kind: 'numeric', min: 0, max: null },
+			aggregate: null
 		});
 	});
 
@@ -322,6 +342,11 @@ describe('writeBody', () => {
 
 	it('sends a fixed-value choice with nothing entered as no default', () => {
 		expect(writeBody({ ...draft, default: { kind: 'literal', value: null } }).default).toBeNull();
+	});
+
+	it('sends the rollup as it came', () => {
+		const rollup: AggregateConfig = { function: 'max', error_on_missing: true, over: 'parent' };
+		expect(writeBody({ ...draft, aggregate: rollup }).aggregate).toEqual(rollup);
 	});
 });
 

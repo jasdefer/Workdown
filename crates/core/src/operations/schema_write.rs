@@ -3,12 +3,14 @@
 //! The read side of the schema is [`crate::parser::schema`] and, for the
 //! web app, [`crate::schema_definition_data`]; this module is the write
 //! side. It supports what the schema editor needs: adding a field,
-//! replacing a field's plain properties, removing a field, reordering
-//! the fields, saying what a field is used by ([`field_usage`]), and
-//! adding, replacing, removing and previewing a rule. Renaming a field
-//! and editing a recipe (`compute`, `when`, `pull`, `aggregate`) are
-//! not offered; the design item `schema-editor-web-design` explains
-//! why.
+//! replacing a field's plain properties and its `aggregate` block,
+//! previewing a field, removing a field, reordering the fields, saying
+//! what a field is used by ([`field_usage`]), and adding, replacing,
+//! removing and previewing a rule. Renaming a field is not offered;
+//! the design item `schema-editor-web-design` explains why. Of the
+//! recipes, `compute`, `when` and `pull` are not edited yet and a
+//! write leaves them as the file has them (`schema-derived-field-editor`
+//! lands them one at a time).
 //!
 //! Like every other mutation in the tool, the repo stays the source of
 //! truth: writes update the working tree only, nothing is staged or
@@ -28,6 +30,21 @@
 //! formatting. Because only one entry is ever replaced, a stale editor
 //! tab can overwrite that field and nothing else: last write wins, per
 //! field, and there is no conflict detection.
+//!
+//! ## Field preview
+//!
+//! [`preview_field`] is a field write without the write: the same
+//! entry the add or the replace would put in the file, as YAML text,
+//! and the verdict on the file with it. The verdict goes one step past
+//! the parser's, because a broken recipe is not a parse failure: the
+//! parser accepts a `compute` expression it cannot type-check and the
+//! load spine reports it as a diagnostic pinned to `schema.yaml` that
+//! disables the field. So the candidate is loaded like a write loads
+//! it, and the schema-pinned diagnostics the draft introduces are the
+//! problem, beside a parse failure. Everything else the load finds —
+//! items missing a now-required field, a view the change affects — is
+//! save-with-warning territory and not a preview problem
+//! (`schema-derived-field-editor`, decisions 9 and 10).
 //!
 //! ## Rules
 //!
@@ -100,7 +117,9 @@ use serde::{Deserialize, Serialize};
 use crate::config_check;
 use crate::model::config::Config;
 use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic};
-use crate::model::schema::{widening_targets, FieldType, Generator, Schema, Severity};
+use crate::model::schema::{
+    widening_targets, AggregateConfig, FieldType, Generator, Schema, Severity,
+};
 use crate::model::work_item::WorkItem;
 use crate::operations::diagnostics::{introduced_by_mutation, introduced_diagnostics};
 use crate::operations::frontmatter_io::{remove_frontmatter_key, write_file_atomically};
@@ -114,11 +133,11 @@ use crate::schema_definition_data::FieldShape;
 // ── Public types ─────────────────────────────────────────────────────
 
 /// One field definition as the editor writes it: the header every type
-/// shares plus the type-specific shape. The read payload's
+/// shares, the type-specific shape and the rollup. The read payload's
 /// [`FieldDefinitionData`](crate::schema_definition_data::FieldDefinitionData)
 /// minus its `name` (the operation takes it separately) and minus the
-/// derived blocks, which are displayed but not edited. What the form
-/// GETs is what it PUTs back.
+/// text blocks, which are displayed but not edited. What the form GETs
+/// is what it PUTs back.
 ///
 /// The `shape` is not checked against `field_type` here: the pair is
 /// written to the tree as the properties it spells out, and the schema
@@ -145,6 +164,27 @@ pub struct FieldDefinitionWrite {
     pub resource: Option<String>,
     /// The type-specific properties.
     pub shape: FieldShape,
+    /// The `aggregate:` block; `None` clears it. Written as sent and
+    /// judged by the schema parser, which checks the function against
+    /// the type and `over` against the link fields.
+    #[serde(default)]
+    pub aggregate: Option<AggregateConfig>,
+}
+
+/// What [`preview_field`] answers: the field's entry as the write would
+/// put it in the file, and the verdict on the file with it.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+pub struct FieldPreview {
+    /// The field's properties as YAML text, without the name key: the
+    /// mapping an add would create or a replace would leave behind,
+    /// recipe keys the write does not touch included.
+    pub yaml: String,
+    /// Why the draft cannot be saved: a name the add would refuse, the
+    /// parser's message when `schema.yaml` would not load with it, or
+    /// the schema diagnostics it would introduce (a recipe the load
+    /// disables), one per line. `None` when the write would go through,
+    /// with or without warnings.
+    pub problem: Option<String>,
 }
 
 /// A field's `default:` as the editor sends it.
@@ -359,8 +399,8 @@ pub enum SchemaWriteError {
 /// Add a field, appended at the end of `fields:`.
 ///
 /// The properties are written in a fixed order — type, the
-/// type-specific properties, required, default, description, resource —
-/// so a created entry reads like a hand-written one.
+/// type-specific properties, required, default, description, resource,
+/// aggregate — so a created entry reads like a hand-written one.
 pub fn add_field(
     config: &Config,
     project_root: &Path,
@@ -381,23 +421,19 @@ pub fn add_field(
             name: name.to_owned(),
         });
     }
-    let mut entry = serde_yaml::Mapping::new();
-    for (key, value) in plain_properties(definition) {
-        entry.insert(yaml_key(key), value);
-    }
-    fields.insert(yaml_key(name), serde_yaml::Value::Mapping(entry));
+    fields.insert(yaml_key(name), new_field_entry(definition));
 
     finalize(context, Written::Field(name.to_owned()))
 }
 
-/// Replace a field's plain properties, keeping its position and its
-/// recipe keys.
+/// Replace a field's written properties, keeping its position and the
+/// recipe keys the editor does not write.
 ///
-/// The field's existing mapping is the starting point: the plain
-/// properties the definition sets are overwritten in place, those it
-/// no longer sets (a `values:` list after a change to `string`, a
-/// cleared description) are removed, and everything else — `compute`,
-/// `when`, `pull`, `aggregate`, and `default` beside a `when` — is left
+/// The field's existing mapping is the starting point: the properties
+/// the definition sets are overwritten in place, those it no longer
+/// sets (a `values:` list after a change to `string`, a cleared
+/// description, a cleared rollup) are removed, and everything else —
+/// `compute`, `when`, `pull`, and `default` beside a `when` — is left
 /// exactly as the file has it.
 ///
 /// A type change is allowed only for a field without a recipe, and only
@@ -436,18 +472,134 @@ pub fn update_field(
             });
         }
     }
-    // Beside `when`, `default:` is the recipe's evaluated fallback (see
-    // `parser::schema::attach_when_configs`), not an add-time default:
-    // it belongs to the recipe and stays as written.
     let default_is_recipe = current.when.is_some();
-
     let entry = fields_mut(&mut context.document)
         .get_mut(name)
         .and_then(serde_yaml::Value::as_mapping_mut)
         .expect("a field the typed schema knows is a mapping in the tree");
-    let properties = plain_properties(definition);
+    replace_field_entry(entry, definition, default_is_recipe);
+
+    finalize(context, Written::Field(name.to_owned()))
+}
+
+/// What a field write would put in the file, and whether the file would
+/// still load with it, without writing anything.
+///
+/// `replacing` says the draft replaces the field named `name`, which
+/// then has to exist; otherwise it would be added, and a name the add
+/// would refuse (invalid, taken) is a problem. The candidate is built
+/// exactly as the write builds it and judged as the write judges it,
+/// one step further: the schema diagnostics the draft would introduce
+/// count as a problem too (see the module docs). A draft's own faults
+/// come back as `problem`, never as an error; only a project that
+/// cannot be read is one.
+pub fn preview_field(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+    name: &str,
+    replacing: bool,
+    definition: &FieldDefinitionWrite,
+) -> Result<FieldPreview, SchemaWriteError> {
+    let mut context = load_for_write(config, project_root, config_path)?;
+    // Whether the field exists and, if so, whether it has a `when`.
+    let existing_has_when = context
+        .current
+        .fields
+        .get(name)
+        .map(|field| field.when.is_some());
+
+    let refusal = match (replacing, existing_has_when) {
+        (true, None) => Some(SchemaWriteError::FieldNotFound {
+            name: name.to_owned(),
+        }),
+        (false, _) if !is_valid_field_name(name) => Some(SchemaWriteError::InvalidName {
+            name: name.to_owned(),
+        }),
+        (false, Some(_)) => Some(SchemaWriteError::DuplicateName {
+            name: name.to_owned(),
+        }),
+        (true, Some(_)) | (false, None) => None,
+    };
+    let default_is_recipe = existing_has_when.unwrap_or(false);
+
+    let fields = fields_mut(&mut context.document);
+    let entry = match fields
+        .get_mut(name)
+        .and_then(serde_yaml::Value::as_mapping_mut)
+    {
+        Some(entry) if replacing => {
+            replace_field_entry(entry, definition, default_is_recipe);
+            serde_yaml::Value::Mapping(entry.clone())
+        }
+        _ => {
+            let entry = new_field_entry(definition);
+            fields.insert(yaml_key(name), entry.clone());
+            entry
+        }
+    };
+    let yaml = serde_yaml::to_string(&entry)
+        .map_err(SchemaWriteError::Serialize)?
+        .trim_end()
+        .to_owned();
+    if let Some(refusal) = refusal {
+        return Ok(FieldPreview {
+            yaml,
+            problem: Some(refusal.to_string()),
+        });
+    }
+
+    let candidate_text =
+        serde_yaml::to_string(&context.document).map_err(SchemaWriteError::Serialize)?;
+    let candidate = match parse_schema(&candidate_text) {
+        Ok(candidate) => candidate,
+        Err(error) => {
+            return Ok(FieldPreview {
+                yaml,
+                problem: Some(error.to_string()),
+            })
+        }
+    };
+    let project = load_project_with_schema(config, project_root, config_path, candidate, None)?;
+    let schema_problems: Vec<String> =
+        introduced_diagnostics(&context.pre_diagnostics, &project.diagnostics)
+            .iter()
+            .filter(|diagnostic| diagnostic.source_path() == Some(context.schema_path.as_path()))
+            .map(ToString::to_string)
+            .collect();
+    let problem = if schema_problems.is_empty() {
+        None
+    } else {
+        Some(schema_problems.join("\n"))
+    };
+
+    Ok(FieldPreview { yaml, problem })
+}
+
+/// The entry an add writes: the definition's properties in the fixed
+/// order.
+fn new_field_entry(definition: &FieldDefinitionWrite) -> serde_yaml::Value {
+    let mut entry = serde_yaml::Mapping::new();
+    for (key, value) in written_properties(definition) {
+        entry.insert(yaml_key(key), value);
+    }
+    serde_yaml::Value::Mapping(entry)
+}
+
+/// Overwrite a field's existing entry with the definition: every key
+/// the editor writes is set in place or removed when no longer set,
+/// every other key stays. Beside `when`, `default:` is the recipe's
+/// evaluated fallback (see `parser::schema::attach_when_configs`), not
+/// an add-time default: it belongs to the recipe and stays as written,
+/// which `default_is_recipe` says.
+fn replace_field_entry(
+    entry: &mut serde_yaml::Mapping,
+    definition: &FieldDefinitionWrite,
+    default_is_recipe: bool,
+) {
+    let properties = written_properties(definition);
     let is_editable = |key: &str| !(default_is_recipe && key == "default");
-    for key in PLAIN_PROPERTY_KEYS {
+    for key in WRITTEN_KEYS {
         let still_set = properties.iter().any(|(set_key, _)| *set_key == key);
         if is_editable(key) && !still_set {
             entry.shift_remove(key);
@@ -458,8 +610,6 @@ pub fn update_field(
             entry.insert(yaml_key(key), value);
         }
     }
-
-    finalize(context, Written::Field(name.to_owned()))
 }
 
 /// Remove a field. What happens to the values items hold for it is
@@ -832,9 +982,8 @@ fn recipes_naming_field(schema: &Schema, name: &str) -> Vec<String> {
 // ── Internals ────────────────────────────────────────────────────────
 
 /// Every key the editor may set or clear on a field. The complement —
-/// `compute`, `when`, `pull`, `aggregate` — is the recipe, which a
-/// replace never touches.
-const PLAIN_PROPERTY_KEYS: [&str; 11] = [
+/// `compute`, `when`, `pull` — a replace never touches.
+const WRITTEN_KEYS: [&str; 12] = [
     "type",
     "values",
     "pattern",
@@ -846,6 +995,7 @@ const PLAIN_PROPERTY_KEYS: [&str; 11] = [
     "default",
     "description",
     "resource",
+    "aggregate",
 ];
 
 /// What a write concerned, for the outcome's `field_name` and
@@ -917,10 +1067,11 @@ fn yaml_key(key: &str) -> serde_yaml::Value {
     serde_yaml::Value::String(key.to_owned())
 }
 
-/// The plain properties a definition spells out, as `(key, value)` pairs
-/// in the order they are written: type, the type-specific properties,
-/// required, default, description, resource. Only set properties appear.
-fn plain_properties(definition: &FieldDefinitionWrite) -> Vec<(&'static str, serde_yaml::Value)> {
+/// The properties a definition spells out, as `(key, value)` pairs in
+/// the order they are written: type, the type-specific properties,
+/// required, default, description, resource, aggregate. Only set
+/// properties appear.
+fn written_properties(definition: &FieldDefinitionWrite) -> Vec<(&'static str, serde_yaml::Value)> {
     use serde_yaml::Value;
 
     let mut properties = vec![("type", Value::String(definition.field_type.to_string()))];
@@ -983,7 +1134,30 @@ fn plain_properties(definition: &FieldDefinitionWrite) -> Vec<(&'static str, ser
     if let Some(resource) = &definition.resource {
         properties.push(("resource", Value::String(resource.clone())));
     }
+    if let Some(aggregate) = &definition.aggregate {
+        properties.push(("aggregate", aggregate_entry(aggregate)));
+    }
     properties
+}
+
+/// The `aggregate:` block as the file spells it, in the shortest form
+/// the parser reads: `error_on_missing` only when set, since `false` is
+/// its default. The exhaustive destructuring is the point: a setting
+/// added to [`AggregateConfig`] fails to compile here until it is
+/// written.
+fn aggregate_entry(aggregate: &AggregateConfig) -> serde_yaml::Value {
+    let AggregateConfig {
+        function,
+        error_on_missing,
+        over,
+    } = aggregate;
+    let mut entry = serde_yaml::Mapping::new();
+    entry.insert(yaml_key("function"), yaml_key(&function.to_string()));
+    entry.insert(yaml_key("over"), yaml_key(over));
+    if *error_on_missing {
+        entry.insert(yaml_key("error_on_missing"), serde_yaml::Value::Bool(true));
+    }
+    serde_yaml::Value::Mapping(entry)
 }
 
 /// A numeric bound as the file spells it: an integer field's whole-number
@@ -1116,6 +1290,7 @@ fn drop_key_from_item_files(items: &[WorkItem], key: &str, schema: &Schema) -> V
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::schema::AggregateFunction;
 
     fn definition(field_type: FieldType, shape: FieldShape) -> FieldDefinitionWrite {
         FieldDefinitionWrite {
@@ -1125,6 +1300,7 @@ mod tests {
             default: None,
             resource: None,
             shape,
+            aggregate: None,
         }
     }
 
@@ -1239,16 +1415,45 @@ rules:
         });
         full.description = Some("d".to_owned());
         full.resource = Some("r".to_owned());
+        full.aggregate = Some(AggregateConfig {
+            function: AggregateFunction::Count,
+            error_on_missing: false,
+            over: "parent".to_owned(),
+        });
         assert_eq!(
-            keys(&plain_properties(&full)),
+            keys(&written_properties(&full)),
             [
                 "type",
                 "values",
                 "required",
                 "default",
                 "description",
-                "resource"
+                "resource",
+                "aggregate"
             ]
+        );
+    }
+
+    #[test]
+    fn the_aggregate_block_is_written_in_its_shortest_form() {
+        let plain = aggregate_entry(&AggregateConfig {
+            function: AggregateFunction::Sum,
+            error_on_missing: false,
+            over: "parent".to_owned(),
+        });
+        assert_eq!(
+            serde_yaml::to_string(&plain).unwrap(),
+            "function: sum\nover: parent\n"
+        );
+
+        let strict = aggregate_entry(&AggregateConfig {
+            function: AggregateFunction::Max,
+            error_on_missing: true,
+            over: "parent".to_owned(),
+        });
+        assert_eq!(
+            serde_yaml::to_string(&strict).unwrap(),
+            "function: max\nover: parent\nerror_on_missing: true\n"
         );
     }
 
@@ -1262,7 +1467,7 @@ rules:
             },
         );
         assert_eq!(
-            keys(&plain_properties(&numeric)),
+            keys(&written_properties(&numeric)),
             ["type", "min", "required"]
         );
 
@@ -1274,7 +1479,7 @@ rules:
                 max: Some("2w 1d".to_owned()),
             },
         );
-        let properties = plain_properties(&duration);
+        let properties = written_properties(&duration);
         assert_eq!(properties[1].1, serde_yaml::Value::String("1h".to_owned()));
         assert_eq!(
             properties[2].1,
@@ -1288,7 +1493,7 @@ rules:
             },
         );
         assert_eq!(
-            keys(&plain_properties(&text)),
+            keys(&written_properties(&text)),
             ["type", "pattern", "required"]
         );
 
@@ -1300,12 +1505,12 @@ rules:
             },
         );
         assert_eq!(
-            keys(&plain_properties(&relation)),
+            keys(&written_properties(&relation)),
             ["type", "allow_cycles", "inverse", "required"]
         );
 
         let scalar = definition(FieldType::Date, FieldShape::Scalar);
-        assert_eq!(keys(&plain_properties(&scalar)), ["type", "required"]);
+        assert_eq!(keys(&written_properties(&scalar)), ["type", "required"]);
     }
 
     #[test]
@@ -1314,7 +1519,7 @@ rules:
         with_generator.default = Some(DefaultWrite::Generator {
             generator: Generator::Today,
         });
-        let properties = plain_properties(&with_generator);
+        let properties = written_properties(&with_generator);
         assert_eq!(
             properties[2],
             ("default", serde_yaml::Value::String("$today".to_owned()))

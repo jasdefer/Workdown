@@ -26,7 +26,11 @@
 //!   the file as a plain value tree and re-serializing each sub-block
 //!   gives text that is exact in content and normalized in form
 //!   (comments inside the block do not survive). That is enough for
-//!   read-only display, and it needs no span-aware parser.
+//!   read-only display, and it needs no span-aware parser. A block the
+//!   editor edits is served as data beside its text — `aggregate` as
+//!   the parsed [`AggregateConfig`] — the way a rule's body is served
+//!   as rows beside it; the editor never reads the YAML itself
+//!   (`schema-derived-field-editor`, decision 8).
 //!
 //! Every type here carries a `ts_rs` derive; `cargo xtask gen-types`
 //! emits the TypeScript. A new type needs its `exports.add` line in
@@ -42,8 +46,8 @@ use crate::coerce::coerce_value;
 use crate::model::duration::format_duration_seconds;
 use crate::model::schema::{
     allowed_aggregate_functions, allowed_generators, field_property_allowed, widening_targets,
-    AggregateFunction, DefaultValue, FieldDefinition, FieldProperty, FieldType, FieldTypeConfig,
-    Generator, Severity,
+    AggregateConfig, AggregateFunction, DefaultValue, FieldDefinition, FieldProperty, FieldType,
+    FieldTypeConfig, Generator, Severity,
 };
 use crate::model::FieldValue;
 use crate::parser::schema::{parse_schema, SchemaLoadError};
@@ -113,6 +117,10 @@ pub struct FieldDefinitionData {
     /// The fill mechanisms declared on the field, each as the YAML
     /// text of its block. All `None` for a plain field.
     pub derived: DerivedBlocks,
+    /// The `aggregate:` block as data — what the editor's rollup
+    /// section edits and the write takes back. The same block is in
+    /// `derived.aggregate` as text.
+    pub aggregate: Option<AggregateConfig>,
 }
 
 /// The type-specific part of a field definition. One variant per
@@ -426,6 +434,7 @@ impl FieldDefinitionData {
                 pull: block_text("pull"),
                 aggregate: block_text("aggregate"),
             },
+            aggregate: definition.aggregate.clone(),
         }
     }
 }
@@ -763,6 +772,20 @@ rules:
             field(&data, "earliest").derived.pull.as_deref(),
             Some("over: depends_on\nfield: start\nfunction: min")
         );
+    }
+
+    #[test]
+    fn the_aggregate_block_is_also_served_as_data() {
+        let data = built();
+        assert_eq!(
+            field(&data, "total").aggregate,
+            Some(AggregateConfig {
+                function: AggregateFunction::Sum,
+                error_on_missing: false,
+                over: "parent".to_owned(),
+            })
+        );
+        assert_eq!(field(&data, "title").aggregate, None);
     }
 
     #[test]

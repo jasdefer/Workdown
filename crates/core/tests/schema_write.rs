@@ -14,10 +14,12 @@ use tempfile::TempDir;
 use workdown_core::model::config::Config;
 use workdown_core::model::diagnostic::{DiagnosticBody, ItemDiagnosticKind};
 use workdown_core::model::rule::{CountConstraint, Severity};
-use workdown_core::model::schema::{DefaultValue, FieldType, FieldTypeConfig};
+use workdown_core::model::schema::{
+    AggregateConfig, AggregateFunction, DefaultValue, FieldType, FieldTypeConfig,
+};
 use workdown_core::operations::schema_write::{
-    add_field, add_rule, field_usage, preview_rule, remove_field, remove_rule, reorder_fields,
-    update_field, update_rule, DefaultWrite, FieldDefinitionWrite, RemovedValues,
+    add_field, add_rule, field_usage, preview_field, preview_rule, remove_field, remove_rule,
+    reorder_fields, update_field, update_rule, DefaultWrite, FieldDefinitionWrite, RemovedValues,
     RuleDefinitionWrite, SchemaWriteError,
 };
 use workdown_core::parser::config::load_config;
@@ -113,7 +115,25 @@ fn definition(field_type: FieldType, shape: FieldShape) -> FieldDefinitionWrite 
         default: None,
         resource: None,
         shape,
+        aggregate: None,
     }
+}
+
+/// An integer field rolled up along `over`.
+fn rollup(over: &str) -> FieldDefinitionWrite {
+    let mut points = definition(
+        FieldType::Integer,
+        FieldShape::Numeric {
+            min: None,
+            max: None,
+        },
+    );
+    points.aggregate = Some(AggregateConfig {
+        function: AggregateFunction::Sum,
+        error_on_missing: false,
+        over: over.to_owned(),
+    });
+    points
 }
 
 // ── add_field ────────────────────────────────────────────────────
@@ -305,6 +325,43 @@ fn update_field_replaces_plain_properties_and_keeps_the_recipe() {
         entry.get("description"),
         Some(&serde_yaml::Value::String("Tint".to_owned()))
     );
+}
+
+#[test]
+fn add_field_with_a_rollup_writes_the_aggregate_block_and_clearing_it_removes_the_block() {
+    let (_directory, root, config) = setup();
+    write_item(&root, "epic", "points: 2\n");
+    write_item(&root, "task", "parent: epic\npoints: 3\n");
+
+    let added = add_field(&config, &root, config_path(), "points", &rollup("parent")).unwrap();
+
+    // The epic and its child both set the value by hand: the rollup
+    // reports the chain, so the write goes through with that warning.
+    assert!(added.mutation_caused_warning);
+    assert_eq!(
+        property_keys(&fields_tree(&root), "points"),
+        ["type", "required", "aggregate"]
+    );
+    let reloaded = load_schema(&root.join(".workdown/schema.yaml")).unwrap();
+    assert_eq!(
+        reloaded.fields["points"].aggregate,
+        Some(AggregateConfig {
+            function: AggregateFunction::Sum,
+            error_on_missing: false,
+            over: "parent".to_owned(),
+        })
+    );
+
+    let mut plain = rollup("parent");
+    plain.aggregate = None;
+    update_field(&config, &root, config_path(), "points", &plain).unwrap();
+
+    assert_eq!(
+        property_keys(&fields_tree(&root), "points"),
+        ["type", "required"]
+    );
+    let reloaded = load_schema(&root.join(".workdown/schema.yaml")).unwrap();
+    assert_eq!(reloaded.fields["points"].aggregate, None);
 }
 
 #[test]
@@ -951,6 +1008,81 @@ fn an_unknown_rule_is_not_found() {
         matches!(updated, SchemaWriteError::RuleNotFound { .. }),
         "{updated}"
     );
+}
+
+#[test]
+fn preview_field_shows_the_entry_and_the_verdict_without_writing() {
+    let (_directory, root, config) = setup();
+    let before = schema_text(&root);
+
+    let addition = preview_field(
+        &config,
+        &root,
+        config_path(),
+        "points",
+        false,
+        &rollup("parent"),
+    )
+    .unwrap();
+    assert_eq!(
+        addition.yaml,
+        "type: integer\nrequired: false\naggregate:\n  function: sum\n  over: parent"
+    );
+    assert_eq!(addition.problem, None);
+
+    let taken_name = preview_field(
+        &config,
+        &root,
+        config_path(),
+        "priority",
+        false,
+        &rollup("parent"),
+    )
+    .unwrap();
+    let problem = taken_name.problem.expect("the add would refuse the name");
+    assert!(problem.contains("already exists"), "{problem}");
+
+    let bad_name =
+        preview_field(&config, &root, config_path(), "", false, &rollup("parent")).unwrap();
+    assert!(bad_name.problem.unwrap().contains("invalid field name"));
+
+    let over_links = preview_field(
+        &config,
+        &root,
+        config_path(),
+        "points",
+        false,
+        &rollup("depends_on"),
+    )
+    .unwrap();
+    let problem = over_links
+        .problem
+        .expect("a rollup over a links field is a parse error");
+    assert!(problem.contains("must be 'link'"), "{problem}");
+
+    // Replacing keeps what the write keeps: the `when` block and, beside
+    // it, the `default`, both of which the draft does not carry.
+    let mut tint = definition(FieldType::Color, FieldShape::Scalar);
+    tint.description = Some("Tint".to_owned());
+    let replacement =
+        preview_field(&config, &root, config_path(), "status_color", true, &tint).unwrap();
+    assert_eq!(replacement.problem, None);
+    assert!(replacement.yaml.contains("when:"), "{}", replacement.yaml);
+    assert!(
+        replacement.yaml.contains("default: gray"),
+        "{}",
+        replacement.yaml
+    );
+    assert!(
+        replacement.yaml.contains("description: Tint"),
+        "{}",
+        replacement.yaml
+    );
+
+    let unknown = preview_field(&config, &root, config_path(), "no_such", true, &tint).unwrap();
+    assert!(unknown.problem.unwrap().contains("no field named"));
+
+    assert_eq!(schema_text(&root), before);
 }
 
 #[test]

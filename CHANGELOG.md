@@ -9,6 +9,16 @@ its source — internal refactors are deliberately absent.
 
 ### Added
 
+- `workdown serve` edits a field's rollup. `GET /api/schema/definition`
+  serves each field's `aggregate` block as data beside its text; the
+  field writes (`POST /api/schema/fields`, `PUT
+  /api/schema/fields/{name}`) take an `aggregate` and write or clear
+  the block, so a field can be created with a rollup. `POST
+  /api/schema/field-preview` answers what a field draft would be
+  written as and whether the schema would load with it and keep the
+  field, without writing. The web app's field panel sends the rollup
+  back as served; editing it there is the next step.
+
 - The web app's schema page edits rules. A rule entry opens the rule
   editor beside the page; Add rule opens it empty. A rule is edited as
   rows — through which relation, which field, which test, which value

@@ -552,7 +552,12 @@ impl<'de> Deserialize<'de> for DefaultValue {
 
 /// Configuration for an aggregated field (cross-item, same field —
 /// values roll up a link chain).
-#[derive(Debug, Clone, Deserialize)]
+///
+/// Also the wire type the schema editor reads and writes the block as
+/// (`GET /api/schema/definition`, the field writes), so the three
+/// settings are spelled once; `cargo xtask gen-types` emits the
+/// TypeScript.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
 pub struct AggregateConfig {
     /// The aggregation function.

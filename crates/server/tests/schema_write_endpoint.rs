@@ -1,6 +1,7 @@
 //! Contract tests for the schema-write endpoints — `POST
 //! /api/schema/fields`, `PUT`/`DELETE /api/schema/fields/{name}`, `PUT
-//! /api/schema/field-order` — and `GET /api/schema/fields/{name}/usage`.
+//! /api/schema/field-order`, `POST /api/schema/field-preview` — and `GET
+//! /api/schema/fields/{name}/usage`.
 //!
 //! What the operations do to `schema.yaml` is core's to prove
 //! (`tests/schema_write.rs` there); this file pins the HTTP contract:
@@ -316,6 +317,57 @@ async fn get_usage_of_unknown_field_returns_404() {
 
     let response = send(state, "GET", "/api/schema/fields/nope/usage", None).await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+// ── POST /api/schema/field-preview ───────────────────────────────────
+
+#[tokio::test]
+async fn post_field_preview_returns_200_with_the_yaml_and_the_verdict_without_writing() {
+    let (directory, state) = temp_project();
+    let before = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
+    let rollup = |over: &str| {
+        json!({
+            "field_type": "integer",
+            "required": false,
+            "description": null,
+            "default": null,
+            "resource": null,
+            "shape": { "kind": "numeric", "min": null, "max": null },
+            "aggregate": { "function": "sum", "error_on_missing": false, "over": over }
+        })
+    };
+
+    let response = send(
+        state.clone(),
+        "POST",
+        "/api/schema/field-preview",
+        Some(json!({ "name": "points", "replacing": false, "definition": rollup("parent") })),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope = body_json(response).await;
+    assert!(envelope["data"]["yaml"]
+        .as_str()
+        .unwrap()
+        .starts_with("type: integer\n"));
+    assert_eq!(envelope["data"]["problem"], Value::Null);
+
+    let response = send(
+        state,
+        "POST",
+        "/api/schema/field-preview",
+        Some(json!({ "name": "points", "definition": rollup("depends_on") })),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope = body_json(response).await;
+    assert!(envelope["data"]["problem"]
+        .as_str()
+        .unwrap()
+        .contains("must be 'link'"));
+
+    let after = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
+    assert_eq!(after, before);
 }
 
 // ── /api/schema/rules ────────────────────────────────────────────────

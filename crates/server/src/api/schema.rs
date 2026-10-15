@@ -23,9 +23,10 @@
 //! `POST /schema/rules`, `PUT` and `DELETE /schema/rules/{name}` — are
 //! thin wrappers over `core::operations::schema_write`, which owns every
 //! refusal; this module only maps each to a status (see
-//! `schema_write_error_status`). `POST /schema/rule-preview` is the
-//! rule write without the write: the YAML a draft would become and the
-//! parser's verdict, for the editor's preview pane.
+//! `schema_write_error_status`). `POST /schema/field-preview` and
+//! `POST /schema/rule-preview` are the writes without the write: the
+//! YAML a draft would become and the verdict on the schema with it,
+//! for the editor's preview pane.
 //! Save-with-warning applies as for items and views: a write that loads
 //! but fails a cross-file check is written and answers `200`/`201` with
 //! the findings in `diagnostics`; only a write that would leave
@@ -51,11 +52,13 @@ use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use serde::Deserialize;
 
-use workdown_core::mutation_data::{CreateField, PreviewRule, ReorderFields, SchemaMutationResult};
+use workdown_core::mutation_data::{
+    CreateField, PreviewField, PreviewRule, ReorderFields, SchemaMutationResult,
+};
 use workdown_core::operations::schema_write::{
-    add_field, add_rule, field_usage, preview_rule, remove_field, remove_rule, reorder_fields,
-    update_field, update_rule, FieldDefinitionWrite, FieldUsage, RemovedValues,
-    RuleDefinitionWrite, RulePreview, SchemaWriteError, SchemaWriteOutcome,
+    add_field, add_rule, field_usage, preview_field, preview_rule, remove_field, remove_rule,
+    reorder_fields, update_field, update_rule, FieldDefinitionWrite, FieldPreview, FieldUsage,
+    RemovedValues, RuleDefinitionWrite, RulePreview, SchemaWriteError, SchemaWriteOutcome,
 };
 use workdown_core::schema_data::{self, SchemaData};
 use workdown_core::schema_definition_data::{self, SchemaDefinitionData};
@@ -65,8 +68,8 @@ use crate::state::{load_state_project, AppState};
 
 /// Router for `/schema`, `/schema/definition`, `/schema/fields`,
 /// `/schema/fields/{name}`, `/schema/fields/{name}/usage`,
-/// `/schema/field-order`, `/schema/rules`, `/schema/rules/{name}` and
-/// `/schema/rule-preview` under `/api`.
+/// `/schema/field-order`, `/schema/field-preview`, `/schema/rules`,
+/// `/schema/rules/{name}` and `/schema/rule-preview` under `/api`.
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/schema", get(get_schema))
@@ -78,6 +81,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/schema/fields/{name}/usage", get(get_field_usage))
         .route("/schema/field-order", put(reorder_fields_handler))
+        .route("/schema/field-preview", post(preview_field_handler))
         .route("/schema/rules", post(create_rule_handler))
         .route(
             "/schema/rules/{name}",
@@ -188,6 +192,29 @@ async fn reorder_fields_handler(
         &state.config_path,
         &request.order,
     ))
+}
+
+/// `POST /api/schema/field-preview` — the YAML a field draft would be
+/// written as, and whether the schema would load with it and keep the
+/// field, without writing. `200` whatever the draft's problems, which
+/// ride in the answer; `422` only when the existing project does not
+/// load. Its own address, like `/schema/field-order`, so that a field
+/// named `preview` stays addressable under `/schema/fields/{name}`.
+async fn preview_field_handler(
+    State(state): State<AppState>,
+    Json(request): Json<PreviewField>,
+) -> ApiResponse<FieldPreview> {
+    match preview_field(
+        &state.config,
+        &state.project_root,
+        &state.config_path,
+        &request.name,
+        request.replacing,
+        &request.definition,
+    ) {
+        Ok(preview) => ApiResponse::ok(preview),
+        Err(error) => ApiResponse::failed(schema_write_error_status(&error), error.to_string()),
+    }
 }
 
 /// `GET /api/schema/fields/{name}/usage` — what depends on the field:

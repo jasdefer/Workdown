@@ -45,7 +45,8 @@ function field(
 		default: null,
 		resource: null,
 		shape,
-		derived: plain
+		derived: plain,
+		aggregate: null
 	};
 }
 

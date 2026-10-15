@@ -142,3 +142,29 @@ field-against-literal comparison.
 Not in this item: compute expressions reading a field in the usage list
 (today they appear only as the warning removal would cause), `and`/`or`
 in conditions, and a resources editor for constants.
+
+## Built
+
+**2026-10-15, aggregate, the Rust half** (decision 11, step one).
+
+- `AggregateConfig` is the wire type: `GET /api/schema/definition`
+  serves it as `aggregate` on every field beside the text in
+  `derived.aggregate`; `FieldDefinitionWrite` takes it back (`null`
+  clears the block). The writer spells the block in its shortest form
+  (`error_on_missing` only when true) from an exhaustive destructuring,
+  so a setting added to the config fails to compile until written. The
+  add path accepts it, so a field can be created with a rollup.
+- `preview_field` and `POST /api/schema/field-preview` (decision 9),
+  request `{name, replacing, definition}`. The entry is built by the
+  same code the add and the replace use (`new_field_entry`,
+  `replace_field_entry`), shown as YAML without the name key, recipe
+  keys the write keeps included. The verdict: a name the add would
+  refuse, the parser's message, or the schema-pinned diagnostics the
+  draft introduces after a full load (decision 10's "rejected recipe";
+  nothing an aggregate can trigger yet, the compute step will). Items
+  the draft would warn about are not a problem. Its own address so a
+  field named `preview` stays addressable.
+- The field panel sends the rollup back as served (`FieldDraft.aggregate`),
+  so a save keeps the block; `retype` drops it where the new type has
+  no aggregate functions. No editor yet.
+- `compute`, `when`, `pull` stay as the file has them on a replace.

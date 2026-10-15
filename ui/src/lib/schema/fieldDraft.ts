@@ -11,6 +11,7 @@
 // Rust, and a new type reaches this editor by changing the payload, not
 // this file.
 
+import type { AggregateConfig } from '$lib/api/generated/AggregateConfig';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import type { FieldDefinitionWrite } from '$lib/api/generated/FieldDefinitionWrite';
 import type { FieldProperty } from '$lib/api/generated/FieldProperty';
@@ -42,6 +43,11 @@ export interface FieldDraft {
 	default: DraftDefault | null;
 	resource: string | null;
 	shape: FieldShape;
+	/**
+	 * The rollup, as served. Sent back as it came until the panel edits
+	 * it (`schema-derived-field-editor`), so a save keeps the block.
+	 */
+	aggregate: AggregateConfig | null;
 }
 
 /** The tables the draft functions read, as the definition payload serves them. */
@@ -61,7 +67,8 @@ export function initialDraft(field: FieldDefinitionData): FieldDraft {
 		description: field.description ?? '',
 		default: draftDefaultOf(field),
 		resource: field.resource,
-		shape: field.shape
+		shape: field.shape,
+		aggregate: field.aggregate
 	};
 }
 
@@ -87,7 +94,8 @@ export function newDraft(tables: TypeTables, fieldType: FieldType): FieldDraft {
 		description: '',
 		default: null,
 		resource: null,
-		shape: emptyShape(shapeKindOf(tables, fieldType))
+		shape: emptyShape(shapeKindOf(tables, fieldType)),
+		aggregate: null
 	};
 }
 
@@ -97,16 +105,18 @@ export function newDraft(tables: TypeTables, fieldType: FieldType): FieldDraft {
  * (`integer` to `float` keeps the bounds) and replaced by the empty one
  * otherwise. The default is dropped: a literal of the old type need not
  * fit the new one, and a generator need not be allowed for it. The
- * resource is kept only where the new type takes one.
+ * resource and the rollup are kept only where the new type takes one.
  */
 export function retype(tables: TypeTables, draft: FieldDraft, fieldType: FieldType): FieldDraft {
 	const kind = shapeKindOf(tables, fieldType);
+	const properties = propertiesOf(tables, fieldType);
 	return {
 		...draft,
 		fieldType,
 		default: null,
-		resource: propertiesOf(tables, fieldType).includes('resource') ? draft.resource : null,
-		shape: draft.shape.kind === kind ? draft.shape : emptyShape(kind)
+		resource: properties.includes('resource') ? draft.resource : null,
+		shape: draft.shape.kind === kind ? draft.shape : emptyShape(kind),
+		aggregate: properties.includes('aggregate') ? draft.aggregate : null
 	};
 }
 
@@ -340,7 +350,8 @@ export function writeBody(draft: FieldDraft): FieldDefinitionWrite {
 		description: description === '' ? null : description,
 		default: writeDefaultOf(draft.default),
 		resource: resource === '' ? null : resource,
-		shape: draft.shape
+		shape: draft.shape,
+		aggregate: draft.aggregate
 	};
 }
 
