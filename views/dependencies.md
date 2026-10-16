@@ -17,7 +17,6 @@ flowchart TD
     subgraph multi-project-support ["Multi-project support"]
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]
     end
-    schema-editor-web["See and edit the schema in the web app"]
     subgraph schema-expressions ["Derived field expressions"]
         expression-logical-combinators["`and` / `or` / `not` in the expression grammar"]
         rule-literal-comparisons["Compare a field with a literal in a rule's match block"]

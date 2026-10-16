@@ -16,7 +16,6 @@ Cards grouped into columns by `status`.
 
 ## in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
-- [See and edit the schema in the web app](../workdown-items/schema-editor-web.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
 
 ## on_hold
@@ -120,6 +119,7 @@ Cards grouped into columns by `status`.
 - [Move the tutorial comments out of the shipped default schema](../workdown-items/schema-default-strip-comments.md)
 - [Serve the full schema definition and the type tables to the web app](../workdown-items/schema-definition-api.md)
 - [Edit compute, when, pull and aggregate blocks in the field editor](../workdown-items/schema-derived-field-editor.md)
+- [See and edit the schema in the web app](../workdown-items/schema-editor-web.md)
 - [Define the schema editor's UX and settle how it writes, then break out the work](../workdown-items/schema-editor-web-design.md)
 - [Field editor block for integer, float and duration](../workdown-items/schema-field-editor-numeric.md)
 - [Field editor block for link and links](../workdown-items/schema-field-editor-relation.md)

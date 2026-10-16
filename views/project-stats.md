@@ -4,6 +4,6 @@
 | --- | --- |
 | Total items | 164 |
 | To do | 10 |
-| In progress | 3 |
+| In progress | 2 |
 | On hold | 4 |
-| Done | 147 |
+| Done | 148 |

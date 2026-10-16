@@ -1,7 +1,7 @@
 ---
 id: schema-editor-web
-status: in_progress
 title: See and edit the schema in the web app
+status: done
 ---
 
 ## In plain words

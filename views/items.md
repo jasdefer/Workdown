@@ -112,7 +112,7 @@
 | [schema-default-strip-comments](../workdown-items/schema-default-strip-comments.md) | done | [schema-editor-web](../workdown-items/schema-editor-web.md) |  |
 | [schema-definition-api](../workdown-items/schema-definition-api.md) | done | [schema-editor-web](../workdown-items/schema-editor-web.md) |  |
 | [schema-derived-field-editor](../workdown-items/schema-derived-field-editor.md) | done | [schema-editor-web](../workdown-items/schema-editor-web.md) | [schema-field-editor-shell](../workdown-items/schema-field-editor-shell.md) |
-| [schema-editor-web](../workdown-items/schema-editor-web.md) | in_progress |  |  |
+| [schema-editor-web](../workdown-items/schema-editor-web.md) | done |  |  |
 | [schema-editor-web-design](../workdown-items/schema-editor-web-design.md) | done | [schema-editor-web](../workdown-items/schema-editor-web.md) |  |
 | [schema-expressions](../workdown-items/schema-expressions.md) | in_progress |  |  |
 | [schema-field-editor-numeric](../workdown-items/schema-field-editor-numeric.md) | done | [schema-editor-web](../workdown-items/schema-editor-web.md) | [schema-field-editor-shell](../workdown-items/schema-field-editor-shell.md) |
