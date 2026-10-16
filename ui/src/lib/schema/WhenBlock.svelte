@@ -29,6 +29,7 @@
 	import ValueEditor from '$lib/values/ValueEditor.svelte';
 	import type { ValueSpec } from '$lib/values/valueSpec';
 	import {
+		choicesFacing,
 		literalOf,
 		literalSpecFor,
 		newBranch,
@@ -39,7 +40,9 @@
 		withBranchAdded,
 		withBranchMoved,
 		withBranchRemoved,
+		withOperand,
 		type OperandChoice,
+		type RowCondition,
 		type WhenRecipe
 	} from './fieldDraft';
 
@@ -98,7 +101,7 @@
 		if (condition.kind !== 'row') return;
 		const operand = choices.find((choice) => choice.key === key)?.operand;
 		if (operand === undefined) return;
-		setCondition(index, { ...condition, [side]: operand });
+		setCondition(index, withOperand(condition, side, operand, choices, fields, constants));
 	}
 
 	function setLiteral(index: number, side: Side, next: FieldValue | null): void {
@@ -118,23 +121,29 @@
 		setCondition(index, { kind: 'text', source });
 	}
 
-	/** The other side of a row, for the literal editor's spec. */
-	function otherSide(condition: Extract<ConditionShape, { kind: 'row' }>, side: Side): Operand {
+	/** The other side of a row, for the literal editor's spec and for what this side may be. */
+	function otherSide(condition: RowCondition, side: Side): Operand {
 		return side === 'left' ? condition.right : condition.left;
 	}
 
-	/** The picker's options, plus the operand the file names when the picker cannot offer it. */
-	function optionsFor(operand: Operand): OperandChoice[] {
+	/**
+	 * The picker's options for the side facing `other` — "a value" only
+	 * where the grammar has a literal of the other side's type — plus
+	 * the operand the file names when the picker cannot offer it.
+	 */
+	function optionsFor(operand: Operand, other: Operand): OperandChoice[] {
+		const offered = choicesFacing(choices, other, fields, constants);
 		const key = operandKey(operand);
-		if (choices.some((choice) => choice.key === key)) return choices;
-		return [...choices, { key, label: `${key.replace(/^[a-z]+:/, '')} (unknown)`, operand }];
+		if (offered.some((choice) => choice.key === key)) return offered;
+		const label =
+			operand.kind === 'literal'
+				? 'a value (does not fit)'
+				: `${key.replace(/^[a-z]+:/, '')} (unknown)`;
+		return [...offered, { key, label, operand }];
 	}
 </script>
 
 <div class="block">
-	{#if problem !== null}
-		<span class="hint warning" role="alert">{problem}</span>
-	{/if}
 	<ol class="branches">
 		{#each value.branches as branch, index (index)}
 			{@const condition = branch.condition}
@@ -168,7 +177,7 @@
 									pickOperand(index, side, event.currentTarget.value);
 								}}
 							>
-								{#each optionsFor(operand) as choice (choice.key)}
+								{#each optionsFor(operand, otherSide(condition, side)) as choice (choice.key)}
 									<option value={choice.key}>{choice.label}</option>
 								{/each}
 							</select>
@@ -277,6 +286,14 @@
 			onchange(withBranchAdded(value, newBranch(choices)));
 		}}>Add branch</button
 	>
+	<!-- Below the buttons, not above them: the verdict goes blank the
+	     moment the draft changes, and a `then` typed into a box is
+	     committed by the blur that pressing a button causes. Above the
+	     list, that collapse moved every button under the pointer between
+	     mouse-down and mouse-up and the click was lost. -->
+	{#if problem !== null}
+		<span class="hint warning" role="alert">{problem}</span>
+	{/if}
 	<span class="hint">
 		Branches are tried top to bottom and the first whose condition holds supplies the value; one
 		whose condition cannot be answered on an item is skipped. The default above is the fallback when

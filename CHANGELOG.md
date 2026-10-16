@@ -19,8 +19,10 @@ its source — internal refactors are deliberately absent.
   Conditions are a list of branches, tried top to bottom with Up and
   Down to order them: each condition a row of field, operator and
   value, where the value is entered with the editor of the other
-  side's type (a choice offers its values), or a line of text for what
-  a row cannot hold; each `then` the field's own value editor; the
+  side's type (a choice offers its values) and is not offered opposite
+  `$today` or a date field, which the condition language has no
+  literal for, or a line of text for what a row cannot hold; each
+  `then` the field's own value editor; the
   default control becomes the fallback when no branch holds. A formula
   is typed as text, with the fields it may read, the project constants
   and `$today` listed under the box for a click to insert, the

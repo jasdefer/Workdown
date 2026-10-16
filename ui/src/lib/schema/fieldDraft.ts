@@ -14,6 +14,7 @@
 import type { AggregateConfig } from '$lib/api/generated/AggregateConfig';
 import type { AggregateFunction } from '$lib/api/generated/AggregateFunction';
 import type { ConditionLiteral } from '$lib/api/generated/ConditionLiteral';
+import type { ConditionShape } from '$lib/api/generated/ConditionShape';
 import type { ConstantData } from '$lib/api/generated/ConstantData';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import type { FieldDefinitionWrite } from '$lib/api/generated/FieldDefinitionWrite';
@@ -533,6 +534,79 @@ export function literalSpecFor(
 		case 'literal':
 			return text;
 	}
+}
+
+/**
+ * The types a literal can face: the grammar spells a whole number, a
+ * fraction, text and a boolean, and a color compares equal to the text
+ * that names one.
+ */
+const LITERAL_TYPES: readonly FieldType[] = [
+	'integer',
+	'float',
+	'string',
+	'choice',
+	'boolean',
+	'color'
+];
+
+/**
+ * Whether "a value" can stand opposite `other`: only where the grammar
+ * has a literal of that side's type. Opposite `$today`, a date or a
+ * duration there is none — whatever is typed would travel as text and
+ * the server's type check would refuse the comparison — so the picker
+ * withholds the entry rather than offer a trap.
+ */
+export function takesLiteral(
+	other: Operand,
+	fields: FieldDefinitionData[],
+	constants: ConstantData[]
+): boolean {
+	return LITERAL_TYPES.includes(literalSpecFor(other, fields, constants).fieldType);
+}
+
+/** The picker's choices for the side facing `other`: all of them, minus "a value" where it cannot stand. */
+export function choicesFacing(
+	choices: OperandChoice[],
+	other: Operand,
+	fields: FieldDefinitionData[],
+	constants: ConstantData[]
+): OperandChoice[] {
+	return takesLiteral(other, fields, constants)
+		? choices
+		: choices.filter((choice) => choice.operand.kind !== 'literal');
+}
+
+export type RowCondition = Extract<ConditionShape, { kind: 'row' }>;
+
+/**
+ * The row with `operand` on `side`. Where the other side is a literal
+ * the new operand cannot face, that side becomes the first choice of
+ * the operand's own type — `$today` opposite a date field; when none
+ * is offered the literal stays and the server says why.
+ */
+export function withOperand(
+	condition: RowCondition,
+	side: 'left' | 'right',
+	operand: Operand,
+	choices: OperandChoice[],
+	fields: FieldDefinitionData[],
+	constants: ConstantData[]
+): RowCondition {
+	const otherSide = side === 'left' ? 'right' : 'left';
+	const next: RowCondition = { ...condition, [side]: operand };
+	if (condition[otherSide].kind !== 'literal' || takesLiteral(operand, fields, constants)) {
+		return next;
+	}
+	const wanted = literalSpecFor(operand, fields, constants).fieldType;
+	const key = operandKey(operand);
+	const partner = choices.find(
+		(choice) =>
+			choice.operand.kind !== 'literal' &&
+			choice.key !== key &&
+			literalSpecFor(choice.operand, fields, constants).fieldType === wanted
+	);
+	return partner === undefined ? next : { ...next, [otherSide]: partner.operand };
 }
 
 /**

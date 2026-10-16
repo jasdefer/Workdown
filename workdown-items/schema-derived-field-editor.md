@@ -1,6 +1,6 @@
 ---
 id: schema-derived-field-editor
-status: in_progress
+status: done
 parent: schema-editor-web
 depends_on: [schema-field-editor-shell]
 title: Edit compute, when, pull and aggregate blocks in the field editor
@@ -341,4 +341,39 @@ last step).
   `operandKey`, `literalSpecFor`, `literalOf`, `valueOfLiteral`,
   `thenOf`, `newBranch`, `newWhen`, `withBranch*`; `moved` shared
   with the values list.
-- Not clicked through in a browser at the time of writing.
+- Clicked through on 2026-10-16, see below.
+
+**2026-10-16, when, clicked through** (headless Chromium against this
+repo's schema: the `color` field opened, a branch added, filled, moved
+and removed, a row turned to text and back, "Set by hand" and back,
+then a new `string` field with two branches saved and reopened; the
+rewritten `schema.yaml` restored afterwards). Three things found, all
+fixed:
+
+- **A click on "Add branch" was lost** after typing a `then`. The value
+  editor commits on blur, the blur came from the mouse-down on the
+  button, the commit changed the draft, the pending verdict went blank
+  at once, and the warning line above the list collapsed — so the
+  button moved up under the pointer between mouse-down and mouse-up
+  and no click fired. Every button in the block was exposed the same
+  way. The verdict now sits below "Add branch", where nothing clickable
+  moves with it.
+- **"A value" opposite `$today` or a date field was a trap.** The row
+  offered a date input, but the condition language has no date
+  literal: the writer spelled it as quoted text and the type check
+  refused `date > text`. `takesLiteral` withholds "a value" where the
+  grammar has no literal of the other side's type (date, duration);
+  `withOperand` swaps a literal the picked operand cannot face for the
+  first choice of its own type, `$today` opposite a date field, and
+  leaves it (labelled "does not fit") when none is offered. Vitest
+  covers both.
+- **A fresh branch reported "expected color, got null".** The parser
+  now says `'then' has no value` for an empty `then:`, the state every
+  new branch starts in; tested.
+
+Seen and left: Save is enabled during the 300 ms between a change and
+the server's verdict (the guard trusts only an answer to the current
+draft, and none has arrived). A save in that window meets the same
+check server-side, which refuses a draft the schema would not load
+with, so nothing bad is written; the panel would only show the refusal
+after the click instead of before it.

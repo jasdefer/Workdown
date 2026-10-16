@@ -388,6 +388,12 @@ fn interpret_when_branch(
     let condition = parse_expression(&condition_source).map_err(|error| {
         branch_error(format!("invalid condition '{condition_source}': {error}"))
     })?;
+    // An empty `then:` is a branch that has not been given its value yet,
+    // the state every fresh branch in the editor starts in; say that
+    // rather than "expected color, got null".
+    if then_value.is_null() {
+        return Err(branch_error("'then' has no value".to_owned()));
+    }
     let value = coerce_value(&then_value, field_definition)
         .map_err(|error| branch_error(format!("'then' does not fit the field type: {error}")))?;
 
@@ -2558,6 +2564,22 @@ fields:
         then: not-a-color
 ";
         assert_validation_error_contains(yaml, "'when' branch 1: 'then' does not fit");
+    }
+
+    #[test]
+    fn when_then_empty_is_named_as_such() {
+        let yaml = "\
+fields:
+  status:
+    type: choice
+    values: [open, done]
+  tint:
+    type: color
+    when:
+      - if: status == \"done\"
+        then:
+";
+        assert_validation_error_contains(yaml, "'when' branch 1: 'then' has no value");
     }
 
     #[test]

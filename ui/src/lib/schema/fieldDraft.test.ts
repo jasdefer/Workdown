@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import type { AggregateConfig } from '$lib/api/generated/AggregateConfig';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
+import type { Operand } from '$lib/api/generated/Operand';
 import type { PullConfig } from '$lib/api/generated/PullConfig';
 import type { WhenBranchData } from '$lib/api/generated/WhenBranchData';
 import {
 	aggregateFunctionsFor,
+	choicesFacing,
 	emptyShape,
 	expressionReferences,
 	forbidsCycles,
@@ -30,6 +32,7 @@ import {
 	specOfDraft,
 	takesAggregate,
 	takesCompute,
+	takesLiteral,
 	takesPull,
 	takesResource,
 	takesWhen,
@@ -42,6 +45,7 @@ import {
 	withBranchRemoved,
 	withForbidCycles,
 	withInverse,
+	withOperand,
 	withPattern,
 	withPullSource,
 	withValueAdded,
@@ -598,6 +602,55 @@ describe('conditions', () => {
 		expect(withBranchMoved(two, 1, 'down')).toBe(two);
 		expect(withBranchRemoved(two, 0).branches).toEqual([second]);
 		expect(withBranch(two, 1, { ...second, then: 'blue' }).branches[1]?.then).toBe('blue');
+	});
+
+	it('withholds a value where the grammar has no literal of that type', () => {
+		const due = served({ name: 'due', field_type: 'date' });
+		const tint = served({ name: 'tint', field_type: 'color' });
+		const withDue = [status, points, due, tint, tags];
+		expect(takesLiteral({ kind: 'field', name: 'status' }, withDue, constants)).toBe(true);
+		expect(takesLiteral({ kind: 'field', name: 'tint' }, withDue, constants)).toBe(true);
+		expect(takesLiteral({ kind: 'constant', name: 'limit' }, withDue, constants)).toBe(true);
+		expect(takesLiteral({ kind: 'literal', value: 1 }, withDue, constants)).toBe(true);
+		expect(takesLiteral({ kind: 'today' }, withDue, constants)).toBe(false);
+		expect(takesLiteral({ kind: 'field', name: 'due' }, withDue, constants)).toBe(false);
+		expect(choicesFacing(choices, { kind: 'field', name: 'status' }, withDue, constants)).toBe(
+			choices
+		);
+		expect(
+			choicesFacing(choices, { kind: 'today' }, withDue, constants).map((choice) => choice.key)
+		).not.toContain('literal');
+	});
+
+	it('swaps a literal the picked operand cannot face for a partner of its type', () => {
+		const due = served({ name: 'due', field_type: 'date' });
+		const withDue = [status, points, due, tags];
+		const dueOperand: Operand = { kind: 'field', name: 'due' };
+		const row = newBranch(choices).condition;
+		if (row.kind !== 'row') throw new Error('a fresh branch is a row');
+		// A date field opposite "a value": the value becomes `$today`.
+		expect(withOperand(row, 'left', dueOperand, choices, withDue, constants)).toEqual({
+			kind: 'row',
+			left: dueOperand,
+			operator: 'equal',
+			right: { kind: 'today' }
+		});
+		// `$today` opposite "a value" with no date field on offer: the
+		// literal stays, and the server says why.
+		expect(withOperand(row, 'left', { kind: 'today' }, choices, fields, constants).right).toEqual({
+			kind: 'literal',
+			value: ''
+		});
+		// A side that is not a literal is left alone.
+		const dated: typeof row = { ...row, left: dueOperand, right: { kind: 'today' } };
+		expect(
+			withOperand(dated, 'right', { kind: 'field', name: 'points' }, choices, withDue, constants)
+		).toEqual({ ...dated, right: { kind: 'field', name: 'points' } });
+		// A literal the operand can face is kept.
+		expect(
+			withOperand(row, 'left', { kind: 'constant', name: 'limit' }, choices, withDue, constants)
+				.right
+		).toEqual({ kind: 'literal', value: '' });
 	});
 });
 

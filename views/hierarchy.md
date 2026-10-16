@@ -13,7 +13,6 @@ Hierarchical outline following `parent` upward to roots.
 - [Multi-project support](../workdown-items/multi-project-support.md) — status: to_do
   - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — status: to_do
 - [See and edit the schema in the web app](../workdown-items/schema-editor-web.md) — status: in_progress
-  - [Edit compute, when, pull and aggregate blocks in the field editor](../workdown-items/schema-derived-field-editor.md) — status: in_progress
 - [Derived field expressions](../workdown-items/schema-expressions.md) — status: in_progress
   - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md) — status: on_hold
   - [Compare a field with a literal in a rule's match block](../workdown-items/rule-literal-comparisons.md) — status: to_do
