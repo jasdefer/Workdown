@@ -429,7 +429,8 @@ pub(crate) fn yaml_type_name(value: &serde_yaml::Value) -> &'static str {
     match value {
         serde_yaml::Value::Null => "null",
         serde_yaml::Value::Bool(_) => "boolean",
-        serde_yaml::Value::Number(_) => "number",
+        serde_yaml::Value::Number(number) if number.is_i64() || number.is_u64() => "integer",
+        serde_yaml::Value::Number(_) => "float",
         serde_yaml::Value::String(_) => "string",
         serde_yaml::Value::Sequence(_) => "sequence",
         serde_yaml::Value::Mapping(_) => "mapping",

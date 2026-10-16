@@ -1,7 +1,7 @@
 <!--
-  Create-item form. Schema-driven: one `FieldEditor` per field, reusing
+  Create-item form. Schema-driven: one `ValueEditor` per field, reusing
   the same type-dispatched editors as the detail panel. Here their
-  `oncommit` records into a local `draft` instead of persisting — nothing
+  `onchange` records into a local `draft` instead of persisting — nothing
   exists to mutate yet — and the whole draft is POSTed on submit.
 
   Identity follows the server's rule: the new id is slugged from `title`
@@ -14,11 +14,11 @@
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api/client';
 	import type { Diagnostic } from '$lib/api/generated/Diagnostic';
-	import type { FieldMutation } from '$lib/api/generated/FieldMutation';
 	import type { FieldValue } from '$lib/api/generated/FieldValue';
-	import FieldEditor from '$lib/items/FieldEditor.svelte';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import DiagnosticList from '$lib/ui/DiagnosticList.svelte';
+	import { specOfFieldSchema } from '$lib/values/valueSpec';
+	import ValueEditor from '$lib/values/ValueEditor.svelte';
 
 	let draft = $state<Record<string, unknown>>({});
 	let explicitId = $state('');
@@ -39,14 +39,10 @@
 		return (draft[name] ?? null) as FieldValue | null;
 	}
 
-	function applyToDraft(name: string, mutation: FieldMutation): void {
-		// FieldEditor only ever emits replace/unset. Unset clears the draft
-		// entry (left undefined → omitted from the request).
-		if (mutation.op === 'replace') {
-			draft[name] = mutation.value;
-		} else if (mutation.op === 'unset') {
-			draft[name] = undefined;
-		}
+	function applyToDraft(name: string, value: FieldValue | null): void {
+		// A cleared value clears the draft entry (left undefined → omitted
+		// from the request).
+		draft[name] = value ?? undefined;
 	}
 
 	async function submit(): Promise<void> {
@@ -111,15 +107,15 @@
 							{#if field.required}<span class="req" title="required">*</span>{/if}
 						</dt>
 						<dd>
-							<FieldEditor
-								{field}
+							<ValueEditor
+								spec={specOfFieldSchema(field)}
 								value={draftValue(field.name)}
 								items={schemaStore.items}
 								palette={schemaStore.palette}
 								resourceOptions={schemaStore.resourceOptions(field)}
 								disabled={submitting}
-								oncommit={(mutation: FieldMutation) => {
-									applyToDraft(field.name, mutation);
+								onchange={(value: FieldValue | null) => {
+									applyToDraft(field.name, value);
 								}}
 							/>
 						</dd>

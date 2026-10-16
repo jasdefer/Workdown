@@ -12,11 +12,11 @@ use crate::expression::parse_expression;
 use crate::model::date::parse_date;
 use crate::model::message::one_of;
 use crate::model::schema::{
-    allowed_aggregate_functions, field_property_allowed, field_types_allowing, is_defined_inverse,
-    is_relation_anchor, Assertion, CompiledPattern, ComputeConfig, Condition, ConditionValue,
-    CountConstraint, DefaultValue, FieldDefinition, FieldProperty, FieldType, FieldTypeConfig,
-    Generator, NegationValue, RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema,
-    WhenBranch, WhenConfig,
+    allowed_aggregate_functions, allowed_generators, field_property_allowed, field_types_allowing,
+    field_types_allowing_generator, is_defined_inverse, is_relation_anchor, when_allowed,
+    Assertion, CompiledPattern, ComputeConfig, Condition, ConditionValue, CountConstraint,
+    DefaultValue, FieldDefinition, FieldProperty, FieldType, FieldTypeConfig, NegationValue,
+    RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema, WhenBranch, WhenConfig,
 };
 use crate::model::views::COLOR_NONE_SENTINEL;
 use strum::VariantArray;
@@ -32,7 +32,7 @@ pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
 
     let mut errors = Vec::new();
 
-    // Validate raw field definitions (type-specific properties, defaults, aggregates, inverses).
+    // Validate raw field definitions (type-specific properties, generator defaults, aggregates, inverses).
     validate_fields(&raw.fields, &mut errors);
 
     // `when:` stays raw until after conversion — coercing each `then:`
@@ -51,6 +51,10 @@ pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
         .collect();
 
     attach_when_configs(&mut fields, raw_when_configs, &mut errors);
+
+    // Literal defaults are coerced through the converted fields; `when`
+    // fields had theirs taken by the pass above.
+    validate_literal_defaults(&fields, &mut errors);
 
     // Validate rules against the converted fields.
     validate_raw_rules(&raw.rules, &fields, &mut errors);
@@ -83,6 +87,29 @@ pub fn parse_schema(yaml: &str) -> Result<Schema, SchemaLoadError> {
 pub fn load_schema(path: &Path) -> Result<Schema, SchemaLoadError> {
     let content = std::fs::read_to_string(path).map_err(SchemaLoadError::ReadFailed)?;
     parse_schema(&content)
+}
+
+/// Parse `yaml` as a validated [`Schema`] and, from the same text, as
+/// the generic YAML tree the file is edited through
+/// (`crate::operations::schema_write`) and displayed from
+/// (`crate::schema_definition_data`). The validating parse accepted
+/// the text, so the generic parse cannot fail on syntax; a failure
+/// there would be a `serde_yaml` bug.
+pub fn parse_schema_with_document(
+    yaml: &str,
+) -> Result<(Schema, serde_yaml::Value), SchemaLoadError> {
+    let schema = parse_schema(yaml)?;
+    let document = serde_yaml::from_str(yaml).map_err(SchemaLoadError::InvalidYaml)?;
+    Ok((schema, document))
+}
+
+/// [`load_schema`], also returning the generic tree of the same bytes;
+/// see [`parse_schema_with_document`].
+pub fn load_schema_with_document(
+    path: &Path,
+) -> Result<(Schema, serde_yaml::Value), SchemaLoadError> {
+    let content = std::fs::read_to_string(path).map_err(SchemaLoadError::ReadFailed)?;
+    parse_schema_with_document(&content)
 }
 
 /// Load a schema from a file, falling back to built-in defaults if the
@@ -150,7 +177,7 @@ fn rule_error(name: &str, message: impl Into<String>) -> SchemaValidationError {
 /// starting with a letter or an underscore. Mirrors the
 /// `^[a-z_][a-z0-9_]*$` pattern `defaults/schema.schema.json` uses for
 /// the same rule — change both together.
-fn is_valid_field_name(name: &str) -> bool {
+pub(crate) fn is_valid_field_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
         Some(c) if c.is_ascii_lowercase() || c == '_' => {}
@@ -161,7 +188,7 @@ fn is_valid_field_name(name: &str) -> bool {
 
 /// Valid rule name: kebab-case, starting with a lowercase letter.
 /// Mirrors `^[a-z][a-z0-9-]*$` in `defaults/schema.schema.json`.
-fn is_valid_rule_name(name: &str) -> bool {
+pub(crate) fn is_valid_rule_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
         Some(c) if c.is_ascii_lowercase() => {}
@@ -210,7 +237,7 @@ fn validate_fields(
         validate_type_specific_properties(name, field, errors);
         validate_aggregate_compatibility(name, field, errors);
         validate_aggregate_over(name, field, fields, errors);
-        validate_default_compatibility(name, field, errors);
+        validate_default_generator(name, field, errors);
         validate_compute_config(name, field, errors);
         validate_pull_compatibility(name, field, errors);
         validate_when_compatibility(name, field, errors);
@@ -235,7 +262,7 @@ fn validate_when_compatibility(
         ));
     }
 
-    if field.when.is_some() && matches!(field.field_type, FieldType::Link | FieldType::Links) {
+    if field.when.is_some() && !when_allowed(field.field_type) {
         errors.push(field_error(
             name,
             format!(
@@ -305,7 +332,7 @@ fn attach_when_configs(
                 None
             }
             Some(literal) => {
-                let raw_literal = default_literal_as_yaml(&literal);
+                let raw_literal = literal.literal_as_yaml();
                 match coerce_value(&raw_literal, field_definition) {
                     Ok(value) => Some(value),
                     Err(error) => {
@@ -384,6 +411,12 @@ fn interpret_when_branch(
     let condition = parse_expression(&condition_source).map_err(|error| {
         branch_error(format!("invalid condition '{condition_source}': {error}"))
     })?;
+    // An empty `then:` is a branch that has not been given its value yet,
+    // the state every fresh branch in the editor starts in; say that
+    // rather than "expected color, got null".
+    if then_value.is_null() {
+        return Err(branch_error("'then' has no value".to_owned()));
+    }
     let value = coerce_value(&then_value, field_definition)
         .map_err(|error| branch_error(format!("'then' does not fit the field type: {error}")))?;
 
@@ -392,20 +425,6 @@ fn interpret_when_branch(
         condition_source,
         value,
     })
-}
-
-/// A literal [`DefaultValue`] as the raw YAML value the coercion layer
-/// accepts. Callers exclude the generator variant beforehand.
-fn default_literal_as_yaml(literal: &DefaultValue) -> serde_yaml::Value {
-    match literal {
-        DefaultValue::String(text) => serde_yaml::Value::String(text.clone()),
-        DefaultValue::Integer(number) => serde_yaml::Value::Number((*number).into()),
-        DefaultValue::Float(number) => {
-            serde_yaml::to_value(number).unwrap_or(serde_yaml::Value::Null)
-        }
-        DefaultValue::Bool(flag) => serde_yaml::Value::Bool(*flag),
-        DefaultValue::Generator(_) => serde_yaml::Value::Null,
-    }
 }
 
 // ── Compute config ────────────────────────────────────────────────────
@@ -655,28 +674,26 @@ fn validate_type_specific_properties(
                 format!("'values' is required for type '{}'", field.field_type),
             )),
             Some(v) if v.is_empty() => errors.push(field_error(name, "'values' must not be empty")),
-            _ => {}
+            Some(values) => validate_choice_values(name, values, errors),
         },
         FieldType::Integer | FieldType::Float => {
+            // min/max are numbers; validate they are and that min ≤ max
+            // if both are present. Bounds in the wrong order admit no
+            // value at all, so no item could ever satisfy the field.
             validate_numeric_bound(name, "min", &field.min, field.field_type, errors);
             validate_numeric_bound(name, "max", &field.max, field.field_type, errors);
+            let min = field.min.as_ref().and_then(parse_numeric_bound);
+            let max = field.max.as_ref().and_then(parse_numeric_bound);
+            check_bound_order(name, min, max, errors);
         }
         FieldType::Duration => {
             // min/max are duration strings; validate they parse and that
             // min ≤ max if both are present.
             validate_duration_bound(name, "min", &field.min, errors);
             validate_duration_bound(name, "max", &field.max, errors);
-            if let (Some(min), Some(max)) = (
-                parse_duration_bound_opt(&field.min),
-                parse_duration_bound_opt(&field.max),
-            ) {
-                if min > max {
-                    errors.push(field_error(
-                        name,
-                        "'min' must be less than or equal to 'max'",
-                    ));
-                }
-            }
+            let min = parse_duration_bound_opt(&field.min);
+            let max = parse_duration_bound_opt(&field.max);
+            check_bound_order(name, min, max, errors);
         }
         FieldType::String => {
             // A pattern that will not compile is a schema defect, so it
@@ -716,6 +733,47 @@ fn property_is_set(field: &RawFieldDefinition, property: FieldProperty) -> bool 
         FieldProperty::Inverse => field.inverse.is_some(),
         FieldProperty::Compute => field.compute.is_some(),
         FieldProperty::Pull => field.pull.is_some(),
+    }
+}
+
+/// `min` does not exceed `max` where both bounds parsed; one or both
+/// absent is fine. One message for every bounded type, so the editor can
+/// rely on its wording.
+fn check_bound_order<Bound: PartialOrd>(
+    field_name: &str,
+    min: Option<Bound>,
+    max: Option<Bound>,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    if let (Some(min), Some(max)) = (min, max) {
+        if min > max {
+            errors.push(field_error(
+                field_name,
+                "'min' must be less than or equal to 'max'",
+            ));
+        }
+    }
+}
+
+/// A choice value is text naming one option. Blank text names nothing,
+/// and a value listed twice would be two board columns for one option
+/// (the second always empty) and two identical entries in every
+/// dropdown. Both are refused here, so a hand-written list is held to
+/// the same rule the schema editor applies.
+fn validate_choice_values(name: &str, values: &[String], errors: &mut Vec<SchemaValidationError>) {
+    let mut seen = std::collections::HashSet::new();
+    for value in values {
+        if value.trim().is_empty() {
+            errors.push(field_error(
+                name,
+                "'values' must not contain an empty value",
+            ));
+        } else if !seen.insert(value.as_str()) {
+            errors.push(field_error(
+                name,
+                format!("'values' lists '{value}' more than once"),
+            ));
+        }
     }
 }
 
@@ -950,102 +1008,64 @@ fn validate_aggregate_over(
     }
 }
 
-/// Check that the default value is compatible with the field type.
-fn validate_default_compatibility(
+/// Check that a generator default can produce a value of the field's
+/// type. Literal defaults are checked after conversion by
+/// [`validate_literal_defaults`], which needs the typed field config.
+fn validate_default_generator(
     name: &str,
     field: &RawFieldDefinition,
     errors: &mut Vec<SchemaValidationError>,
 ) {
-    let default = match &field.default {
-        Some(d) => d,
-        None => return,
+    let Some(DefaultValue::Generator(generator)) = &field.default else {
+        return;
     };
 
-    match default {
-        DefaultValue::Generator(gen) => {
-            let compatible = match gen {
-                Generator::Filename | Generator::FilenamePretty => {
-                    field.field_type == FieldType::String
-                }
-                Generator::Uuid => field.field_type == FieldType::String,
-                Generator::Today => field.field_type == FieldType::Date,
-                Generator::MaxPlusOne => {
-                    field.field_type == FieldType::Integer || field.field_type == FieldType::Float
-                }
-            };
-            if !compatible {
-                let generator_name = gen.token();
-                errors.push(field_error(
-                    name,
-                    format!(
-                        "generator '{generator_name}' is not compatible with type '{}'",
-                        field.field_type
-                    ),
-                ));
-            }
+    // The table in the schema model decides; this check only words
+    // the answer.
+    if !allowed_generators(field.field_type).contains(generator) {
+        let valid_on = field_types_allowing_generator(*generator)
+            .map(|field_type| field_type.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        errors.push(field_error(
+            name,
+            format!(
+                "generator '{}' is not compatible with type '{}' (valid on: {valid_on})",
+                generator.token(),
+                field.field_type
+            ),
+        ));
+    }
+}
+
+/// Check that every literal default is a value the field can hold, by
+/// running it through the same coercion an item's value goes through:
+/// the type, its `values`, its `min`/`max`, its `pattern`. A default
+/// the coercion rejects would otherwise surface only when `workdown
+/// add` fails to write it into a new item.
+///
+/// Runs after [`attach_when_configs`], which has already moved (and
+/// coerced) the default of every `when` field into its config, so a
+/// field is checked here or there, never twice.
+fn validate_literal_defaults(
+    fields: &IndexMap<String, FieldDefinition>,
+    errors: &mut Vec<SchemaValidationError>,
+) {
+    for (name, definition) in fields {
+        let Some(literal) = &definition.default else {
+            continue;
+        };
+        if matches!(literal, DefaultValue::Generator(_)) {
+            continue;
         }
-        DefaultValue::String(s) => match field.field_type {
-            FieldType::String | FieldType::Date => {}
-            FieldType::Color => {
-                if let Err(parse_error) = crate::model::color::parse_color(s) {
-                    errors.push(field_error(
-                        name,
-                        format!("default is not a valid color: {parse_error}"),
-                    ));
-                }
-            }
-            FieldType::Choice | FieldType::Multichoice => {
-                if let Some(ref values) = field.values {
-                    if !values.contains(s) {
-                        errors.push(field_error(
-                            name,
-                            format!("default '{s}' is not {}", one_of(values)),
-                        ));
-                    }
-                }
-            }
-            _ => {
-                errors.push(field_error(
-                    name,
-                    format!(
-                        "string default is not compatible with type '{}'",
-                        field.field_type
-                    ),
-                ));
-            }
-        },
-        DefaultValue::Integer(_) => {
-            if field.field_type != FieldType::Integer {
-                errors.push(field_error(
-                    name,
-                    format!(
-                        "integer default is not compatible with type '{}'",
-                        field.field_type
-                    ),
-                ));
-            }
-        }
-        DefaultValue::Float(_) => {
-            if field.field_type != FieldType::Integer && field.field_type != FieldType::Float {
-                errors.push(field_error(
-                    name,
-                    format!(
-                        "float default is not compatible with type '{}'",
-                        field.field_type
-                    ),
-                ));
-            }
-        }
-        DefaultValue::Bool(_) => {
-            if field.field_type != FieldType::Boolean {
-                errors.push(field_error(
-                    name,
-                    format!(
-                        "boolean default is not compatible with type '{}'",
-                        field.field_type
-                    ),
-                ));
-            }
+        if let Err(error) = coerce_value(&literal.literal_as_yaml(), definition) {
+            errors.push(field_error(
+                name,
+                format!(
+                    "default does not fit type '{}': {error}",
+                    definition.field_type()
+                ),
+            ));
         }
     }
 }
@@ -1340,6 +1360,7 @@ fn is_one_to_many_reference(reference: &str, fields: &IndexMap<String, FieldDefi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::schema::Generator;
     use crate::model::schema::{AggregateFunction, Severity};
 
     // ── Happy path ────────────────────────────────────────────────
@@ -1489,6 +1510,72 @@ rules:
         assert!(errors
             .iter()
             .any(|e| e.message.contains("'values' is required")));
+    }
+
+    #[test]
+    fn choice_with_duplicate_value() {
+        let yaml = "fields:\n  status:\n    type: choice\n    values: [open, done, done]\n";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("'values' lists 'done' more than once")));
+    }
+
+    #[test]
+    fn choice_with_blank_value() {
+        let yaml = "fields:\n  status:\n    type: choice\n    values: [open, '  ']\n";
+        let err = parse_schema(yaml).unwrap_err();
+        let errors = match err {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        assert!(errors.iter().any(|e| e
+            .message
+            .contains("'values' must not contain an empty value")));
+    }
+
+    // The three refusals of `validate_inverse_property`. The web
+    // editor's relation block leaves the inverse name to these, so
+    // each is pinned with its message.
+
+    fn inverse_errors(yaml: &str) -> Vec<SchemaValidationError> {
+        match parse_schema(yaml).unwrap_err() {
+            SchemaLoadError::Validation(e) => e,
+            other => panic!("expected Validation error, got: {other}"),
+        }
+    }
+
+    #[test]
+    fn inverse_that_is_not_an_identifier_rejected() {
+        let errors =
+            inverse_errors("fields:\n  parent:\n    type: link\n    inverse: Child Items\n");
+        assert!(errors.iter().any(|e| e.message.contains(
+            "inverse name 'Child Items' must be lowercase letters, digits, and underscores"
+        )));
+    }
+
+    #[test]
+    fn inverse_colliding_with_a_field_name_rejected() {
+        let errors = inverse_errors(
+            "fields:\n  parent:\n    type: link\n    inverse: title\n  title:\n    type: string\n",
+        );
+        assert!(errors.iter().any(|e| e
+            .message
+            .contains("inverse name 'title' conflicts with a defined field name")));
+    }
+
+    #[test]
+    fn inverse_used_by_two_fields_rejected() {
+        let errors = inverse_errors(
+            "fields:\n  parent:\n    type: link\n    inverse: children\n  owner:\n    type: link\n    inverse: children\n",
+        );
+        assert!(errors.iter().any(|e| e
+            .message
+            .contains("inverse name 'children' is already used by field 'parent'")));
     }
 
     #[test]
@@ -1674,6 +1761,47 @@ fields:
     }
 
     #[test]
+    fn numeric_min_greater_than_max_rejected() {
+        for field_type in ["integer", "float"] {
+            let yaml = format!(
+                "\
+fields:
+  points:
+    type: {field_type}
+    min: 10
+    max: 5
+"
+            );
+            let err = parse_schema(&yaml).unwrap_err();
+            let errors = match err {
+                SchemaLoadError::Validation(e) => e,
+                other => panic!("expected Validation error, got: {other}"),
+            };
+            assert!(
+                errors.iter().any(|e| e
+                    .message
+                    .contains("'min' must be less than or equal to 'max'")),
+                "{field_type}: expected min/max ordering error, got: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn numeric_equal_bounds_accepted() {
+        let yaml = "\
+fields:
+  points:
+    type: integer
+    min: 5
+    max: 5
+";
+        assert!(
+            parse_schema(yaml).is_ok(),
+            "equal bounds admit exactly one value"
+        );
+    }
+
+    #[test]
     fn duration_min_greater_than_max_rejected() {
         let yaml = "\
 fields:
@@ -1840,9 +1968,9 @@ fields:
             other => panic!("expected Validation error, got: {other}"),
         };
         assert!(
-            errors
-                .iter()
-                .any(|e| e.message.contains("default is not a valid color")),
+            errors.iter().any(|e| e
+                .message
+                .contains("default does not fit type 'color': 'teal' is not a valid color")),
             "expected default-color error, got: {errors:?}"
         );
     }
@@ -2448,6 +2576,22 @@ fields:
     }
 
     #[test]
+    fn when_then_empty_is_named_as_such() {
+        let yaml = "\
+fields:
+  status:
+    type: choice
+    values: [open, done]
+  tint:
+    type: color
+    when:
+      - if: status == \"done\"
+        then:
+";
+        assert_validation_error_contains(yaml, "'when' branch 1: 'then' has no value");
+    }
+
+    #[test]
     fn compute_round_on_non_date_rejected() {
         let yaml = "\
 fields:
@@ -2589,7 +2733,12 @@ fields:
             SchemaLoadError::Validation(e) => e,
             other => panic!("expected Validation error, got: {other}"),
         };
-        assert!(errors.iter().any(|e| e.message.contains("not compatible")));
+        assert!(
+            errors.iter().any(|e| e
+                .message
+                .contains("default does not fit type 'integer': expected integer, got string")),
+            "{errors:?}"
+        );
     }
 
     #[test]
@@ -2605,9 +2754,9 @@ fields:
             SchemaLoadError::Validation(e) => e,
             other => panic!("expected Validation error, got: {other}"),
         };
-        assert!(errors
-            .iter()
-            .any(|e| e.message.contains("$today") && e.message.contains("not compatible")));
+        assert!(errors.iter().any(|e| e.message.contains(
+            "generator '$today' is not compatible with type 'integer' (valid on: date)"
+        )));
     }
 
     #[test]
@@ -2625,11 +2774,125 @@ fields:
             other => panic!("expected Validation error, got: {other}"),
         };
         assert!(
-            errors.iter().any(|error| error
-                .message
-                .contains("default 'pending' is not one of: open, closed")),
+            errors.iter().any(|error| error.message.contains(
+                "default does not fit type 'choice': 'pending' is not one of: open, closed"
+            )),
             "{errors:?}"
         );
+    }
+
+    /// Load a schema expected to fail and return the one message that
+    /// names `field` — the default checks report each field once.
+    fn default_error_for(yaml: &str, field: &str) -> String {
+        let errors = match parse_schema(yaml).unwrap_err() {
+            SchemaLoadError::Validation(errors) => errors,
+            other => panic!("expected Validation error, got: {other}"),
+        };
+        let mut messages: Vec<&str> = errors
+            .iter()
+            .filter(|error| error.context == format!("field '{field}'"))
+            .map(|error| error.message.as_str())
+            .collect();
+        assert_eq!(
+            messages.len(),
+            1,
+            "one error for '{field}', got: {errors:?}"
+        );
+        messages.remove(0).to_owned()
+    }
+
+    #[test]
+    fn float_default_on_integer_rejected() {
+        let yaml = "\
+fields:
+  count:
+    type: integer
+    default: 1.5
+";
+        assert_eq!(
+            default_error_for(yaml, "count"),
+            "default does not fit type 'integer': expected integer, got float"
+        );
+    }
+
+    #[test]
+    fn malformed_date_default_rejected() {
+        let yaml = "\
+fields:
+  due:
+    type: date
+    default: tomorrow
+";
+        assert_eq!(
+            default_error_for(yaml, "due"),
+            "default does not fit type 'date': 'tomorrow' is not a valid date (expected YYYY-MM-DD)"
+        );
+    }
+
+    #[test]
+    fn well_formed_date_default_accepted() {
+        let yaml = "\
+fields:
+  due:
+    type: date
+    default: 2026-01-31
+";
+        parse_schema(yaml).expect("a YYYY-MM-DD date default loads");
+    }
+
+    #[test]
+    fn default_outside_field_range_rejected() {
+        let yaml = "\
+fields:
+  points:
+    type: integer
+    min: 1
+    default: 0
+";
+        assert_eq!(
+            default_error_for(yaml, "points"),
+            "default does not fit type 'integer': 0 is below the minimum of 1"
+        );
+    }
+
+    #[test]
+    fn duration_default_accepted() {
+        let yaml = "\
+fields:
+  effort:
+    type: duration
+    default: 2h
+";
+        let schema = parse_schema(yaml).expect("a duration default loads");
+        assert_eq!(
+            schema.fields["effort"].default,
+            Some(DefaultValue::String("2h".to_owned()))
+        );
+    }
+
+    #[test]
+    fn malformed_duration_default_rejected() {
+        let yaml = "\
+fields:
+  effort:
+    type: duration
+    default: soon
+";
+        assert!(default_error_for(yaml, "effort")
+            .starts_with("default does not fit type 'duration': 'soon' is not a valid duration"),);
+    }
+
+    #[test]
+    fn default_violating_pattern_rejected() {
+        let yaml = "\
+fields:
+  code:
+    type: string
+    pattern: '^[A-Z]+$'
+    default: abc
+";
+        assert!(default_error_for(yaml, "code")
+            .starts_with("default does not fit type 'string': 'abc' does not match pattern"),);
     }
 
     // ── Rule validation errors ────────────────────────────────────

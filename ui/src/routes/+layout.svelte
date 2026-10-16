@@ -86,14 +86,20 @@
 		<div class="header-left">
 			<a class="brand" href="/">Workdown</a>
 			<ViewNav views={data.views} />
-			<!-- Reserved slot for future non-view destinations (dynamic view
-			     generator, diagnostics, schema). Lives outside <ViewNav> so it
-			     still shows when no views are configured; populated by later
-			     issues. -->
+			<!-- Non-view destinations, after the view pills. Plain text links,
+			     not pills, so they read as "not a view". Outside <ViewNav> so
+			     they stay visible when no views are configured — which is
+			     exactly the case when the schema is broken and the schema
+			     page is where the reason is legible. -->
+			<a
+				class="header-link"
+				href="/schema"
+				aria-current={page.route.id === '/schema' ? 'page' : undefined}>Schema</a
+			>
 		</div>
 		<div class="header-actions">
 			<a
-				class="header-link tour-link"
+				class="header-link"
 				href="/tour"
 				title="Animated project overview"
 				aria-current={page.route.id === '/tour' ? 'page' : undefined}>▶ Tour</a
@@ -155,19 +161,18 @@
 		flex-shrink: 0;
 	}
 
-	/* The quiet text links in the actions row: the tour and the new-item
-	   form. Same weight as the theme toggle, so they read as utilities. */
+	/* The quiet text links: the schema page after the view pills, the
+	   tour and the new-item form in the actions row. Same weight as the
+	   theme toggle, so they read as utilities; the current one takes the
+	   full foreground. */
 	.header-link {
 		font-size: var(--text-sm);
 		color: var(--color-fg-muted);
 		text-decoration: none;
 	}
 
-	.header-link:hover {
-		color: var(--color-fg);
-	}
-
-	.tour-link[aria-current='page'] {
+	.header-link:hover,
+	.header-link[aria-current='page'] {
 		color: var(--color-fg);
 	}
 

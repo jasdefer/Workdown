@@ -1,0 +1,258 @@
+import { describe, it, expect } from 'vitest';
+import type { ApiResult } from '$lib/api/client';
+import type { FieldRecipe } from '$lib/api/generated/FieldRecipe';
+import type { SchemaDefinitionData } from '$lib/api/generated/SchemaDefinitionData';
+import {
+	fillMechanisms,
+	firstLine,
+	idFirst,
+	loadFailure,
+	movedFieldOrder,
+	panelTarget,
+	settingsLine,
+	typeSummary
+} from './schemaPage';
+
+describe('idFirst', () => {
+	it('moves id to the top wherever the file declares it', () => {
+		const ordered = idFirst([{ name: 'title' }, { name: 'status' }, { name: 'id' }]);
+		expect(ordered.map((field) => field.name)).toEqual(['id', 'title', 'status']);
+	});
+
+	it('keeps declaration order when id is already first', () => {
+		const fields = [{ name: 'id' }, { name: 'title' }];
+		expect(idFirst(fields)).toBe(fields);
+	});
+
+	it('leaves a schema without an id field unchanged', () => {
+		const fields = [{ name: 'title' }, { name: 'status' }];
+		expect(idFirst(fields)).toBe(fields);
+	});
+});
+
+describe('movedFieldOrder', () => {
+	const fields = [{ name: 'id' }, { name: 'title' }, { name: 'status' }, { name: 'owner' }];
+
+	it('moves a field one row down', () => {
+		expect(movedFieldOrder(fields, 'title', 'down')).toEqual(['id', 'status', 'title', 'owner']);
+	});
+
+	it('moves a field one row up', () => {
+		expect(movedFieldOrder(fields, 'owner', 'up')).toEqual(['id', 'title', 'owner', 'status']);
+	});
+
+	it('refuses to move the last row down', () => {
+		expect(movedFieldOrder(fields, 'owner', 'down')).toBeNull();
+	});
+
+	it('refuses to move the row below id up, so id stays first', () => {
+		expect(movedFieldOrder(fields, 'title', 'up')).toBeNull();
+	});
+
+	it('refuses to move id', () => {
+		expect(movedFieldOrder(fields, 'id', 'down')).toBeNull();
+	});
+
+	it('refuses a name the table does not have', () => {
+		expect(movedFieldOrder(fields, 'priority', 'up')).toBeNull();
+	});
+
+	it('leaves the given list unchanged', () => {
+		movedFieldOrder(fields, 'status', 'up');
+		expect(fields.map((field) => field.name)).toEqual(['id', 'title', 'status', 'owner']);
+	});
+});
+
+describe('fillMechanisms', () => {
+	const compute: FieldRecipe = {
+		kind: 'compute',
+		expression: 'estimate * 2',
+		round: 'nearest',
+		error_on_missing: false
+	};
+	const aggregate = { function: 'sum', over: 'parent', error_on_missing: false } as const;
+
+	it('is empty for a field written by hand', () => {
+		expect(fillMechanisms({ recipe: null, aggregate: null })).toEqual([]);
+	});
+
+	it('names the recipe the field declares', () => {
+		expect(fillMechanisms({ recipe: compute, aggregate: null })).toEqual(['computed']);
+		expect(fillMechanisms({ recipe: { kind: 'when', branches: [] }, aggregate: null })).toEqual([
+			'conditional'
+		]);
+		expect(
+			fillMechanisms({
+				recipe: {
+					kind: 'pull',
+					over: 'parent',
+					field: 'owner',
+					function: 'min',
+					error_on_missing: false
+				},
+				aggregate: null
+			})
+		).toEqual(['pulled']);
+	});
+
+	it('lists the compute-plus-aggregate combination as two, recipe first', () => {
+		expect(fillMechanisms({ recipe: compute, aggregate })).toEqual(['computed', 'aggregated']);
+		expect(fillMechanisms({ recipe: null, aggregate })).toEqual(['aggregated']);
+	});
+});
+
+describe('settingsLine', () => {
+	it('is the shape summary alone without a resource', () => {
+		expect(settingsLine({ shape: { kind: 'values', values: ['a', 'b'] }, resource: null })).toBe(
+			'a · b'
+		);
+	});
+
+	it('appends the resource list after the shape summary', () => {
+		expect(settingsLine({ shape: { kind: 'text', pattern: '^[a-z]+$' }, resource: 'people' })).toBe(
+			'pattern ^[a-z]+$ · from people'
+		);
+	});
+
+	it('is the resource alone when the shape has nothing to say', () => {
+		expect(settingsLine({ shape: { kind: 'text', pattern: null }, resource: 'people' })).toBe(
+			'from people'
+		);
+	});
+
+	it('is null for a plain scalar without a resource', () => {
+		expect(settingsLine({ shape: { kind: 'scalar' }, resource: null })).toBeNull();
+	});
+});
+
+describe('typeSummary', () => {
+	it('has nothing to say for a plain scalar', () => {
+		expect(typeSummary({ kind: 'scalar' })).toBeNull();
+	});
+
+	it('phrases a numeric range by which bounds are set', () => {
+		expect(typeSummary({ kind: 'numeric', min: 0, max: 100 })).toBe('0 to 100');
+		expect(typeSummary({ kind: 'numeric', min: 1.5, max: null })).toBe('at least 1.5');
+		expect(typeSummary({ kind: 'numeric', min: null, max: 10 })).toBe('at most 10');
+		expect(typeSummary({ kind: 'numeric', min: null, max: null })).toBeNull();
+	});
+
+	it('phrases duration bounds as the shorthand the server serves', () => {
+		expect(typeSummary({ kind: 'duration', min: null, max: '1d 16h' })).toBe('at most 1d 16h');
+		expect(typeSummary({ kind: 'duration', min: '15min', max: '2w' })).toBe('15min to 2w');
+		expect(typeSummary({ kind: 'duration', min: null, max: null })).toBeNull();
+	});
+
+	it('shows the pattern of a text field, nothing without one', () => {
+		expect(typeSummary({ kind: 'text', pattern: '^[a-z-]+$' })).toBe('pattern ^[a-z-]+$');
+		expect(typeSummary({ kind: 'text', pattern: null })).toBeNull();
+	});
+
+	it('lists the values of a choice in order', () => {
+		expect(typeSummary({ kind: 'values', values: ['to_do', 'in_progress', 'done'] })).toBe(
+			'to_do · in_progress · done'
+		);
+		expect(typeSummary({ kind: 'values', values: [] })).toBeNull();
+	});
+
+	it('names a relation by its inverse and cycle rule', () => {
+		expect(typeSummary({ kind: 'relation', allow_cycles: false, inverse: 'children' })).toBe(
+			'inverse children · no cycles'
+		);
+		expect(typeSummary({ kind: 'relation', allow_cycles: true, inverse: null })).toBe(
+			'cycles allowed'
+		);
+		expect(typeSummary({ kind: 'relation', allow_cycles: null, inverse: null })).toBeNull();
+	});
+});
+
+describe('firstLine', () => {
+	it('passes a one-line description through trimmed', () => {
+		expect(firstLine('  Display name.  ')).toBe('Display name.');
+	});
+
+	it('keeps only the first non-blank line of a longer description', () => {
+		expect(firstLine('\nWhat it is.\nMore detail below.')).toBe('What it is.');
+	});
+
+	it('is null for no description or a blank one', () => {
+		expect(firstLine(null)).toBeNull();
+		expect(firstLine('   \n  ')).toBeNull();
+	});
+});
+
+describe('loadFailure', () => {
+	function result(
+		partial: Partial<ApiResult<SchemaDefinitionData>>
+	): ApiResult<SchemaDefinitionData> {
+		return { diagnostics: [], status: 422, ...partial };
+	}
+
+	it('takes the path and message from the load diagnostic', () => {
+		const failure = loadFailure(
+			result({
+				diagnostics: [
+					{
+						severity: 'error',
+						message: 'fields.status: missing `values`',
+						scope: 'file',
+						source_path: '.workdown/schema.yaml',
+						type: 'read_error',
+						detail: 'fields.status: missing `values`'
+					}
+				]
+			})
+		);
+		expect(failure).toEqual({
+			path: '.workdown/schema.yaml',
+			detail: 'fields.status: missing `values`'
+		});
+	});
+
+	it('falls back to the request error when no diagnostic names the file', () => {
+		expect(loadFailure(result({ status: 0, error: 'Failed to fetch' }))).toEqual({
+			path: null,
+			detail: 'Failed to fetch'
+		});
+	});
+
+	it('has a generic line when the reply carried neither', () => {
+		expect(loadFailure(result({ status: 500 })).detail).toBe('The schema could not be loaded.');
+	});
+});
+
+describe('panelTarget', () => {
+	const closed = { fieldName: null, adding: false, ruleName: null, addingRule: false };
+
+	it('is closed without a query', () => {
+		expect(panelTarget(closed)).toBeNull();
+	});
+
+	it('names the field to edit', () => {
+		expect(panelTarget({ ...closed, fieldName: 'status' })).toEqual({
+			kind: 'edit',
+			name: 'status'
+		});
+	});
+
+	it('opens empty for add, even beside a field name', () => {
+		expect(panelTarget({ ...closed, fieldName: 'status', adding: true })).toEqual({ kind: 'add' });
+	});
+
+	it('names the rule to edit and opens empty for add-rule', () => {
+		expect(panelTarget({ ...closed, ruleName: 'needs-owner' })).toEqual({
+			kind: 'edit-rule',
+			name: 'needs-owner'
+		});
+		expect(panelTarget({ ...closed, ruleName: 'needs-owner', addingRule: true })).toEqual({
+			kind: 'add-rule'
+		});
+	});
+
+	it('lets a field win over a rule when both are named', () => {
+		expect(panelTarget({ ...closed, fieldName: 'status', ruleName: 'needs-owner' })).toEqual({
+			kind: 'edit',
+			name: 'status'
+		});
+	});
+});

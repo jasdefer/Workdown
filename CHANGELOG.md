@@ -7,6 +7,196 @@ its source — internal refactors are deliberately absent.
 
 ## Unreleased
 
+### Added
+
+- The web app's schema page edits fields. Clicking a row opens a
+  slide-over with the field's name, type, required flag, description
+  and default — the default entered with the same editor an item's
+  value uses, or picked from the generators valid for the type — plus
+  what the field is used by and a *Remove* button that is greyed out,
+  with the reason, while a view, a config role, a recipe or a rule
+  names the field. *Add field* opens the same panel empty, with every
+  type to choose from. Saving writes the field directly and shows any
+  warnings above the table; a definition that would not load is
+  refused with the reason and nothing is written. The type of an
+  existing field is changed in the file, not in the panel: a type
+  change can invalidate every item at once. The panel is URL state
+  (`/schema?field=status`, `/schema?add`), so it survives the live
+  refresh and the back button closes it. `GET /api/schema/definition`
+  now also says which shape each type is edited as (`shape_kind`), and
+  `GET /api/schema/fields/{name}/usage` names the rules and the
+  recipes (`aggregate`, `pull`) referencing a field (`rules`,
+  `recipes`) beside the parser's message, so the panel can list them.
+- Removing a field from the schema page can take its values along.
+  When items hold a value for the field, the confirmation offers
+  *Remove field*, which leaves the items as they are with a warning on
+  each, and *Remove field and its values*, which also rewrites those
+  items without the key; the schema is written first, so an item that
+  cannot be rewritten simply keeps its warning. `DELETE
+  /api/schema/fields/{name}?drop_values=true` is the request behind
+  it, and the result names the items it rewrote (`rewritten_items`).
+  A rewritten item comes back in schema order and without the
+  comments its frontmatter had, as after any `set`.
+- The field editor edits the bounds of `integer`, `float` and
+  `duration` fields. A *Bounds* block shows *Min* and *Max* side by
+  side, each entered with the type's own editor — whole numbers for an
+  integer, any number for a float, suffix shorthand such as `2d` for a
+  duration — and clearing one removes that key from the file. A
+  numeric pair with *Min* above *Max* greys out *Save* with the reason;
+  a duration bound is written as typed and refused with the parser's
+  message when it does not parse.
+- The field editor edits a `string` field's `pattern` and the
+  `resource:` of `string` and `list` fields. *Pattern* is a text input
+  for the regex a value must match, written as typed and refused with
+  the parser's message when it is not a valid expression. *Resource*
+  is a picker over the lists `resources.yaml` declares, with a blank
+  choice for none; a name the file holds that no list carries stays
+  selectable, marked as unknown, so a save does not silently drop it.
+  Both can be set on the same field, as the schema allows. Clearing
+  either removes the key from the file.
+- The field editor edits the values of `choice` and `multichoice`
+  fields. A *Values* block lists them in order, the order boards and
+  dropdowns show them in, with *Up* and *Down* beside each, a *Remove*
+  button, and the value itself in a text input for renaming in place;
+  a new value is typed under the list and added with Enter or *Add*.
+  Blank text and a value already in the list are refused where they
+  are typed. Renaming or removing a value leaves the items holding it
+  as they are, with a warning on each after the save, which the block
+  says; a default naming a value that is no longer listed is refused
+  on save with the parser's message. An empty list greys out *Save*.
+- The field editor edits the settings of `link` and `links` fields.
+  A *Forbid cycles* box writes `allow_cycles: false` when checked and
+  removes the key when not, the one distinction the cycle check and
+  the rollup and pull recipes make; a field that said `true` is
+  written without the key on its next save. An *Inverse* input takes
+  the name the relation has from the other side, blank for none; a
+  name that is not an identifier or that collides with a field or
+  another inverse is refused on save with the parser's message. With
+  this, every type-specific setting has a control.
+- The schema page moves fields. Each row of the fields table has Up
+  and Down buttons; a click moves the field one place in
+  `schema.yaml`, so the create form, the detail panel and the board's
+  columns follow. `id` stays first and has no buttons. One write per
+  click; a write refused because the list is out of date (another tab
+  removed a field meanwhile) shows above the table and the page
+  refetches.
+- The web app's field editor edits every way a field's value is
+  derived. On a type that can be rolled up, a "Roll up from the items
+  below" box opens two pickers — the function, from the type's own
+  list, and the `link` field to climb, from those that forbid cycles —
+  and a box for reporting items below without a value. On a type that
+  can be derived, a "Value" selector offers "Conditional", "Computed
+  by a formula" and "Pulled from linked items" beside "Set by hand".
+  Conditions are a list of branches, tried top to bottom with Up and
+  Down to order them: each condition a row of field, operator and
+  value, where the value is entered with the editor of the other
+  side's type (a choice offers its values) and is not offered opposite
+  `$today` or a date field, which the condition language has no
+  literal for, or a line of text for what a row cannot hold; each
+  `then` the field's own value editor; the default control becomes
+  the fallback when no branch holds. A formula
+  is typed as text, with the fields it may read, the project constants
+  and `$today` listed under the box for a click to insert, the
+  rounding on a date field and the box for reporting items missing an
+  input; a formula the server rejects is pointed at, with a caret
+  under the column the message names. A pull picks the relation to
+  follow, from the `link` and `links` fields that forbid cycles, the
+  field to read, from those a function can reduce into this type, and
+  that function. Choosing a formula or a pull drops the default, which
+  such a field cannot have; leaving conditions drops their fallback,
+  which would otherwise become a default stamped on new items; the
+  panel says so either way. Beside the form the panel shows the entry
+  the save would write to `schema.yaml`, rendered by the server, and
+  its verdict before Save: a draft the schema would not load with, or
+  would load and disable, greys Save out with the reason.
+- The web app's schema page edits rules. A rule entry opens the rule
+  editor beside the page; Add rule opens it empty. A rule is edited as
+  rows — through which relation, which field, which test, which value
+  — with the pickers offering only what the schema has: the fields,
+  a choice's values, the relations and their inverses, a quantifier
+  only through a many-valued relation, a comparison only on a date or
+  a number, a count only on the related items. Beside the rows the
+  panel shows the YAML the save would write, rendered by the server
+  from the rows, and the parser's verdict on it before Save. A rule
+  the rows cannot carry is shown as text and can only be removed.
+- `workdown serve` answers `GET /api/schema/definition`: every field's
+  full definition as `schema.yaml` has it, every rule, the type
+  system's own tables (which properties, default generators and
+  aggregate functions each type accepts, what a pull and a formula may
+  read). The web app's schema page is built on it.
+- `workdown serve` can write one field of `schema.yaml` at a time:
+  `POST /api/schema/fields` adds a field, `PUT` and `DELETE
+  /api/schema/fields/{name}` replace or remove one, `PUT
+  /api/schema/field-order` reorders them. A write changes only that
+  field's entry, refuses anything that would leave the schema unable to
+  load, and otherwise saves and reports the resulting warnings, as item
+  and view writes do. The `id` field, a field a `config.yaml` role
+  names, and a type change are refused: the type of a field is changed
+  in `schema.yaml`. `GET /api/schema/fields/{name}/usage` says what
+  depends on a field — the views, rules, recipes and config roles
+  naming it, and the items holding a value — so the schema editor can
+  grey out *Remove* with the reason. Comments in `schema.yaml` are not
+  preserved by a write from the web app; the file stays the source of
+  truth for its content, not its formatting.
+- `workdown serve` edits a field's rollup, its pull, its formula and
+  its conditions. `GET /api/schema/definition` serves each field's
+  `aggregate` block and, as its `recipe`, its `pull`, `compute` or
+  `when` block as data beside their text — a `when` branch's condition
+  as a row (field, operator, value) when it is one comparison and as
+  text otherwise, its fallback through the `default` slot — plus the
+  tables the editor's pickers read: which source types a pull into
+  each type may read with which functions, the types a formula may
+  read, the types a `when` may sit on, and the comparison operators;
+  `GET /api/schema` serves the project constants a formula may name.
+  The field writes (`POST /api/schema/fields`, `PUT
+  /api/schema/fields/{name}`) take an `aggregate` and a `recipe` and
+  write or clear the blocks, so a field can be created with any of
+  them; a formula is written as the bare expression until an option is
+  set, a `when` dropped takes its fallback with it. `POST
+  /api/schema/field-preview` answers what a field draft would be
+  written as and whether the schema would load with it and keep the
+  field, without writing: a pull whose reduction does not fit the
+  field, a formula or a condition the parser or the type check
+  rejects, is reported there before any save, with the column a
+  formula goes wrong at.
+- `workdown serve` can write one rule of `schema.yaml` at a time:
+  `POST /api/schema/rules` adds a rule, `PUT` and `DELETE
+  /api/schema/rules/{name}` replace (and may rename) or remove one.
+  A rule travels as rows — one field reference, one test, one value
+  per row — so a form can edit it without knowing the YAML; the
+  server writes the rows back in the shortest form the parser reads
+  and refuses a combination it cannot write. `GET
+  /api/schema/definition` now serves every rule as those rows beside
+  its text, or says why a rule has none (a quantifier nested in a
+  quantifier). `POST /api/schema/rule-preview` answers what a draft
+  would be written as and whether the schema would still load with it,
+  without writing, so an editor can show the YAML and the parser's
+  verdict before Save.
+
+### Changed
+
+- A schema with a `choice` or `multichoice` field whose `values` list
+  the same value twice, or contain a blank value, is now refused at
+  load. A duplicate made two board columns for one option, the second
+  always empty, and two identical entries in every dropdown.
+
+- A schema with an `integer` or `float` field whose `min` is greater
+  than its `max` is now refused at load, as a `duration` field's always
+  was. Such a pair admits no value at all, so no item could ever have
+  satisfied the field.
+
+- The default `schema.yaml` that `workdown init` copies into a project
+  no longer carries the tutorial comments and commented-out examples.
+  They live in the schema guide, which the file's header links, with a
+  new "Scheduling recipe" section holding the aggregate, compute and
+  pull example the comments used to sketch. A save from the web app
+  writes the file back without comments, so this keeps a first browser
+  save from silently deleting them. The `status_color` field explains
+  itself through its `description` instead.
+- A `default:` generator on a type it cannot serve (`$today` on an
+  integer) now says which types it is valid on, the way a misplaced
+  property already did.
+
 ### Fixed
 
 - Comparisons in `compute:` and `when:` expressions now compare two

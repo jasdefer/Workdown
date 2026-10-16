@@ -5,6 +5,7 @@ pub mod frontmatter_io;
 pub mod init;
 pub mod install_hooks;
 pub mod rename;
+pub mod schema_write;
 pub mod set;
 pub mod templates;
 pub mod validate;

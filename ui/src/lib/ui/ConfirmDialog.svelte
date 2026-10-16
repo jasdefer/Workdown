@@ -1,5 +1,7 @@
 <!--
-  Shared confirmation dialog: one question, confirm or cancel. Presents
+  Shared confirmation dialog: one question, confirm or cancel, with an
+  optional second way to confirm (`secondary`) when the question has
+  two answers that both go ahead. Presents
   as a popover anchored to the control that was clicked, built on a
   native `<dialog>` opened with `showModal()` — top layer, inert page
   behind it, Escape and focus handling for free — with the centered
@@ -25,10 +27,20 @@
 		body: string;
 		confirmLabel: string;
 		cancelLabel?: string;
-		/** Styles the confirm button as destructive (red). */
+		/**
+		 * A second confirming answer, shown after the first and styled
+		 * like it. `undefined` (the usual case) leaves the dialog with one.
+		 */
+		secondary?: SecondaryAnswer | undefined;
+		/** Styles the confirm buttons as destructive (red). */
 		destructive?: boolean;
 		onconfirm: () => void;
 		oncancel: () => void;
+	}
+
+	interface SecondaryAnswer {
+		label: string;
+		onconfirm: () => void;
 	}
 
 	let {
@@ -37,6 +49,7 @@
 		body,
 		confirmLabel,
 		cancelLabel = 'Cancel',
+		secondary,
 		destructive = false,
 		onconfirm,
 		oncancel
@@ -132,6 +145,18 @@
 			>
 				{confirmLabel}
 			</button>
+			{#if secondary !== undefined}
+				<button
+					type="button"
+					class="confirm"
+					class:destructive
+					onclick={() => {
+						answer(secondary.onconfirm);
+					}}
+				>
+					{secondary.label}
+				</button>
+			{/if}
 		</div>
 	</div>
 </dialog>
@@ -176,6 +201,7 @@
 
 	.actions {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: flex-end;
 		gap: var(--space-3);
 		margin-top: var(--space-3);

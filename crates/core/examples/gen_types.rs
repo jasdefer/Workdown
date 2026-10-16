@@ -26,6 +26,8 @@ use std::path::Path;
 use ts_rs::TS;
 
 use strum::VariantArray;
+use workdown_core::condition_shape::{ConditionLiteral, ConditionShape, Operand};
+use workdown_core::expression::ComparisonOperator;
 use workdown_core::git_data::{
     GitChangeKind, GitChangedFile, GitCommitPreview, GitCommitRequest, GitCommitResult,
     GitPullResult, GitPullStep, GitPushResult, GitPushStep, GitStatus,
@@ -38,19 +40,34 @@ use workdown_core::model::diagnostic::{
     FilesDiagnostic, FilesDiagnosticKind, ItemDiagnostic, ItemDiagnosticKind, RangeBound,
 };
 use workdown_core::model::field_value::FieldValue;
-use workdown_core::model::schema::{FieldType, Severity};
+use workdown_core::model::rule::CountConstraint;
+use workdown_core::model::schema::{
+    AggregateConfig, AggregateFunction, FieldProperty, FieldType, Generator, PullConfig, RoundMode,
+    Severity,
+};
 use workdown_core::model::view_slots;
 use workdown_core::model::views::{Aggregate, Bucket, DisplayConfig, ViewSummary, ViewType};
 use workdown_core::model::WorkItemId;
 use workdown_core::mutation_data::{
-    CreateItem, CreateItemResult, CreateView, FieldMutation, FieldMutationResult, SetViewFilter,
+    CreateField, CreateItem, CreateItemResult, CreateView, DefaultWrite, FieldDefinitionWrite,
+    FieldMutation, FieldMutationResult, FieldPreview, FieldUsage, PreviewField, PreviewRule,
+    ReorderFields, RuleDefinitionWrite, RulePreview, SchemaMutationResult, SetViewFilter,
     UpdateView, ViewDefinition, ViewMutationResult,
 };
 use workdown_core::project_data::ProjectIdentity;
 use workdown_core::query::clause::{Clause, Condition};
 use workdown_core::query::types::Operator;
+use workdown_core::rule_shape::{
+    Comparison, MatchRow, Quantifier, RequireRow, RequireTest, RuleShape, ScalarTest, ScalarValue,
+};
 use workdown_core::schema_data::{
-    FieldSchema, FieldTypeOperators, PaletteColor, ResourceList, ResourceOption, SchemaData,
+    ConstantData, FieldSchema, FieldTypeOperators, PaletteColor, ResourceList, ResourceOption,
+    SchemaData,
+};
+use workdown_core::schema_definition_data::{
+    ComparisonOperatorData, DefaultData, FieldDefinitionData, FieldRecipe, FieldShape,
+    FieldTypeAggregateFunctions, FieldTypeGenerators, FieldTypeProperties, FieldTypePullSources,
+    PullSource, RuleData, RuleShapeData, SchemaDefinitionData, ShapeKind, WhenBranchData,
 };
 use workdown_core::timer_data::{
     EffortFieldState, StartTimer, TimerMode, TimerPhase, TimerStartOutcome, TimerState,
@@ -167,7 +184,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Editing vocabulary (GET /api/schema).
     exports.add::<SchemaData>();
     exports.add::<FieldSchema>();
+    exports.add::<SchemaDefinitionData>();
+    exports.add::<FieldDefinitionData>();
+    exports.add::<FieldShape>();
+    exports.add::<DefaultData>();
+    exports.add::<RuleData>();
+    exports.add::<RuleShapeData>();
+    exports.add::<RuleShape>();
+    exports.add::<MatchRow>();
+    exports.add::<Quantifier>();
+    exports.add::<ScalarTest>();
+    exports.add::<RequireRow>();
+    exports.add::<RequireTest>();
+    exports.add::<Comparison>();
+    exports.add::<ScalarValue>();
+    exports.add::<CountConstraint>();
+    exports.add::<RuleDefinitionWrite>();
+    exports.add::<RulePreview>();
+    exports.add::<PreviewRule>();
+    exports.add::<FieldTypeProperties>();
+    exports.add::<ShapeKind>();
+    exports.add::<FieldTypeAggregateFunctions>();
+    exports.add::<FieldTypePullSources>();
+    exports.add::<PullSource>();
+    exports.add::<FieldRecipe>();
+    exports.add::<WhenBranchData>();
+    exports.add::<ConditionShape>();
+    exports.add::<Operand>();
+    exports.add::<ConditionLiteral>();
+    exports.add::<ComparisonOperator>();
+    exports.add::<ComparisonOperatorData>();
+    exports.add::<FieldTypeGenerators>();
+    exports.add::<FieldProperty>();
+    exports.add::<Generator>();
+    exports.add::<AggregateFunction>();
+    exports.add::<AggregateConfig>();
+    exports.add::<PullConfig>();
+    exports.add::<RoundMode>();
     exports.add::<ResourceList>();
+    exports.add::<ConstantData>();
     exports.add::<ResourceOption>();
     exports.add::<PaletteColor>();
     exports.add::<FieldTypeOperators>();
@@ -187,6 +242,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<UpdateView>();
     exports.add::<ViewDefinition>();
     exports.add::<ViewMutationResult>();
+
+    // Schema-write contracts (POST/PUT/DELETE /api/schema/fields…,
+    // PUT /api/schema/field-order, GET /api/schema/fields/:name/usage).
+    exports.add::<FieldDefinitionWrite>();
+    exports.add::<DefaultWrite>();
+    exports.add::<CreateField>();
+    exports.add::<ReorderFields>();
+    exports.add::<SchemaMutationResult>();
+    exports.add::<FieldUsage>();
+    exports.add::<PreviewField>();
+    exports.add::<FieldPreview>();
 
     // Timer contracts (GET /api/timer, POST /api/timer/start, POST /api/timer/stop).
     exports.add::<EffortFieldState>();

@@ -5,6 +5,7 @@
 //! context needed. It serves the rule engine; the `query` command's
 //! filters have their own evaluator in [`crate::query::eval`].
 
+use crate::model::schema::FieldType;
 use crate::model::schema::{Condition, ConditionOperator, ConditionValue, NegationValue};
 use crate::model::FieldValue;
 
@@ -95,6 +96,30 @@ fn matches_negation(field_value: &FieldValue, negation: &NegationValue) -> bool 
 
 // ── Value comparison ────────────────────────────────────────────────
 
+/// Whether a value test (`values`, `not`, a scalar or list condition)
+/// is defined for values of `field_type`: every type
+/// `field_value_matches` has an arm for. The rules editor reads this
+/// to offer the tests a reference can take, so the fact is spelled
+/// here, beside the match that defines it; a unit test keeps the two
+/// in step. `color` has no arm: a color is resolved from a palette
+/// name or a hex and compared nowhere.
+pub fn value_test_defined(field_type: FieldType) -> bool {
+    match field_type {
+        FieldType::String
+        | FieldType::Choice
+        | FieldType::Multichoice
+        | FieldType::Integer
+        | FieldType::Float
+        | FieldType::Date
+        | FieldType::Duration
+        | FieldType::Boolean
+        | FieldType::List
+        | FieldType::Link
+        | FieldType::Links => true,
+        FieldType::Color => false,
+    }
+}
+
 /// Check if a typed field value matches a condition value.
 ///
 /// **Membership semantics for Multichoice/List:** `ConditionValue::String("x")`
@@ -144,6 +169,41 @@ pub(crate) fn field_value_matches(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── The type list the editor is served ──────────────────────
+
+    #[test]
+    fn value_test_defined_names_exactly_the_types_a_value_can_match() {
+        // One matching pair per type; a type the editor may test by
+        // value must match its own pair, and a type it may not must
+        // match nothing.
+        use crate::model::WorkItemId;
+        use strum::VariantArray;
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        let text = |value: &str| ConditionValue::String(value.to_owned());
+        let id = |value: &str| WorkItemId::from(value.to_owned());
+        for &field_type in FieldType::VARIANTS {
+            let (value, expected) = match field_type {
+                FieldType::String => (FieldValue::String("a".into()), text("a")),
+                FieldType::Choice => (FieldValue::Choice("a".into()), text("a")),
+                FieldType::Multichoice => (FieldValue::Multichoice(vec!["a".into()]), text("a")),
+                FieldType::Integer => (FieldValue::Integer(1), ConditionValue::Number(1.0)),
+                FieldType::Float => (FieldValue::Float(1.5), ConditionValue::Number(1.5)),
+                FieldType::Date => (FieldValue::Date(date), ConditionValue::Date(date)),
+                FieldType::Duration => (FieldValue::Duration(60), ConditionValue::Number(60.0)),
+                FieldType::Color => (FieldValue::Color("red".into()), text("red")),
+                FieldType::Boolean => (FieldValue::Boolean(true), ConditionValue::Bool(true)),
+                FieldType::List => (FieldValue::List(vec!["a".into()]), text("a")),
+                FieldType::Link => (FieldValue::Link(id("a")), text("a")),
+                FieldType::Links => (FieldValue::Links(vec![id("a")]), text("a")),
+            };
+            assert_eq!(
+                field_value_matches(&value, &expected),
+                value_test_defined(field_type),
+                "{field_type}: the list and the match disagree"
+            );
+        }
+    }
 
     // ── Equals ──────────────────────────────────────────────────
 

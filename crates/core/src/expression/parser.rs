@@ -36,6 +36,19 @@ pub enum ParseExpressionError {
     UnexpectedEnd { expected: &'static str },
 }
 
+impl ParseExpressionError {
+    /// The one-based column the error points at, the same one the
+    /// message names; `None` for an empty or early-ending expression,
+    /// which has no spot to point at.
+    pub fn column(&self) -> Option<usize> {
+        match self {
+            Self::Lex(error) => Some(error.column()),
+            Self::UnexpectedToken { column, .. } => Some(*column),
+            Self::Empty | Self::UnexpectedEnd { .. } => None,
+        }
+    }
+}
+
 /// Parse an expression string into an [`Expression`] tree.
 pub fn parse_expression(source: &str) -> Result<Expression, ParseExpressionError> {
     let tokens = lex(source)?;

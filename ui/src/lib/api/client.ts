@@ -13,9 +13,13 @@
 import type { Clause } from './generated/Clause';
 import type { CreateItem } from './generated/CreateItem';
 import type { CreateItemResult } from './generated/CreateItemResult';
+import type { CreateField } from './generated/CreateField';
 import type { CreateView } from './generated/CreateView';
 import type { Diagnostic } from './generated/Diagnostic';
+import type { FieldDefinitionWrite } from './generated/FieldDefinitionWrite';
 import type { FieldMutation } from './generated/FieldMutation';
+import type { FieldPreview } from './generated/FieldPreview';
+import type { FieldUsage } from './generated/FieldUsage';
 import type { GitCommitPreview } from './generated/GitCommitPreview';
 import type { GitCommitRequest } from './generated/GitCommitRequest';
 import type { GitCommitResult } from './generated/GitCommitResult';
@@ -24,8 +28,15 @@ import type { GitPushResult } from './generated/GitPushResult';
 import type { GitStatus } from './generated/GitStatus';
 import type { FieldMutationResult } from './generated/FieldMutationResult';
 import type { ItemDetail } from './generated/ItemDetail';
+import type { PreviewField } from './generated/PreviewField';
+import type { PreviewRule } from './generated/PreviewRule';
 import type { ProjectIdentity } from './generated/ProjectIdentity';
+import type { ReorderFields } from './generated/ReorderFields';
+import type { RuleDefinitionWrite } from './generated/RuleDefinitionWrite';
+import type { RulePreview } from './generated/RulePreview';
 import type { SchemaData } from './generated/SchemaData';
+import type { SchemaDefinitionData } from './generated/SchemaDefinitionData';
+import type { SchemaMutationResult } from './generated/SchemaMutationResult';
 import type { SetViewFilter } from './generated/SetViewFilter';
 import type { StartTimer } from './generated/StartTimer';
 import type { TimerMode } from './generated/TimerMode';
@@ -151,6 +162,98 @@ export const api = {
 	deleteView: (id: string) =>
 		request<ViewMutationResult>('DELETE', `/api/views/${encodeURIComponent(id)}`),
 	getSchema: () => request<SchemaData>('GET', '/api/schema'),
+	/**
+	 * The schema editor's payload: every field's full definition, the
+	 * rules, the type system's tables and a content hash of `schema.yaml`.
+	 * Read from the schema file alone, so it answers while the items
+	 * directory is broken; a schema that does not parse is a `422` with
+	 * the load diagnostic. Only the `/schema` page fetches it.
+	 */
+	getSchemaDefinition: () => request<SchemaDefinitionData>('GET', '/api/schema/definition'),
+	/**
+	 * Add a field at the end of `fields:` in `schema.yaml`. `201` with the
+	 * name; a taken name is a `409`, a definition that would not load a
+	 * `422`, each with the reason in `error`. Save-with-warning as for
+	 * items: a write that loads but fails a cross-file check is written and
+	 * the findings ride back in `diagnostics`.
+	 */
+	createField: (body: CreateField) =>
+		request<SchemaMutationResult>('POST', '/api/schema/fields', body),
+	/**
+	 * Replace a field's plain properties, keeping its position and its
+	 * recipe. An unknown name is a `404`; a definition that would not load
+	 * is a `422`.
+	 */
+	updateField: (name: string, definition: FieldDefinitionWrite) =>
+		request<SchemaMutationResult>(
+			'PUT',
+			`/api/schema/fields/${encodeURIComponent(name)}`,
+			definition
+		),
+	/**
+	 * Remove a field. With `dropValues` every item holding the key is
+	 * rewritten without it and named in `rewritten_items`; without, the
+	 * items keep the key and their unknown-field warnings ride back in
+	 * `diagnostics`. The `id` field and a field a config role names are
+	 * refused with a `422`.
+	 */
+	deleteField: (name: string, options: { dropValues: boolean }) =>
+		request<SchemaMutationResult>(
+			'DELETE',
+			`/api/schema/fields/${encodeURIComponent(name)}${options.dropValues ? '?drop_values=true' : ''}`
+		),
+	/**
+	 * What depends on a field: the parse error removing it would cause,
+	 * or the diagnostics it would introduce. The panel asks on open to
+	 * fill its usage section and decide whether Remove is allowed.
+	 */
+	getFieldUsage: (name: string) =>
+		request<FieldUsage>('GET', `/api/schema/fields/${encodeURIComponent(name)}/usage`),
+	/**
+	 * Rewrite the order of `fields:` from the full name list. A list that
+	 * is not a permutation of the current names (stale after another tab
+	 * added or removed a field) is a `422`. Not `/fields/order`: a field
+	 * named `order` would clash with it.
+	 */
+	reorderFields: (body: ReorderFields) =>
+		request<SchemaMutationResult>('PUT', '/api/schema/field-order', body),
+	/**
+	 * Add a rule at the end of `rules:` in `schema.yaml`. `201` with the
+	 * name; a taken name is a `409`, rows the server cannot write as one
+	 * rule or a rule the schema would not load with a `422`. Save-with-
+	 * warning as for fields: the items the rule now flags ride back in
+	 * `diagnostics`.
+	 */
+	createRule: (body: RuleDefinitionWrite) =>
+		request<SchemaMutationResult>('POST', '/api/schema/rules', body),
+	/**
+	 * Replace a rule, keeping its position; a different name in the body
+	 * renames it. An unknown name is a `404`, a new name another rule has
+	 * a `409`.
+	 */
+	updateRule: (name: string, body: RuleDefinitionWrite) =>
+		request<SchemaMutationResult>('PUT', `/api/schema/rules/${encodeURIComponent(name)}`, body),
+	/** Remove a rule. An unknown name is a `404`. */
+	deleteRule: (name: string) =>
+		request<SchemaMutationResult>('DELETE', `/api/schema/rules/${encodeURIComponent(name)}`),
+	/**
+	 * What a field draft would be written as, and whether the schema would
+	 * load with it and keep the field, without writing. `200` whatever
+	 * the draft's problems, which come back in `problem`; the panel's
+	 * YAML pane and pre-save verdict. Not `/fields/preview`: a field
+	 * named `preview` would clash with it.
+	 */
+	previewField: (body: PreviewField) =>
+		request<FieldPreview>('POST', '/api/schema/field-preview', body),
+	/**
+	 * What a rule draft would be written as, and whether the schema would
+	 * still load with it, without writing. `200` whatever the draft's
+	 * problems, which come back in `problem`; the panel's YAML pane and
+	 * pre-save verdict. Not `/rules/preview`: a rule named `preview`
+	 * would clash with it.
+	 */
+	previewRule: (body: PreviewRule) =>
+		request<RulePreview>('POST', '/api/schema/rule-preview', body),
 	/**
 	 * The project's identity — name and description. Answered from the
 	 * config the server read at start, so it survives a project that

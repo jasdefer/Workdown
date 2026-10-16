@@ -12,15 +12,15 @@ flowchart TD
         prepare-commit-msg-hook["Prefill terminal commits with the generated message"]
         project-load-cache["Cache the project load in the server (when it starts to hurt)"]
         recording-dot-extraction["Extract the recording indicator the six item-presenting views each rebuilt"]
+        rule-comparison-reference-check["Check comparison references in rules at schema load"]
+        view-sort-slot["Per-view item order: a `sort:` slot on views"]
     end
     subgraph multi-project-support ["Multi-project support"]
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]
     end
-    subgraph schema-editor-web ["See and edit the schema in the web app"]
-        schema-editor-web-design["Decide how much of the schema the web app edits, and what a breaking save does"]
-    end
     subgraph schema-expressions ["Derived field expressions"]
         expression-logical-combinators["`and` / `or` / `not` in the expression grammar"]
+        rule-literal-comparisons["Compare a field with a literal in a rule's match block"]
         when-map-shorthand["`map:` — lookup-table shorthand over the `when:` evaluator"]
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end

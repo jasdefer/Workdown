@@ -21,8 +21,9 @@
 	import TimerSlot from '$lib/timer/TimerSlot.svelte';
 	import DiagnosticList from '$lib/ui/DiagnosticList.svelte';
 	import Markdown from '$lib/ui/Markdown.svelte';
+	import { specOfFieldSchema } from '$lib/values/valueSpec';
+	import ValueEditor from '$lib/values/ValueEditor.svelte';
 	import { prettifyId } from '$lib/views/prettify';
-	import FieldEditor from './FieldEditor.svelte';
 
 	interface Props {
 		itemId: string;
@@ -59,6 +60,13 @@
 
 	function valueOf(name: string): FieldValue | null {
 		return item?.fields.find((field) => field.name === name)?.value ?? null;
+	}
+
+	// A cleared optional value unsets the field; everything else is an
+	// absolute replace. The append/remove/toggle ops exist on the wire for
+	// the CLI; the editors hand over whole values.
+	function mutationFor(value: FieldValue | null): FieldMutation {
+		return value === null ? { op: 'unset' } : { op: 'replace', value };
 	}
 
 	async function commit(field: string, mutation: FieldMutation): Promise<void> {
@@ -116,15 +124,15 @@
 					{#if field.aggregate}<span class="note">computed</span>{/if}
 				</dt>
 				<dd>
-					<FieldEditor
-						{field}
+					<ValueEditor
+						spec={specOfFieldSchema(field)}
 						value={valueOf(field.name)}
 						items={schemaStore.items}
 						palette={schemaStore.palette}
 						resourceOptions={schemaStore.resourceOptions(field)}
 						disabled={busy}
-						oncommit={(mutation: FieldMutation) => {
-							void commit(field.name, mutation);
+						onchange={(value: FieldValue | null) => {
+							void commit(field.name, mutationFor(value));
 						}}
 					/>
 					{#if field.resource}<small class="muted">values from “{field.resource}”</small>{/if}

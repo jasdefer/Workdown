@@ -1,13 +1,15 @@
 //! Shared helpers for reading and writing work item frontmatter.
 //!
 //! Built first for `workdown add`, reused by every command that mutates an
-//! item's frontmatter or body (`set`, `unset`, `body`, `rename`, etc.).
-//! The CLI layer is a thin caller of these.
+//! item's frontmatter or body (`set`, `unset`, `body`, `rename`, etc.)
+//! and by the schema removal that drops a field's values from the items
+//! (`remove_frontmatter_key`). The CLI layer is a thin caller of these.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::model::schema::{FieldDefinition, FieldTypeConfig, Schema};
+use crate::parser::{split_frontmatter, ParseError};
 
 // ── YAML rendering ────────────────────────────────────────────────────
 
@@ -48,6 +50,66 @@ pub(crate) fn build_frontmatter_yaml(
     }
 
     serde_yaml::to_string(&mapping).unwrap_or_default()
+}
+
+// ── Key removal ───────────────────────────────────────────────────────
+
+/// Why one item file could not be rewritten without a key.
+#[derive(Debug, thiserror::Error)]
+pub enum FrontmatterRewriteError {
+    #[error("failed to read '{path}': {source}")]
+    Read {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    #[error("failed to parse '{path}': {source}")]
+    Parse { path: PathBuf, source: ParseError },
+
+    #[error("failed to write '{path}': {source}")]
+    Write {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+}
+
+/// Rewrite the item file at `path` without `key` in its frontmatter,
+/// in the order [`build_frontmatter_yaml`] gives every write. The body
+/// is kept as it is. `Ok(false)` when the file does not hold the key:
+/// it is then left byte-identical.
+///
+/// This is the writer the `unset` operation ends in, reachable without
+/// the schema lookup `unset` starts with. The schema removal calls it
+/// for a key the schema no longer has, which `unset` would refuse as an
+/// unknown field.
+pub(crate) fn remove_frontmatter_key(
+    path: &Path,
+    key: &str,
+    schema: &Schema,
+) -> Result<bool, FrontmatterRewriteError> {
+    let content =
+        std::fs::read_to_string(path).map_err(|source| FrontmatterRewriteError::Read {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    let (mut frontmatter, body) =
+        split_frontmatter(&content, path).map_err(|source| FrontmatterRewriteError::Parse {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    if frontmatter.remove(key).is_none() {
+        return Ok(false);
+    }
+    let user_set_id = frontmatter.contains_key("id");
+    let yaml_content = build_frontmatter_yaml(&frontmatter, schema, user_set_id);
+    let new_file_content = format!("---\n{yaml_content}---\n{body}");
+    write_file_atomically(path, &new_file_content).map_err(|source| {
+        FrontmatterRewriteError::Write {
+            path: path.to_path_buf(),
+            source,
+        }
+    })?;
+    Ok(true)
 }
 
 // ── Atomic write ──────────────────────────────────────────────────────

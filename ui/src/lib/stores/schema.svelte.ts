@@ -9,6 +9,7 @@
 // after a successful create.
 
 import { api } from '$lib/api/client';
+import type { ConstantData } from '$lib/api/generated/ConstantData';
 import type { FieldSchema } from '$lib/api/generated/FieldSchema';
 import type { FieldType } from '$lib/api/generated/FieldType';
 import type { Operator } from '$lib/api/generated/Operator';
@@ -28,6 +29,17 @@ async function fetchSchema(): Promise<void> {
 	} else {
 		loadError = result.error ?? 'Failed to load schema';
 	}
+}
+
+/**
+ * The entries of the resource list named `resource`, or none for no
+ * resource, and for a list that is missing or has no entries — the same
+ * situations where core stops validating the value, so an editor falls
+ * back to free text rather than offering an empty picker.
+ */
+function optionsOfResource(resource: string | null): ResourceOption[] {
+	if (resource === null) return [];
+	return data?.resources.find((list) => list.name === resource)?.options ?? [];
 }
 
 export const schemaStore = {
@@ -50,6 +62,21 @@ export const schemaStore = {
 	get palette(): PaletteColor[] {
 		return data?.palette ?? [];
 	},
+	/**
+	 * The names of the resource lists `resources.yaml` declares, in file
+	 * order, empty ones included — the option set for a field's
+	 * `resource:` picker in the schema editor. Empty until loaded.
+	 */
+	get resourceNames(): string[] {
+		return data?.resources.map((list) => list.name) ?? [];
+	},
+	/**
+	 * The project constants of `resources.yaml`, in file order — what a
+	 * formula may name as `$constants.<name>`. Empty until loaded.
+	 */
+	get constants(): ConstantData[] {
+		return data?.constants ?? [];
+	},
 	/** Set when the last load failed; `null` otherwise. */
 	get error(): string | null {
 		return loadError;
@@ -66,9 +93,15 @@ export const schemaStore = {
 	 * editor falls back to free text rather than offering an empty picker.
 	 */
 	resourceOptions(field: FieldSchema | undefined): ResourceOption[] {
-		if (field?.resource == null) return [];
-		return data?.resources.find((list) => list.name === field.resource)?.options ?? [];
+		return optionsOfResource(field?.resource ?? null);
 	},
+	/**
+	 * The entries of the resource list named `resource`, for a host that
+	 * holds the name rather than a field: the schema editor's default
+	 * control, whose draft names the list. Same emptiness rules as
+	 * `resourceOptions`.
+	 */
+	optionsOfResource,
 	/**
 	 * Operators the filter builder may offer for a field type — the set the
 	 * evaluator treats as meaningful. Empty until loaded, or for an unknown

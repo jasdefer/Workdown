@@ -108,6 +108,37 @@ pub fn load_project(
     config_path: &Path,
     evaluation_date_override: Option<chrono::NaiveDate>,
 ) -> Result<Project, LoadError> {
+    let schema_path = project_root.join(&config.schema);
+    let schema = parser::schema::load_schema(&schema_path).map_err(|e| LoadError::Schema {
+        path: schema_path.clone(),
+        detail: e.to_string(),
+    })?;
+    load_project_with_schema(
+        config,
+        project_root,
+        config_path,
+        schema,
+        evaluation_date_override,
+    )
+}
+
+/// [`load_project`] against an already parsed schema instead of the
+/// `schema.yaml` on disk — the rest of the project is read exactly as
+/// there.
+///
+/// This is how a schema write judges its candidate: the edited schema
+/// is loaded against the real items, views and resources before it is
+/// written, and its diagnostics are diffed against the current file's
+/// (see `crate::operations::schema_write`). Schema-scoped diagnostics
+/// are still pinned to the path `config.schema` names, since `schema`
+/// is that file — or about to be.
+pub fn load_project_with_schema(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+    schema: Schema,
+    evaluation_date_override: Option<chrono::NaiveDate>,
+) -> Result<Project, LoadError> {
     let evaluation_date =
         evaluation_date_override.unwrap_or_else(crate::generators::current_local_date);
     let schema_path = project_root.join(&config.schema);
@@ -115,11 +146,6 @@ pub fn load_project(
     let views_path = project_root.join(&config.paths.views);
     let resources_path = project_root.join(&config.paths.resources);
     let config_path = project_root.join(config_path);
-
-    let schema = parser::schema::load_schema(&schema_path).map_err(|e| LoadError::Schema {
-        path: schema_path.clone(),
-        detail: e.to_string(),
-    })?;
 
     // Load resources.yaml before the store: compute expressions resolve
     // `$constants.<name>` during the store's derive passes. Absent is

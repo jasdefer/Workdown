@@ -1,29 +1,32 @@
 <!--
-  Per-field editor, dispatched on the field's type — the write-side
-  mirror of the read-side `Cell.svelte`. It owns no persistence: on a
-  committed change it calls `oncommit` with a `FieldMutation`, and the
-  host (`ItemEditor`) sends it and refreshes.
+  The editor for one value of one field type — the write-side mirror of
+  the read-side `Cell.svelte`. Dispatched on the type in `spec`, which
+  says what the value may be (the type, its allowed values or bounds,
+  whether it is required) and nothing about where the value lives: the
+  item panel and the create form edit an item's field with it, the
+  schema editor edits a field's fixed default with it. Each host builds
+  the spec from what it has (`valueSpec.ts`).
 
-  Every edit is an absolute-value `replace` (or `unset` when an optional
-  field is cleared) — collection fields send their whole new array. The
-  append/remove/toggle ops exist on the wire for the CLI but the UI sets
-  absolute values, which keeps each editor a plain controlled input.
+  It owns no persistence: on a committed change it calls `onchange` with
+  the whole new value, or `null` when an optional value was cleared, and
+  the host decides what that means — an item mutation, a draft entry, a
+  default. Every change is absolute: collection editors hand over their
+  whole new array, which keeps each editor a plain controlled input.
 
   Editors read their current value straight from the `value` prop and
-  commit on `change`; after the host refetches, the new prop flows back
+  commit on `change`; after the host updates, the new prop flows back
   in. No local mirror state, so nothing can desync.
 -->
 <script lang="ts">
-	import type { FieldMutation } from '$lib/api/generated/FieldMutation';
-	import type { FieldSchema } from '$lib/api/generated/FieldSchema';
 	import type { FieldValue } from '$lib/api/generated/FieldValue';
 	import type { PaletteColor } from '$lib/api/generated/PaletteColor';
 	import type { ResourceOption } from '$lib/api/generated/ResourceOption';
 	import Chip from '$lib/ui/Chip.svelte';
 	import { prettifyId } from '$lib/views/prettify';
+	import type { ValueSpec } from './valueSpec';
 
 	interface Props {
-		field: FieldSchema;
+		spec: ValueSpec;
 		value: FieldValue | null;
 		/** All item ids — option set for link/links pickers. */
 		items: string[];
@@ -36,24 +39,25 @@
 		 */
 		resourceOptions?: ResourceOption[];
 		disabled?: boolean;
-		oncommit: (mutation: FieldMutation) => void;
+		/** The whole new value, or `null` when an optional value was cleared. */
+		onchange: (value: FieldValue | null) => void;
 	}
 
 	let {
-		field,
+		spec,
 		value,
 		items,
 		palette = [],
 		resourceOptions = [],
 		disabled = false,
-		oncommit
+		onchange
 	}: Props = $props();
 
 	const asArray = $derived(Array.isArray(value) ? (value as string[]) : []);
 	const asScalar = $derived(value === null ? '' : String(value));
 
 	const picksFromResource = $derived(
-		resourceOptions.length > 0 && (field.field_type === 'string' || field.field_type === 'list')
+		resourceOptions.length > 0 && (spec.fieldType === 'string' || spec.fieldType === 'list')
 	);
 
 	// A stored value the resource no longer lists — a person who left, a
@@ -64,7 +68,7 @@
 	const strayValues = $derived.by(() => {
 		if (!picksFromResource) return [];
 		const known = new Set(resourceOptions.map((option) => option.id));
-		const current = field.field_type === 'list' ? asArray : asScalar === '' ? [] : [asScalar];
+		const current = spec.fieldType === 'list' ? asArray : asScalar === '' ? [] : [asScalar];
 		return current.filter((entry) => !known.has(entry));
 	});
 
@@ -78,15 +82,15 @@
 		return palette.find((entry) => entry.name === asScalar)?.hex ?? null;
 	});
 
-	function replace(next: unknown): void {
-		oncommit({ op: 'replace', value: next });
+	function replace(next: FieldValue): void {
+		onchange(next);
 	}
 
 	function commitScalar(raw: string, numeric: boolean): void {
-		// Clearing an optional field removes it; clearing a required one
-		// still writes the empty value and lets the server warn.
-		if (raw === '' && !field.required) {
-			oncommit({ op: 'unset' });
+		// Clearing an optional value removes it; clearing a required one
+		// still hands over the empty value and lets the server warn.
+		if (raw === '' && !spec.required) {
+			onchange(null);
 			return;
 		}
 		if (numeric) {
@@ -113,7 +117,7 @@
 	}
 </script>
 
-{#if picksFromResource && field.field_type === 'list'}
+{#if picksFromResource && spec.fieldType === 'list'}
 	<select
 		multiple
 		size={Math.min(Math.max(resourceOptions.length + strayValues.length, 2), 8)}
@@ -136,7 +140,7 @@
 			commitScalar(event.currentTarget.value, false);
 		}}
 	>
-		{#if !field.required}<option value="" selected={asScalar === ''}>—</option>{/if}
+		{#if !spec.required}<option value="" selected={asScalar === ''}>—</option>{/if}
 		{#each resourceOptions as option (option.id)}
 			<option value={option.id} selected={asScalar === option.id}>{option.label}</option>
 		{/each}
@@ -144,7 +148,7 @@
 			<option value={stray} selected>{stray} (unknown)</option>
 		{/each}
 	</select>
-{:else if field.field_type === 'boolean'}
+{:else if spec.fieldType === 'boolean'}
 	<input
 		type="checkbox"
 		checked={value === true}
@@ -153,21 +157,21 @@
 			replace(event.currentTarget.checked);
 		}}
 	/>
-{:else if field.field_type === 'choice'}
+{:else if spec.fieldType === 'choice'}
 	<select
 		{disabled}
 		onchange={(event) => {
 			commitScalar(event.currentTarget.value, false);
 		}}
 	>
-		{#if !field.required}<option value="" selected={asScalar === ''}>—</option>{/if}
-		{#each field.values ?? [] as option (option)}
+		{#if !spec.required}<option value="" selected={asScalar === ''}>—</option>{/if}
+		{#each spec.values as option (option)}
 			<option value={option} selected={asScalar === option}>{option}</option>
 		{/each}
 	</select>
-{:else if field.field_type === 'multichoice'}
+{:else if spec.fieldType === 'multichoice'}
 	<div class="options">
-		{#each field.values ?? [] as option (option)}
+		{#each spec.values as option (option)}
 			<label class="option">
 				<input
 					type="checkbox"
@@ -181,7 +185,7 @@
 			</label>
 		{/each}
 	</div>
-{:else if field.field_type === 'date'}
+{:else if spec.fieldType === 'date'}
 	<input
 		type="date"
 		value={asScalar}
@@ -190,19 +194,19 @@
 			commitScalar(event.currentTarget.value, false);
 		}}
 	/>
-{:else if field.field_type === 'integer' || field.field_type === 'float'}
+{:else if spec.fieldType === 'integer' || spec.fieldType === 'float'}
 	<input
 		type="number"
-		step={field.field_type === 'integer' ? '1' : 'any'}
-		min={field.min ?? undefined}
-		max={field.max ?? undefined}
+		step={spec.fieldType === 'integer' ? '1' : 'any'}
+		min={spec.min ?? undefined}
+		max={spec.max ?? undefined}
 		value={asScalar}
 		{disabled}
 		onchange={(event) => {
 			commitScalar(event.currentTarget.value, true);
 		}}
 	/>
-{:else if field.field_type === 'link'}
+{:else if spec.fieldType === 'link'}
 	<select
 		{disabled}
 		onchange={(event) => {
@@ -214,7 +218,7 @@
 			<option value={id} selected={asScalar === id}>{prettifyId(id)}</option>
 		{/each}
 	</select>
-{:else if field.field_type === 'links'}
+{:else if spec.fieldType === 'links'}
 	<select
 		multiple
 		size={Math.min(Math.max(items.length, 2), 8)}
@@ -227,7 +231,7 @@
 			<option value={id} selected={asArray.includes(id)}>{prettifyId(id)}</option>
 		{/each}
 	</select>
-{:else if field.field_type === 'color'}
+{:else if spec.fieldType === 'color'}
 	<div class="color-editor">
 		{#each palette as entry (entry.name)}
 			<!-- Clicking a swatch stores the *name* — the human-readable
@@ -275,7 +279,7 @@
 				commitScalar(event.currentTarget.value.trim(), false);
 			}}
 		/>
-		{#if asScalar !== '' && !field.required}
+		{#if asScalar !== '' && !spec.required}
 			<button
 				type="button"
 				class="remove"
@@ -287,7 +291,7 @@
 			>
 		{/if}
 	</div>
-{:else if field.field_type === 'list'}
+{:else if spec.fieldType === 'list'}
 	<div class="tags">
 		{#each asArray as tag (tag)}
 			<span class="tag">
@@ -323,7 +327,7 @@
 	<input
 		type="text"
 		value={asScalar}
-		placeholder={field.field_type === 'duration' ? 'e.g. 1w 2d' : ''}
+		placeholder={spec.fieldType === 'duration' ? 'e.g. 1w 2d' : ''}
 		{disabled}
 		onchange={(event) => {
 			commitScalar(event.currentTarget.value, false);

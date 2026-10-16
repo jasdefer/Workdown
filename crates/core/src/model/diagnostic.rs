@@ -488,11 +488,14 @@ pub enum ConfigDiagnosticKind {
     /// A `compute:` expression in `schema.yaml` failed type checking:
     /// an unknown field or constant reference, a reference to a type
     /// without arithmetic, or an operator applied outside the algebra.
-    /// `detail` is the rendered type-check error, column included.
+    /// `detail` is the rendered type-check error, column included;
+    /// `column` is that one-based column as data, for an editor that
+    /// marks the spot, `None` when the error has no position.
     ComputeInvalidExpression {
         field: String,
         expression: String,
         detail: String,
+        column: Option<usize>,
     },
 
     /// A `compute:` expression type-checks, but its result type doesn't
@@ -726,6 +729,23 @@ impl Diagnostic {
             view_id_of(&d.kind)
         } else {
             None
+        }
+    }
+
+    /// The `config.yaml` slot this diagnostic is about — one of the
+    /// config-defaults findings that name a slot such as
+    /// `defaults.board_field` or `defaults.display.color`. `None` for
+    /// every other diagnostic, view findings included: those carry a
+    /// slot relative to their view and are addressed by [`Self::view_id`].
+    pub fn config_slot(&self) -> Option<&'static str> {
+        let DiagnosticBody::Config(config) = &self.body else {
+            return None;
+        };
+        match &config.kind {
+            ConfigDiagnosticKind::ConfigUnknownField { slot, .. }
+            | ConfigDiagnosticKind::ConfigFieldTypeMismatch { slot, .. }
+            | ConfigDiagnosticKind::ConfigVirtualIdNotAllowed { slot } => Some(slot),
+            _ => None,
         }
     }
 }
@@ -1102,6 +1122,7 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                 field,
                 expression,
                 detail,
+                ..
             } => write!(
                 f,
                 "field '{field}', compute expression '{expression}': {detail}"

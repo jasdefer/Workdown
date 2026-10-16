@@ -49,6 +49,24 @@ impl ExpressionType {
         matches!(self, ExpressionType::Integer | ExpressionType::Float)
     }
 
+    /// Whether a value of this type can be compared with a literal the
+    /// grammar can spell: a number, quoted text or a boolean. Text,
+    /// boolean and the numbers face their own literal; a color compares
+    /// equal to the text that names one. A date or a duration has no
+    /// literal and is compared with a field, a constant or `$today`.
+    /// The condition row editor reads this to decide where "a value"
+    /// may stand; a unit test pins it to `comparison_is_defined`.
+    pub fn faces_a_literal(self) -> bool {
+        match self {
+            ExpressionType::Integer
+            | ExpressionType::Float
+            | ExpressionType::Boolean
+            | ExpressionType::Text
+            | ExpressionType::Color => true,
+            ExpressionType::Date | ExpressionType::Duration => false,
+        }
+    }
+
     /// Whether a value of this type may be assigned to a field declared as
     /// `target`. Identity plus the one widening the algebra allows:
     /// an integer result fits a float field.
@@ -129,6 +147,21 @@ pub enum ExpressionTypeError {
         operand: ExpressionType,
         column: usize,
     },
+}
+
+impl ExpressionTypeError {
+    /// The one-based column the error points at, the same one the
+    /// message names, as data for an editor that marks the spot.
+    pub fn column(&self) -> usize {
+        match self {
+            Self::UnknownField { column, .. }
+            | Self::UnknownConstant { column, .. }
+            | Self::UnsupportedReferenceType { column, .. }
+            | Self::InvalidOperation { column, .. }
+            | Self::InvalidComparison { column, .. }
+            | Self::InvalidNegation { column, .. } => *column,
+        }
+    }
 }
 
 /// Infer the result type of `expression`, resolving references through
@@ -324,6 +357,36 @@ mod tests {
     use super::super::parser::parse_expression;
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn faces_a_literal_names_exactly_the_types_some_literal_compares_with() {
+        // The grammar's literals have these types; a type faces a
+        // literal iff equality with one of them is defined.
+        let literal_types = [
+            ExpressionType::Integer,
+            ExpressionType::Float,
+            ExpressionType::Text,
+            ExpressionType::Boolean,
+        ];
+        for subject in [
+            ExpressionType::Integer,
+            ExpressionType::Float,
+            ExpressionType::Date,
+            ExpressionType::Duration,
+            ExpressionType::Boolean,
+            ExpressionType::Text,
+            ExpressionType::Color,
+        ] {
+            let some_literal_compares = literal_types
+                .iter()
+                .any(|&literal| comparison_is_defined(ComparisonOperator::Equal, subject, literal));
+            assert_eq!(
+                subject.faces_a_literal(),
+                some_literal_compares,
+                "{subject:?}: the list and the comparison rule disagree"
+            );
+        }
+    }
 
     struct MapContext {
         fields: HashMap<&'static str, ReferenceResolution>,

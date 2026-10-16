@@ -1,0 +1,1593 @@
+//! Persist single field and rule definitions to `schema.yaml`.
+//!
+//! The read side of the schema is [`crate::parser::schema`] and, for the
+//! web app, [`crate::schema_definition_data`]; this module is the write
+//! side. It supports what the schema editor needs: adding a field,
+//! replacing a field's plain properties, its `aggregate` block and its
+//! recipe, previewing a field, removing a field, reordering the fields,
+//! saying what a field is used by ([`field_usage`]), and adding,
+//! replacing, removing and previewing a rule. Renaming a field is not
+//! offered; the design item `schema-editor-web-design` explains why.
+//! Every recipe is edited: `pull` and `aggregate` as their settings,
+//! `compute` as text with its options, `when` as rows or text per
+//! branch (`schema-derived-field-editor`).
+//!
+//! Like every other mutation in the tool, the repo stays the source of
+//! truth: writes update the working tree only, nothing is staged or
+//! committed.
+//!
+//! ## Generic-tree edit
+//!
+//! A write reads `schema.yaml` fresh, parses it into a generic
+//! `serde_yaml` tree, changes the one entry under `fields:` and writes
+//! the whole tree back. The typed [`Schema`] model has no writer, and
+//! one would have to turn compiled expressions back into text; editing
+//! the tree cannot damage what it does not touch, so a key the editor
+//! does not write survives a replace untouched and every other field
+//! keeps its content and its position. What is given up is formatting: comments
+//! are not preserved, and compact `[a, b]` lists come back one entry per
+//! line. The file is the source of truth for *content*, not for
+//! formatting (ADR-015). Because only one entry is ever replaced, a stale editor
+//! tab can overwrite that field and nothing else: last write wins, per
+//! field, and there is no conflict detection.
+//!
+//! ## Field preview
+//!
+//! [`preview_field`] is a field write without the write: the same
+//! entry the add or the replace would put in the file, as YAML text,
+//! and the verdict on the file with it. The verdict goes one step past
+//! the parser's, because a broken recipe is not a parse failure: the
+//! parser accepts a `compute` expression it cannot type-check and the
+//! load spine reports it as a diagnostic pinned to `schema.yaml` that
+//! disables the field. So the candidate is loaded like a write loads
+//! it, and the schema-pinned diagnostics the draft introduces are the
+//! problem, beside a parse failure. Everything else the load finds —
+//! items missing a now-required field, a view the change affects — is
+//! save-with-warning territory and not a preview problem
+//! (`schema-derived-field-editor`, decisions 9 and 10).
+//!
+//! ## Rules
+//!
+//! A rule write is the same generic-tree edit on the `rules:` sequence,
+//! addressed by name since names are unique. The rule arrives as the
+//! rows [`crate::rule_shape`] defines and is written in the shortest
+//! form the parser reads; a rule may be renamed on replace, because
+//! nothing outside validation output names a rule. [`preview_rule`]
+//! runs the same conversion and the same parse without writing, so the
+//! editor's YAML pane and its pre-save verdict come from the code the
+//! save uses (`schema-rules-editor`, decisions 12 to 14).
+//!
+//! ## Dropping a removed field's values
+//!
+//! [`remove_field`] can also rewrite every item whose file holds the
+//! key ([`RemovedValues::Drop`]), since most of the time the values go
+//! with the field. The schema is written first, then each item through
+//! `frontmatter_io::remove_frontmatter_key` with the schema the write
+//! still holds —
+//! the `unset` operation looks a field up in the schema before it
+//! touches a file and would refuse every item once the field is gone.
+//! An item that cannot be rewritten is logged and skipped: it still
+//! holds the key, so the reload that follows reports it with the
+//! unknown-field warning it would have had anyway. The warnings the
+//! outcome reports are the ones remaining after both writes, and
+//! [`SchemaWriteOutcome::rewritten_items`] names the items touched. A
+//! rewritten item comes back in the order every item write uses —
+//! schema order, then unknown keys alphabetically — and without the
+//! comments its frontmatter had, exactly as after a `set`.
+//!
+//! ## What blocks a write vs. what only warns
+//!
+//! A write is rejected, leaving `schema.yaml` untouched, when the
+//! candidate would not *load*: the serialized tree is run through
+//! [`parse_schema`] first, and a parse failure comes back as
+//! [`SchemaWriteError::Unloadable`] carrying the parser's message. That
+//! covers everything the parser checks — a `choice` without values, a
+//! default the type cannot hold, a rule or an `aggregate.over` naming a
+//! field being removed. Problems that still load but fail the cross-file
+//! checks — items holding a value for a removed field, a view naming it,
+//! a compute expression reading it — are written and surfaced through
+//! [`SchemaWriteOutcome::warnings`], the save-with-warning convention
+//! from ADR-001.
+//!
+//! On top of the parser's verdict, a handful of refusals are this
+//! module's own, so that a CLI wrapper later inherits them: the `id`
+//! field cannot be removed; a field a `config.yaml` role names cannot
+//! be removed, because the config is read once at startup and the break
+//! would surface only on restart; a field keeps its type, because a
+//! change can invalidate every item's value at once and a recipe was
+//! type-checked against it — the type is changed in `schema.yaml`,
+//! where the load judges the result (`schema-editor-web-design`,
+//! decision 12).
+//!
+//! ## Field usage
+//!
+//! [`field_usage`] answers "what depends on this field" by simulation
+//! rather than enumeration: it removes the field from the schema in
+//! memory and loads the project against the candidate. If the candidate
+//! does not parse, the parse error is the blocker (a rule or a rollup
+//! names the field). If it parses, the diagnostics the removal would
+//! introduce are returned, each with its scope (ADR-007), so a client can
+//! name the view or the config role and count the items holding a value.
+//! Asking the checks that would complain after a real removal cannot
+//! drift from them when a view kind or a check is added.
+
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+
+use crate::config_check;
+use crate::expression::parse_expression;
+use crate::model::config::Config;
+use crate::model::diagnostic::{
+    ConfigDiagnostic, ConfigDiagnosticKind, Diagnostic, DiagnosticBody,
+};
+use crate::model::schema::{AggregateConfig, FieldType, PullConfig, RoundMode, Schema, Severity};
+use crate::model::work_item::WorkItem;
+use crate::mutation_data::{
+    DefaultWrite, FieldDefinitionWrite, FieldPreview, FieldUsage, RuleDefinitionWrite, RulePreview,
+};
+use crate::operations::diagnostics::{introduced_by_mutation, introduced_diagnostics};
+use crate::operations::frontmatter_io::{remove_frontmatter_key, write_file_atomically};
+use crate::parser::schema::{
+    is_valid_field_name, is_valid_rule_name, load_schema_with_document, parse_schema,
+    SchemaLoadError,
+};
+use crate::project::{load_project_with_schema, LoadError};
+use crate::schema_definition_data::{FieldRecipe, FieldShape, WhenBranchData};
+use crate::yaml_tree::key as yaml_key;
+
+// ── Public types ─────────────────────────────────────────────────────
+//
+// The wire shapes the operations take and answer with —
+// `FieldDefinitionWrite`, `RuleDefinitionWrite`, `FieldPreview`,
+// `RulePreview`, `FieldUsage` — live in `crate::mutation_data` beside
+// the other endpoint contracts.
+
+/// The outcome of a successful schema write.
+#[derive(Debug)]
+pub struct SchemaWriteOutcome {
+    /// Path to the `schema.yaml` that was written.
+    pub path: PathBuf,
+    /// The field that was added, changed or removed; `None` for a
+    /// reorder, which touches every field and none, and for a rule
+    /// write.
+    pub field_name: Option<String>,
+    /// The rule that was added, changed or removed (its new name after
+    /// a rename); `None` for a field write.
+    pub rule_name: Option<String>,
+    /// Every diagnostic from loading the project against the written
+    /// schema. Includes any problem this write introduced as well as
+    /// pre-existing ones (surfaced, per the "always show all"
+    /// convention, but not blocking).
+    pub warnings: Vec<Diagnostic>,
+    /// `true` if this write introduced a diagnostic that wasn't present
+    /// before. Drives the caller's exit code / response, distinct from
+    /// pre-existing problems elsewhere in the project.
+    pub mutation_caused_warning: bool,
+    /// The items whose file was rewritten without the removed field,
+    /// sorted by id. Empty unless the removal asked for
+    /// [`RemovedValues::Drop`]; an item that could not be rewritten is
+    /// absent here and present in `warnings`.
+    pub rewritten_items: Vec<String>,
+}
+
+/// What a removal does with the values items hold for the field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemovedValues {
+    /// Items keep the key and get the unknown-field warning on the next
+    /// load; nothing rewrites them.
+    Keep,
+    /// Every item whose file holds the key is rewritten without it,
+    /// after the schema is written.
+    Drop,
+}
+
+/// Errors returned by the schema-write operations.
+///
+/// Every variant here is a hard fail: `schema.yaml` is left untouched.
+/// Soft problems ride through [`SchemaWriteOutcome::warnings`] instead —
+/// the file still gets written.
+#[derive(Debug, thiserror::Error)]
+pub enum SchemaWriteError {
+    /// The current `schema.yaml` cannot be read or does not load. The
+    /// whole file is re-serialized from its tree, so a file that cannot
+    /// be read as a schema cannot be safely written back.
+    #[error("existing schema file at '{path}' does not load; fix it in a text editor before writing from the UI: {detail}")]
+    ExistingInvalid { path: PathBuf, detail: String },
+
+    /// The work items could not be read, so the effect of the change on
+    /// them cannot be judged. A hard fail for the same reason `add` and
+    /// `set` treat it as one: a mutation decided against an unknown
+    /// project state is worse than a mutation refused.
+    #[error("{0}")]
+    ProjectLoad(#[from] LoadError),
+
+    #[error("invalid field name '{name}': must be lowercase letters, digits and underscores, starting with a letter or underscore")]
+    InvalidName { name: String },
+
+    #[error("a field named '{name}' already exists")]
+    DuplicateName { name: String },
+
+    #[error("no field named '{name}'")]
+    FieldNotFound { name: String },
+
+    #[error("the 'id' field cannot be removed")]
+    IdNotRemovable,
+
+    /// `config.yaml` is read once at startup, so a role naming a removed
+    /// field would break only on the next restart; the config has to
+    /// change first.
+    #[error("field '{name}' is named by {slots} in config.yaml; change the config first")]
+    NamedByConfig { name: String, slots: String },
+
+    /// A type change can invalidate every item's value at once, and a
+    /// recipe was type-checked against the type; it is made in
+    /// `schema.yaml`, where the load judges the result.
+    #[error("field '{name}' is declared '{current}' and keeps that type here; to make it '{requested}', change the type in schema.yaml")]
+    TypeChange {
+        name: String,
+        current: FieldType,
+        requested: FieldType,
+    },
+
+    #[error("field order must list every current field exactly once: {detail}")]
+    InvalidOrder { detail: String },
+
+    #[error("invalid rule name '{name}': must be kebab-case (lowercase letters, digits, hyphens), starting with a letter")]
+    InvalidRuleName { name: String },
+
+    #[error("a rule named '{name}' already exists")]
+    DuplicateRuleName { name: String },
+
+    #[error("no rule named '{name}'")]
+    RuleNotFound { name: String },
+
+    /// The rows cannot be written as one rule: an operator twice on a
+    /// reference, or an equality beside another test on the same
+    /// reference. See [`crate::rule_shape::RuleShape::to_yaml_entries`].
+    #[error("the rule's rows cannot be written: {detail}")]
+    InvalidRule { detail: String },
+
+    /// The candidate schema does not parse. Carries the parser's message
+    /// so the editor can show what the file would have said.
+    #[error("the change would leave schema.yaml unable to load; nothing was written: {detail}")]
+    Unloadable { detail: String },
+
+    #[error("failed to serialize schema: {0}")]
+    Serialize(serde_yaml::Error),
+
+    #[error("failed to write '{path}': {source}")]
+    WriteFile {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+}
+
+// ── Public API ───────────────────────────────────────────────────────
+
+/// Add a field, appended at the end of `fields:`.
+///
+/// The properties are written in a fixed order — type, the
+/// type-specific properties, required, default, description, resource,
+/// aggregate — so a created entry reads like a hand-written one.
+pub fn add_field(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+    name: &str,
+    definition: &FieldDefinitionWrite,
+) -> Result<SchemaWriteOutcome, SchemaWriteError> {
+    if !is_valid_field_name(name) {
+        return Err(SchemaWriteError::InvalidName {
+            name: name.to_owned(),
+        });
+    }
+    let mut context = load_for_write(config, project_root, config_path)?;
+
+    let fields = fields_mut(&mut context.document);
+    if fields.contains_key(name) {
+        return Err(SchemaWriteError::DuplicateName {
+            name: name.to_owned(),
+        });
+    }
+    fields.insert(yaml_key(name), new_field_entry(definition));
+
+    finalize(context, Written::Field(name.to_owned()))
+}
+
+/// Replace a field's definition, keeping its position.
+///
+/// The field's existing mapping is the starting point: every key the
+/// editor writes (`WRITTEN_KEYS`) is overwritten in place or removed
+/// when the definition no longer sets it (a `values:` list after a
+/// change to `string`, a cleared description, a cleared rollup, a
+/// recipe switched off), and any other key is left exactly as the file
+/// has it.
+///
+/// The type is never changed: a definition declaring another type is
+/// refused ([`SchemaWriteError::TypeChange`]).
+pub fn update_field(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+    name: &str,
+    definition: &FieldDefinitionWrite,
+) -> Result<SchemaWriteOutcome, SchemaWriteError> {
+    let mut context = load_for_write(config, project_root, config_path)?;
+
+    let current =
+        context
+            .current
+            .fields
+            .get(name)
+            .ok_or_else(|| SchemaWriteError::FieldNotFound {
+                name: name.to_owned(),
+            })?;
+    if let Some(refusal) = type_change_refusal(name, current.field_type(), definition) {
+        return Err(refusal);
+    }
+    let entry = fields_mut(&mut context.document)
+        .get_mut(name)
+        .and_then(serde_yaml::Value::as_mapping_mut)
+        .expect("a field the typed schema knows is a mapping in the tree");
+    replace_field_entry(entry, definition);
+
+    finalize(context, Written::Field(name.to_owned()))
+}
+
+/// What a field write would put in the file, and whether the file would
+/// still load with it, without writing anything.
+///
+/// `replacing` says the draft replaces the field named `name`, which
+/// then has to exist; otherwise it would be added, and a name the add
+/// would refuse (invalid, taken) is a problem. The candidate is built
+/// exactly as the write builds it and judged as the write judges it,
+/// one step further: the schema diagnostics the draft would introduce
+/// count as a problem too (see the module docs). A draft's own faults
+/// come back as `problem`, never as an error; only a project that
+/// cannot be read is one.
+pub fn preview_field(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+    name: &str,
+    replacing: bool,
+    definition: &FieldDefinitionWrite,
+) -> Result<FieldPreview, SchemaWriteError> {
+    let mut context = load_for_write(config, project_root, config_path)?;
+    let current = context.current.fields.get(name);
+    let refusal = match (replacing, current) {
+        (true, None) => Some(SchemaWriteError::FieldNotFound {
+            name: name.to_owned(),
+        }),
+        (true, Some(current)) => type_change_refusal(name, current.field_type(), definition),
+        (false, _) if !is_valid_field_name(name) => Some(SchemaWriteError::InvalidName {
+            name: name.to_owned(),
+        }),
+        (false, Some(_)) => Some(SchemaWriteError::DuplicateName {
+            name: name.to_owned(),
+        }),
+        (false, None) => None,
+    };
+
+    let fields = fields_mut(&mut context.document);
+    let entry = match fields
+        .get_mut(name)
+        .and_then(serde_yaml::Value::as_mapping_mut)
+    {
+        Some(entry) if replacing => {
+            replace_field_entry(entry, definition);
+            serde_yaml::Value::Mapping(entry.clone())
+        }
+        _ => {
+            let entry = new_field_entry(definition);
+            fields.insert(yaml_key(name), entry.clone());
+            entry
+        }
+    };
+    let yaml = serde_yaml::to_string(&entry)
+        .map_err(SchemaWriteError::Serialize)?
+        .trim_end()
+        .to_owned();
+    if let Some(refusal) = refusal {
+        return Ok(FieldPreview {
+            yaml,
+            problem: Some(refusal.to_string()),
+            problem_column: None,
+        });
+    }
+
+    // Where a formula the schema parser refuses goes wrong: the parser
+    // relays the expression parser's text, so the column is asked of
+    // the expression parser directly.
+    let syntax_column = match &definition.recipe {
+        Some(FieldRecipe::Compute { expression, .. }) => parse_expression(expression)
+            .err()
+            .and_then(|error| error.column()),
+        Some(FieldRecipe::Pull(_)) | Some(FieldRecipe::When { .. }) | None => None,
+    };
+    let candidate_text =
+        serde_yaml::to_string(&context.document).map_err(SchemaWriteError::Serialize)?;
+    let candidate = match parse_schema(&candidate_text) {
+        Ok(candidate) => candidate,
+        Err(error) => {
+            return Ok(FieldPreview {
+                yaml,
+                problem: Some(error.to_string()),
+                problem_column: syntax_column,
+            })
+        }
+    };
+    let project = load_project_with_schema(config, project_root, config_path, candidate, None)?;
+    let introduced = introduced_diagnostics(&context.pre_diagnostics, &project.diagnostics);
+    let schema_diagnostics: Vec<&Diagnostic> = introduced
+        .iter()
+        .filter(|diagnostic| diagnostic.source_path() == Some(context.schema_path.as_path()))
+        .collect();
+    let problem = if schema_diagnostics.is_empty() {
+        None
+    } else {
+        Some(
+            schema_diagnostics
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
+    };
+    // The type check's column for this field's formula, when that is
+    // what the load objected to.
+    let problem_column = schema_diagnostics
+        .iter()
+        .find_map(|diagnostic| match &diagnostic.body {
+            DiagnosticBody::Config(ConfigDiagnostic {
+                kind: ConfigDiagnosticKind::ComputeInvalidExpression { field, column, .. },
+                ..
+            }) if field == name => *column,
+            _ => None,
+        });
+
+    Ok(FieldPreview {
+        yaml,
+        problem,
+        problem_column,
+    })
+}
+
+/// The entry an add writes: the definition's properties in the fixed
+/// order.
+fn new_field_entry(definition: &FieldDefinitionWrite) -> serde_yaml::Value {
+    let mut entry = serde_yaml::Mapping::new();
+    for (key, value) in written_properties(definition) {
+        entry.insert(yaml_key(key), value);
+    }
+    serde_yaml::Value::Mapping(entry)
+}
+
+/// Overwrite a field's existing entry with the definition: every key
+/// the editor writes is set in place or removed when no longer set,
+/// every other key stays. Beside `when`, `default:` is the recipe's
+/// evaluated fallback (see `parser::schema::attach_when_configs`); the
+/// editor sends it through the same slot, so dropping the `when` drops
+/// it too unless the draft still carries one
+/// (`schema-derived-field-editor`, decision 7).
+fn replace_field_entry(entry: &mut serde_yaml::Mapping, definition: &FieldDefinitionWrite) {
+    let properties = written_properties(definition);
+    for key in WRITTEN_KEYS {
+        let still_set = properties.iter().any(|(set_key, _)| *set_key == key);
+        if !still_set {
+            entry.shift_remove(key);
+        }
+    }
+    for (key, value) in properties {
+        entry.insert(yaml_key(key), value);
+    }
+}
+
+/// Remove a field. What happens to the values items hold for it is
+/// `removed_values`' call: kept, with the unknown-field warning on the
+/// next load, or dropped from every item file holding the key (see the
+/// module docs).
+pub fn remove_field(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+    name: &str,
+    removed_values: RemovedValues,
+) -> Result<SchemaWriteOutcome, SchemaWriteError> {
+    if name == "id" {
+        return Err(SchemaWriteError::IdNotRemovable);
+    }
+    let mut context = load_for_write(config, project_root, config_path)?;
+
+    if !context.current.fields.contains_key(name) {
+        return Err(SchemaWriteError::FieldNotFound {
+            name: name.to_owned(),
+        });
+    }
+    let slots = config_check::roles_naming_field(config, &context.current, name);
+    if !slots.is_empty() {
+        return Err(SchemaWriteError::NamedByConfig {
+            name: name.to_owned(),
+            slots: slots.join(", "),
+        });
+    }
+    fields_mut(&mut context.document).shift_remove(name);
+
+    let drop_key_from_items = match removed_values {
+        RemovedValues::Keep => None,
+        RemovedValues::Drop => Some(name),
+    };
+    finalize_then_rewrite_items(
+        context,
+        Written::Field(name.to_owned()),
+        drop_key_from_items,
+    )
+}
+
+/// Rewrite the order of `fields:` from a full ordered list of the
+/// current names. Declaration order drives form layout and board
+/// columns, which is why it is editable at all.
+pub fn reorder_fields(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+    order: &[String],
+) -> Result<SchemaWriteOutcome, SchemaWriteError> {
+    let mut context = load_for_write(config, project_root, config_path)?;
+
+    let fields = fields_mut(&mut context.document);
+    let current_names: Vec<String> = fields
+        .keys()
+        .filter_map(serde_yaml::Value::as_str)
+        .map(str::to_owned)
+        .collect();
+    check_permutation(&current_names, order)?;
+    let mut reordered = serde_yaml::Mapping::with_capacity(order.len());
+    for name in order {
+        let entry = fields
+            .shift_remove(name.as_str())
+            .expect("the permutation check found every name");
+        reordered.insert(yaml_key(name), entry);
+    }
+    *fields = reordered;
+
+    finalize(context, Written::Order)
+}
+
+// ── Rules ────────────────────────────────────────────────────────────
+
+/// Add a rule, appended at the end of `rules:`.
+///
+/// The name is checked here so a bad one gets its own refusal rather
+/// than the parser's; everything else about the rule — its references,
+/// its quantifiers, that it has a `require` or a `count` — is the
+/// parser's verdict on the candidate, as for a hand-edited file.
+pub fn add_rule(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+    definition: &RuleDefinitionWrite,
+) -> Result<SchemaWriteOutcome, SchemaWriteError> {
+    check_rule_name(&definition.name)?;
+    let mut context = load_for_write(config, project_root, config_path)?;
+
+    if rule_index(&context.current, &definition.name).is_some() {
+        return Err(SchemaWriteError::DuplicateRuleName {
+            name: definition.name.clone(),
+        });
+    }
+    let entry = rule_entry(definition)?;
+    rules_mut(&mut context.document).push(entry);
+
+    finalize(context, Written::Rule(definition.name.clone()))
+}
+
+/// Replace the rule named `name`, keeping its position. The
+/// definition's own name may differ, which renames the rule; the new
+/// name must not be another rule's.
+pub fn update_rule(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+    name: &str,
+    definition: &RuleDefinitionWrite,
+) -> Result<SchemaWriteOutcome, SchemaWriteError> {
+    check_rule_name(&definition.name)?;
+    let mut context = load_for_write(config, project_root, config_path)?;
+
+    let index =
+        rule_index(&context.current, name).ok_or_else(|| SchemaWriteError::RuleNotFound {
+            name: name.to_owned(),
+        })?;
+    if definition.name != name && rule_index(&context.current, &definition.name).is_some() {
+        return Err(SchemaWriteError::DuplicateRuleName {
+            name: definition.name.clone(),
+        });
+    }
+    let entry = rule_entry(definition)?;
+    rules_mut(&mut context.document)[index] = entry;
+
+    finalize(context, Written::Rule(definition.name.clone()))
+}
+
+/// Remove the rule named `name`.
+pub fn remove_rule(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+    name: &str,
+) -> Result<SchemaWriteOutcome, SchemaWriteError> {
+    let mut context = load_for_write(config, project_root, config_path)?;
+
+    let index =
+        rule_index(&context.current, name).ok_or_else(|| SchemaWriteError::RuleNotFound {
+            name: name.to_owned(),
+        })?;
+    rules_mut(&mut context.document).remove(index);
+
+    finalize(context, Written::Rule(name.to_owned()))
+}
+
+/// What a rule write would put in the file, and whether the file would
+/// still load, without writing anything.
+///
+/// Reads `schema.yaml` alone, like the definition payload: the verdict
+/// is the parser's, which needs no items. A draft's own problems — rows
+/// that cannot be written, a name the parser rejects, a name another
+/// rule has, a reference to no field — come back in the preview as
+/// `problem`, never as an error; only a file that cannot be read or
+/// serialized is one. `replacing` names the rule the draft would
+/// replace, so that its own name is not a duplicate of itself; a name
+/// no rule has is treated as an addition.
+pub fn preview_rule(
+    config: &Config,
+    project_root: &Path,
+    replacing: Option<&str>,
+    definition: &RuleDefinitionWrite,
+) -> Result<RulePreview, SchemaWriteError> {
+    let schema_path = project_root.join(&config.schema);
+    let (current, mut document) = load_schema_with_document(&schema_path)
+        .map_err(|error| existing_invalid(&schema_path, error))?;
+
+    let entry = match rule_entry(definition) {
+        Ok(entry) => entry,
+        Err(SchemaWriteError::InvalidRule { detail }) => {
+            return Ok(RulePreview {
+                yaml: String::new(),
+                problem: Some(detail),
+            })
+        }
+        Err(other) => return Err(other),
+    };
+    let yaml = serde_yaml::to_string(&entry)
+        .map_err(SchemaWriteError::Serialize)?
+        .trim_end()
+        .to_owned();
+
+    let rules = rules_mut(&mut document);
+    match replacing.and_then(|name| rule_index(&current, name)) {
+        Some(index) => rules[index] = entry,
+        None => rules.push(entry),
+    }
+    let candidate_text = serde_yaml::to_string(&document).map_err(SchemaWriteError::Serialize)?;
+    let problem = parse_schema(&candidate_text)
+        .err()
+        .map(|error| error.to_string());
+
+    Ok(RulePreview { yaml, problem })
+}
+
+fn check_rule_name(name: &str) -> Result<(), SchemaWriteError> {
+    if is_valid_rule_name(name) {
+        Ok(())
+    } else {
+        Err(SchemaWriteError::InvalidRuleName {
+            name: name.to_owned(),
+        })
+    }
+}
+
+/// The position of the rule named `name` in the file's `rules:`
+/// sequence. The typed schema's rules are the sequence's entries in
+/// order, so an index into one addresses the other.
+fn rule_index(schema: &Schema, name: &str) -> Option<usize> {
+    schema.rules.iter().position(|rule| rule.name == name)
+}
+
+/// The `rules:` sequence of a loaded schema's tree, created empty when
+/// the file has none (or has the key with no value).
+fn rules_mut(document: &mut serde_yaml::Value) -> &mut serde_yaml::Sequence {
+    let mapping = document
+        .as_mapping_mut()
+        .expect("a loaded schema is a mapping");
+    let key = yaml_key("rules");
+    if !matches!(mapping.get(&key), Some(serde_yaml::Value::Sequence(_))) {
+        mapping.insert(key.clone(), serde_yaml::Value::Sequence(Vec::new()));
+    }
+    mapping
+        .get_mut(&key)
+        .and_then(serde_yaml::Value::as_sequence_mut)
+        .expect("the rules key was just made a sequence")
+}
+
+/// A rule's entry in the file: name, description, severity when not the
+/// default, then the rows as [`crate::rule_shape::RuleShape::to_yaml_entries`] writes them.
+fn rule_entry(definition: &RuleDefinitionWrite) -> Result<serde_yaml::Value, SchemaWriteError> {
+    let invalid = |detail: String| SchemaWriteError::InvalidRule { detail };
+    let mut entry = serde_yaml::Mapping::new();
+    entry.insert(yaml_key("name"), yaml_key(&definition.name));
+    if let Some(description) = &definition.description {
+        entry.insert(yaml_key("description"), yaml_key(description));
+    }
+    if definition.severity != Severity::default() {
+        let severity =
+            serde_yaml::to_value(definition.severity).map_err(SchemaWriteError::Serialize)?;
+        entry.insert(yaml_key("severity"), severity);
+    }
+    for (key, value) in definition.shape.to_yaml_entries().map_err(invalid)? {
+        entry.insert(yaml_key(key), value);
+    }
+    Ok(serde_yaml::Value::Mapping(entry))
+}
+
+/// What depends on `name`: the parse error removing it would cause, or
+/// the diagnostics it would introduce (see the module docs).
+///
+/// The `config.yaml` roles naming the field are reported by the
+/// project's own config check; should that check ever stay silent
+/// about one, the role is added from the config directly, so the
+/// answer never omits a reason [`remove_field`] would refuse for.
+pub fn field_usage(
+    config: &Config,
+    project_root: &Path,
+    config_path: &Path,
+    name: &str,
+) -> Result<FieldUsage, SchemaWriteError> {
+    let mut context = load_for_write(config, project_root, config_path)?;
+    if !context.current.fields.contains_key(name) {
+        return Err(SchemaWriteError::FieldNotFound {
+            name: name.to_owned(),
+        });
+    }
+    let named_by = config_check::roles_naming_field(config, &context.current, name);
+    let rules = rules_naming_field(&context.current, name);
+    let recipes = recipes_naming_field(&context.current, name);
+
+    fields_mut(&mut context.document).shift_remove(name);
+    let candidate_text =
+        serde_yaml::to_string(&context.document).map_err(SchemaWriteError::Serialize)?;
+    let candidate = match parse_schema(&candidate_text) {
+        Ok(candidate) => candidate,
+        Err(error) => {
+            return Ok(FieldUsage {
+                rules,
+                recipes,
+                parse_error: Some(error.to_string()),
+                introduced: Vec::new(),
+            })
+        }
+    };
+    let project = load_project_with_schema(config, project_root, config_path, candidate, None)?;
+
+    let mut introduced = introduced_diagnostics(&context.pre_diagnostics, &project.diagnostics);
+    for slot in named_by {
+        let already_reported = introduced
+            .iter()
+            .any(|diagnostic| diagnostic.config_slot() == Some(slot));
+        if !already_reported {
+            introduced.push(Diagnostic::config(
+                Severity::Warning,
+                project_root.join(config_path),
+                ConfigDiagnosticKind::ConfigUnknownField {
+                    slot,
+                    field_name: name.to_owned(),
+                },
+            ));
+        }
+    }
+    Ok(FieldUsage {
+        rules,
+        recipes,
+        parse_error: None,
+        introduced,
+    })
+}
+
+/// The rules naming `name` in a `match` or `require` key, in file
+/// order. A key is a field reference, bare or dotted (`children.status`);
+/// it names the field when any segment is the field's name or its
+/// inverse — the same segments the parser resolves against the fields.
+fn rules_naming_field(schema: &Schema, name: &str) -> Vec<String> {
+    let inverse = schema
+        .fields
+        .get(name)
+        .and_then(|definition| definition.inverse());
+    let names_field = |reference: &str| {
+        reference
+            .split('.')
+            .any(|segment| segment == name || Some(segment) == inverse)
+    };
+    schema
+        .rules
+        .iter()
+        .filter(|rule| {
+            rule.match_conditions
+                .keys()
+                .chain(rule.require.keys())
+                .any(|reference| names_field(reference))
+        })
+        .map(|rule| rule.name.clone())
+        .collect()
+}
+
+/// The other fields whose rollup or pull names `name`: as the relation
+/// climbed (`aggregate.over`, `pull.over`) or as the field read
+/// (`pull.field`). In declaration order.
+fn recipes_naming_field(schema: &Schema, name: &str) -> Vec<String> {
+    schema
+        .fields
+        .iter()
+        .filter(|(other, _)| other.as_str() != name)
+        .filter(|(_, definition)| {
+            let climbs = definition
+                .aggregate
+                .as_ref()
+                .is_some_and(|aggregate| aggregate.over == name);
+            let pulls = definition
+                .pull
+                .as_ref()
+                .is_some_and(|pull| pull.over == name || pull.field == name);
+            climbs || pulls
+        })
+        .map(|(other, _)| other.clone())
+        .collect()
+}
+
+// ── Internals ────────────────────────────────────────────────────────
+
+/// Every key the editor may set or clear on a field; a replace removes
+/// each one the definition no longer spells and leaves any other key
+/// alone.
+const WRITTEN_KEYS: [&str; 15] = [
+    "type",
+    "values",
+    "pattern",
+    "min",
+    "max",
+    "allow_cycles",
+    "inverse",
+    "required",
+    "default",
+    "description",
+    "resource",
+    "compute",
+    "when",
+    "pull",
+    "aggregate",
+];
+
+/// What a write concerned, for the outcome's `field_name` and
+/// `rule_name`.
+enum Written {
+    Field(String),
+    Rule(String),
+    Order,
+}
+
+/// Everything a write starts from, loaded once: the current file as a
+/// generic tree (what gets edited), as a typed schema (what the
+/// refusals consult), the loaded items (what a removal that drops
+/// values rewrites) and the diagnostics of the project against it (the
+/// baseline the post-write diagnostics are diffed against).
+struct WriteContext<'a> {
+    config: &'a Config,
+    project_root: &'a Path,
+    config_path: &'a Path,
+    schema_path: PathBuf,
+    document: serde_yaml::Value,
+    current: Schema,
+    items: Vec<WorkItem>,
+    pre_diagnostics: Vec<Diagnostic>,
+}
+
+fn load_for_write<'a>(
+    config: &'a Config,
+    project_root: &'a Path,
+    config_path: &'a Path,
+) -> Result<WriteContext<'a>, SchemaWriteError> {
+    let schema_path = project_root.join(&config.schema);
+    let (current, document) = load_schema_with_document(&schema_path)
+        .map_err(|error| existing_invalid(&schema_path, error))?;
+
+    let project = load_project_with_schema(config, project_root, config_path, current, None)?;
+
+    Ok(WriteContext {
+        config,
+        project_root,
+        config_path,
+        schema_path,
+        document,
+        current: project.schema,
+        items: project.store.into_items(),
+        pre_diagnostics: project.diagnostics,
+    })
+}
+
+/// The refusal a replace of the field named `name`, declared
+/// `current_type`, earns when `definition` declares another type; `None`
+/// when the type is kept. Asked by the write and by the preview, so the
+/// two cannot disagree.
+fn type_change_refusal(
+    name: &str,
+    current_type: FieldType,
+    definition: &FieldDefinitionWrite,
+) -> Option<SchemaWriteError> {
+    (definition.field_type != current_type).then(|| SchemaWriteError::TypeChange {
+        name: name.to_owned(),
+        current: current_type,
+        requested: definition.field_type,
+    })
+}
+
+/// The current `schema.yaml` cannot be read as a schema, so nothing can
+/// be written back; see [`SchemaWriteError::ExistingInvalid`].
+fn existing_invalid(schema_path: &Path, error: SchemaLoadError) -> SchemaWriteError {
+    SchemaWriteError::ExistingInvalid {
+        path: schema_path.to_path_buf(),
+        detail: error.to_string(),
+    }
+}
+
+/// The `fields:` mapping of a loaded schema's tree. The typed parse
+/// already required it to be a mapping.
+fn fields_mut(document: &mut serde_yaml::Value) -> &mut serde_yaml::Mapping {
+    document
+        .get_mut("fields")
+        .and_then(serde_yaml::Value::as_mapping_mut)
+        .expect("a loaded schema has a fields mapping")
+}
+
+/// The properties a definition spells out, as `(key, value)` pairs in
+/// the order they are written: type, the type-specific properties,
+/// required, default, description, resource, aggregate. Only set
+/// properties appear.
+fn written_properties(definition: &FieldDefinitionWrite) -> Vec<(&'static str, serde_yaml::Value)> {
+    use serde_yaml::Value;
+
+    let mut properties = vec![("type", Value::String(definition.field_type.to_string()))];
+
+    match &definition.shape {
+        FieldShape::Scalar => {}
+        FieldShape::Numeric { min, max } => {
+            if let Some(min) = min {
+                properties.push(("min", numeric_bound(*min, definition.field_type)));
+            }
+            if let Some(max) = max {
+                properties.push(("max", numeric_bound(*max, definition.field_type)));
+            }
+        }
+        // Written as sent; `parse_schema` judges the text afterwards and
+        // refuses the write with its message when a bound does not parse.
+        FieldShape::Duration { min, max } => {
+            if let Some(min) = min {
+                properties.push(("min", Value::String(min.clone())));
+            }
+            if let Some(max) = max {
+                properties.push(("max", Value::String(max.clone())));
+            }
+        }
+        FieldShape::Text { pattern } => {
+            if let Some(pattern) = pattern {
+                properties.push(("pattern", Value::String(pattern.clone())));
+            }
+        }
+        FieldShape::Values { values } => {
+            properties.push((
+                "values",
+                Value::Sequence(values.iter().cloned().map(Value::String).collect()),
+            ));
+        }
+        FieldShape::Relation {
+            allow_cycles,
+            inverse,
+        } => {
+            if let Some(allow_cycles) = allow_cycles {
+                properties.push(("allow_cycles", Value::Bool(*allow_cycles)));
+            }
+            if let Some(inverse) = inverse {
+                properties.push(("inverse", Value::String(inverse.clone())));
+            }
+        }
+    }
+
+    properties.push(("required", Value::Bool(definition.required)));
+    match &definition.default {
+        None => {}
+        Some(DefaultWrite::Generator { generator }) => {
+            properties.push(("default", Value::String(generator.token().to_owned())));
+        }
+        Some(DefaultWrite::Literal { value }) => properties.push(("default", value.clone())),
+    }
+    if let Some(description) = &definition.description {
+        properties.push(("description", Value::String(description.clone())));
+    }
+    if let Some(resource) = &definition.resource {
+        properties.push(("resource", Value::String(resource.clone())));
+    }
+    match &definition.recipe {
+        None => {}
+        Some(FieldRecipe::Pull(pull)) => properties.push(("pull", pull_entry(pull))),
+        Some(FieldRecipe::Compute {
+            expression,
+            round,
+            error_on_missing,
+        }) => properties.push((
+            "compute",
+            compute_entry(expression, *round, *error_on_missing),
+        )),
+        Some(FieldRecipe::When { branches }) => properties.push(("when", when_entry(branches))),
+    }
+    if let Some(aggregate) = &definition.aggregate {
+        properties.push(("aggregate", aggregate_entry(aggregate)));
+    }
+    properties
+}
+
+/// The `compute:` value as the file spells it, in the shortest form the
+/// parser reads: the bare expression when neither option is set (the
+/// default rounding and `error_on_missing: false` are what the parser
+/// assumes), else a mapping with only the options that differ
+/// (`schema-derived-field-editor`, decision 4).
+fn compute_entry(expression: &str, round: RoundMode, error_on_missing: bool) -> serde_yaml::Value {
+    if round == RoundMode::default() && !error_on_missing {
+        return serde_yaml::Value::String(expression.to_owned());
+    }
+    let mut entry = serde_yaml::Mapping::new();
+    entry.insert(yaml_key("expression"), yaml_key(expression));
+    if round != RoundMode::default() {
+        entry.insert(yaml_key("round"), yaml_key(&round.to_string()));
+    }
+    if error_on_missing {
+        entry.insert(yaml_key("error_on_missing"), serde_yaml::Value::Bool(true));
+    }
+    serde_yaml::Value::Mapping(entry)
+}
+
+/// The `when:` block as the file spells it: one `if`/`then` mapping per
+/// branch, in order, the condition as the source its row or text spells
+/// (`ConditionShape::to_source`) and the value as sent.
+fn when_entry(branches: &[WhenBranchData]) -> serde_yaml::Value {
+    serde_yaml::Value::Sequence(
+        branches
+            .iter()
+            .map(|branch| {
+                let WhenBranchData { condition, then } = branch;
+                let mut entry = serde_yaml::Mapping::new();
+                entry.insert(yaml_key("if"), yaml_key(&condition.to_source()));
+                entry.insert(yaml_key("then"), then.clone());
+                serde_yaml::Value::Mapping(entry)
+            })
+            .collect(),
+    )
+}
+
+/// The `pull:` block as the file spells it, in the shortest form the
+/// parser reads: `error_on_missing` only when set. Exhaustive like
+/// [`aggregate_entry`], for the same reason.
+fn pull_entry(pull: &PullConfig) -> serde_yaml::Value {
+    let PullConfig {
+        over,
+        field,
+        function,
+        error_on_missing,
+    } = pull;
+    let mut entry = serde_yaml::Mapping::new();
+    entry.insert(yaml_key("over"), yaml_key(over));
+    entry.insert(yaml_key("field"), yaml_key(field));
+    entry.insert(yaml_key("function"), yaml_key(&function.to_string()));
+    if *error_on_missing {
+        entry.insert(yaml_key("error_on_missing"), serde_yaml::Value::Bool(true));
+    }
+    serde_yaml::Value::Mapping(entry)
+}
+
+/// The `aggregate:` block as the file spells it, in the shortest form
+/// the parser reads: `error_on_missing` only when set, since `false` is
+/// its default. The exhaustive destructuring is the point: a setting
+/// added to [`AggregateConfig`] fails to compile here until it is
+/// written.
+fn aggregate_entry(aggregate: &AggregateConfig) -> serde_yaml::Value {
+    let AggregateConfig {
+        function,
+        error_on_missing,
+        over,
+    } = aggregate;
+    let mut entry = serde_yaml::Mapping::new();
+    entry.insert(yaml_key("function"), yaml_key(&function.to_string()));
+    entry.insert(yaml_key("over"), yaml_key(over));
+    if *error_on_missing {
+        entry.insert(yaml_key("error_on_missing"), serde_yaml::Value::Bool(true));
+    }
+    serde_yaml::Value::Mapping(entry)
+}
+
+/// A numeric bound as the file spells it: an integer field's whole-number
+/// bound is written without a fraction (`min: 0`, not `min: 0.0`), a
+/// float field's bound keeps the shape the editor sent.
+fn numeric_bound(value: f64, field_type: FieldType) -> serde_yaml::Value {
+    if field_type == FieldType::Integer {
+        crate::yaml_tree::number(value)
+    } else {
+        serde_yaml::Value::Number(value.into())
+    }
+}
+
+/// `order` names every entry of `current` exactly once.
+fn check_permutation(current: &[String], order: &[String]) -> Result<(), SchemaWriteError> {
+    let invalid = |detail: String| SchemaWriteError::InvalidOrder { detail };
+    let mut seen: HashSet<&str> = HashSet::with_capacity(order.len());
+    for name in order {
+        if !current.contains(name) {
+            return Err(invalid(format!("'{name}' is not a field")));
+        }
+        if !seen.insert(name.as_str()) {
+            return Err(invalid(format!("'{name}' is listed twice")));
+        }
+    }
+    if let Some(missing) = current.iter().find(|name| !seen.contains(name.as_str())) {
+        return Err(invalid(format!("'{missing}' is missing")));
+    }
+    Ok(())
+}
+
+/// Serialize the edited tree, refuse it if it would not load, load the
+/// project against it, write atomically, and diff diagnostics to flag
+/// whether this write introduced a new problem.
+fn finalize(
+    context: WriteContext<'_>,
+    written: Written,
+) -> Result<SchemaWriteOutcome, SchemaWriteError> {
+    finalize_then_rewrite_items(context, written, None)
+}
+
+/// [`finalize`], then — when `drop_key_from_items` names a field — the
+/// rewrite of every item holding that key and a reload against the
+/// written schema, so the outcome's warnings are the ones that remain
+/// after both writes.
+fn finalize_then_rewrite_items(
+    context: WriteContext<'_>,
+    written: Written,
+    drop_key_from_items: Option<&str>,
+) -> Result<SchemaWriteOutcome, SchemaWriteError> {
+    let WriteContext {
+        config,
+        project_root,
+        config_path,
+        schema_path,
+        document,
+        items,
+        pre_diagnostics,
+        current: _,
+    } = context;
+    let candidate_text = serde_yaml::to_string(&document).map_err(SchemaWriteError::Serialize)?;
+
+    // The parser is the judge of the candidate: a schema that does not
+    // load would take every read of the project down with it, so it
+    // never reaches disk.
+    let candidate =
+        parse_schema(&candidate_text).map_err(|error| SchemaWriteError::Unloadable {
+            detail: error.to_string(),
+        })?;
+    let project = load_project_with_schema(config, project_root, config_path, candidate, None)?;
+
+    write_file_atomically(&schema_path, &candidate_text).map_err(|source| {
+        SchemaWriteError::WriteFile {
+            path: schema_path.clone(),
+            source,
+        }
+    })?;
+
+    let rewritten_items = match drop_key_from_items {
+        Some(key) => drop_key_from_item_files(&items, key, &project.schema),
+        None => Vec::new(),
+    };
+    // The items on disk changed, so the project loaded to judge the
+    // candidate no longer describes them.
+    let project = if rewritten_items.is_empty() {
+        project
+    } else {
+        load_project_with_schema(config, project_root, config_path, project.schema, None)?
+    };
+
+    let mutation_caused_warning = introduced_by_mutation(&pre_diagnostics, &project.diagnostics);
+    let (field_name, rule_name) = match written {
+        Written::Field(name) => (Some(name), None),
+        Written::Rule(name) => (None, Some(name)),
+        Written::Order => (None, None),
+    };
+    Ok(SchemaWriteOutcome {
+        path: schema_path,
+        field_name,
+        rule_name,
+        warnings: project.diagnostics,
+        mutation_caused_warning,
+        rewritten_items,
+    })
+}
+
+/// Rewrite every item whose file holds `key` without it, with the
+/// written schema deciding the key order; the ids rewritten, sorted. An
+/// item that cannot be read, parsed or written is logged and skipped:
+/// it still holds the key, and the reload after this reports it with
+/// the unknown-field warning.
+fn drop_key_from_item_files(items: &[WorkItem], key: &str, schema: &Schema) -> Vec<String> {
+    let mut rewritten_items = Vec::new();
+    for item in items {
+        match remove_frontmatter_key(&item.source_path, key, schema) {
+            Ok(true) => rewritten_items.push(item.id.to_string()),
+            Ok(false) => {}
+            Err(error) => tracing::warn!(
+                item = %item.id,
+                %error,
+                "could not drop field '{key}' from the item; it keeps the value"
+            ),
+        }
+    }
+    rewritten_items.sort();
+    rewritten_items
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::schema::{AggregateFunction, Generator};
+
+    fn definition(field_type: FieldType, shape: FieldShape) -> FieldDefinitionWrite {
+        FieldDefinitionWrite {
+            field_type,
+            required: false,
+            description: None,
+            default: None,
+            resource: None,
+            shape,
+            aggregate: None,
+            recipe: None,
+        }
+    }
+
+    fn keys(properties: &[(&'static str, serde_yaml::Value)]) -> Vec<&'static str> {
+        properties.iter().map(|(key, _)| *key).collect()
+    }
+
+    /// Every way a rule or a recipe can name a field: bare, as the
+    /// second segment of a dotted reference, as the relation walked
+    /// (directly or by its inverse), and as the field a pull reads.
+    const REFERENCING_SCHEMA: &str = "\
+fields:
+  id:
+    type: string
+  status:
+    type: choice
+    values: [open, done]
+  parent:
+    type: link
+    inverse: children
+    allow_cycles: false
+  depends_on:
+    type: links
+    allow_cycles: false
+  points:
+    type: integer
+  total:
+    type: integer
+    aggregate:
+      function: sum
+      over: parent
+  blocked_points:
+    type: integer
+    pull:
+      over: depends_on
+      field: points
+      function: sum
+rules:
+  - name: bare
+    require:
+      points: required
+  - name: through-children
+    match:
+      children.status: done
+    count:
+      min: 0
+  - name: counts-children
+    require:
+      children:
+        min_count: 1
+  - name: via-dependency
+    match:
+      depends_on.status: open
+    count:
+      min: 0
+  - name: unrelated
+    match:
+      id: x
+    count:
+      min: 0
+";
+
+    #[test]
+    fn rules_naming_field_resolves_bare_dotted_and_inverse_references() {
+        let schema = parse_schema(REFERENCING_SCHEMA).unwrap();
+        assert_eq!(rules_naming_field(&schema, "points"), vec!["bare"]);
+        assert_eq!(
+            rules_naming_field(&schema, "status"),
+            vec!["through-children", "via-dependency"]
+        );
+        assert_eq!(
+            rules_naming_field(&schema, "parent"),
+            vec!["through-children", "counts-children"]
+        );
+        assert_eq!(
+            rules_naming_field(&schema, "depends_on"),
+            vec!["via-dependency"]
+        );
+        assert!(rules_naming_field(&schema, "total").is_empty());
+    }
+
+    #[test]
+    fn recipes_naming_field_finds_the_relation_climbed_and_the_field_read() {
+        let schema = parse_schema(REFERENCING_SCHEMA).unwrap();
+        assert_eq!(recipes_naming_field(&schema, "parent"), vec!["total"]);
+        assert_eq!(
+            recipes_naming_field(&schema, "depends_on"),
+            vec!["blocked_points"]
+        );
+        assert_eq!(
+            recipes_naming_field(&schema, "points"),
+            vec!["blocked_points"]
+        );
+        assert!(recipes_naming_field(&schema, "status").is_empty());
+        assert!(
+            recipes_naming_field(&schema, "total").is_empty(),
+            "a field never names itself"
+        );
+    }
+
+    #[test]
+    fn properties_are_written_in_the_fixed_order() {
+        let mut full = definition(
+            FieldType::Choice,
+            FieldShape::Values {
+                values: vec!["a".to_owned()],
+            },
+        );
+        full.required = true;
+        full.default = Some(DefaultWrite::Literal {
+            value: serde_yaml::Value::String("a".to_owned()),
+        });
+        full.description = Some("d".to_owned());
+        full.resource = Some("r".to_owned());
+        full.aggregate = Some(AggregateConfig {
+            function: AggregateFunction::Count,
+            error_on_missing: false,
+            over: "parent".to_owned(),
+        });
+        full.recipe = Some(FieldRecipe::Pull(PullConfig {
+            over: "depends_on".to_owned(),
+            field: "points".to_owned(),
+            function: AggregateFunction::Count,
+            error_on_missing: false,
+        }));
+        assert_eq!(
+            keys(&written_properties(&full)),
+            [
+                "type",
+                "values",
+                "required",
+                "default",
+                "description",
+                "resource",
+                "pull",
+                "aggregate"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_compute_block_is_the_bare_expression_until_an_option_is_set() {
+        let bare = compute_entry("start + effort", RoundMode::Nearest, false);
+        assert_eq!(serde_yaml::to_string(&bare).unwrap(), "start + effort\n");
+
+        let rounded = compute_entry("start + effort", RoundMode::Ceil, false);
+        assert_eq!(
+            serde_yaml::to_string(&rounded).unwrap(),
+            "expression: start + effort\nround: ceil\n"
+        );
+
+        let strict = compute_entry("start + effort", RoundMode::Nearest, true);
+        assert_eq!(
+            serde_yaml::to_string(&strict).unwrap(),
+            "expression: start + effort\nerror_on_missing: true\n"
+        );
+    }
+
+    #[test]
+    fn the_when_block_is_one_if_then_mapping_per_branch_in_order() {
+        use crate::condition_shape::{ConditionLiteral, ConditionShape, Operand};
+        use crate::expression::ComparisonOperator;
+
+        let entry = when_entry(&[
+            WhenBranchData {
+                condition: ConditionShape::Row {
+                    left: Operand::Field {
+                        name: "status".to_owned(),
+                    },
+                    operator: ComparisonOperator::Equal,
+                    right: Operand::Literal {
+                        value: ConditionLiteral::Text("done".to_owned()),
+                    },
+                },
+                then: serde_yaml::Value::String("green".to_owned()),
+            },
+            WhenBranchData {
+                condition: ConditionShape::Text {
+                    source: "points + 1 > 3".to_owned(),
+                },
+                then: serde_yaml::Value::String("red".to_owned()),
+            },
+        ]);
+        assert_eq!(
+            serde_yaml::to_string(&entry).unwrap(),
+            "- if: status == \"done\"\n  then: green\n- if: points + 1 > 3\n  then: red\n"
+        );
+    }
+
+    #[test]
+    fn the_pull_block_is_written_in_its_shortest_form() {
+        let plain = pull_entry(&PullConfig {
+            over: "depends_on".to_owned(),
+            field: "end".to_owned(),
+            function: AggregateFunction::Max,
+            error_on_missing: false,
+        });
+        assert_eq!(
+            serde_yaml::to_string(&plain).unwrap(),
+            "over: depends_on\nfield: end\nfunction: max\n"
+        );
+
+        let strict = pull_entry(&PullConfig {
+            over: "depends_on".to_owned(),
+            field: "end".to_owned(),
+            function: AggregateFunction::Max,
+            error_on_missing: true,
+        });
+        assert_eq!(
+            serde_yaml::to_string(&strict).unwrap(),
+            "over: depends_on\nfield: end\nfunction: max\nerror_on_missing: true\n"
+        );
+    }
+
+    #[test]
+    fn the_aggregate_block_is_written_in_its_shortest_form() {
+        let plain = aggregate_entry(&AggregateConfig {
+            function: AggregateFunction::Sum,
+            error_on_missing: false,
+            over: "parent".to_owned(),
+        });
+        assert_eq!(
+            serde_yaml::to_string(&plain).unwrap(),
+            "function: sum\nover: parent\n"
+        );
+
+        let strict = aggregate_entry(&AggregateConfig {
+            function: AggregateFunction::Max,
+            error_on_missing: true,
+            over: "parent".to_owned(),
+        });
+        assert_eq!(
+            serde_yaml::to_string(&strict).unwrap(),
+            "function: max\nover: parent\nerror_on_missing: true\n"
+        );
+    }
+
+    #[test]
+    fn every_shape_spells_its_properties() {
+        let numeric = definition(
+            FieldType::Float,
+            FieldShape::Numeric {
+                min: Some(0.5),
+                max: None,
+            },
+        );
+        assert_eq!(
+            keys(&written_properties(&numeric)),
+            ["type", "min", "required"]
+        );
+
+        // A duration bound is written as the editor spelled it.
+        let duration = definition(
+            FieldType::Duration,
+            FieldShape::Duration {
+                min: Some("1h".to_owned()),
+                max: Some("2w 1d".to_owned()),
+            },
+        );
+        let properties = written_properties(&duration);
+        assert_eq!(properties[1].1, serde_yaml::Value::String("1h".to_owned()));
+        assert_eq!(
+            properties[2].1,
+            serde_yaml::Value::String("2w 1d".to_owned())
+        );
+
+        let text = definition(
+            FieldType::String,
+            FieldShape::Text {
+                pattern: Some("^x".to_owned()),
+            },
+        );
+        assert_eq!(
+            keys(&written_properties(&text)),
+            ["type", "pattern", "required"]
+        );
+
+        let relation = definition(
+            FieldType::Link,
+            FieldShape::Relation {
+                allow_cycles: Some(false),
+                inverse: Some("children".to_owned()),
+            },
+        );
+        assert_eq!(
+            keys(&written_properties(&relation)),
+            ["type", "allow_cycles", "inverse", "required"]
+        );
+
+        let scalar = definition(FieldType::Date, FieldShape::Scalar);
+        assert_eq!(keys(&written_properties(&scalar)), ["type", "required"]);
+    }
+
+    #[test]
+    fn a_generator_default_is_written_as_its_token() {
+        let mut with_generator = definition(FieldType::Date, FieldShape::Scalar);
+        with_generator.default = Some(DefaultWrite::Generator {
+            generator: Generator::Today,
+        });
+        let properties = written_properties(&with_generator);
+        assert_eq!(
+            properties[2],
+            ("default", serde_yaml::Value::String("$today".to_owned()))
+        );
+    }
+
+    #[test]
+    fn integer_bounds_lose_the_fraction_float_bounds_keep_it() {
+        assert_eq!(
+            numeric_bound(3.0, FieldType::Integer),
+            serde_yaml::Value::Number(3.into())
+        );
+        assert_eq!(
+            numeric_bound(3.0, FieldType::Float),
+            serde_yaml::Value::Number(3.0.into())
+        );
+        assert_eq!(
+            numeric_bound(2.5, FieldType::Integer),
+            serde_yaml::Value::Number(2.5.into())
+        );
+    }
+
+    #[test]
+    fn permutation_check_names_the_first_problem() {
+        let current = ["a".to_owned(), "b".to_owned()];
+        assert!(check_permutation(&current, &["b".to_owned(), "a".to_owned()]).is_ok());
+        for (order, expected) in [
+            (vec!["a".to_owned(), "c".to_owned()], "'c' is not a field"),
+            (vec!["a".to_owned(), "a".to_owned()], "'a' is listed twice"),
+            (vec!["a".to_owned()], "'b' is missing"),
+        ] {
+            let error = check_permutation(&current, &order).unwrap_err();
+            assert!(
+                matches!(&error, SchemaWriteError::InvalidOrder { detail } if detail == expected),
+                "{order:?}: {error}"
+            );
+        }
+    }
+}

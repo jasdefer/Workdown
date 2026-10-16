@@ -63,7 +63,10 @@ pub enum Severity {
 }
 
 /// Collection-wide count constraint.
-#[derive(Debug, Clone, Deserialize)]
+///
+/// Exported to TypeScript like [`Severity`]: the rules editor shows and
+/// sends it as is.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
 pub struct CountConstraint {
     /// At least this many items must match.

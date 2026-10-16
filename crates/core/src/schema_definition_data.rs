@@ -1,0 +1,1161 @@
+//! The schema as the schema editor sees it — every field's full
+//! persisted definition, every rule, and the type system's own tables:
+//! which properties a type accepts, which generators may default it,
+//! which aggregate functions apply, what a pull may read, what a
+//! formula may read.
+//!
+//! This is the second projection of a [`crate::model::schema::Schema`]
+//! for the web client.
+//! [`crate::schema_data`] is the *editing vocabulary* for item editors
+//! and stays small because every page fetches it; this one is the
+//! *schema editor's* payload, fetched only by the `/schema` page.
+//! Served by `GET /api/schema/definition`.
+//!
+//! Two properties of the build are deliberate (settled in
+//! `workdown-items/schema-definition-api.md`):
+//!
+//! - **It reads `schema.yaml` and nothing else.** No items, resources
+//!   or views are loaded: the payload needs none of them, and the
+//!   schema page then works while the items directory is broken —
+//!   exactly when someone wants to see the schema.
+//! - **Everything the editor edits is served as data**, never as YAML
+//!   text the browser would have to read: the type-specific settings
+//!   as a [`FieldShape`], `aggregate` as the parsed [`AggregateConfig`],
+//!   the recipe as a [`FieldRecipe`], a rule's body as the rows of
+//!   [`RuleShape`] (`schema-derived-field-editor`, decision 8). The one
+//!   text block is the body of a rule the rows cannot carry
+//!   ([`RuleShapeData::Unrepresentable`]), re-serialized from a generic
+//!   parse of the same bytes so the page can still show the file's
+//!   content; the text is normalized in form (comments inside it do not
+//!   survive), which is enough for display.
+//!
+//! Every type here carries a `ts_rs` derive; `cargo xtask gen-types`
+//! emits the TypeScript. A new type needs its `exports.add` line in
+//! `crates/core/examples/gen_types.rs`.
+
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+use strum::VariantArray;
+
+use crate::compute_check::expression_type_of;
+use crate::condition_shape::ConditionShape;
+use crate::expression::{ComparisonOperator, ExpressionType};
+use crate::model::duration::format_duration_seconds;
+use crate::model::schema::{
+    allowed_aggregate_functions, allowed_generators, field_property_allowed, pull_functions,
+    when_allowed, AggregateConfig, AggregateFunction, DefaultValue, FieldDefinition, FieldProperty,
+    FieldType, FieldTypeConfig, Generator, PullConfig, RoundMode, Severity,
+};
+use crate::parser::schema::{parse_schema_with_document, SchemaLoadError};
+use crate::project::LoadError;
+use crate::rule_shape::RuleShape;
+use crate::rules::assertion::ordering_defined;
+use crate::rules::condition::value_test_defined;
+
+// ── Wire types ────────────────────────────────────────────────────────
+
+/// Everything the schema page needs: the definitions as persisted, and
+/// the type system's tables so the client never hardcodes a fact about
+/// a type.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct SchemaDefinitionData {
+    /// Every field's full definition, in `schema.yaml` declaration
+    /// order — the order forms and boards use.
+    pub fields: Vec<FieldDefinitionData>,
+    /// Every rule, in file order.
+    pub rules: Vec<RuleData>,
+    /// Which type-restricted properties each type accepts, and which
+    /// shape it is edited as. One entry per [`FieldType`], in
+    /// declaration order. Header properties (`description`, `required`,
+    /// `default`) are valid everywhere and absent here; `resource` is
+    /// listed because only some types take it.
+    pub properties_by_type: Vec<FieldTypeProperties>,
+    /// Which aggregate functions reduce values of each type; an empty
+    /// list means the type cannot be aggregated or pulled at all.
+    pub aggregate_functions_by_type: Vec<FieldTypeAggregateFunctions>,
+    /// Which source types a `pull:` on a field of each type may read,
+    /// and with which functions: the reductions whose result the
+    /// field's type holds. One entry per [`FieldType`]; a type that
+    /// cannot be pulled into has no sources.
+    pub pull_sources_by_type: Vec<FieldTypePullSources>,
+    /// The types whose fields a formula may read: those with a place in
+    /// the expression algebra. In [`FieldType`] declaration order.
+    pub expression_readable_types: Vec<FieldType>,
+    /// The types a field may carry a `when:` recipe on, in [`FieldType`]
+    /// declaration order. Not in `properties_by_type`: the parser polices
+    /// `when` with its own check and its own message.
+    pub conditional_types: Vec<FieldType>,
+    /// The types a condition row may compare against a typed-in value:
+    /// those with a literal in the expression grammar, or equal to one
+    /// (a color to the text naming it). Opposite any other type the row
+    /// offers only fields, constants and `$today`. In [`FieldType`]
+    /// declaration order.
+    pub condition_literal_types: Vec<FieldType>,
+    /// The types a rule may test by value (`values`, `not`, a `match`
+    /// condition): those the rule engine compares a value of. In
+    /// [`FieldType`] declaration order.
+    pub rule_value_test_types: Vec<FieldType>,
+    /// The types a rule may compare field to field (`lt_field` and the
+    /// rest): those the rule engine has an order for. In [`FieldType`]
+    /// declaration order.
+    pub rule_comparable_types: Vec<FieldType>,
+    /// The comparison operators a condition row may use, each with the
+    /// symbol the grammar spells it as, in the grammar's order.
+    pub comparison_operators: Vec<ComparisonOperatorData>,
+    /// Which `$`-generators may be the `default:` of each type.
+    pub generators_by_type: Vec<FieldTypeGenerators>,
+}
+
+/// One field as `schema.yaml` defines it.
+///
+/// The header is common to every type; `shape` is the type-specific
+/// part, a tagged union so a combination the type system forbids (a
+/// choice with `min`) cannot be expressed on the wire in either
+/// direction.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct FieldDefinitionData {
+    /// The frontmatter key.
+    pub name: String,
+    /// The built-in type.
+    pub field_type: FieldType,
+    /// Whether every item must carry the field.
+    pub required: bool,
+    /// Human-readable explanation, as written.
+    pub description: Option<String>,
+    /// The `default:` applied at `workdown add` time, if any.
+    pub default: Option<DefaultData>,
+    /// Resource section in `resources.yaml` that constrains the values,
+    /// if any. A header property because it is not tied to one shape
+    /// (`string` and `list` both take it); `properties_by_type` says
+    /// which types accept it.
+    pub resource: Option<String>,
+    /// The type-specific properties.
+    pub shape: FieldShape,
+    /// The `aggregate:` block — what the editor's rollup section edits
+    /// and the write takes back. `None` for a field without a rollup.
+    pub aggregate: Option<AggregateConfig>,
+    /// The recipe that fills the field's value — what the editor's
+    /// "Value" selector edits and the write takes back. `None` for a
+    /// field set by hand.
+    pub recipe: Option<FieldRecipe>,
+}
+
+/// The type-specific part of a field definition. One variant per
+/// distinct property set, mirroring [`FieldTypeConfig`]; the `kind`
+/// tag names the editor block the web app renders.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, ts_rs::TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum FieldShape {
+    /// No type-specific properties: `date`, `color`, `boolean`, `list`.
+    Scalar,
+    /// `integer` and `float`: inclusive bounds.
+    Numeric { min: Option<f64>, max: Option<f64> },
+    /// `duration`: inclusive bounds as suffix shorthand (`"2d"`), the
+    /// spelling the file uses and the one a duration value travels in
+    /// (see [`crate::model::FieldValue::Duration`]). Served in canonical form; written
+    /// as sent and judged by the parser, so the grammar lives in Rust
+    /// alone and the editor needs no copy of it.
+    Duration {
+        min: Option<String>,
+        max: Option<String>,
+    },
+    /// `string`: an optional regex the value must match.
+    Text { pattern: Option<String> },
+    /// `choice` and `multichoice`: the allowed values, in order.
+    Values { values: Vec<String> },
+    /// `link` and `links`: cycle policy and the derived inverse name.
+    Relation {
+        allow_cycles: Option<bool>,
+        inverse: Option<String>,
+    },
+}
+
+/// A field's `default:`.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DefaultData {
+    /// A `$`-generator, applied when an item is created.
+    Generator { generator: Generator },
+    /// A literal as the file spells it — the same raw form a `when`
+    /// branch's `then` travels in and `DefaultWrite` takes back, so
+    /// the editor sees one spelling of a value in both directions. The
+    /// parser has already judged it against the field's type at load.
+    Literal {
+        #[ts(type = "unknown")]
+        value: serde_yaml::Value,
+    },
+}
+
+/// The way a field's value is derived rather than written: one of the
+/// recipes the parser makes mutually exclusive, `pull`, `compute` and
+/// `when`, as the editor edits it and the write takes it back. A
+/// tagged union, so the "Value" selector's choice and the block are
+/// one value and a field cannot carry two of them on the wire.
+/// `aggregate` is a separate block, because a rollup combines with any
+/// recipe.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, ts_rs::TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum FieldRecipe {
+    /// The `pull:` block: a field read through a forward link, reduced.
+    Pull(PullConfig),
+    /// The `when:` block: the branches in order, first match wins. The
+    /// fallback beside it is the field's `default`, served and written
+    /// through the same slot as an add-time default (a literal only;
+    /// the parser refuses a generator there).
+    When { branches: Vec<WhenBranchData> },
+    /// The `compute:` block: a formula over the item's own fields and
+    /// the project constants, as text (`schema-derived-field-editor`,
+    /// decision 1), with its options. `round` matters on `date` fields
+    /// only; the parser refuses it elsewhere.
+    Compute {
+        expression: String,
+        round: RoundMode,
+        error_on_missing: bool,
+    },
+}
+
+/// One `when:` branch as the editor edits it: the condition as a row or
+/// as text ([`crate::condition_shape`]), and the value the field takes
+/// when it is the first to hold.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, ts_rs::TS)]
+pub struct WhenBranchData {
+    pub condition: ConditionShape,
+    /// The `then:` literal as the file spells it — served from the
+    /// coerced value, written back as sent and judged by the parser,
+    /// which coerces it to the field's type. The value editor's output
+    /// for the field's own type.
+    #[ts(type = "unknown")]
+    pub then: serde_yaml::Value,
+}
+
+/// One comparison operator with the symbol the grammar spells it as,
+/// for the row editor's picker.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+pub struct ComparisonOperatorData {
+    pub operator: ComparisonOperator,
+    pub symbol: String,
+}
+
+/// One rule: its header as data, its body both as YAML text and as the
+/// rows the rules editor edits.
+///
+/// The header is what the rules list shows in columns. The body —
+/// `match`, `require`, `count` — is displayed as the file has it and
+/// edited as `shape`, built by [`crate::rule_shape`] from the parsed
+/// rule.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+pub struct RuleData {
+    /// Unique kebab-case identifier.
+    pub name: String,
+    /// Human-readable explanation, as written.
+    pub description: Option<String>,
+    /// Whether a violation is an error or a warning.
+    pub severity: Severity,
+    /// The rule mapping minus its header keys, serialized as YAML.
+    /// Empty when the rule has no body.
+    pub body: String,
+    /// The body as rows, or why it has none.
+    pub shape: RuleShapeData,
+}
+
+/// A rule's body as the editor needs it, or why it cannot have one.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RuleShapeData {
+    /// The body as rows: what the form edits and sends back.
+    Rows { shape: RuleShape },
+    /// The body holds what the rows cannot carry (a quantifier nested
+    /// in a quantifier, `required: false`); the client shows `body` as
+    /// text and offers removal only.
+    Unrepresentable { reason: String },
+}
+
+/// The type-restricted properties one type accepts, and the shape its
+/// fields carry.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+pub struct FieldTypeProperties {
+    pub field_type: FieldType,
+    pub properties: Vec<FieldProperty>,
+    /// The `kind` of the [`FieldShape`] every field of this type has.
+    /// Served so the editor can build the empty shape of a new field
+    /// without a type-to-shape table of its own.
+    pub shape_kind: ShapeKind,
+}
+
+/// The `kind` tag of a [`FieldShape`], on its own. The editor block a
+/// type's properties are edited in; one value per variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ts_rs::TS)]
+#[serde(rename_all = "snake_case")]
+pub enum ShapeKind {
+    Scalar,
+    Numeric,
+    Duration,
+    Text,
+    Values,
+    Relation,
+}
+
+impl ShapeKind {
+    /// The shape a field of `field_type` carries. The exhaustive `match`
+    /// is the point: a new [`FieldType`] fails to compile until it
+    /// chooses a shape. `FieldShape::from_config` is the same table
+    /// read off a parsed field; `tests::shape_kind_matches_every_shape`
+    /// keeps the two in step.
+    pub fn of(field_type: FieldType) -> Self {
+        match field_type {
+            FieldType::String => ShapeKind::Text,
+            FieldType::Choice | FieldType::Multichoice => ShapeKind::Values,
+            FieldType::Integer | FieldType::Float => ShapeKind::Numeric,
+            FieldType::Duration => ShapeKind::Duration,
+            FieldType::Date | FieldType::Color | FieldType::Boolean | FieldType::List => {
+                ShapeKind::Scalar
+            }
+            FieldType::Link | FieldType::Links => ShapeKind::Relation,
+        }
+    }
+}
+
+impl FieldShape {
+    /// This shape's `kind` tag.
+    pub fn kind(&self) -> ShapeKind {
+        match self {
+            FieldShape::Scalar => ShapeKind::Scalar,
+            FieldShape::Numeric { .. } => ShapeKind::Numeric,
+            FieldShape::Duration { .. } => ShapeKind::Duration,
+            FieldShape::Text { .. } => ShapeKind::Text,
+            FieldShape::Values { .. } => ShapeKind::Values,
+            FieldShape::Relation { .. } => ShapeKind::Relation,
+        }
+    }
+}
+
+/// The aggregate functions defined for one type.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+pub struct FieldTypeAggregateFunctions {
+    pub field_type: FieldType,
+    pub functions: Vec<AggregateFunction>,
+}
+
+/// What a `pull:` on a field of one type may read: the source types
+/// with a reduction into it, each with its functions.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+pub struct FieldTypePullSources {
+    pub field_type: FieldType,
+    /// Only the source types with at least one function, in
+    /// [`FieldType`] declaration order.
+    pub sources: Vec<PullSource>,
+}
+
+/// One source type a pull may read, with the functions that reduce it
+/// into the pulling field's type.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+pub struct PullSource {
+    pub field_type: FieldType,
+    pub functions: Vec<AggregateFunction>,
+}
+
+/// The generators that may default one type.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+pub struct FieldTypeGenerators {
+    pub field_type: FieldType,
+    pub generators: Vec<Generator>,
+}
+
+// ── Entry points ──────────────────────────────────────────────────────
+
+/// Read `schema_path` once and build the payload from those bytes.
+///
+/// A missing or unparseable file is the same hard failure
+/// [`crate::project::load_project`] reports for it, worded identically,
+/// so the web layer maps it to the `422` tier with the diagnostic the
+/// rest of the app shows.
+pub fn load(schema_path: &Path) -> Result<SchemaDefinitionData, LoadError> {
+    let schema_error = |detail: String| LoadError::Schema {
+        path: schema_path.to_path_buf(),
+        detail,
+    };
+    let yaml = std::fs::read_to_string(schema_path)
+        .map_err(|error| schema_error(SchemaLoadError::ReadFailed(error).to_string()))?;
+    build(&yaml).map_err(|error| schema_error(error.to_string()))
+}
+
+/// Build the payload from the text of a `schema.yaml`.
+///
+/// Parses it as a [`Schema`](crate::model::schema::Schema) (the
+/// validating parse) and again as a generic YAML tree, for the rule
+/// bodies shown as text.
+pub fn build(yaml: &str) -> Result<SchemaDefinitionData, SchemaLoadError> {
+    let (schema, document) = parse_schema_with_document(yaml)?;
+
+    let fields = schema
+        .fields
+        .iter()
+        .map(|(name, definition)| FieldDefinitionData::from_definition(name, definition))
+        .collect();
+
+    let raw_rules = document
+        .get("rules")
+        .and_then(serde_yaml::Value::as_sequence);
+    let rules = schema
+        .rules
+        .iter()
+        .enumerate()
+        .map(|(index, rule)| RuleData {
+            name: rule.name.clone(),
+            description: rule.description.clone(),
+            severity: rule.severity,
+            body: raw_rules
+                .and_then(|rules| rules.get(index))
+                .map(rule_body_yaml)
+                .unwrap_or_default(),
+            shape: match RuleShape::from_rule(rule) {
+                Ok(shape) => RuleShapeData::Rows { shape },
+                Err(reason) => RuleShapeData::Unrepresentable { reason },
+            },
+        })
+        .collect();
+
+    Ok(SchemaDefinitionData {
+        fields,
+        rules,
+        properties_by_type: FieldType::VARIANTS
+            .iter()
+            .map(|&field_type| FieldTypeProperties {
+                field_type,
+                properties: FieldProperty::VARIANTS
+                    .iter()
+                    .copied()
+                    .filter(|&property| field_property_allowed(field_type, property))
+                    .collect(),
+                shape_kind: ShapeKind::of(field_type),
+            })
+            .collect(),
+        aggregate_functions_by_type: FieldType::VARIANTS
+            .iter()
+            .map(|&field_type| FieldTypeAggregateFunctions {
+                field_type,
+                functions: allowed_aggregate_functions(field_type)
+                    .map(<[AggregateFunction]>::to_vec)
+                    .unwrap_or_default(),
+            })
+            .collect(),
+        pull_sources_by_type: FieldType::VARIANTS
+            .iter()
+            .map(|&field_type| FieldTypePullSources {
+                field_type,
+                sources: FieldType::VARIANTS
+                    .iter()
+                    .map(|&source_type| PullSource {
+                        field_type: source_type,
+                        functions: pull_functions(source_type, field_type),
+                    })
+                    .filter(|source| !source.functions.is_empty())
+                    .collect(),
+            })
+            .collect(),
+        expression_readable_types: FieldType::VARIANTS
+            .iter()
+            .copied()
+            .filter(|&field_type| expression_type_of(field_type).is_some())
+            .collect(),
+        conditional_types: FieldType::VARIANTS
+            .iter()
+            .copied()
+            .filter(|&field_type| when_allowed(field_type))
+            .collect(),
+        condition_literal_types: FieldType::VARIANTS
+            .iter()
+            .copied()
+            .filter(|&field_type| {
+                expression_type_of(field_type).is_some_and(ExpressionType::faces_a_literal)
+            })
+            .collect(),
+        rule_value_test_types: FieldType::VARIANTS
+            .iter()
+            .copied()
+            .filter(|&field_type| value_test_defined(field_type))
+            .collect(),
+        rule_comparable_types: FieldType::VARIANTS
+            .iter()
+            .copied()
+            .filter(|&field_type| ordering_defined(field_type))
+            .collect(),
+        comparison_operators: ComparisonOperator::VARIANTS
+            .iter()
+            .map(|&operator| ComparisonOperatorData {
+                operator,
+                symbol: operator.to_string(),
+            })
+            .collect(),
+        generators_by_type: FieldType::VARIANTS
+            .iter()
+            .map(|&field_type| FieldTypeGenerators {
+                field_type,
+                generators: allowed_generators(field_type).to_vec(),
+            })
+            .collect(),
+    })
+}
+
+// ── Projection ────────────────────────────────────────────────────────
+
+impl FieldDefinitionData {
+    /// Project one typed definition.
+    fn from_definition(name: &str, definition: &FieldDefinition) -> Self {
+        Self {
+            name: name.to_owned(),
+            field_type: definition.field_type(),
+            required: definition.required,
+            description: definition.description.clone(),
+            default: default_data(definition),
+            resource: definition.resource.clone(),
+            shape: FieldShape::from_config(&definition.type_config),
+            aggregate: definition.aggregate.clone(),
+            recipe: recipe_of(definition),
+        }
+    }
+}
+
+/// The recipe the typed definition carries, as the editor edits it.
+/// The parser makes the three exclusive, so at most one is set.
+fn recipe_of(definition: &FieldDefinition) -> Option<FieldRecipe> {
+    if let Some(pull) = &definition.pull {
+        return Some(FieldRecipe::Pull(pull.clone()));
+    }
+    if let Some(when) = &definition.when {
+        return Some(FieldRecipe::When {
+            branches: when
+                .branches
+                .iter()
+                .map(|branch| WhenBranchData {
+                    condition: ConditionShape::of(&branch.condition, &branch.condition_source),
+                    then: branch.value.to_yaml(),
+                })
+                .collect(),
+        });
+    }
+    definition
+        .compute
+        .as_ref()
+        .map(|compute| FieldRecipe::Compute {
+            expression: compute.source.clone(),
+            round: compute.round,
+            error_on_missing: compute.error_on_missing,
+        })
+}
+
+impl FieldShape {
+    fn from_config(config: &FieldTypeConfig) -> Self {
+        match config {
+            FieldTypeConfig::String { pattern } => FieldShape::Text {
+                pattern: pattern.as_ref().map(|pattern| pattern.source().to_owned()),
+            },
+            FieldTypeConfig::Choice { values } | FieldTypeConfig::Multichoice { values } => {
+                FieldShape::Values {
+                    values: values.clone(),
+                }
+            }
+            FieldTypeConfig::Integer { min, max } | FieldTypeConfig::Float { min, max } => {
+                FieldShape::Numeric {
+                    min: *min,
+                    max: *max,
+                }
+            }
+            FieldTypeConfig::Duration { min, max } => FieldShape::Duration {
+                min: min.map(format_duration_seconds),
+                max: max.map(format_duration_seconds),
+            },
+            FieldTypeConfig::Date
+            | FieldTypeConfig::Color
+            | FieldTypeConfig::Boolean
+            | FieldTypeConfig::List => FieldShape::Scalar,
+            FieldTypeConfig::Link {
+                allow_cycles,
+                inverse,
+            }
+            | FieldTypeConfig::Links {
+                allow_cycles,
+                inverse,
+            } => FieldShape::Relation {
+                allow_cycles: *allow_cycles,
+                inverse: inverse.clone(),
+            },
+        }
+    }
+}
+
+/// The field's `default:` on the wire: a literal is run through the
+/// field's own coercion so the client gets a typed value.
+fn default_data(definition: &FieldDefinition) -> Option<DefaultData> {
+    // Beside `when`, the parser moved the default into the config as the
+    // evaluated fallback, already coerced; it is served through the same
+    // slot, so the editor's default control edits it as the fallback.
+    if let Some(when) = &definition.when {
+        return when.default.as_ref().map(|value| DefaultData::Literal {
+            value: value.to_yaml(),
+        });
+    }
+    Some(match definition.default.as_ref()? {
+        DefaultValue::Generator(generator) => DefaultData::Generator {
+            generator: *generator,
+        },
+        literal => DefaultData::Literal {
+            value: literal.literal_as_yaml(),
+        },
+    })
+}
+
+/// A YAML value as text, without the trailing newline the serializer
+/// adds. A scalar comes back as its bare spelling.
+fn yaml_text(value: &serde_yaml::Value) -> String {
+    serde_yaml::to_string(value)
+        .map(|text| text.trim_end().to_owned())
+        .unwrap_or_default()
+}
+
+/// A rule mapping minus the header keys the [`RuleData`] carries as
+/// data, as YAML text; empty when nothing else is set.
+fn rule_body_yaml(raw_rule: &serde_yaml::Value) -> String {
+    let Some(mapping) = raw_rule.as_mapping() else {
+        return String::new();
+    };
+    let mut body = mapping.clone();
+    for header_key in ["name", "description", "severity"] {
+        body.shift_remove(serde_yaml::Value::String(header_key.to_owned()));
+    }
+    if body.is_empty() {
+        return String::new();
+    }
+    yaml_text(&serde_yaml::Value::Mapping(body))
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One field per shape, every default kind, every derived block,
+    /// and two rules — the input space `build` distinguishes.
+    const SCHEMA_YAML: &str = "\
+fields:
+  id:
+    type: string
+    default: $filename
+    # a comment inside the entry
+  title:
+    type: string
+    pattern: '^[A-Z]'
+    resource: titles
+  status:
+    type: choice
+    values: [open, done]
+    required: true
+    default: open
+  tags:
+    type: multichoice
+    values: [a, b]
+  points:
+    type: integer
+    min: 0
+    max: 100
+    default: 3
+  ratio:
+    type: float
+    default: 1.5
+  effort:
+    type: duration
+    min: 1h
+    max: 15d
+  when_done:
+    type: date
+    compute:
+      expression: start + effort
+      round: ceil
+  start:
+    type: date
+    default: 2026-03-01
+  flag:
+    type: boolean
+    default: true
+  color:
+    type: color
+    when:
+      - if: status == \"done\"
+        then: green
+      - if: points + 1 > 3
+        then: red
+    default: gray
+  labels:
+    type: list
+  parent:
+    type: link
+    allow_cycles: false
+    inverse: children
+  depends_on:
+    type: links
+    allow_cycles: false
+  total:
+    type: integer
+    aggregate:
+      function: sum
+      over: parent
+  earliest:
+    type: date
+    pull:
+      over: depends_on
+      field: start
+      function: min
+rules:
+  - name: done-needs-points
+    description: Finished work is sized
+    match:
+      status: done
+    require:
+      points: required
+  - name: at-least-one
+    severity: warning
+    count:
+      min: 1
+";
+
+    fn built() -> SchemaDefinitionData {
+        build(SCHEMA_YAML).expect("the test schema loads")
+    }
+
+    fn field<'a>(data: &'a SchemaDefinitionData, name: &str) -> &'a FieldDefinitionData {
+        data.fields
+            .iter()
+            .find(|field| field.name == name)
+            .unwrap_or_else(|| panic!("field {name} is in the payload"))
+    }
+
+    #[test]
+    fn fields_come_in_declaration_order() {
+        let data = built();
+        let names: Vec<&str> = data.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "id",
+                "title",
+                "status",
+                "tags",
+                "points",
+                "ratio",
+                "effort",
+                "when_done",
+                "start",
+                "flag",
+                "color",
+                "labels",
+                "parent",
+                "depends_on",
+                "total",
+                "earliest",
+            ]
+        );
+    }
+
+    #[test]
+    fn every_shape_is_projected_from_its_type_config() {
+        let data = built();
+        assert_eq!(
+            field(&data, "title").shape,
+            FieldShape::Text {
+                pattern: Some("^[A-Z]".to_owned())
+            }
+        );
+        assert_eq!(field(&data, "title").resource.as_deref(), Some("titles"));
+        assert_eq!(
+            field(&data, "status").shape,
+            FieldShape::Values {
+                values: vec!["open".to_owned(), "done".to_owned()]
+            }
+        );
+        assert!(field(&data, "status").required);
+        assert_eq!(
+            field(&data, "tags").shape,
+            FieldShape::Values {
+                values: vec!["a".to_owned(), "b".to_owned()]
+            }
+        );
+        assert_eq!(
+            field(&data, "points").shape,
+            FieldShape::Numeric {
+                min: Some(0.0),
+                max: Some(100.0)
+            }
+        );
+        assert_eq!(
+            field(&data, "effort").shape,
+            FieldShape::Duration {
+                min: Some("1h".to_owned()),
+                // Served in canonical form, whatever the file spells.
+                max: Some("2w 1d".to_owned()),
+            }
+        );
+        for scalar in ["start", "flag", "color", "labels"] {
+            assert_eq!(field(&data, scalar).shape, FieldShape::Scalar, "{scalar}");
+        }
+        assert_eq!(
+            field(&data, "parent").shape,
+            FieldShape::Relation {
+                allow_cycles: Some(false),
+                inverse: Some("children".to_owned()),
+            }
+        );
+        assert_eq!(
+            field(&data, "depends_on").shape,
+            FieldShape::Relation {
+                allow_cycles: Some(false),
+                inverse: None,
+            }
+        );
+    }
+
+    #[test]
+    fn defaults_are_generator_or_literal() {
+        let data = built();
+        assert_eq!(
+            field(&data, "id").default,
+            Some(DefaultData::Generator {
+                generator: Generator::Filename
+            })
+        );
+        let literal = |value: serde_yaml::Value| Some(DefaultData::Literal { value });
+        assert_eq!(
+            field(&data, "status").default,
+            literal(serde_yaml::Value::String("open".to_owned()))
+        );
+        assert_eq!(
+            field(&data, "points").default,
+            literal(serde_yaml::Value::Number(3.into()))
+        );
+        assert_eq!(
+            field(&data, "ratio").default,
+            literal(serde_yaml::Value::Number(1.5.into()))
+        );
+        assert_eq!(
+            field(&data, "flag").default,
+            literal(serde_yaml::Value::Bool(true))
+        );
+        // A date default is served as the file spells it, like a
+        // branch's `then`.
+        assert_eq!(
+            field(&data, "start").default,
+            literal(serde_yaml::Value::String("2026-03-01".to_owned()))
+        );
+        assert_eq!(field(&data, "title").default, None);
+    }
+
+    #[test]
+    fn the_aggregate_block_is_served_as_data() {
+        let data = built();
+        assert_eq!(
+            field(&data, "total").aggregate,
+            Some(AggregateConfig {
+                function: AggregateFunction::Sum,
+                error_on_missing: false,
+                over: "parent".to_owned(),
+            })
+        );
+        assert_eq!(field(&data, "title").aggregate, None);
+    }
+
+    #[test]
+    fn the_when_block_is_served_as_rows_or_text_with_its_fallback_as_the_default() {
+        use crate::condition_shape::{ConditionLiteral, Operand};
+
+        let data = built();
+        assert_eq!(
+            field(&data, "color").recipe,
+            Some(FieldRecipe::When {
+                branches: vec![
+                    WhenBranchData {
+                        condition: ConditionShape::Row {
+                            left: Operand::Field {
+                                name: "status".to_owned()
+                            },
+                            operator: ComparisonOperator::Equal,
+                            right: Operand::Literal {
+                                value: ConditionLiteral::Text("done".to_owned())
+                            },
+                        },
+                        then: serde_yaml::Value::String("green".to_owned()),
+                    },
+                    WhenBranchData {
+                        condition: ConditionShape::Text {
+                            source: "points + 1 > 3".to_owned()
+                        },
+                        then: serde_yaml::Value::String("red".to_owned()),
+                    },
+                ],
+            })
+        );
+        assert_eq!(
+            field(&data, "color").default,
+            Some(DefaultData::Literal {
+                value: serde_yaml::Value::String("gray".to_owned())
+            })
+        );
+        let as_json = serde_json::to_value(field(&data, "color").recipe.as_ref()).unwrap();
+        assert_eq!(as_json["kind"], "when");
+        assert_eq!(as_json["branches"][0]["condition"]["kind"], "row");
+        assert_eq!(as_json["branches"][1]["condition"]["kind"], "text");
+
+        assert!(data.conditional_types.contains(&FieldType::Color));
+        assert!(!data.conditional_types.contains(&FieldType::Link));
+        assert_eq!(
+            data.comparison_operators[0],
+            ComparisonOperatorData {
+                operator: ComparisonOperator::Equal,
+                symbol: "==".to_owned()
+            }
+        );
+        assert_eq!(data.comparison_operators.len(), 6);
+    }
+
+    #[test]
+    fn the_pull_and_compute_blocks_are_served_as_the_recipe() {
+        let data = built();
+        assert_eq!(
+            field(&data, "earliest").recipe,
+            Some(FieldRecipe::Pull(PullConfig {
+                over: "depends_on".to_owned(),
+                field: "start".to_owned(),
+                function: AggregateFunction::Min,
+                error_on_missing: false,
+            }))
+        );
+        assert_eq!(
+            field(&data, "when_done").recipe,
+            Some(FieldRecipe::Compute {
+                expression: "start + effort".to_owned(),
+                round: RoundMode::Ceil,
+                error_on_missing: false,
+            })
+        );
+        assert_eq!(field(&data, "total").recipe, None);
+        let as_json =
+            |name: &str| serde_json::to_value(field(&data, name).recipe.as_ref()).unwrap();
+        assert_eq!(as_json("earliest")["kind"], "pull");
+        assert_eq!(as_json("when_done")["kind"], "compute");
+        assert_eq!(as_json("when_done")["round"], "ceil");
+    }
+
+    #[test]
+    fn the_rule_editors_type_lists_come_from_the_engine_and_the_grammar() {
+        let data = built();
+        assert_eq!(
+            data.condition_literal_types,
+            vec![
+                FieldType::String,
+                FieldType::Choice,
+                FieldType::Integer,
+                FieldType::Float,
+                FieldType::Color,
+                FieldType::Boolean
+            ]
+        );
+        // Everything the engine can test by value: all but color.
+        assert_eq!(
+            data.rule_value_test_types.len(),
+            FieldType::VARIANTS.len() - 1
+        );
+        assert!(!data.rule_value_test_types.contains(&FieldType::Color));
+        assert_eq!(
+            data.rule_comparable_types,
+            vec![
+                FieldType::String,
+                FieldType::Integer,
+                FieldType::Float,
+                FieldType::Date,
+                FieldType::Duration,
+                FieldType::Boolean
+            ]
+        );
+    }
+
+    #[test]
+    fn a_formula_may_read_the_types_with_a_place_in_the_algebra() {
+        let data = built();
+        assert_eq!(
+            data.expression_readable_types,
+            vec![
+                FieldType::String,
+                FieldType::Choice,
+                FieldType::Integer,
+                FieldType::Float,
+                FieldType::Date,
+                FieldType::Duration,
+                FieldType::Color,
+                FieldType::Boolean
+            ]
+        );
+    }
+
+    #[test]
+    fn pull_sources_list_the_source_types_whose_reduction_fits_the_field() {
+        let data = built();
+        let sources = |field_type| {
+            data.pull_sources_by_type
+                .iter()
+                .find(|row| row.field_type == field_type)
+                .unwrap()
+                .sources
+                .clone()
+        };
+        assert_eq!(data.pull_sources_by_type.len(), FieldType::VARIANTS.len());
+        assert_eq!(
+            sources(FieldType::Date),
+            vec![PullSource {
+                field_type: FieldType::Date,
+                functions: vec![
+                    AggregateFunction::Min,
+                    AggregateFunction::Max,
+                    AggregateFunction::Average
+                ],
+            }]
+        );
+        // A count of anything reducible is an integer.
+        assert_eq!(
+            sources(FieldType::Integer)
+                .iter()
+                .map(|source| source.field_type)
+                .collect::<Vec<_>>(),
+            vec![
+                FieldType::Integer,
+                FieldType::Float,
+                FieldType::Duration,
+                FieldType::Boolean
+            ]
+        );
+        assert!(sources(FieldType::Choice).is_empty());
+    }
+
+    #[test]
+    fn rules_carry_header_as_data_and_body_as_yaml_and_rows() {
+        use crate::rule_shape::{MatchRow, RequireRow, RequireTest, ScalarTest, ScalarValue};
+
+        let data = built();
+        assert_eq!(data.rules.len(), 2);
+        assert_eq!(
+            data.rules[0],
+            RuleData {
+                name: "done-needs-points".to_owned(),
+                description: Some("Finished work is sized".to_owned()),
+                severity: Severity::Error,
+                body: "match:\n  status: done\nrequire:\n  points: required".to_owned(),
+                shape: RuleShapeData::Rows {
+                    shape: RuleShape {
+                        match_rows: vec![MatchRow {
+                            reference: "status".to_owned(),
+                            quantifier: None,
+                            test: ScalarTest::Equals {
+                                value: ScalarValue::Text("done".to_owned()),
+                            },
+                        }],
+                        require_rows: vec![RequireRow {
+                            reference: "points".to_owned(),
+                            test: RequireTest::Required,
+                        }],
+                        count: None,
+                    }
+                },
+            }
+        );
+        assert_eq!(data.rules[1].severity, Severity::Warning);
+        assert_eq!(data.rules[1].body, "count:\n  min: 1");
+        assert!(matches!(
+            &data.rules[1].shape,
+            RuleShapeData::Rows { shape } if shape.count.as_ref().and_then(|count| count.min) == Some(1)
+        ));
+    }
+
+    #[test]
+    fn a_rule_with_only_a_header_has_an_empty_body() {
+        let mapping: serde_yaml::Value =
+            serde_yaml::from_str("name: bare\nseverity: warning\n").unwrap();
+        assert_eq!(rule_body_yaml(&mapping), "");
+    }
+
+    #[test]
+    fn tables_cover_every_field_type_from_the_model() {
+        let data = built();
+        let types: Vec<FieldType> = FieldType::VARIANTS.to_vec();
+        assert_eq!(
+            data.properties_by_type
+                .iter()
+                .map(|row| row.field_type)
+                .collect::<Vec<_>>(),
+            types
+        );
+        assert_eq!(data.aggregate_functions_by_type.len(), types.len());
+        assert_eq!(data.generators_by_type.len(), types.len());
+
+        let row = |rows: &[FieldTypeProperties], field_type| {
+            rows.iter()
+                .find(|row| row.field_type == field_type)
+                .unwrap()
+                .properties
+                .clone()
+        };
+        assert_eq!(
+            row(&data.properties_by_type, FieldType::Choice),
+            vec![FieldProperty::Values]
+        );
+        assert!(
+            row(&data.properties_by_type, FieldType::Integer).contains(&FieldProperty::Aggregate)
+        );
+        let shape_kind = |field_type| {
+            data.properties_by_type
+                .iter()
+                .find(|row| row.field_type == field_type)
+                .unwrap()
+                .shape_kind
+        };
+        assert_eq!(shape_kind(FieldType::Duration), ShapeKind::Duration);
+        assert_eq!(shape_kind(FieldType::Integer), ShapeKind::Numeric);
+
+        let generators = data
+            .generators_by_type
+            .iter()
+            .find(|row| row.field_type == FieldType::Date)
+            .unwrap();
+        assert_eq!(generators.generators, vec![Generator::Today]);
+
+        let functions = data
+            .aggregate_functions_by_type
+            .iter()
+            .find(|row| row.field_type == FieldType::Choice)
+            .unwrap();
+        assert!(functions.functions.is_empty());
+    }
+
+    /// The per-type table and the shape read off a parsed field are two
+    /// spellings of one fact; the fixture has a field of every type.
+    #[test]
+    fn shape_kind_matches_every_shape() {
+        let data = built();
+        for field_type in FieldType::VARIANTS {
+            let field = data
+                .fields
+                .iter()
+                .find(|field| field.field_type == *field_type)
+                .unwrap_or_else(|| panic!("the fixture has a {field_type:?} field"));
+            assert_eq!(
+                field.shape.kind(),
+                ShapeKind::of(*field_type),
+                "{field_type:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_invalid_schema_is_the_parser_error() {
+        let error = build("fields:\n  x:\n    type: choice\n").unwrap_err();
+        assert!(matches!(error, SchemaLoadError::Validation(_)), "{error}");
+    }
+}

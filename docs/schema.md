@@ -23,8 +23,8 @@ Field names are lowercase letters, digits, and underscores, starting with a lett
 | Type | Description | Type-specific options |
 |------|-------------|---------------------|
 | `string` | Free text | `pattern` (regex) |
-| `choice` | Pick one from a list | `values` (required) |
-| `multichoice` | Pick zero or more from a list | `values` (required) |
+| `choice` | Pick one from a list | `values` (required; each value once, none blank) |
+| `multichoice` | Pick zero or more from a list | `values` (required; each value once, none blank) |
 | `integer` | Whole number | `min`, `max` |
 | `float` | Decimal number | `min`, `max` |
 | `date` | Calendar date (YYYY-MM-DD) | |
@@ -41,7 +41,7 @@ Field names are lowercase letters, digits, and underscores, starting with a lett
 |--------|------|-------------|
 | `type` | string | Required. One of the types above. |
 | `required` | boolean | Whether the field must be present. Default: `false`. |
-| `default` | value | Default value applied by `workdown add`. Can be a literal or a generator. |
+| `default` | value | Default value applied by `workdown add`. Can be a literal or a generator. A literal must be a value the field accepts (its type, `values`, `min`/`max`, `pattern`); one that is not fails at load. |
 | `description` | string | Human-readable explanation. |
 | `resource` | string | Name of a resource section in `resources.yaml`. Valid for `string` and `list` types. See [Resources](#resources). |
 | `aggregate` | object | Aggregation config for computed fields (see below). |
@@ -232,6 +232,42 @@ Missing inputs are **all-or-nothing**: if any linked item lacks the source field
 Composition mirrors the other mechanisms: `pull` is mutually exclusive with `compute` and `when` on one field, and cannot be combined with `default`. `pull` + `aggregate` means the pull fills *leaf* items of the rollup hierarchy and the aggregate fills everything above — a milestone's `start` is the `min` of its children, and a `depends_on` on the milestone itself does not feed its own start (its children's dependencies already carry the constraints). Dependencies may point at items whose source value is itself aggregated or computed; all derived values share one dependency graph and evaluate in the right order.
 
 Cycles: a dependency loop within the `over` link field is reported by the cycle detector (that is why `allow_cycles: false` is required); items on the loop simply receive no pulled value. A loop that only the *combination* of link fields produces — two pull fields over two different link graphs that are only jointly cyclic — gets its own diagnostic naming the `item.field` chain.
+
+### Scheduling recipe
+
+The three mechanisms above compose into a schedule that needs almost no input. Paste this next to the default schema's `parent` and `depends_on` fields (both already declare `allow_cycles: false`, and `parent` is the hierarchy the rollups climb):
+
+```yaml
+fields:
+  duration:
+    type: duration
+    required: false
+
+  start_date:
+    type: date
+    required: false
+    pull:
+      over: depends_on     # follow dependencies forward
+      field: end_date      # read when each dependency ends
+      function: max        # start when the last one ends
+    aggregate:
+      function: min        # a parent starts with its first child
+      over: parent
+      error_on_missing: false
+
+  end_date:
+    type: date
+    required: false
+    compute: start_date + duration
+    aggregate:
+      function: max        # a parent ends with its last child
+      over: parent
+      error_on_missing: false
+```
+
+On every leaf item set `duration` and, where it has one, `depends_on`; write `start_date` by hand only on items with no dependencies. Everything else derives: `end_date` computes from `start_date + duration`, a dependent pulls its `start_date` from its dependencies' `end_date`, and every parent's `start_date` and `end_date` roll up from its children. A hand-written value anywhere wins over the derived one. Keep each field defined once — `compute` and `aggregate` sit on the *same* `end_date` definition, so compute fills leaves and the rollup fills parents.
+
+A branch such as `- if: end_date < $today` then `then: red` on a `when:` color field makes the schedule visible on every card; it makes rendered output depend on the day the command runs, so pin with `--as-of <date>` for reproducible renders.
 
 ---
 

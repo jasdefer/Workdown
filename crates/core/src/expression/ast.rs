@@ -1,5 +1,7 @@
 //! The expression tree produced by [`crate::expression::parse_expression`].
 
+use serde::{Deserialize, Serialize};
+
 /// A half-open byte range into the expression source string. Carried by
 /// every token and tree node so any later pass — type checking today,
 /// evaluation tomorrow — can point its errors at the exact spot in the
@@ -161,7 +163,14 @@ impl std::fmt::Display for BinaryOperator {
 /// The six comparison operators. All produce a boolean; the ordering
 /// four apply to types with a meaningful order, equality additionally
 /// to text, boolean, and color.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// On the wire in `snake_case` (`greater_or_equal`), for the field
+/// editor's condition rows; `Display` is the grammar's symbol, and
+/// `VariantArray` lists them for the operator picker.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, strum::VariantArray,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum ComparisonOperator {
     Equal,
     NotEqual,

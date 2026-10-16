@@ -474,18 +474,46 @@ pub enum DefaultValue {
     Generator(Generator),
 }
 
+impl DefaultValue {
+    /// A literal default as the raw YAML value the coercion layer
+    /// accepts, so it can be judged like a value written on an item.
+    /// Callers exclude the generator variant beforehand; it yields
+    /// `Null`.
+    pub fn literal_as_yaml(&self) -> serde_yaml::Value {
+        match self {
+            DefaultValue::String(text) => serde_yaml::Value::String(text.clone()),
+            DefaultValue::Integer(number) => serde_yaml::Value::Number((*number).into()),
+            DefaultValue::Float(number) => serde_yaml::Value::Number((*number).into()),
+            DefaultValue::Bool(flag) => serde_yaml::Value::Bool(*flag),
+            DefaultValue::Generator(_) => serde_yaml::Value::Null,
+        }
+    }
+}
+
 /// Built-in generators that produce default values at `workdown add` time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Serializes as the `$`-prefixed token the generator is written as in
+/// `schema.yaml`, so the web app sees the same spelling the file uses;
+/// a unit test pins each serde name to [`Generator::token`].
+/// `VariantArray` supplies `Generator::VARIANTS` for the type tables.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS, strum::VariantArray,
+)]
 pub enum Generator {
     /// Filename without `.md` extension.
+    #[serde(rename = "$filename")]
     Filename,
     /// Prettified filename (hyphens to spaces, title case).
+    #[serde(rename = "$filename_pretty")]
     FilenamePretty,
     /// Random UUID.
+    #[serde(rename = "$uuid")]
     Uuid,
     /// Today's date in `YYYY-MM-DD` format.
+    #[serde(rename = "$today")]
     Today,
     /// One more than the current maximum value of this field across all items.
+    #[serde(rename = "$max_plus_one")]
     MaxPlusOne,
 }
 
@@ -540,7 +568,12 @@ impl<'de> Deserialize<'de> for DefaultValue {
 
 /// Configuration for an aggregated field (cross-item, same field —
 /// values roll up a link chain).
-#[derive(Debug, Clone, Deserialize)]
+///
+/// Also the wire type the schema editor reads and writes the block as
+/// (`GET /api/schema/definition`, the field writes), so the three
+/// settings are spelled once; `cargo xtask gen-types` emits the
+/// TypeScript.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
 pub struct AggregateConfig {
     /// The aggregation function.
@@ -558,7 +591,10 @@ pub struct AggregateConfig {
 }
 
 /// Available aggregation functions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+///
+/// Serialized (lowercase, matching `Display`) so the per-type function
+/// table can be served to the web app; a unit test pins the two names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
 pub enum AggregateFunction {
     Sum,
@@ -591,10 +627,9 @@ impl std::fmt::Display for AggregateFunction {
 
 /// The aggregate functions defined for values of `field_type`, or
 /// `None` when the type cannot be reduced at all. Shared by the
-/// aggregate and pull config checks.
-pub(crate) fn allowed_aggregate_functions(
-    field_type: FieldType,
-) -> Option<&'static [AggregateFunction]> {
+/// aggregate and pull config checks, and served to the web app by
+/// [`crate::schema_definition_data`].
+pub fn allowed_aggregate_functions(field_type: FieldType) -> Option<&'static [AggregateFunction]> {
     match field_type {
         FieldType::Integer | FieldType::Float | FieldType::Duration => Some(&[
             AggregateFunction::Sum,
@@ -645,6 +680,40 @@ pub(crate) fn aggregate_result_type(
     }
 }
 
+/// Whether a reduction producing `result_type` may land in a field
+/// declared `declared_type`: the same type, or a whole number in a
+/// `float` field. The one place this is spelled; the pull check and the
+/// pull-source table the web app is served both ask here.
+pub(crate) fn aggregate_result_fits(result_type: FieldType, declared_type: FieldType) -> bool {
+    result_type == declared_type
+        || (result_type == FieldType::Integer && declared_type == FieldType::Float)
+}
+
+/// Whether a field of `field_type` may carry a `when:` recipe. Every
+/// type but the relations: reverse links and broken-link detection are
+/// built from hand-written values before the derive passes run, so a
+/// derived link would be invisible to them. The parser's check and the
+/// type list the web app is served both ask here.
+pub fn when_allowed(field_type: FieldType) -> bool {
+    !matches!(field_type, FieldType::Link | FieldType::Links)
+}
+
+/// The functions that reduce values of `source_type` into a field
+/// declared `declared_type` — what a `pull:` on such a field may name
+/// for a source of that type, in the order [`allowed_aggregate_functions`]
+/// lists them. Empty when nothing fits.
+pub fn pull_functions(source_type: FieldType, declared_type: FieldType) -> Vec<AggregateFunction> {
+    allowed_aggregate_functions(source_type)
+        .unwrap_or_default()
+        .iter()
+        .copied()
+        .filter(|&function| {
+            aggregate_result_type(function, source_type)
+                .is_some_and(|result_type| aggregate_result_fits(result_type, declared_type))
+        })
+        .collect()
+}
+
 // ── Type-restricted field properties ─────────────────────────────────
 
 /// A property in `schema.yaml` whose validity depends on the field's
@@ -656,8 +725,11 @@ pub(crate) fn aggregate_result_type(
 /// message.
 ///
 /// `VariantArray` supplies `FieldProperty::VARIANTS`; declaration order
-/// here is the order violations are reported in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::VariantArray)]
+/// here is the order violations are reported in. Serialized in
+/// `snake_case`, matching `Display` (pinned by a unit test), so the
+/// property table can be served to the web app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ts_rs::TS, strum::VariantArray)]
+#[serde(rename_all = "snake_case")]
 pub enum FieldProperty {
     Values,
     Pattern,
@@ -746,6 +818,47 @@ pub fn field_types_allowing(property: FieldProperty) -> impl Iterator<Item = Fie
         .filter(move |&field_type| field_property_allowed(field_type, property))
 }
 
+// ── Default generators per type ───────────────────────────────────────
+
+/// The type → allowed-generators table: which `$`-generators may be
+/// the `default:` of a field of `field_type`. The parser asks this
+/// table (never a hand-written match) and the web app is served it, so
+/// the fact lives in one place.
+///
+/// The exhaustive `match` is the point — a new [`FieldType`] fails to
+/// compile until it gets a row, even if that row is empty.
+pub fn allowed_generators(field_type: FieldType) -> &'static [Generator] {
+    match field_type {
+        FieldType::String => &[
+            Generator::Filename,
+            Generator::FilenamePretty,
+            Generator::Uuid,
+        ],
+        FieldType::Integer | FieldType::Float => &[Generator::MaxPlusOne],
+        FieldType::Date => &[Generator::Today],
+        FieldType::Choice
+        | FieldType::Multichoice
+        | FieldType::Duration
+        | FieldType::Color
+        | FieldType::Boolean
+        | FieldType::List
+        | FieldType::Link
+        | FieldType::Links => &[],
+    }
+}
+
+/// The field types `generator` may default, in [`FieldType`]
+/// declaration order — the list the parser's error shows a user who
+/// put a generator on the wrong type. Derived from the table so no
+/// message spells a type list out by hand.
+pub fn field_types_allowing_generator(generator: Generator) -> impl Iterator<Item = FieldType> {
+    use strum::VariantArray;
+    FieldType::VARIANTS
+        .iter()
+        .copied()
+        .filter(move |&field_type| allowed_generators(field_type).contains(&generator))
+}
+
 // ── Pull config ───────────────────────────────────────────────────────
 
 /// Configuration of a pull field (`pull:` in `schema.yaml`): read
@@ -760,7 +873,12 @@ pub fn field_types_allowing(property: FieldProperty) -> impl Iterator<Item = Fie
 /// `field` exist, do the types line up) happens in `compute_check`,
 /// to the same one-diagnostic-disables-the-field standard as compute
 /// expressions.
-#[derive(Debug, Clone, Deserialize)]
+///
+/// Also the wire type the schema editor reads and writes the block as,
+/// like [`AggregateConfig`]: served inside
+/// [`crate::schema_definition_data::FieldRecipe`] and taken back by the
+/// field writes; `cargo xtask gen-types` emits the TypeScript.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(deny_unknown_fields)]
 pub struct PullConfig {
     /// The link/links field followed forward. Must declare
@@ -810,12 +928,27 @@ pub struct ComputeConfig {
 /// Rounding for date-valued compute results with a sub-day remainder.
 /// `Floor` means "the last fully-used day", `Ceil` means "the day the
 /// work spills into".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+///
+/// Serialized in lowercase, the spelling `schema.yaml` uses and the
+/// schema editor's wire carries (`Display` is the same, pinned by a
+/// unit test).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, ts_rs::TS)]
+#[serde(rename_all = "lowercase")]
 pub enum RoundMode {
     #[default]
     Nearest,
     Floor,
     Ceil,
+}
+
+impl std::fmt::Display for RoundMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Nearest => "nearest",
+            Self::Floor => "floor",
+            Self::Ceil => "ceil",
+        })
+    }
 }
 
 /// Configuration of a conditional field (`when:` in `schema.yaml`): the
@@ -877,6 +1010,69 @@ mod tests {
     use strum::VariantArray;
 
     #[test]
+    fn generator_serde_name_is_its_token() {
+        // The wire spelling and the `schema.yaml` spelling must be the
+        // same `$`-token, or the web app would show one and write another.
+        for &generator in Generator::VARIANTS {
+            let serialized = serde_json::to_value(generator).expect("a generator serializes");
+            assert_eq!(
+                serialized.as_str(),
+                Some(generator.token()),
+                "Generator::{generator:?} serializes as {serialized} but its token is `{}`",
+                generator.token()
+            );
+        }
+    }
+
+    #[test]
+    fn field_property_display_matches_its_serde_name() {
+        for &property in FieldProperty::VARIANTS {
+            let written = property.to_string();
+            let serialized = serde_json::to_value(property).expect("a property serializes");
+            assert_eq!(
+                serialized.as_str(),
+                Some(written.as_str()),
+                "FieldProperty::{property:?} serializes as {serialized} but displays as `{written}`"
+            );
+        }
+    }
+
+    #[test]
+    fn aggregate_function_display_matches_its_serde_name() {
+        for function in [
+            AggregateFunction::Sum,
+            AggregateFunction::Min,
+            AggregateFunction::Max,
+            AggregateFunction::Average,
+            AggregateFunction::Median,
+            AggregateFunction::Count,
+            AggregateFunction::All,
+            AggregateFunction::Any,
+            AggregateFunction::None,
+        ] {
+            let written = function.to_string();
+            let serialized = serde_json::to_value(function).expect("a function serializes");
+            assert_eq!(
+                serialized.as_str(),
+                Some(written.as_str()),
+                "AggregateFunction::{function:?} serializes as {serialized} but displays as `{written}`"
+            );
+        }
+    }
+
+    #[test]
+    fn every_generator_is_valid_on_some_type() {
+        // A generator no type may use would be unreachable from
+        // `schema.yaml`; the table would be hiding a dead variant.
+        for &generator in Generator::VARIANTS {
+            assert!(
+                field_types_allowing_generator(generator).next().is_some(),
+                "Generator::{generator:?} is valid on no field type"
+            );
+        }
+    }
+
+    #[test]
     fn field_type_display_matches_its_serde_name() {
         // `#[serde(rename_all)]` reads `schema.yaml`, the `Display` impl
         // names the type in diagnostics, and the drift guard for
@@ -891,5 +1087,33 @@ mod tests {
                 "FieldType::{field_type:?} serializes as {parsed} but displays as `{written}`"
             );
         }
+    }
+
+    #[test]
+    fn pull_functions_are_the_reductions_whose_result_fits_the_field() {
+        // Whole-number reductions fit a float field; nothing else crosses
+        // types but `count`, which is always an integer.
+        assert_eq!(
+            pull_functions(FieldType::Integer, FieldType::Float),
+            allowed_aggregate_functions(FieldType::Integer).unwrap()
+        );
+        assert_eq!(
+            pull_functions(FieldType::Float, FieldType::Integer),
+            vec![AggregateFunction::Count]
+        );
+        assert_eq!(
+            pull_functions(FieldType::Date, FieldType::Date),
+            vec![
+                AggregateFunction::Min,
+                AggregateFunction::Max,
+                AggregateFunction::Average
+            ]
+        );
+        assert_eq!(
+            pull_functions(FieldType::Boolean, FieldType::Integer),
+            vec![AggregateFunction::Count]
+        );
+        assert!(pull_functions(FieldType::Choice, FieldType::Integer).is_empty());
+        assert!(pull_functions(FieldType::Integer, FieldType::Date).is_empty());
     }
 }

@@ -64,6 +64,7 @@ Freeform Markdown body. Description, notes, acceptance criteria — anything.
 - **Computed fields:** Fields with a `compute` expression derive their value from the same item's other fields and `$constants.<name>` (same item, cross-field), type-checked at load against a closed algebra. Never written to files; a hand-written value always wins. Combined with `aggregate`, compute fills leaves and the rollup fills ancestors. See ADR-009.
 - **Relations are generic:** `link`/`links` fields with `allow_cycles` config. Default relations: `parent`, `depends_on`, `related_to`, `duplicates`. Inverses are derived by the CLI.
 - **Display roles:** A closed vocabulary (`title`, `subtitle`, `fields`, `color`) controls what item-presenting views show, resolved per role: session override › view `display:` › `defaults.display` in config.yaml › per-kind fallback. See ADR-008.
+- **Configuration writes re-serialize the file:** the web app's writes to `views.yaml` and `schema.yaml` keep content exactly and drop formatting and comments; last write wins per entry, no hash, no conflict check. See ADR-015.
 - **Flat structure:** All work items in a single directory (default: `workdown-items/`).
 - **Validation:** Broken references and cycle detection (where `allow_cycles: false`).
 

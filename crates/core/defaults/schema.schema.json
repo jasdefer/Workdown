@@ -60,9 +60,10 @@
         },
         "values": {
           "type": "array",
-          "description": "Allowed values. Required for choice and multichoice types.",
-          "items": { "type": "string" },
-          "minItems": 1
+          "description": "Allowed values, in the order boards and dropdowns show them. Required for choice and multichoice types; each value once, none blank.",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
         },
         "pattern": {
           "type": "string",

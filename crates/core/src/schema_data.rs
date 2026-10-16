@@ -21,7 +21,7 @@ use serde::Serialize;
 
 use crate::model::resources::Resources;
 use crate::model::schema::{FieldDefinition, FieldType, FieldTypeConfig, Schema};
-use crate::model::WorkItemId;
+use crate::model::{FieldValue, WorkItemId};
 use crate::query::types::{operators_for, Operator};
 use crate::store::Store;
 
@@ -66,6 +66,21 @@ pub struct SchemaData {
     /// the filter builder read the same pinned values core resolves
     /// with — the UI keeps no copy of its own.
     pub palette: Vec<PaletteColor>,
+    /// The project constants of `resources.yaml`, in declaration order:
+    /// what a formula may read as `$constants.<name>`. Here rather than
+    /// in the schema editor's payload because that one reads
+    /// `schema.yaml` alone, and the constants come from the file this
+    /// payload already reads for the resource lists.
+    pub constants: Vec<ConstantData>,
+}
+
+/// One project constant: its name and its typed value.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct ConstantData {
+    /// The name after `$constants.`.
+    pub name: String,
+    /// The value as `resources.yaml` declares it, typed.
+    pub value: FieldValue,
 }
 
 /// One entry of the built-in color palette.
@@ -190,6 +205,15 @@ pub fn build(schema: &Schema, store: &Store, resources: &Resources) -> SchemaDat
     let mut items: Vec<WorkItemId> = store.all_items().map(|item| item.id.clone()).collect();
     items.sort_by(|left, right| left.as_str().cmp(right.as_str()));
 
+    let constants = resources
+        .constants
+        .iter()
+        .map(|(name, value)| ConstantData {
+            name: name.clone(),
+            value: value.clone(),
+        })
+        .collect();
+
     let resources = resources
         .sections
         .iter()
@@ -227,6 +251,7 @@ pub fn build(schema: &Schema, store: &Store, resources: &Resources) -> SchemaDat
         resources,
         operators_by_type,
         palette,
+        constants,
     }
 }
 
@@ -299,6 +324,34 @@ mod tests {
         let store = empty_store(&schema);
         let data = build(&schema, &store, &Resources::default());
         assert!(data.resources.is_empty());
+    }
+
+    #[test]
+    fn build_reports_the_constants_with_their_typed_values() {
+        let schema = schema_with_assignee();
+        let store = empty_store(&schema);
+        let mut constants = IndexMap::new();
+        constants.insert("daily_rate".to_owned(), FieldValue::Integer(800));
+        constants.insert("ratio".to_owned(), FieldValue::Float(0.5));
+        let resources = Resources {
+            sections: IndexMap::new(),
+            constants,
+            document_loaded: true,
+        };
+
+        let data = build(&schema, &store, &resources);
+
+        assert_eq!(
+            data.constants
+                .iter()
+                .map(|constant| constant.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["daily_rate", "ratio"]
+        );
+        assert_eq!(data.constants[0].value, FieldValue::Integer(800));
+        assert!(build(&schema, &store, &Resources::default())
+            .constants
+            .is_empty());
     }
 
     #[test]
