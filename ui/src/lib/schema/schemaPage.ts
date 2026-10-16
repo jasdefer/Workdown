@@ -6,7 +6,7 @@
 // reasoning.
 //
 // Nothing here knows a type's rules. Every line is printed from what the
-// payload carries (`FieldShape`, `DerivedBlocks`); the type system stays
+// payload carries (`FieldShape`, `FieldRecipe`); the type system stays
 // in Rust, and a new shape or generator reaches this page by changing
 // the payload, not this file.
 
@@ -62,16 +62,19 @@ export function movedFieldOrder(
 export type FillMechanism = 'computed' | 'conditional' | 'pulled' | 'aggregated';
 
 /**
- * The fill mechanisms a field declares, in a fixed order. Empty for a
- * plain field. A field can carry two — compute fills the leaves and the
- * aggregate rolls them up — so this is a list, not one value.
+ * The fill mechanisms a field declares: its recipe, then its rollup.
+ * Empty for a plain field. A field can carry both — compute fills the
+ * leaves and the aggregate rolls them up — so this is a list, not one
+ * value.
  */
-export function fillMechanisms(field: Pick<FieldDefinitionData, 'derived'>): FillMechanism[] {
+export function fillMechanisms(
+	field: Pick<FieldDefinitionData, 'recipe' | 'aggregate'>
+): FillMechanism[] {
 	const mechanisms: FillMechanism[] = [];
-	if (field.derived.compute !== null) mechanisms.push('computed');
-	if (field.derived.when !== null) mechanisms.push('conditional');
-	if (field.derived.pull !== null) mechanisms.push('pulled');
-	if (field.derived.aggregate !== null) mechanisms.push('aggregated');
+	if (field.recipe?.kind === 'compute') mechanisms.push('computed');
+	if (field.recipe?.kind === 'when') mechanisms.push('conditional');
+	if (field.recipe?.kind === 'pull') mechanisms.push('pulled');
+	if (field.aggregate !== null) mechanisms.push('aggregated');
 	return mechanisms;
 }
 

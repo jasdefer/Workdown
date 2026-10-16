@@ -89,6 +89,29 @@ pub fn load_schema(path: &Path) -> Result<Schema, SchemaLoadError> {
     parse_schema(&content)
 }
 
+/// Parse `yaml` as a validated [`Schema`] and, from the same text, as
+/// the generic YAML tree the file is edited through
+/// (`crate::operations::schema_write`) and displayed from
+/// (`crate::schema_definition_data`). The validating parse accepted
+/// the text, so the generic parse cannot fail on syntax; a failure
+/// there would be a `serde_yaml` bug.
+pub fn parse_schema_with_document(
+    yaml: &str,
+) -> Result<(Schema, serde_yaml::Value), SchemaLoadError> {
+    let schema = parse_schema(yaml)?;
+    let document = serde_yaml::from_str(yaml).map_err(SchemaLoadError::InvalidYaml)?;
+    Ok((schema, document))
+}
+
+/// [`load_schema`], also returning the generic tree of the same bytes;
+/// see [`parse_schema_with_document`].
+pub fn load_schema_with_document(
+    path: &Path,
+) -> Result<(Schema, serde_yaml::Value), SchemaLoadError> {
+    let content = std::fs::read_to_string(path).map_err(SchemaLoadError::ReadFailed)?;
+    parse_schema_with_document(&content)
+}
+
 /// Load a schema from a file, falling back to built-in defaults if the
 /// file does not exist. Other I/O errors are propagated.
 pub fn load_schema_or_default(path: &Path) -> Result<Schema, SchemaLoadError> {
@@ -309,7 +332,7 @@ fn attach_when_configs(
                 None
             }
             Some(literal) => {
-                let raw_literal = default_literal_as_yaml(&literal);
+                let raw_literal = literal.literal_as_yaml();
                 match coerce_value(&raw_literal, field_definition) {
                     Ok(value) => Some(value),
                     Err(error) => {
@@ -402,20 +425,6 @@ fn interpret_when_branch(
         condition_source,
         value,
     })
-}
-
-/// A literal [`DefaultValue`] as the raw YAML value the coercion layer
-/// accepts. Callers exclude the generator variant beforehand.
-fn default_literal_as_yaml(literal: &DefaultValue) -> serde_yaml::Value {
-    match literal {
-        DefaultValue::String(text) => serde_yaml::Value::String(text.clone()),
-        DefaultValue::Integer(number) => serde_yaml::Value::Number((*number).into()),
-        DefaultValue::Float(number) => {
-            serde_yaml::to_value(number).unwrap_or(serde_yaml::Value::Null)
-        }
-        DefaultValue::Bool(flag) => serde_yaml::Value::Bool(*flag),
-        DefaultValue::Generator(_) => serde_yaml::Value::Null,
-    }
 }
 
 // ── Compute config ────────────────────────────────────────────────────
@@ -1049,7 +1058,7 @@ fn validate_literal_defaults(
         if matches!(literal, DefaultValue::Generator(_)) {
             continue;
         }
-        if let Err(error) = coerce_value(&default_literal_as_yaml(literal), definition) {
+        if let Err(error) = coerce_value(&literal.literal_as_yaml(), definition) {
             errors.push(field_error(
                 name,
                 format!(

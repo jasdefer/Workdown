@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 use workdown_core::project::LoadError;
-use workdown_core::schema_definition_data::{content_hash, load, FieldShape};
+use workdown_core::schema_definition_data::{load, FieldShape};
 
 const SCHEMA_YAML: &str = "\
 fields:
@@ -35,7 +35,7 @@ fn write_schema(directory: &TempDir, yaml: &str) -> PathBuf {
 }
 
 #[test]
-fn load_reads_the_file_once_and_hashes_what_it_parsed() {
+fn load_reads_the_file_into_the_payload() {
     let directory = TempDir::new().unwrap();
     let path = write_schema(&directory, SCHEMA_YAML);
 
@@ -54,7 +54,6 @@ fn load_reads_the_file_once_and_hashes_what_it_parsed() {
         }
     );
     assert!(data.rules.is_empty());
-    assert_eq!(data.hash, content_hash(SCHEMA_YAML));
 }
 
 #[test]

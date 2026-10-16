@@ -24,6 +24,7 @@
 		emptyRequireRow,
 		emptyRequireTest,
 		listSpecOfField,
+		parseCount,
 		referenceKind,
 		requireTestKinds,
 		scalarsOfValue,
@@ -32,13 +33,16 @@
 		valueOfScalars,
 		withRequireReference,
 		type Anchor,
-		type Reference
+		type Reference,
+		type RuleTables
 	} from './ruleDraft';
 
 	interface Props {
 		rows: RequireRow[];
 		anchors: Anchor[];
 		fields: FieldDefinitionData[];
+		/** Which types the engine tests by value and which it orders. */
+		tables: RuleTables;
 		/** All item ids, for a `link` target's picker. */
 		items: string[];
 		palette: PaletteColor[];
@@ -46,7 +50,16 @@
 		onchange: (rows: RequireRow[]) => void;
 	}
 
-	let { rows, anchors, fields, items, palette, disabled = false, onchange }: Props = $props();
+	let {
+		rows,
+		anchors,
+		fields,
+		tables,
+		items,
+		palette,
+		disabled = false,
+		onchange
+	}: Props = $props();
 
 	// Exhaustive by type: a requirement or comparison added in Rust
 	// reaches the TypeScript union and fails the build here until it has
@@ -80,11 +93,6 @@
 	function add(): void {
 		onchange([...rows, emptyRequireRow()]);
 	}
-
-	function countOf(text: string): number {
-		const parsed = Number.parseInt(text, 10);
-		return Number.isNaN(parsed) || parsed < 0 ? 0 : parsed;
-	}
 </script>
 
 <fieldset class="rows">
@@ -106,7 +114,10 @@
 				{disabled}
 				onchange={(next: Reference) => {
 					const nextTarget = targetField(next, fields);
-					replace(index, withRequireReference(row, next, anchors, nextTarget?.field_type ?? null));
+					replace(
+						index,
+						withRequireReference(row, next, anchors, nextTarget?.field_type ?? null, tables)
+					);
 				}}
 			/>
 			<select
@@ -121,7 +132,7 @@
 					});
 				}}
 			>
-				{#each requireTestKinds(kind, target?.field_type ?? null) as testKind (testKind)}
+				{#each requireTestKinds(kind, target?.field_type ?? null, tables) as testKind (testKind)}
 					<option value={testKind}>{TEST_LABELS[testKind]}</option>
 				{/each}
 			</select>
@@ -182,19 +193,19 @@
 					</select>
 				{:else if row.test.kind === 'min_count' || row.test.kind === 'max_count'}
 					{@const testKind = row.test.kind}
+					{@const current = row.test.count}
 					<input
 						type="number"
 						class="count"
 						aria-label="{label}: count"
 						min="0"
 						step="1"
-						value={row.test.count}
+						value={current}
 						{disabled}
 						onchange={(event: Event & { currentTarget: HTMLInputElement }) => {
-							replace(index, {
-								...row,
-								test: { kind: testKind, count: countOf(event.currentTarget.value) }
-							});
+							// A count is always one; text that is not one keeps the last.
+							const count = parseCount(event.currentTarget.value) ?? current;
+							replace(index, { ...row, test: { kind: testKind, count } });
 						}}
 					/>
 				{/if}

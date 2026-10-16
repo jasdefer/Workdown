@@ -240,6 +240,10 @@ otherwise silently overwrite someone's edit to the same field.
     types to string or list) and nobody has asked for it; the selector
     points at `schema.yaml`, where any change is possible and judged at
     load. The table stays in Rust as the write route's guard.
+    *Revised 2026-10-16:* the table left Rust too. The write route and
+    the preview refuse every type change with one message; a guard the
+    page never exercises was a second rule to keep in step, and the
+    preview did not apply it.
 13. **Only fields and rules on the page.** Resources and constants wait
     for a resources editor.
 14. **Comment-blind editor** (2026-09-10). No comment note in the

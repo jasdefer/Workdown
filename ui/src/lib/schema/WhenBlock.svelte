@@ -43,6 +43,7 @@
 		withOperand,
 		type OperandChoice,
 		type RowCondition,
+		type TypeTables,
 		type WhenRecipe
 	} from './fieldDraft';
 
@@ -50,6 +51,8 @@
 		value: WhenRecipe;
 		/** What a `then` may be: the field's own type and settings. */
 		spec: ValueSpec;
+		/** The served type lists; here, which types a typed-in value may face. */
+		tables: TypeTables;
 		/** What an operand may be, in the order shown. */
 		choices: OperandChoice[];
 		/** The comparison operators with the symbols the grammar spells them as. */
@@ -67,6 +70,7 @@
 	let {
 		value,
 		spec,
+		tables,
 		choices,
 		operators,
 		fields,
@@ -101,7 +105,7 @@
 		if (condition.kind !== 'row') return;
 		const operand = choices.find((choice) => choice.key === key)?.operand;
 		if (operand === undefined) return;
-		setCondition(index, withOperand(condition, side, operand, choices, fields, constants));
+		setCondition(index, withOperand(tables, condition, side, operand, choices, fields, constants));
 	}
 
 	function setLiteral(index: number, side: Side, next: FieldValue | null): void {
@@ -132,7 +136,7 @@
 	 * the operand the file names when the picker cannot offer it.
 	 */
 	function optionsFor(operand: Operand, other: Operand): OperandChoice[] {
-		const offered = choicesFacing(choices, other, fields, constants);
+		const offered = choicesFacing(tables, choices, other, fields, constants);
 		const key = operandKey(operand);
 		if (offered.some((choice) => choice.key === key)) return offered;
 		const label =

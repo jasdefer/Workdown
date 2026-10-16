@@ -55,7 +55,7 @@ async fn body_json(response: axum::http::Response<Body>) -> Value {
 }
 
 #[tokio::test]
-async fn get_schema_definition_returns_definitions_tables_and_hash() {
+async fn get_schema_definition_returns_definitions_and_tables() {
     let response = get_definition(state_for(fixture_root())).await;
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -94,7 +94,6 @@ async fn get_schema_definition_returns_definitions_tables_and_hash() {
         "aggregate_functions_by_type",
         "pull_sources_by_type",
         "generators_by_type",
-        "widening_by_type",
     ] {
         assert_eq!(
             data[table].as_array().map(Vec::len),
@@ -102,13 +101,19 @@ async fn get_schema_definition_returns_definitions_tables_and_hash() {
             "{table} has one row per field type"
         );
     }
-    assert!(data["expression_readable_types"].is_array());
-    assert!(data["conditional_types"].is_array());
+    for list in [
+        "expression_readable_types",
+        "conditional_types",
+        "condition_literal_types",
+        "rule_value_test_types",
+        "rule_comparable_types",
+    ] {
+        assert!(data[list].is_array(), "{list} is a list of types");
+    }
     assert_eq!(
         data["comparison_operators"].as_array().map(Vec::len),
         Some(6)
     );
-    assert_eq!(data["hash"].as_str().map(str::len), Some(64));
 
     // Envelope always carries diagnostics, even when empty.
     assert!(envelope["diagnostics"].is_array());

@@ -10,9 +10,9 @@
 //! to render field editors (detail panel) and the create form.
 //!
 //! `/schema/definition` reads `schema.yaml` alone — no items, resources
-//! or views — and serves every field's full definition, the rules, the
-//! type system's tables and a content hash of the file
-//! ([`SchemaDefinitionData`]). Only the `/schema` page fetches it, so
+//! or views — and serves every field's full definition, the rules and
+//! the type system's tables ([`SchemaDefinitionData`]). Only the
+//! `/schema` page fetches it, so
 //! `/schema` stays as small as the item editors need. Reading one file
 //! is the second exemption from the load-everything rule (the first is
 //! `GET /api/project`): the payload needs nothing else, and the page
@@ -53,12 +53,12 @@ use axum::{Json, Router};
 use serde::Deserialize;
 
 use workdown_core::mutation_data::{
-    CreateField, PreviewField, PreviewRule, ReorderFields, SchemaMutationResult,
+    CreateField, FieldDefinitionWrite, FieldPreview, FieldUsage, PreviewField, PreviewRule,
+    ReorderFields, RuleDefinitionWrite, RulePreview, SchemaMutationResult,
 };
 use workdown_core::operations::schema_write::{
     add_field, add_rule, field_usage, preview_field, preview_rule, remove_field, remove_rule,
-    reorder_fields, update_field, update_rule, FieldDefinitionWrite, FieldPreview, FieldUsage,
-    RemovedValues, RuleDefinitionWrite, RulePreview, SchemaWriteError, SchemaWriteOutcome,
+    reorder_fields, update_field, update_rule, RemovedValues, SchemaWriteError, SchemaWriteOutcome,
 };
 use workdown_core::schema_data::{self, SchemaData};
 use workdown_core::schema_definition_data::{self, SchemaDefinitionData};
@@ -130,9 +130,9 @@ async fn create_field_handler(
     }
 }
 
-/// `PUT /api/schema/fields/{name}` — replace the field's plain
-/// properties, keeping its position and its recipe. An unknown name is
-/// a `404`; a type change the widening table does not allow is a `422`.
+/// `PUT /api/schema/fields/{name}` — replace the field's definition,
+/// keeping its position and its type. An unknown name is a `404`; a
+/// definition declaring another type is a `422`.
 async fn update_field_handler(
     State(state): State<AppState>,
     Path(name): Path<String>,
@@ -333,8 +333,8 @@ fn schema_mutation_response(
 /// - `422` — well-formed but unprocessable: the existing `schema.yaml` or
 ///   the work items won't load, the candidate would not load, the name
 ///   is invalid, the `id` field or a field a config role names is being
-///   removed, the type change is not a widening, or the order is not a
-///   permutation of the current names.
+///   removed, the definition changes the field's type, or the order is
+///   not a permutation of the current names.
 /// - `500` — a server-side failure: serialization or a write I/O error.
 fn schema_write_error_status(error: &SchemaWriteError) -> StatusCode {
     match error {
@@ -351,8 +351,7 @@ fn schema_write_error_status(error: &SchemaWriteError) -> StatusCode {
         | SchemaWriteError::InvalidName { .. }
         | SchemaWriteError::IdNotRemovable
         | SchemaWriteError::NamedByConfig { .. }
-        | SchemaWriteError::RecipeTypeLocked { .. }
-        | SchemaWriteError::TypeChangeNotAllowed { .. }
+        | SchemaWriteError::TypeChange { .. }
         | SchemaWriteError::InvalidOrder { .. }
         | SchemaWriteError::InvalidRuleName { .. }
         | SchemaWriteError::InvalidRule { .. }

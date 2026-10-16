@@ -1,13 +1,15 @@
 //! Contract tests for the schema-write endpoints — `POST
 //! /api/schema/fields`, `PUT`/`DELETE /api/schema/fields/{name}`, `PUT
-//! /api/schema/field-order`, `POST /api/schema/field-preview` — and `GET
-//! /api/schema/fields/{name}/usage`.
+//! /api/schema/field-order`, `POST /api/schema/field-preview`, the rule
+//! writes under `/api/schema/rules`, `POST /api/schema/rule-preview` —
+//! and `GET /api/schema/fields/{name}/usage`.
 //!
-//! What the operations do to `schema.yaml` is core's to prove
-//! (`tests/schema_write.rs` there); this file pins the HTTP contract:
-//! one success per endpoint and each status code once. These mutate the
-//! schema, so every test runs against a throwaway project in a
-//! `TempDir` — never the committed read-only fixture.
+//! What the operations do to `schema.yaml` and the items is core's to
+//! prove (`tests/schema_write.rs` there); this file pins the HTTP
+//! contract: one success per endpoint, its status and JSON shape, and
+//! each status code once. Nothing here reads a file back. These
+//! mutate the schema, so every test runs against a throwaway project
+//! in a `TempDir` — never the committed read-only fixture.
 
 use std::fs;
 use std::path::Path;
@@ -19,7 +21,6 @@ use tempfile::TempDir;
 use tower::ServiceExt;
 
 use workdown_core::parser::config::parse_config;
-use workdown_core::parser::schema::load_schema;
 use workdown_server::{router, AppState};
 
 const CONFIG: &str = "\
@@ -116,11 +117,21 @@ fn date_field() -> Value {
     })
 }
 
+/// An integer field with `recipe` as its recipe (`null` for none).
+fn integer_field(recipe: Value) -> Value {
+    json!({
+        "field_type": "integer",
+        "required": false,
+        "shape": { "kind": "numeric", "min": null, "max": null },
+        "recipe": recipe
+    })
+}
+
 // ── POST /api/schema/fields ──────────────────────────────────────────
 
 #[tokio::test]
 async fn post_field_writes_and_returns_201() {
-    let (directory, state) = temp_project();
+    let (_directory, state) = temp_project();
 
     let response = send(
         state,
@@ -133,185 +144,11 @@ async fn post_field_writes_and_returns_201() {
 
     let envelope = body_json(response).await;
     assert_eq!(envelope["data"]["field_name"], "due");
+    assert_eq!(envelope["data"]["rule_name"], Value::Null);
     assert_eq!(envelope["data"]["mutation_caused_warning"], false);
+    assert_eq!(envelope["data"]["rewritten_items"], json!([]));
     assert!(envelope["diagnostics"].is_array());
     assert!(envelope.get("error").is_none());
-    let written = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
-    assert!(written.contains("due:"), "{written}");
-}
-
-#[tokio::test]
-async fn post_field_with_a_pull_recipe_writes_the_block_and_the_preview_judges_one() {
-    let (directory, state) = temp_project();
-    let integer = |recipe: Value| {
-        json!({
-            "field_type": "integer",
-            "required": false,
-            "shape": { "kind": "numeric", "min": null, "max": null },
-            "recipe": recipe
-        })
-    };
-
-    let response = send(
-        state.clone(),
-        "POST",
-        "/api/schema/fields",
-        Some(json!({ "name": "points", "definition": integer(Value::Null) })),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::CREATED);
-
-    let pull = json!({
-        "kind": "pull",
-        "over": "depends_on",
-        "field": "points",
-        "function": "sum",
-        "error_on_missing": false
-    });
-    let response = send(
-        state.clone(),
-        "POST",
-        "/api/schema/fields",
-        Some(json!({ "name": "blocked_points", "definition": integer(pull) })),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::CREATED);
-    let schema = load_schema(&directory.path().join(".workdown/schema.yaml")).unwrap();
-    let written = schema.fields["blocked_points"].pull.as_ref().unwrap();
-    assert_eq!(
-        (written.over.as_str(), written.field.as_str()),
-        ("depends_on", "points")
-    );
-
-    // A pull the parser takes but the load disables is the preview's
-    // problem, not a parse error.
-    let unreducible =
-        json!({ "kind": "pull", "over": "parent", "field": "status", "function": "count" });
-    let response = send(
-        state,
-        "POST",
-        "/api/schema/field-preview",
-        Some(json!({ "name": "blocked_points", "replacing": true, "definition": integer(unreducible) })),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::OK);
-    let envelope = body_json(response).await;
-    assert!(envelope["data"]["problem"]
-        .as_str()
-        .unwrap()
-        .contains("no function can reduce"));
-}
-
-#[tokio::test]
-async fn post_field_with_a_compute_recipe_writes_the_block_and_the_preview_points_at_the_column() {
-    let (directory, state) = temp_project();
-    let integer = |recipe: Value| {
-        json!({
-            "field_type": "integer",
-            "required": false,
-            "shape": { "kind": "numeric", "min": null, "max": null },
-            "recipe": recipe
-        })
-    };
-    let compute = |expression: &str| {
-        json!({
-            "kind": "compute",
-            "expression": expression,
-            "round": "nearest",
-            "error_on_missing": false
-        })
-    };
-
-    let response = send(
-        state.clone(),
-        "POST",
-        "/api/schema/fields",
-        Some(json!({ "name": "points", "definition": integer(Value::Null) })),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::CREATED);
-    let response = send(
-        state.clone(),
-        "POST",
-        "/api/schema/fields",
-        Some(json!({ "name": "doubled", "definition": integer(compute("points * 2")) })),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::CREATED);
-    let schema = load_schema(&directory.path().join(".workdown/schema.yaml")).unwrap();
-    assert_eq!(
-        schema.fields["doubled"].compute.as_ref().unwrap().source,
-        "points * 2"
-    );
-
-    let response = send(
-        state,
-        "POST",
-        "/api/schema/field-preview",
-        Some(json!({
-            "name": "doubled",
-            "replacing": true,
-            "definition": integer(compute("points + title"))
-        })),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::OK);
-    let envelope = body_json(response).await;
-    let problem = envelope["data"]["problem"].as_str().unwrap();
-    assert!(problem.contains("cannot apply '+'"), "{problem}");
-    let column = envelope["data"]["problem_column"].as_u64().unwrap();
-    assert!(
-        problem.contains(&format!("at column {column}")),
-        "{problem}"
-    );
-}
-
-#[tokio::test]
-async fn post_field_with_a_when_recipe_writes_the_branches_and_the_fallback() {
-    let (directory, state) = temp_project();
-
-    let response = send(
-        state,
-        "POST",
-        "/api/schema/fields",
-        Some(json!({
-            "name": "tint",
-            "definition": {
-                "field_type": "color",
-                "required": false,
-                "default": { "kind": "literal", "value": "gray" },
-                "shape": { "kind": "scalar" },
-                "recipe": {
-                    "kind": "when",
-                    "branches": [
-                        {
-                            "condition": {
-                                "kind": "row",
-                                "left": { "kind": "field", "name": "status" },
-                                "operator": "equal",
-                                "right": { "kind": "literal", "value": "done" }
-                            },
-                            "then": "green"
-                        },
-                        { "condition": { "kind": "text", "source": "status != \"open\"" }, "then": "blue" }
-                    ]
-                }
-            }
-        })),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::CREATED);
-
-    let schema = load_schema(&directory.path().join(".workdown/schema.yaml")).unwrap();
-    let when = schema.fields["tint"].when.as_ref().unwrap();
-    assert_eq!(
-        when.branches
-            .iter()
-            .map(|branch| branch.condition_source.as_str())
-            .collect::<Vec<_>>(),
-        vec!["status == \"done\"", "status != \"open\""]
-    );
-    assert!(when.default.is_some());
 }
 
 #[tokio::test]
@@ -333,8 +170,8 @@ async fn post_existing_field_returns_409() {
 }
 
 #[tokio::test]
-async fn post_unloadable_field_returns_422_and_writes_nothing() {
-    let (directory, state) = temp_project();
+async fn post_unloadable_field_returns_422() {
+    let (_directory, state) = temp_project();
 
     // A choice with no values parses as YAML but fails schema validation.
     let response = send(
@@ -358,15 +195,13 @@ async fn post_unloadable_field_returns_422_and_writes_nothing() {
         .as_str()
         .unwrap()
         .contains("'values' must not be empty"));
-    let on_disk = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
-    assert_eq!(on_disk, SCHEMA);
 }
 
 // ── PUT /api/schema/fields/{name} ────────────────────────────────────
 
 #[tokio::test]
 async fn put_field_replaces_the_definition_and_returns_200() {
-    let (directory, state) = temp_project();
+    let (_directory, state) = temp_project();
 
     let response = send(
         state,
@@ -384,8 +219,7 @@ async fn put_field_replaces_the_definition_and_returns_200() {
 
     let envelope = body_json(response).await;
     assert_eq!(envelope["data"]["field_name"], "title");
-    let written = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
-    assert!(written.contains("The heading"), "{written}");
+    assert_eq!(envelope["data"]["mutation_caused_warning"], false);
 }
 
 #[tokio::test]
@@ -415,8 +249,6 @@ async fn delete_field_saves_with_warning_and_returns_200() {
     // warning, flagged as caused by this write.
     assert_eq!(envelope["data"]["mutation_caused_warning"], true);
     assert!(!envelope["diagnostics"].as_array().unwrap().is_empty());
-    let written = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
-    assert!(!written.contains("title:"), "{written}");
 }
 
 #[tokio::test]
@@ -446,7 +278,7 @@ async fn delete_field_with_drop_values_names_the_rewritten_items_and_returns_200
 
 #[tokio::test]
 async fn put_field_order_rewrites_the_order_and_returns_200() {
-    let (directory, state) = temp_project();
+    let (_directory, state) = temp_project();
 
     let response = send(
         state,
@@ -458,10 +290,9 @@ async fn put_field_order_rewrites_the_order_and_returns_200() {
     assert_eq!(response.status(), StatusCode::OK);
 
     let envelope = body_json(response).await;
-    assert!(envelope["data"]["field_name"].is_null());
-    let reloaded = load_schema(&directory.path().join(".workdown/schema.yaml")).unwrap();
-    let names: Vec<&str> = reloaded.fields.keys().map(String::as_str).collect();
-    assert_eq!(names, ["status", "title", "depends_on", "parent"]);
+    // A reorder concerns every field and none.
+    assert_eq!(envelope["data"]["field_name"], Value::Null);
+    assert_eq!(envelope["data"]["rule_name"], Value::Null);
 }
 
 // ── GET /api/schema/fields/{name}/usage ──────────────────────────────
@@ -475,14 +306,13 @@ async fn get_usage_returns_200_with_the_introduced_diagnostics() {
     assert_eq!(response.status(), StatusCode::OK);
 
     let envelope = body_json(response).await;
+    assert_eq!(envelope["data"]["rules"], json!([]));
+    assert_eq!(envelope["data"]["recipes"], json!([]));
     assert!(envelope["data"]["parse_error"].is_null());
     let introduced = envelope["data"]["introduced"].as_array().unwrap();
     assert_eq!(introduced.len(), 1, "{introduced:?}");
     assert_eq!(introduced[0]["scope"], "item");
     assert_eq!(introduced[0]["item_id"], "a");
-    // Nothing was written.
-    let on_disk = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
-    assert_eq!(on_disk, SCHEMA);
 }
 
 #[tokio::test]
@@ -496,9 +326,8 @@ async fn get_usage_of_unknown_field_returns_404() {
 // ── POST /api/schema/field-preview ───────────────────────────────────
 
 #[tokio::test]
-async fn post_field_preview_returns_200_with_the_yaml_and_the_verdict_without_writing() {
-    let (directory, state) = temp_project();
-    let before = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
+async fn post_field_preview_returns_200_with_the_yaml_and_the_verdict() {
+    let (_directory, state) = temp_project();
     let rollup = |over: &str| {
         json!({
             "field_type": "integer",
@@ -525,7 +354,10 @@ async fn post_field_preview_returns_200_with_the_yaml_and_the_verdict_without_wr
         .unwrap()
         .starts_with("type: integer\n"));
     assert_eq!(envelope["data"]["problem"], Value::Null);
+    assert_eq!(envelope["data"]["problem_column"], Value::Null);
 
+    // A draft the parser refuses is still a `200`: the refusal is the
+    // answer, not an error.
     let response = send(
         state,
         "POST",
@@ -539,9 +371,45 @@ async fn post_field_preview_returns_200_with_the_yaml_and_the_verdict_without_wr
         .as_str()
         .unwrap()
         .contains("must be 'link'"));
+}
 
-    let after = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
-    assert_eq!(after, before);
+#[tokio::test]
+async fn post_field_preview_carries_the_formula_problems_column() {
+    let (_directory, state) = temp_project();
+    let response = send(
+        state.clone(),
+        "POST",
+        "/api/schema/fields",
+        Some(json!({ "name": "points", "definition": integer_field(Value::Null) })),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let compute = json!({
+        "kind": "compute",
+        "expression": "points + title",
+        "round": "nearest",
+        "error_on_missing": false
+    });
+    let response = send(
+        state,
+        "POST",
+        "/api/schema/field-preview",
+        Some(
+            json!({ "name": "doubled", "replacing": false, "definition": integer_field(compute) }),
+        ),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope = body_json(response).await;
+    let problem = envelope["data"]["problem"].as_str().unwrap();
+    assert!(problem.contains("cannot apply '+'"), "{problem}");
+    // The column rides as data beside the text that names it.
+    let column = envelope["data"]["problem_column"].as_u64().unwrap();
+    assert!(
+        problem.contains(&format!("at column {column}")),
+        "{problem}"
+    );
 }
 
 // ── /api/schema/rules ────────────────────────────────────────────────
@@ -568,7 +436,7 @@ fn title_rule(name: &str, require_reference: &str) -> Value {
 
 #[tokio::test]
 async fn post_rule_writes_and_returns_201() {
-    let (directory, state) = temp_project();
+    let (_directory, state) = temp_project();
 
     let response = send(
         state,
@@ -584,11 +452,6 @@ async fn post_rule_writes_and_returns_201() {
     assert_eq!(envelope["data"]["field_name"], Value::Null);
     assert_eq!(envelope["data"]["mutation_caused_warning"], false);
     assert!(envelope["diagnostics"].is_array());
-    let written = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
-    assert!(
-        written.contains("name: in-progress-needs-title"),
-        "{written}"
-    );
 }
 
 #[tokio::test]
@@ -636,7 +499,7 @@ async fn post_rule_naming_no_field_returns_422() {
 
 #[tokio::test]
 async fn put_rule_replaces_and_returns_200() {
-    let (directory, state) = temp_project();
+    let (_directory, state) = temp_project();
     let created = send(
         state.clone(),
         "POST",
@@ -656,13 +519,8 @@ async fn put_rule_replaces_and_returns_200() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let envelope = body_json(response).await;
+    // The result names the rule by its new name after a rename.
     assert_eq!(envelope["data"]["rule_name"], "in-progress-needs-parent");
-    let written = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
-    assert!(
-        written.contains("name: in-progress-needs-parent"),
-        "{written}"
-    );
-    assert!(!written.contains("in-progress-needs-title"), "{written}");
 }
 
 #[tokio::test]
@@ -682,7 +540,7 @@ async fn put_unknown_rule_returns_404() {
 
 #[tokio::test]
 async fn delete_rule_returns_200() {
-    let (directory, state) = temp_project();
+    let (_directory, state) = temp_project();
     let created = send(
         state.clone(),
         "POST",
@@ -703,14 +561,11 @@ async fn delete_rule_returns_200() {
     assert_eq!(response.status(), StatusCode::OK);
     let envelope = body_json(response).await;
     assert_eq!(envelope["data"]["rule_name"], "in-progress-needs-title");
-    let written = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
-    assert!(!written.contains("in-progress-needs-title"), "{written}");
 }
 
 #[tokio::test]
 async fn post_rule_preview_returns_200_with_the_yaml_and_the_verdict() {
-    let (directory, state) = temp_project();
-    let before = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
+    let (_directory, state) = temp_project();
 
     let response = send(
         state.clone(),
@@ -743,7 +598,4 @@ async fn post_rule_preview_returns_200_with_the_yaml_and_the_verdict() {
         .as_str()
         .unwrap()
         .contains("no_such_field"));
-
-    let after = fs::read_to_string(directory.path().join(".workdown/schema.yaml")).unwrap();
-    assert_eq!(after, before);
 }

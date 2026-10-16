@@ -474,6 +474,22 @@ pub enum DefaultValue {
     Generator(Generator),
 }
 
+impl DefaultValue {
+    /// A literal default as the raw YAML value the coercion layer
+    /// accepts, so it can be judged like a value written on an item.
+    /// Callers exclude the generator variant beforehand; it yields
+    /// `Null`.
+    pub fn literal_as_yaml(&self) -> serde_yaml::Value {
+        match self {
+            DefaultValue::String(text) => serde_yaml::Value::String(text.clone()),
+            DefaultValue::Integer(number) => serde_yaml::Value::Number((*number).into()),
+            DefaultValue::Float(number) => serde_yaml::Value::Number((*number).into()),
+            DefaultValue::Bool(flag) => serde_yaml::Value::Bool(*flag),
+            DefaultValue::Generator(_) => serde_yaml::Value::Null,
+        }
+    }
+}
+
 /// Built-in generators that produce default values at `workdown add` time.
 ///
 /// Serializes as the `$`-prefixed token the generator is written as in
@@ -843,39 +859,6 @@ pub fn field_types_allowing_generator(generator: Generator) -> impl Iterator<Ite
         .filter(move |&field_type| allowed_generators(field_type).contains(&generator))
 }
 
-// ── Widening type changes ─────────────────────────────────────────────
-
-/// The type → allowed-type-change table: the types a field of
-/// `field_type` may be changed to without any existing value becoming
-/// invalid. "Without" is checked, not assumed: a unit test in
-/// `coerce.rs` feeds a representative value of every listed pair
-/// through the target type's coercion and fails the build if it is
-/// rejected, so a pair is here only because the store accepts it.
-///
-/// Pairs that look like widenings but are *not* accepted, and are
-/// therefore absent on purpose: `integer`, `float` and `boolean` →
-/// `string`. YAML writes `42` and `true` as bare scalars, the string
-/// coercion takes text only, so every item holding such a value would
-/// warn after the change. Quoting them in every file is a rewrite of
-/// items, which the schema editor does not do (`schema-editor-web-design`,
-/// decision 6).
-///
-/// Exhaustive like the other tables: a new [`FieldType`] needs a row.
-pub fn widening_targets(field_type: FieldType) -> &'static [FieldType] {
-    match field_type {
-        FieldType::Integer => &[FieldType::Float],
-        FieldType::Choice | FieldType::Date | FieldType::Duration | FieldType::Color => {
-            &[FieldType::String]
-        }
-        FieldType::Multichoice | FieldType::Links => &[FieldType::List],
-        FieldType::String
-        | FieldType::Float
-        | FieldType::Boolean
-        | FieldType::List
-        | FieldType::Link => &[],
-    }
-}
-
 // ── Pull config ───────────────────────────────────────────────────────
 
 /// Configuration of a pull field (`pull:` in `schema.yaml`): read
@@ -1085,16 +1068,6 @@ mod tests {
             assert!(
                 field_types_allowing_generator(generator).next().is_some(),
                 "Generator::{generator:?} is valid on no field type"
-            );
-        }
-    }
-
-    #[test]
-    fn widening_never_targets_the_same_type() {
-        for &field_type in FieldType::VARIANTS {
-            assert!(
-                !widening_targets(field_type).contains(&field_type),
-                "{field_type} lists itself as a widening target"
             );
         }
     }

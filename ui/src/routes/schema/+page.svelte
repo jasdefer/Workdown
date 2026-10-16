@@ -44,6 +44,7 @@
 		settingsLine
 	} from '$lib/schema/schemaPage';
 	import DiagnosticList from '$lib/ui/DiagnosticList.svelte';
+	import type { FieldValue } from '$lib/api/generated/FieldValue';
 	import Cell from '$lib/views/table/Cell.svelte';
 
 	let { data }: { data: PageData } = $props();
@@ -228,14 +229,12 @@
 												{''}
 											{:else if field.default.kind === 'generator'}
 												<code class="generator">{field.default.generator}</code>
-											{:else if field.default.kind === 'literal'}
-												<Cell value={field.default.value} fieldType={field.field_type} items={{}} />
 											{:else}
-												<span class="invalid-default" title={field.default.reason}>
-													<span aria-hidden="true">⚠</span>
-													<span class="sr-only">invalid default:</span>
-													{field.default.text}
-												</span>
+												<Cell
+													value={field.default.value as FieldValue | null}
+													fieldType={field.field_type}
+													items={{}}
+												/>
 											{/if}
 										</td>
 										<td class="description-cell" title={field.description}>
@@ -567,11 +566,6 @@
 		background-color: transparent;
 		padding: 0;
 		font-size: var(--text-sm);
-	}
-
-	.invalid-default {
-		color: var(--color-warning-fg);
-		cursor: help;
 	}
 
 	/* Cut at the column's width, full text on hover via `title` — the

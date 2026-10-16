@@ -8,8 +8,11 @@
 // and one test per row, built by the server from the parsed rule and
 // written back by it; the YAML grammar stays in Rust. What this module
 // adds is the form's view of a reference — an anchor (this item, or a
-// relation) and a field — and which tests a reference and its target
-// type can take, read off the field definitions the page already has.
+// relation) and a field — and which tests a reference can take: by
+// what it points at (one value, many, the related items themselves),
+// and by its target type through the lists the definition payload
+// serves from the rule engine (`rule_value_test_types`,
+// `rule_comparable_types`). Nothing here knows a type's rules.
 
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import type { FieldType } from '$lib/api/generated/FieldType';
@@ -22,8 +25,9 @@ import type { RuleDefinitionWrite } from '$lib/api/generated/RuleDefinitionWrite
 import type { RuleShape } from '$lib/api/generated/RuleShape';
 import type { ScalarTest } from '$lib/api/generated/ScalarTest';
 import type { ScalarValue } from '$lib/api/generated/ScalarValue';
+import type { SchemaDefinitionData } from '$lib/api/generated/SchemaDefinitionData';
 import type { Severity } from '$lib/api/generated/Severity';
-import type { ValueSpec } from '$lib/values/valueSpec';
+import { specOf, type ValueSpec } from '$lib/values/valueSpec';
 
 /** The panel's working copy of one rule. */
 export interface RuleDraft {
@@ -227,30 +231,22 @@ export function needsQuantifier(kind: ReferenceKind): boolean {
 	return kind === 'many';
 }
 
-/** Types whose value is one thing, so `values` and `not` mean something. */
-function isScalarType(fieldType: FieldType): boolean {
-	return fieldType !== 'list' && fieldType !== 'links' && fieldType !== 'multichoice';
-}
-
-/** Types with an order, so a comparison with another field means something. */
-export function isComparableType(fieldType: FieldType): boolean {
-	return (
-		fieldType === 'date' ||
-		fieldType === 'integer' ||
-		fieldType === 'float' ||
-		fieldType === 'duration'
-	);
-}
+/** The lists the rule engine serves of which types it tests by value and which it orders. */
+export type RuleTables = Pick<
+	SchemaDefinitionData,
+	'rule_value_test_types' | 'rule_comparable_types'
+>;
 
 /**
  * The require tests a reference can take, by what it points at and
- * the target field's type: presence always; a value set on a one-thing
- * type; a comparison on an ordered type; a count only on the related
- * items themselves.
+ * the target field's type: presence always; a value set where the
+ * engine tests the type by value; a comparison where it has an order
+ * for the type; a count only on the related items themselves.
  */
 export function requireTestKinds(
 	kind: ReferenceKind,
-	targetType: FieldType | null
+	targetType: FieldType | null,
+	tables: RuleTables
 ): RequireTest['kind'][] {
 	switch (kind) {
 		case 'incomplete':
@@ -260,8 +256,12 @@ export function requireTestKinds(
 		case 'single':
 		case 'many': {
 			const kinds: RequireTest['kind'][] = ['required', 'forbidden'];
-			if (targetType !== null && isScalarType(targetType)) kinds.push('values', 'not');
-			if (targetType !== null && isComparableType(targetType)) kinds.push('compare');
+			if (targetType !== null && tables.rule_value_test_types.includes(targetType)) {
+				kinds.push('values', 'not');
+			}
+			if (targetType !== null && tables.rule_comparable_types.includes(targetType)) {
+				kinds.push('compare');
+			}
 			return kinds;
 		}
 	}
@@ -288,15 +288,7 @@ export function comparableFields(
 export function specOfField(
 	field: Pick<FieldDefinitionData, 'field_type' | 'shape'> | null
 ): ValueSpec {
-	if (field === null)
-		return { fieldType: 'string', required: false, values: [], min: null, max: null };
-	return {
-		fieldType: field.field_type,
-		required: false,
-		values: field.shape.kind === 'values' ? field.shape.values : [],
-		min: field.shape.kind === 'numeric' ? field.shape.min : null,
-		max: field.shape.kind === 'numeric' ? field.shape.max : null
-	};
+	return field === null ? specOf('string', null) : specOf(field.field_type, field.shape);
 }
 
 /**
@@ -308,16 +300,21 @@ export function specOfField(
 export function listSpecOfField(
 	field: Pick<FieldDefinitionData, 'field_type' | 'shape'> | null
 ): ValueSpec {
-	if (field !== null && field.shape.kind === 'values') {
-		return {
-			fieldType: 'multichoice',
-			required: false,
-			values: field.shape.values,
-			min: null,
-			max: null
-		};
-	}
-	return { fieldType: 'list', required: false, values: [], min: null, max: null };
+	return field !== null && field.shape.kind === 'values'
+		? specOf('multichoice', field.shape)
+		: specOf('list', null);
+}
+
+/**
+ * A count typed into a number input — a `count` bound, a `min_count`
+ * or `max_count` — as the whole number it names, or `null` when the
+ * text is blank, not a number or negative. What `null` means is the
+ * caller's: a cleared bound, or a keystroke to ignore.
+ */
+export function parseCount(text: string): number | null {
+	if (text.trim() === '') return null;
+	const parsed = Number.parseInt(text, 10);
+	return Number.isNaN(parsed) || parsed < 0 ? null : parsed;
 }
 
 /** One value as the editor handed it over, as the wire's scalar; `null` when cleared or not one value. */
@@ -419,91 +416,40 @@ export function withRequireReference(
 	row: RequireRow,
 	reference: Reference,
 	anchors: Anchor[],
-	targetType: FieldType | null
+	targetType: FieldType | null,
+	tables: RuleTables
 ): RequireRow {
-	const allowed = requireTestKinds(referenceKind(reference, anchors), targetType);
+	const allowed = requireTestKinds(referenceKind(reference, anchors), targetType, tables);
 	const test = allowed.includes(row.test.kind)
 		? row.test
 		: emptyRequireTest(allowed[0] ?? 'required');
 	return { reference: joinReference(reference) ?? '', test };
 }
 
-/** The shape with the row at `index` replaced. */
-export function withMatchRow(shape: RuleShape, index: number, row: MatchRow): RuleShape {
-	return {
-		...shape,
-		match_rows: shape.match_rows.map((at, position) => (position === index ? row : at))
-	};
-}
-
-export function withRequireRow(shape: RuleShape, index: number, row: RequireRow): RuleShape {
-	return {
-		...shape,
-		require_rows: shape.require_rows.map((at, position) => (position === index ? row : at))
-	};
-}
-
-/** The shape without the row at `index`. */
-export function withoutMatchRow(shape: RuleShape, index: number): RuleShape {
-	return { ...shape, match_rows: shape.match_rows.filter((_, position) => position !== index) };
-}
-
-export function withoutRequireRow(shape: RuleShape, index: number): RuleShape {
-	return { ...shape, require_rows: shape.require_rows.filter((_, position) => position !== index) };
-}
-
 // ── What greys out Save ───────────────────────────────────────────────
 
-/** Mirrors the parser's rule: kebab-case, starting with a letter. */
-const RULE_NAME = /^[a-z][a-z0-9-]*$/;
-
 /**
- * Why the draft cannot be saved as it stands, or `null`. Judged only
- * where the browser has the rule and the answer saves a round trip:
- * the name's spelling and uniqueness, a row that names nothing or has
- * no value, a rule with nothing to require, a count with no bound, the
- * same test twice on one reference. The server refuses the same things,
- * and judges what this cannot — whether a reference names a field, a
- * quantifier fits its relation — through the preview and on save.
+ * Why the draft is not ready to be judged, or `null`: a blank name, a
+ * row that names no field yet, a test with nothing entered. These are
+ * the gaps a form has while it is being filled in, which the server's
+ * verdict would word as a refusal of nothing ("no field named ''").
+ * Everything else — the name's spelling and uniqueness, a reference to
+ * no field, the same test twice, a count without a bound, a rule with
+ * nothing to require — is the server's call, made by the preview on
+ * every pause and worded as the parser words it, so no rule is kept in
+ * two places.
  */
-export function ruleProblem(
-	draft: RuleDraft,
-	takenNames: string[],
-	originalName: string | null
-): string | null {
-	const name = draft.name.trim();
-	if (name === '') return 'Enter a name.';
-	if (!RULE_NAME.test(name)) {
-		return 'The name must be kebab-case: lowercase letters, digits and hyphens, starting with a letter.';
-	}
-	if (name !== originalName && takenNames.includes(name)) {
-		return `A rule named '${name}' already exists.`;
-	}
-
-	const seen = new Set<string>();
+export function ruleProblem(draft: RuleDraft): string | null {
+	if (draft.name.trim() === '') return 'Enter a name.';
 	for (const row of draft.shape.match_rows) {
 		if (row.reference === '') return 'Every condition needs a field.';
 		const value = scalarTestProblem(row.test);
 		if (value !== null) return value;
-		const key = `${row.reference}|${row.quantifier ?? ''}|${row.test.kind}`;
-		if (seen.has(key)) return `'${row.reference}' has the same test twice.`;
-		seen.add(key);
 	}
 	for (const row of draft.shape.require_rows) {
 		if (row.reference === '') return 'Every requirement needs a field.';
 		const value = requireTestProblem(row.test);
 		if (value !== null) return value;
-		const key = `${row.reference}|${row.test.kind}${row.test.kind === 'compare' ? row.test.comparison : ''}`;
-		if (seen.has(key)) return `'${row.reference}' has the same requirement twice.`;
-		seen.add(key);
-	}
-
-	const count = draft.shape.count;
-	if (count !== null && count.min === null && count.max === null) {
-		return 'The count needs a minimum or a maximum.';
-	}
-	if (draft.shape.require_rows.length === 0 && count === null) {
-		return 'Add a requirement or a count.';
 	}
 	return null;
 }

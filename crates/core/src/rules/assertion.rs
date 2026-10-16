@@ -6,6 +6,7 @@
 use std::cmp::Ordering;
 
 use crate::model::field_value::format_field_value_bracketed;
+use crate::model::schema::FieldType;
 use crate::model::schema::{Assertion, AssertionOperator, ConditionValue, NegationValue};
 use crate::model::{FieldValue, WorkItem};
 
@@ -285,14 +286,38 @@ fn resolve_single_value<'a>(
     }
 }
 
+/// Whether two values of `field_type` have an order, so that a
+/// field-to-field comparison (`lt_field` and the rest) means something:
+/// every type [`compare_field_values`] has an arm for. The rules editor
+/// reads this to offer the comparison only where it is defined, so the
+/// fact is spelled here, beside the match; a unit test keeps the two in
+/// step.
+pub(crate) fn ordering_defined(field_type: FieldType) -> bool {
+    match field_type {
+        FieldType::Integer
+        | FieldType::Float
+        | FieldType::Date
+        | FieldType::Duration
+        | FieldType::String
+        | FieldType::Boolean => true,
+        FieldType::Choice
+        | FieldType::Multichoice
+        | FieldType::Color
+        | FieldType::List
+        | FieldType::Link
+        | FieldType::Links => false,
+    }
+}
+
 /// Compare two field values for rule assertions (`gt`, `lt`, etc.).
 ///
 /// Returns `None` for pairs without a defined ordering (Choice,
 /// Multichoice, List, Link, Links) so the assertion fails loudly
 /// instead of silently lex-comparing.
 ///
-/// Supports Integer, Float, Date, Duration, String, Boolean.
-/// Cross-type Integer vs Float is promoted to f64.
+/// Supports Integer, Float, Date, Duration, String, Boolean — the
+/// types [`ordering_defined`] names. Cross-type Integer vs Float is
+/// promoted to f64.
 ///
 /// See also `query::sort::compare_field_values`, which provides a
 /// total order for the sort engine. Different intent — do not merge.
@@ -329,6 +354,39 @@ fn format_condition_values(condition_values: &[ConditionValue]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── The type list the editor is served ──────────────────────
+
+    #[test]
+    fn ordering_defined_names_exactly_the_types_with_an_order() {
+        // A value of each type compared with itself: an order exists
+        // for exactly the types the list names.
+        use crate::model::WorkItemId;
+        use strum::VariantArray;
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        let id = |value: &str| WorkItemId::from(value.to_owned());
+        for &field_type in FieldType::VARIANTS {
+            let value = match field_type {
+                FieldType::String => FieldValue::String("a".into()),
+                FieldType::Choice => FieldValue::Choice("a".into()),
+                FieldType::Multichoice => FieldValue::Multichoice(vec!["a".into()]),
+                FieldType::Integer => FieldValue::Integer(1),
+                FieldType::Float => FieldValue::Float(1.5),
+                FieldType::Date => FieldValue::Date(date),
+                FieldType::Duration => FieldValue::Duration(60),
+                FieldType::Color => FieldValue::Color("red".into()),
+                FieldType::Boolean => FieldValue::Boolean(true),
+                FieldType::List => FieldValue::List(vec!["a".into()]),
+                FieldType::Link => FieldValue::Link(id("a")),
+                FieldType::Links => FieldValue::Links(vec![id("a")]),
+            };
+            assert_eq!(
+                compare_field_values(&value, &value).is_some(),
+                ordering_defined(field_type),
+                "{field_type}: the list and the comparison disagree"
+            );
+        }
+    }
 
     // ── compare_field_values ────────────────────────────────────
 

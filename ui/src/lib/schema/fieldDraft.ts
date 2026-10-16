@@ -1,9 +1,9 @@
 // The field editor's working copy and what it is made from and into:
 // the draft a panel opens with (from a served definition, or empty for
-// a new field), the draft after a type change, the write body a save
-// sends, and the spec the default control hands the value editor. Pure
-// so every input shape can be unit-tested without a DOM; the panel
-// component holds the draft and calls these.
+// a new field), the draft after a type change or a change of how the
+// value is filled, and the write body a save sends. Pure so every
+// input shape can be unit-tested without a DOM; the panel component
+// holds the draft and calls these.
 //
 // Nothing here knows a type's rules. The shape a type is edited as, the
 // generators it accepts and the properties it allows are read from the
@@ -29,7 +29,7 @@ import type { PullConfig } from '$lib/api/generated/PullConfig';
 import type { SchemaDefinitionData } from '$lib/api/generated/SchemaDefinitionData';
 import type { ShapeKind } from '$lib/api/generated/ShapeKind';
 import type { WhenBranchData } from '$lib/api/generated/WhenBranchData';
-import type { ValueSpec } from '$lib/values/valueSpec';
+import { specOf, type ValueSpec } from '$lib/values/valueSpec';
 
 /**
  * The default as the panel edits it. A literal whose value is `null`
@@ -53,10 +53,7 @@ export interface FieldDraft {
 	shape: FieldShape;
 	/** The rollup (`aggregate:`), or none. */
 	aggregate: AggregateConfig | null;
-	/**
-	 * The recipe filling the value (`pull:` so far), or none for a
-	 * field set by hand.
-	 */
+	/** The recipe filling the value, or none for a field set by hand. */
 	recipe: FieldRecipe | null;
 }
 
@@ -69,14 +66,10 @@ export type TypeTables = Pick<
 	| 'pull_sources_by_type'
 	| 'expression_readable_types'
 	| 'conditional_types'
+	| 'condition_literal_types'
 >;
 
-/**
- * The draft a panel opens with for an existing field. An invalid
- * default — text the type cannot hold — becomes a literal of that text,
- * so it is shown rather than silently dropped; the server judges it
- * again on save.
- */
+/** The draft a panel opens with for an existing field. */
 export function initialDraft(field: FieldDefinitionData): FieldDraft {
 	return {
 		name: field.name,
@@ -98,9 +91,10 @@ function draftDefaultOf(field: Pick<FieldDefinitionData, 'default'>): DraftDefau
 		case 'generator':
 			return { kind: 'generator', generator: served.generator };
 		case 'literal':
-			return { kind: 'literal', value: served.value };
-		case 'invalid':
-			return { kind: 'literal', value: served.text };
+			// The wire types the literal as unknown: it is the file's
+			// spelling of a value of the field's type, which is what the
+			// value editor shows.
+			return { kind: 'literal', value: served.value as FieldValue | null };
 	}
 }
 
@@ -349,6 +343,80 @@ export function newCompute(): ComputeRecipe {
 	return { kind: 'compute', expression: '', round: 'nearest', error_on_missing: false };
 }
 
+/** How a field's value is filled, as the panel's "Value" selector offers it. */
+export type ValueKind = 'hand' | FieldRecipe['kind'];
+
+/** The selector's reading of a draft: its recipe's kind, or "by hand" without one. */
+export function valueKindOf(draft: Pick<FieldDraft, 'recipe'>): ValueKind {
+	return draft.recipe?.kind ?? 'hand';
+}
+
+/**
+ * What a change of value kind had to drop from the draft, so the panel
+ * can say so: an add-time `default` (a pulled or computed field has
+ * none, and a conditional field's fallback is a literal only), or the
+ * `fallback` of the conditions, which would otherwise have turned into
+ * a default stamped on new items, a different meaning
+ * (`schema-derived-field-editor`, decision 7).
+ */
+export type DroppedDefault = 'default' | 'fallback' | null;
+
+/** What the panel knows about the type that the switch needs. */
+export interface ValueKindContext {
+	whenAllowed: boolean;
+	computeAllowed: boolean;
+	/** The pull the type can start with, or `null` when it cannot be pulled into. */
+	pullStart: PullConfig | null;
+	/** The operand choices a fresh condition starts from. */
+	choices: OperandChoice[];
+}
+
+/**
+ * The draft after the "Value" selector changed to `kind`, and what the
+ * change dropped (see [`DroppedDefault`]). A kind the type cannot take
+ * leaves the draft as it is.
+ */
+export function withValueKind(
+	draft: FieldDraft,
+	kind: ValueKind,
+	context: ValueKindContext
+): { draft: FieldDraft; dropped: DroppedDefault } {
+	let next = draft;
+	let dropped: DroppedDefault = null;
+	if (valueKindOf(draft) === 'when' && kind !== 'when' && draft.default !== null) {
+		next = { ...next, default: null };
+		dropped = 'fallback';
+	}
+	switch (kind) {
+		case 'hand':
+			return { draft: { ...next, recipe: null }, dropped };
+		case 'when': {
+			if (!context.whenAllowed) return { draft, dropped: null };
+			if (next.default?.kind === 'generator') {
+				next = { ...next, default: null };
+				dropped = 'default';
+			}
+			return { draft: { ...next, recipe: newWhen(context.choices) }, dropped };
+		}
+		case 'pull': {
+			if (context.pullStart === null) return { draft, dropped: null };
+			if (next.default !== null) {
+				next = { ...next, default: null };
+				dropped = 'default';
+			}
+			return { draft: { ...next, recipe: { kind: 'pull', ...context.pullStart } }, dropped };
+		}
+		case 'compute': {
+			if (!context.computeAllowed) return { draft, dropped: null };
+			if (next.default !== null) {
+				next = { ...next, default: null };
+				dropped = 'default';
+			}
+			return { draft: { ...next, recipe: newCompute() }, dropped };
+		}
+	}
+}
+
 /** Something a formula may name, offered for insertion: the text and a word on what it is. */
 export interface ExpressionReference {
 	text: string;
@@ -501,25 +569,11 @@ export function literalSpecFor(
 	fields: FieldDefinitionData[],
 	constants: ConstantData[]
 ): ValueSpec {
-	const text: ValueSpec = {
-		fieldType: 'string',
-		required: false,
-		values: [],
-		min: null,
-		max: null
-	};
+	const text: ValueSpec = specOf('string', null);
 	switch (other.kind) {
 		case 'field': {
 			const field = fields.find((entry) => entry.name === other.name);
-			return field === undefined
-				? text
-				: {
-						fieldType: field.field_type,
-						required: false,
-						values: field.shape.kind === 'values' ? field.shape.values : [],
-						min: field.shape.kind === 'numeric' ? field.shape.min : null,
-						max: field.shape.kind === 'numeric' ? field.shape.max : null
-					};
+			return field === undefined ? text : specOf(field.field_type, field.shape);
 		}
 		case 'constant': {
 			const value = constants.find((entry) => entry.name === other.name)?.value;
@@ -537,42 +591,33 @@ export function literalSpecFor(
 }
 
 /**
- * The types a literal can face: the grammar spells a whole number, a
- * fraction, text and a boolean, and a color compares equal to the text
- * that names one.
- */
-const LITERAL_TYPES: readonly FieldType[] = [
-	'integer',
-	'float',
-	'string',
-	'choice',
-	'boolean',
-	'color'
-];
-
-/**
- * Whether "a value" can stand opposite `other`: only where the grammar
- * has a literal of that side's type. Opposite `$today`, a date or a
- * duration there is none — whatever is typed would travel as text and
- * the server's type check would refuse the comparison — so the picker
- * withholds the entry rather than offer a trap.
+ * Whether "a value" can stand opposite `other`: only where the server
+ * lists the other side's type as one a typed-in literal compares with
+ * (`condition_literal_types`). Opposite `$today`, a date or a duration
+ * it does not — whatever is typed would travel as text and the server's
+ * type check would refuse the comparison — so the picker withholds the
+ * entry rather than offer a trap.
  */
 export function takesLiteral(
+	tables: TypeTables,
 	other: Operand,
 	fields: FieldDefinitionData[],
 	constants: ConstantData[]
 ): boolean {
-	return LITERAL_TYPES.includes(literalSpecFor(other, fields, constants).fieldType);
+	return tables.condition_literal_types.includes(
+		literalSpecFor(other, fields, constants).fieldType
+	);
 }
 
 /** The picker's choices for the side facing `other`: all of them, minus "a value" where it cannot stand. */
 export function choicesFacing(
+	tables: TypeTables,
 	choices: OperandChoice[],
 	other: Operand,
 	fields: FieldDefinitionData[],
 	constants: ConstantData[]
 ): OperandChoice[] {
-	return takesLiteral(other, fields, constants)
+	return takesLiteral(tables, other, fields, constants)
 		? choices
 		: choices.filter((choice) => choice.operand.kind !== 'literal');
 }
@@ -586,6 +631,7 @@ export type RowCondition = Extract<ConditionShape, { kind: 'row' }>;
  * is offered the literal stays and the server says why.
  */
 export function withOperand(
+	tables: TypeTables,
 	condition: RowCondition,
 	side: 'left' | 'right',
 	operand: Operand,
@@ -595,7 +641,7 @@ export function withOperand(
 ): RowCondition {
 	const otherSide = side === 'left' ? 'right' : 'left';
 	const next: RowCondition = { ...condition, [side]: operand };
-	if (condition[otherSide].kind !== 'literal' || takesLiteral(operand, fields, constants)) {
+	if (condition[otherSide].kind !== 'literal' || takesLiteral(tables, operand, fields, constants)) {
 		return next;
 	}
 	const wanted = literalSpecFor(operand, fields, constants).fieldType;
@@ -884,19 +930,4 @@ function writeDefaultOf(draft: DraftDefault | null): FieldDefinitionWrite['defau
 	if (draft.kind === 'generator') return { kind: 'generator', generator: draft.generator };
 	if (draft.value === null) return null;
 	return { kind: 'literal', value: draft.value };
-}
-
-/**
- * What the value editor needs to edit the draft's fixed default. Never
- * required: clearing the editor means "no default", which `writeBody`
- * sends as `null`, not an empty value the server would have to refuse.
- */
-export function specOfDraft(draft: Pick<FieldDraft, 'fieldType' | 'shape'>): ValueSpec {
-	return {
-		fieldType: draft.fieldType,
-		required: false,
-		values: draft.shape.kind === 'values' ? draft.shape.values : [],
-		min: draft.shape.kind === 'numeric' ? draft.shape.min : null,
-		max: draft.shape.kind === 'numeric' ? draft.shape.max : null
-	};
 }

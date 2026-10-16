@@ -1,7 +1,8 @@
 //! The schema as the schema editor sees it — every field's full
 //! persisted definition, every rule, and the type system's own tables:
 //! which properties a type accepts, which generators may default it,
-//! which aggregate functions apply, which type changes are safe.
+//! which aggregate functions apply, what a pull may read, what a
+//! formula may read.
 //!
 //! This is the second projection of a [`crate::model::schema::Schema`]
 //! for the web client.
@@ -16,22 +17,17 @@
 //! - **It reads `schema.yaml` and nothing else.** No items, resources
 //!   or views are loaded: the payload needs none of them, and the
 //!   schema page then works while the items directory is broken —
-//!   exactly when someone wants to see the schema. The content hash,
-//!   the typed schema and the text blocks all come from the same bytes,
-//!   read once, so the hash can never describe a different file than
-//!   the fields do.
-//! - **Derived blocks and rule bodies are YAML text from a second,
-//!   generic parse of those bytes.** The typed model has already
-//!   discarded how a `when:` or `pull:` block was written; re-parsing
-//!   the file as a plain value tree and re-serializing each sub-block
-//!   gives text that is exact in content and normalized in form
-//!   (comments inside the block do not survive). That is enough for
-//!   read-only display, and it needs no span-aware parser. A block the
-//!   editor edits is served as data beside its text — `aggregate` as
-//!   the parsed [`AggregateConfig`], the recipe as a [`FieldRecipe`] —
-//!   the way a rule's body is served as rows beside it; the editor
-//!   never reads the YAML itself (`schema-derived-field-editor`,
-//!   decision 8).
+//!   exactly when someone wants to see the schema.
+//! - **Everything the editor edits is served as data**, never as YAML
+//!   text the browser would have to read: the type-specific settings
+//!   as a [`FieldShape`], `aggregate` as the parsed [`AggregateConfig`],
+//!   the recipe as a [`FieldRecipe`], a rule's body as the rows of
+//!   [`RuleShape`] (`schema-derived-field-editor`, decision 8). The one
+//!   text block is the body of a rule the rows cannot carry
+//!   ([`RuleShapeData::Unrepresentable`]), re-serialized from a generic
+//!   parse of the same bytes so the page can still show the file's
+//!   content; the text is normalized in form (comments inside it do not
+//!   survive), which is enough for display.
 //!
 //! Every type here carries a `ts_rs` derive; `cargo xtask gen-types`
 //! emits the TypeScript. A new type needs its `exports.add` line in
@@ -40,24 +36,22 @@
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use strum::VariantArray;
 
-use crate::coerce::coerce_value;
 use crate::compute_check::expression_type_of;
 use crate::condition_shape::ConditionShape;
-use crate::expression::ComparisonOperator;
+use crate::expression::{ComparisonOperator, ExpressionType};
 use crate::model::duration::format_duration_seconds;
 use crate::model::schema::{
     allowed_aggregate_functions, allowed_generators, field_property_allowed, pull_functions,
-    when_allowed, widening_targets, AggregateConfig, AggregateFunction, DefaultValue,
-    FieldDefinition, FieldProperty, FieldType, FieldTypeConfig, Generator, PullConfig, RoundMode,
-    Severity,
+    when_allowed, AggregateConfig, AggregateFunction, DefaultValue, FieldDefinition, FieldProperty,
+    FieldType, FieldTypeConfig, Generator, PullConfig, RoundMode, Severity,
 };
-use crate::model::FieldValue;
-use crate::parser::schema::{parse_schema, SchemaLoadError};
+use crate::parser::schema::{parse_schema_with_document, SchemaLoadError};
 use crate::project::LoadError;
 use crate::rule_shape::RuleShape;
+use crate::rules::assertion::ordering_defined;
+use crate::rules::condition::value_test_defined;
 
 // ── Wire types ────────────────────────────────────────────────────────
 
@@ -92,21 +86,25 @@ pub struct SchemaDefinitionData {
     /// declaration order. Not in `properties_by_type`: the parser polices
     /// `when` with its own check and its own message.
     pub conditional_types: Vec<FieldType>,
+    /// The types a condition row may compare against a typed-in value:
+    /// those with a literal in the expression grammar, or equal to one
+    /// (a color to the text naming it). Opposite any other type the row
+    /// offers only fields, constants and `$today`. In [`FieldType`]
+    /// declaration order.
+    pub condition_literal_types: Vec<FieldType>,
+    /// The types a rule may test by value (`values`, `not`, a `match`
+    /// condition): those the rule engine compares a value of. In
+    /// [`FieldType`] declaration order.
+    pub rule_value_test_types: Vec<FieldType>,
+    /// The types a rule may compare field to field (`lt_field` and the
+    /// rest): those the rule engine has an order for. In [`FieldType`]
+    /// declaration order.
+    pub rule_comparable_types: Vec<FieldType>,
     /// The comparison operators a condition row may use, each with the
     /// symbol the grammar spells it as, in the grammar's order.
     pub comparison_operators: Vec<ComparisonOperatorData>,
     /// Which `$`-generators may be the `default:` of each type.
     pub generators_by_type: Vec<FieldTypeGenerators>,
-    /// Which types each type may be changed to without invalidating an
-    /// existing value. Empty means the type is locked to itself.
-    pub widening_by_type: Vec<FieldTypeWidening>,
-    /// Content hash of `schema.yaml` as read for this payload. Opaque to
-    /// the client, which may compare two fetches by it to tell whether
-    /// the file changed in between. The write endpoints do not ask for
-    /// it back: a write replaces one field's entry in a freshly read
-    /// file, so last write wins per field and no conflict check is
-    /// needed (`schema-editor-web-design`, decision 9 as revised).
-    pub hash: String,
 }
 
 /// One field as `schema.yaml` defines it.
@@ -134,16 +132,12 @@ pub struct FieldDefinitionData {
     pub resource: Option<String>,
     /// The type-specific properties.
     pub shape: FieldShape,
-    /// The fill mechanisms declared on the field, each as the YAML
-    /// text of its block. All `None` for a plain field.
-    pub derived: DerivedBlocks,
-    /// The `aggregate:` block as data — what the editor's rollup
-    /// section edits and the write takes back. The same block is in
-    /// `derived.aggregate` as text.
+    /// The `aggregate:` block — what the editor's rollup section edits
+    /// and the write takes back. `None` for a field without a rollup.
     pub aggregate: Option<AggregateConfig>,
-    /// The recipe that fills the field's value as data — what the
-    /// editor's "Value" selector edits and the write takes back. `None`
-    /// for a field set by hand.
+    /// The recipe that fills the field's value — what the editor's
+    /// "Value" selector edits and the write takes back. `None` for a
+    /// field set by hand.
     pub recipe: Option<FieldRecipe>,
 }
 
@@ -159,7 +153,7 @@ pub enum FieldShape {
     Numeric { min: Option<f64>, max: Option<f64> },
     /// `duration`: inclusive bounds as suffix shorthand (`"2d"`), the
     /// spelling the file uses and the one a duration value travels in
-    /// (see [`FieldValue::Duration`]). Served in canonical form; written
+    /// (see [`crate::model::FieldValue::Duration`]). Served in canonical form; written
     /// as sent and judged by the parser, so the grammar lives in Rust
     /// alone and the editor needs no copy of it.
     Duration {
@@ -183,25 +177,23 @@ pub enum FieldShape {
 pub enum DefaultData {
     /// A `$`-generator, applied when an item is created.
     Generator { generator: Generator },
-    /// A literal, coerced through the field's own definition so the
-    /// client can render it in the type's editor.
-    Literal { value: FieldValue },
-    /// A literal the field's coercion rejects. The parser runs every
-    /// literal default through that same coercion at load, so a loaded
-    /// schema cannot produce this; it stays as the fallback should the
-    /// two ever disagree, kept as text so the page can show what the
-    /// file says and why the editor cannot.
-    Invalid { text: String, reason: String },
+    /// A literal as the file spells it — the same raw form a `when`
+    /// branch's `then` travels in and `DefaultWrite` takes back, so
+    /// the editor sees one spelling of a value in both directions. The
+    /// parser has already judged it against the field's type at load.
+    Literal {
+        #[ts(type = "unknown")]
+        value: serde_yaml::Value,
+    },
 }
 
 /// The way a field's value is derived rather than written: one of the
 /// recipes the parser makes mutually exclusive, `pull`, `compute` and
 /// `when`, as the editor edits it and the write takes it back. A
 /// tagged union, so the "Value" selector's choice and the block are
-/// one value and a field cannot carry two of them on the wire. Only
-/// `pull` is served and written so far (`schema-derived-field-editor`,
-/// decision 11 lands them one at a time); `aggregate` is a separate
-/// block, because a rollup combines with any recipe.
+/// one value and a field cannot carry two of them on the wire.
+/// `aggregate` is a separate block, because a rollup combines with any
+/// recipe.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, ts_rs::TS)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FieldRecipe {
@@ -243,21 +235,6 @@ pub struct WhenBranchData {
 pub struct ComparisonOperatorData {
     pub operator: ComparisonOperator,
     pub symbol: String,
-}
-
-/// The fill-mechanism blocks of a field, each as YAML text for
-/// read-only display. Editing them is a later item; their type is
-/// locked meanwhile because the expression was type-checked against it.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, ts_rs::TS)]
-pub struct DerivedBlocks {
-    /// The `compute:` block — an expression string or a mapping.
-    pub compute: Option<String>,
-    /// The `when:` block — the branch list.
-    pub when: Option<String>,
-    /// The `pull:` block.
-    pub pull: Option<String>,
-    /// The `aggregate:` block.
-    pub aggregate: Option<String>,
 }
 
 /// One rule: its header as data, its body both as YAML text and as the
@@ -385,13 +362,6 @@ pub struct FieldTypeGenerators {
     pub generators: Vec<Generator>,
 }
 
-/// The types one type may be changed to.
-#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
-pub struct FieldTypeWidening {
-    pub field_type: FieldType,
-    pub widens_to: Vec<FieldType>,
-}
-
 // ── Entry points ──────────────────────────────────────────────────────
 
 /// Read `schema_path` once and build the payload from those bytes.
@@ -412,24 +382,16 @@ pub fn load(schema_path: &Path) -> Result<SchemaDefinitionData, LoadError> {
 
 /// Build the payload from the text of a `schema.yaml`.
 ///
-/// Parses it as a [`Schema`](crate::model::schema::Schema) (the validating parse) and again as a
-/// generic YAML tree (for the text blocks), and hashes the text.
+/// Parses it as a [`Schema`](crate::model::schema::Schema) (the
+/// validating parse) and again as a generic YAML tree, for the rule
+/// bodies shown as text.
 pub fn build(yaml: &str) -> Result<SchemaDefinitionData, SchemaLoadError> {
-    let schema = parse_schema(yaml)?;
-    // The validating parse accepted the same text, so a generic parse
-    // cannot fail on syntax; a failure here would be a serde_yaml bug.
-    let document: serde_yaml::Value =
-        serde_yaml::from_str(yaml).map_err(SchemaLoadError::InvalidYaml)?;
+    let (schema, document) = parse_schema_with_document(yaml)?;
 
     let fields = schema
         .fields
         .iter()
-        .map(|(name, definition)| {
-            let raw_field = document
-                .get("fields")
-                .and_then(|fields| fields.get(name.as_str()));
-            FieldDefinitionData::from_definition(name, definition, raw_field)
-        })
+        .map(|(name, definition)| FieldDefinitionData::from_definition(name, definition))
         .collect();
 
     let raw_rules = document
@@ -502,6 +464,23 @@ pub fn build(yaml: &str) -> Result<SchemaDefinitionData, SchemaLoadError> {
             .copied()
             .filter(|&field_type| when_allowed(field_type))
             .collect(),
+        condition_literal_types: FieldType::VARIANTS
+            .iter()
+            .copied()
+            .filter(|&field_type| {
+                expression_type_of(field_type).is_some_and(ExpressionType::faces_a_literal)
+            })
+            .collect(),
+        rule_value_test_types: FieldType::VARIANTS
+            .iter()
+            .copied()
+            .filter(|&field_type| value_test_defined(field_type))
+            .collect(),
+        rule_comparable_types: FieldType::VARIANTS
+            .iter()
+            .copied()
+            .filter(|&field_type| ordering_defined(field_type))
+            .collect(),
         comparison_operators: ComparisonOperator::VARIANTS
             .iter()
             .map(|&operator| ComparisonOperatorData {
@@ -516,34 +495,14 @@ pub fn build(yaml: &str) -> Result<SchemaDefinitionData, SchemaLoadError> {
                 generators: allowed_generators(field_type).to_vec(),
             })
             .collect(),
-        widening_by_type: FieldType::VARIANTS
-            .iter()
-            .map(|&field_type| FieldTypeWidening {
-                field_type,
-                widens_to: widening_targets(field_type).to_vec(),
-            })
-            .collect(),
-        hash: content_hash(yaml),
     })
-}
-
-/// The hex SHA-256 of the file text. Opaque to every consumer but the
-/// write path, which recomputes it with this same function.
-pub fn content_hash(yaml: &str) -> String {
-    format!("{:x}", Sha256::digest(yaml.as_bytes()))
 }
 
 // ── Projection ────────────────────────────────────────────────────────
 
 impl FieldDefinitionData {
-    /// Project one typed definition, taking the derived blocks' text
-    /// from `raw_field`, the field's mapping in the generic parse.
-    fn from_definition(
-        name: &str,
-        definition: &FieldDefinition,
-        raw_field: Option<&serde_yaml::Value>,
-    ) -> Self {
-        let block_text = |key: &str| raw_field.and_then(|field| field.get(key)).map(yaml_text);
+    /// Project one typed definition.
+    fn from_definition(name: &str, definition: &FieldDefinition) -> Self {
         Self {
             name: name.to_owned(),
             field_type: definition.field_type(),
@@ -552,12 +511,6 @@ impl FieldDefinitionData {
             default: default_data(definition),
             resource: definition.resource.clone(),
             shape: FieldShape::from_config(&definition.type_config),
-            derived: DerivedBlocks {
-                compute: block_text("compute"),
-                when: block_text("when"),
-                pull: block_text("pull"),
-                aggregate: block_text("aggregate"),
-            },
             aggregate: definition.aggregate.clone(),
             recipe: recipe_of(definition),
         }
@@ -639,27 +592,16 @@ fn default_data(definition: &FieldDefinition) -> Option<DefaultData> {
     // evaluated fallback, already coerced; it is served through the same
     // slot, so the editor's default control edits it as the fallback.
     if let Some(when) = &definition.when {
-        return when
-            .default
-            .clone()
-            .map(|value| DefaultData::Literal { value });
+        return when.default.as_ref().map(|value| DefaultData::Literal {
+            value: value.to_yaml(),
+        });
     }
-    let literal = match definition.default.as_ref()? {
-        DefaultValue::Generator(generator) => {
-            return Some(DefaultData::Generator {
-                generator: *generator,
-            })
-        }
-        DefaultValue::String(text) => serde_yaml::Value::String(text.clone()),
-        DefaultValue::Integer(integer) => serde_yaml::Value::Number((*integer).into()),
-        DefaultValue::Float(float) => serde_yaml::Value::Number((*float).into()),
-        DefaultValue::Bool(boolean) => serde_yaml::Value::Bool(*boolean),
-    };
-    Some(match coerce_value(&literal, definition) {
-        Ok(value) => DefaultData::Literal { value },
-        Err(error) => DefaultData::Invalid {
-            text: yaml_text(&literal),
-            reason: error.to_string(),
+    Some(match definition.default.as_ref()? {
+        DefaultValue::Generator(generator) => DefaultData::Generator {
+            generator: *generator,
+        },
+        literal => DefaultData::Literal {
+            value: literal.literal_as_yaml(),
         },
     })
 }
@@ -882,65 +824,34 @@ rules:
                 generator: Generator::Filename
             })
         );
+        let literal = |value: serde_yaml::Value| Some(DefaultData::Literal { value });
         assert_eq!(
             field(&data, "status").default,
-            Some(DefaultData::Literal {
-                value: FieldValue::Choice("open".to_owned())
-            })
+            literal(serde_yaml::Value::String("open".to_owned()))
         );
         assert_eq!(
             field(&data, "points").default,
-            Some(DefaultData::Literal {
-                value: FieldValue::Integer(3)
-            })
+            literal(serde_yaml::Value::Number(3.into()))
         );
         assert_eq!(
             field(&data, "ratio").default,
-            Some(DefaultData::Literal {
-                value: FieldValue::Float(1.5)
-            })
+            literal(serde_yaml::Value::Number(1.5.into()))
         );
         assert_eq!(
             field(&data, "flag").default,
-            Some(DefaultData::Literal {
-                value: FieldValue::Boolean(true)
-            })
+            literal(serde_yaml::Value::Bool(true))
         );
+        // A date default is served as the file spells it, like a
+        // branch's `then`.
         assert_eq!(
             field(&data, "start").default,
-            Some(DefaultData::Literal {
-                value: FieldValue::Date(
-                    chrono::NaiveDate::from_ymd_opt(2026, 3, 1).expect("a valid date")
-                )
-            })
+            literal(serde_yaml::Value::String("2026-03-01".to_owned()))
         );
         assert_eq!(field(&data, "title").default, None);
     }
 
     #[test]
-    fn derived_blocks_are_the_yaml_of_the_block() {
-        let data = built();
-        assert_eq!(field(&data, "title").derived, DerivedBlocks::default());
-        assert_eq!(
-            field(&data, "when_done").derived.compute.as_deref(),
-            Some("expression: start + effort\nround: ceil")
-        );
-        assert_eq!(
-            field(&data, "color").derived.when.as_deref(),
-            Some("- if: status == \"done\"\n  then: green\n- if: points + 1 > 3\n  then: red")
-        );
-        assert_eq!(
-            field(&data, "total").derived.aggregate.as_deref(),
-            Some("function: sum\nover: parent")
-        );
-        assert_eq!(
-            field(&data, "earliest").derived.pull.as_deref(),
-            Some("over: depends_on\nfield: start\nfunction: min")
-        );
-    }
-
-    #[test]
-    fn the_aggregate_block_is_also_served_as_data() {
+    fn the_aggregate_block_is_served_as_data() {
         let data = built();
         assert_eq!(
             field(&data, "total").aggregate,
@@ -986,7 +897,7 @@ rules:
         assert_eq!(
             field(&data, "color").default,
             Some(DefaultData::Literal {
-                value: FieldValue::Color("gray".to_owned())
+                value: serde_yaml::Value::String("gray".to_owned())
             })
         );
         let as_json = serde_json::to_value(field(&data, "color").recipe.as_ref()).unwrap();
@@ -1032,6 +943,39 @@ rules:
         assert_eq!(as_json("earliest")["kind"], "pull");
         assert_eq!(as_json("when_done")["kind"], "compute");
         assert_eq!(as_json("when_done")["round"], "ceil");
+    }
+
+    #[test]
+    fn the_rule_editors_type_lists_come_from_the_engine_and_the_grammar() {
+        let data = built();
+        assert_eq!(
+            data.condition_literal_types,
+            vec![
+                FieldType::String,
+                FieldType::Choice,
+                FieldType::Integer,
+                FieldType::Float,
+                FieldType::Color,
+                FieldType::Boolean
+            ]
+        );
+        // Everything the engine can test by value: all but color.
+        assert_eq!(
+            data.rule_value_test_types.len(),
+            FieldType::VARIANTS.len() - 1
+        );
+        assert!(!data.rule_value_test_types.contains(&FieldType::Color));
+        assert_eq!(
+            data.rule_comparable_types,
+            vec![
+                FieldType::String,
+                FieldType::Integer,
+                FieldType::Float,
+                FieldType::Date,
+                FieldType::Duration,
+                FieldType::Boolean
+            ]
+        );
     }
 
     #[test]
@@ -1150,7 +1094,6 @@ rules:
         );
         assert_eq!(data.aggregate_functions_by_type.len(), types.len());
         assert_eq!(data.generators_by_type.len(), types.len());
-        assert_eq!(data.widening_by_type.len(), types.len());
 
         let row = |rows: &[FieldTypeProperties], field_type| {
             rows.iter()
@@ -1189,13 +1132,6 @@ rules:
             .find(|row| row.field_type == FieldType::Choice)
             .unwrap();
         assert!(functions.functions.is_empty());
-
-        let widening = data
-            .widening_by_type
-            .iter()
-            .find(|row| row.field_type == FieldType::Integer)
-            .unwrap();
-        assert_eq!(widening.widens_to, vec![FieldType::Float]);
     }
 
     /// The per-type table and the shape read off a parsed field are two
@@ -1215,15 +1151,6 @@ rules:
                 "{field_type:?}"
             );
         }
-    }
-
-    #[test]
-    fn hash_follows_the_bytes() {
-        let data = built();
-        assert_eq!(data.hash, content_hash(SCHEMA_YAML));
-        assert_eq!(data.hash.len(), 64, "hex sha-256");
-        let edited = SCHEMA_YAML.replace("required: true", "required: false");
-        assert_ne!(build(&edited).unwrap().hash, data.hash);
     }
 
     #[test]

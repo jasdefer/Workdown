@@ -33,6 +33,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::assertion::{Assertion, AssertionOperator};
 use crate::model::condition::{Condition, ConditionOperator, ConditionValue, NegationValue};
 use crate::model::rule::{CountConstraint, Rule};
+use crate::yaml_tree::key as yaml_key;
 
 // ── Wire types ────────────────────────────────────────────────────────
 
@@ -563,24 +564,12 @@ fn references_in_order<'a>(references: impl Iterator<Item = &'a str>) -> Vec<&'a
     seen
 }
 
-fn yaml_key(key: &str) -> serde_yaml::Value {
-    serde_yaml::Value::String(key.to_owned())
-}
-
-/// A whole number is written as one: the parsed model holds every
-/// number as a float, and `3.0` in the file would not read as the `3`
-/// the author wrote.
+/// A scalar as the file spells it; a whole number without a fraction
+/// (see `yaml_tree::number`).
 fn scalar_yaml(value: &ScalarValue) -> serde_yaml::Value {
     match value {
         ScalarValue::Bool(flag) => serde_yaml::Value::Bool(*flag),
-        ScalarValue::Number(number) => {
-            let is_whole = number.fract() == 0.0 && number.abs() < 9_007_199_254_740_992.0;
-            if is_whole {
-                serde_yaml::Value::Number((*number as i64).into())
-            } else {
-                serde_yaml::Value::Number((*number).into())
-            }
-        }
+        ScalarValue::Number(number) => crate::yaml_tree::number(*number),
         ScalarValue::Text(text) => serde_yaml::Value::String(text.clone()),
     }
 }

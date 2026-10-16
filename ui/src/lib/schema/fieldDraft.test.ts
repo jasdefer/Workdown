@@ -29,7 +29,6 @@ import {
 	rollupRelations,
 	shapeKindOf,
 	shapeProblem,
-	specOfDraft,
 	takesAggregate,
 	takesCompute,
 	takesLiteral,
@@ -48,6 +47,7 @@ import {
 	withOperand,
 	withPattern,
 	withPullSource,
+	withValueKind,
 	withValueAdded,
 	withValueMoved,
 	withValueRemoved,
@@ -108,7 +108,8 @@ const tables: TypeTables = {
 		'duration',
 		'boolean'
 	],
-	conditional_types: ['string', 'choice', 'integer', 'float', 'date', 'duration', 'color', 'list']
+	conditional_types: ['string', 'choice', 'integer', 'float', 'date', 'duration', 'color', 'list'],
+	condition_literal_types: ['string', 'choice', 'integer', 'float', 'color', 'boolean']
 };
 
 function served(overrides: Partial<FieldDefinitionData>): FieldDefinitionData {
@@ -120,7 +121,6 @@ function served(overrides: Partial<FieldDefinitionData>): FieldDefinitionData {
 		default: null,
 		resource: null,
 		shape: { kind: 'numeric', min: 0, max: 100 },
-		derived: { compute: null, when: null, pull: null, aggregate: null },
 		aggregate: null,
 		recipe: null,
 		...overrides
@@ -151,13 +151,6 @@ describe('initialDraft', () => {
 	it('keeps a literal default as its value', () => {
 		const draft = initialDraft(served({ default: { kind: 'literal', value: 3 } }));
 		expect(draft.default).toEqual({ kind: 'literal', value: 3 });
-	});
-
-	it('shows an invalid default as a literal of its text', () => {
-		const draft = initialDraft(
-			served({ default: { kind: 'invalid', text: 'lots', reason: 'not an integer' } })
-		);
-		expect(draft.default).toEqual({ kind: 'literal', value: 'lots' });
 	});
 });
 
@@ -608,17 +601,20 @@ describe('conditions', () => {
 		const due = served({ name: 'due', field_type: 'date' });
 		const tint = served({ name: 'tint', field_type: 'color' });
 		const withDue = [status, points, due, tint, tags];
-		expect(takesLiteral({ kind: 'field', name: 'status' }, withDue, constants)).toBe(true);
-		expect(takesLiteral({ kind: 'field', name: 'tint' }, withDue, constants)).toBe(true);
-		expect(takesLiteral({ kind: 'constant', name: 'limit' }, withDue, constants)).toBe(true);
-		expect(takesLiteral({ kind: 'literal', value: 1 }, withDue, constants)).toBe(true);
-		expect(takesLiteral({ kind: 'today' }, withDue, constants)).toBe(false);
-		expect(takesLiteral({ kind: 'field', name: 'due' }, withDue, constants)).toBe(false);
-		expect(choicesFacing(choices, { kind: 'field', name: 'status' }, withDue, constants)).toBe(
-			choices
-		);
+		const takes = (other: Operand) => takesLiteral(tables, other, withDue, constants);
+		expect(takes({ kind: 'field', name: 'status' })).toBe(true);
+		expect(takes({ kind: 'field', name: 'tint' })).toBe(true);
+		expect(takes({ kind: 'constant', name: 'limit' })).toBe(true);
+		expect(takes({ kind: 'literal', value: 1 })).toBe(true);
+		expect(takes({ kind: 'today' })).toBe(false);
+		expect(takes({ kind: 'field', name: 'due' })).toBe(false);
 		expect(
-			choicesFacing(choices, { kind: 'today' }, withDue, constants).map((choice) => choice.key)
+			choicesFacing(tables, choices, { kind: 'field', name: 'status' }, withDue, constants)
+		).toBe(choices);
+		expect(
+			choicesFacing(tables, choices, { kind: 'today' }, withDue, constants).map(
+				(choice) => choice.key
+			)
 		).not.toContain('literal');
 	});
 
@@ -629,7 +625,7 @@ describe('conditions', () => {
 		const row = newBranch(choices).condition;
 		if (row.kind !== 'row') throw new Error('a fresh branch is a row');
 		// A date field opposite "a value": the value becomes `$today`.
-		expect(withOperand(row, 'left', dueOperand, choices, withDue, constants)).toEqual({
+		expect(withOperand(tables, row, 'left', dueOperand, choices, withDue, constants)).toEqual({
 			kind: 'row',
 			left: dueOperand,
 			operator: 'equal',
@@ -637,19 +633,33 @@ describe('conditions', () => {
 		});
 		// `$today` opposite "a value" with no date field on offer: the
 		// literal stays, and the server says why.
-		expect(withOperand(row, 'left', { kind: 'today' }, choices, fields, constants).right).toEqual({
-			kind: 'literal',
-			value: ''
-		});
+		expect(
+			withOperand(tables, row, 'left', { kind: 'today' }, choices, fields, constants).right
+		).toEqual({ kind: 'literal', value: '' });
 		// A side that is not a literal is left alone.
 		const dated: typeof row = { ...row, left: dueOperand, right: { kind: 'today' } };
 		expect(
-			withOperand(dated, 'right', { kind: 'field', name: 'points' }, choices, withDue, constants)
+			withOperand(
+				tables,
+				dated,
+				'right',
+				{ kind: 'field', name: 'points' },
+				choices,
+				withDue,
+				constants
+			)
 		).toEqual({ ...dated, right: { kind: 'field', name: 'points' } });
 		// A literal the operand can face is kept.
 		expect(
-			withOperand(row, 'left', { kind: 'constant', name: 'limit' }, choices, withDue, constants)
-				.right
+			withOperand(
+				tables,
+				row,
+				'left',
+				{ kind: 'constant', name: 'limit' },
+				choices,
+				withDue,
+				constants
+			).right
 		).toEqual({ kind: 'literal', value: '' });
 	});
 });
@@ -752,20 +762,71 @@ describe('pulls', () => {
 	});
 });
 
-describe('specOfDraft', () => {
-	it('hands the value editor the choice values', () => {
-		expect(
-			specOfDraft({ fieldType: 'choice', shape: { kind: 'values', values: ['a', 'b'] } })
-		).toEqual({ fieldType: 'choice', required: false, values: ['a', 'b'], min: null, max: null });
+describe('withValueKind', () => {
+	const pullStart: PullConfig = {
+		over: 'depends_on',
+		field: 'points',
+		function: 'sum',
+		error_on_missing: false
+	};
+	const context = {
+		whenAllowed: true,
+		computeAllowed: true,
+		pullStart,
+		choices: operandChoices(tables, [], [], null)
+	};
+	const byHand: FieldDraft = {
+		...newDraft(tables, 'integer'),
+		default: { kind: 'literal', value: 3 }
+	};
+
+	it('installs the recipe of the chosen kind', () => {
+		expect(withValueKind(byHand, 'pull', context).draft.recipe).toEqual({
+			kind: 'pull',
+			...pullStart
+		});
+		expect(withValueKind(byHand, 'compute', context).draft.recipe?.kind).toBe('compute');
+		expect(withValueKind(byHand, 'when', context).draft.recipe?.kind).toBe('when');
+		const back = withValueKind(withValueKind(byHand, 'pull', context).draft, 'hand', context);
+		expect(back.draft.recipe).toBeNull();
 	});
 
-	it('hands the value editor the numeric bounds', () => {
-		expect(
-			specOfDraft({ fieldType: 'float', shape: { kind: 'numeric', min: 0.5, max: null } })
-		).toEqual({ fieldType: 'float', required: false, values: [], min: 0.5, max: null });
+	it('drops the default a pulled or computed field cannot have, and says so', () => {
+		const pulled = withValueKind(byHand, 'pull', context);
+		expect(pulled.draft.default).toBeNull();
+		expect(pulled.dropped).toBe('default');
+		expect(withValueKind(byHand, 'compute', context).dropped).toBe('default');
+		expect(withValueKind({ ...byHand, default: null }, 'compute', context).dropped).toBeNull();
 	});
 
-	it('is never required, so clearing means no default', () => {
-		expect(specOfDraft({ fieldType: 'date', shape: { kind: 'scalar' } }).required).toBe(false);
+	it('keeps a literal default as the fallback of conditions but drops a generated one', () => {
+		expect(withValueKind(byHand, 'when', context)).toMatchObject({
+			draft: { default: byHand.default },
+			dropped: null
+		});
+		const generated: FieldDraft = {
+			...byHand,
+			default: { kind: 'generator', generator: '$max_plus_one' }
+		};
+		expect(withValueKind(generated, 'when', context)).toMatchObject({
+			draft: { default: null },
+			dropped: 'default'
+		});
+	});
+
+	it('drops the fallback when the conditions go, since it would become a default', () => {
+		const conditional = withValueKind(byHand, 'when', context).draft;
+		expect(withValueKind(conditional, 'hand', context)).toMatchObject({
+			draft: { default: null, recipe: null },
+			dropped: 'fallback'
+		});
+		expect(withValueKind(conditional, 'pull', context).dropped).toBe('fallback');
+	});
+
+	it('leaves the draft alone for a kind the type cannot take', () => {
+		const locked = { ...context, whenAllowed: false, computeAllowed: false, pullStart: null };
+		for (const kind of ['when', 'compute', 'pull'] as const) {
+			expect(withValueKind(byHand, kind, locked)).toEqual({ draft: byHand, dropped: null });
+		}
 	});
 });

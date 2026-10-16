@@ -27,7 +27,7 @@
 //! keeps its content and its position. What is given up is formatting: comments
 //! are not preserved, and compact `[a, b]` lists come back one entry per
 //! line. The file is the source of truth for *content*, not for
-//! formatting. Because only one entry is ever replaced, a stale editor
+//! formatting (ADR-015). Because only one entry is ever replaced, a stale editor
 //! tab can overwrite that field and nothing else: last write wins, per
 //! field, and there is no conflict detection.
 //!
@@ -93,9 +93,11 @@
 //! module's own, so that a CLI wrapper later inherits them: the `id`
 //! field cannot be removed; a field a `config.yaml` role names cannot
 //! be removed, because the config is read once at startup and the break
-//! would surface only on restart; a field with a recipe keeps its type,
-//! because the recipe was type-checked against it; any other type
-//! change must be a pair in [`widening_targets`].
+//! would surface only on restart; a field keeps its type, because a
+//! change can invalidate every item's value at once and a recipe was
+//! type-checked against it — the type is changed in `schema.yaml`,
+//! where the load judges the result (`schema-editor-web-design`,
+//! decision 12).
 //!
 //! ## Field usage
 //!
@@ -112,180 +114,33 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
-
 use crate::config_check;
 use crate::expression::parse_expression;
 use crate::model::config::Config;
 use crate::model::diagnostic::{
     ConfigDiagnostic, ConfigDiagnosticKind, Diagnostic, DiagnosticBody,
 };
-use crate::model::schema::{
-    widening_targets, AggregateConfig, FieldType, Generator, PullConfig, RoundMode, Schema,
-    Severity,
-};
+use crate::model::schema::{AggregateConfig, FieldType, PullConfig, RoundMode, Schema, Severity};
 use crate::model::work_item::WorkItem;
+use crate::mutation_data::{
+    DefaultWrite, FieldDefinitionWrite, FieldPreview, FieldUsage, RuleDefinitionWrite, RulePreview,
+};
 use crate::operations::diagnostics::{introduced_by_mutation, introduced_diagnostics};
 use crate::operations::frontmatter_io::{remove_frontmatter_key, write_file_atomically};
 use crate::parser::schema::{
-    is_valid_field_name, is_valid_rule_name, parse_schema, SchemaLoadError,
+    is_valid_field_name, is_valid_rule_name, load_schema_with_document, parse_schema,
+    SchemaLoadError,
 };
 use crate::project::{load_project_with_schema, LoadError};
-use crate::rule_shape::RuleShape;
 use crate::schema_definition_data::{FieldRecipe, FieldShape, WhenBranchData};
+use crate::yaml_tree::key as yaml_key;
 
 // ── Public types ─────────────────────────────────────────────────────
-
-/// One field definition as the editor writes it: the header every type
-/// shares, the type-specific shape and the rollup. The read payload's
-/// [`FieldDefinitionData`](crate::schema_definition_data::FieldDefinitionData)
-/// minus its `name` (the operation takes it separately) and minus the
-/// text blocks, which are displayed but not edited. What the form GETs
-/// is what it PUTs back.
-///
-/// The `shape` is not checked against `field_type` here: the pair is
-/// written to the tree as the properties it spells out, and the schema
-/// parser is the judge of whether they fit the type, exactly as for a
-/// hand-edited file.
-#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
-pub struct FieldDefinitionWrite {
-    /// The built-in type.
-    pub field_type: FieldType,
-    /// Whether every item must carry the field.
-    #[serde(default)]
-    pub required: bool,
-    /// Human-readable explanation; `None` clears it.
-    #[serde(default)]
-    pub description: Option<String>,
-    /// The `default:` applied at `workdown add` time; `None` clears it.
-    /// Beside a `when` recipe it is the recipe's evaluated fallback
-    /// instead, the same key in the file: a literal only, the parser
-    /// refuses a generator there, which the preview reports.
-    #[serde(default)]
-    pub default: Option<DefaultWrite>,
-    /// Resource section in `resources.yaml` that constrains the values;
-    /// `None` clears it.
-    #[serde(default)]
-    pub resource: Option<String>,
-    /// The type-specific properties.
-    pub shape: FieldShape,
-    /// The `aggregate:` block; `None` clears it. Written as sent and
-    /// judged by the schema parser, which checks the function against
-    /// the type and `over` against the link fields.
-    #[serde(default)]
-    pub aggregate: Option<AggregateConfig>,
-    /// The recipe filling the value; `None` means set by hand and clears
-    /// every recipe key. Written as sent; the parser judges the
-    /// combination with `default` and the syntax, and the load the
-    /// references and the types, which the preview reports as the
-    /// draft's problem.
-    #[serde(default)]
-    pub recipe: Option<FieldRecipe>,
-}
-
-/// What [`preview_field`] answers: the field's entry as the write would
-/// put it in the file, and the verdict on the file with it.
-#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
-pub struct FieldPreview {
-    /// The field's properties as YAML text, without the name key: the
-    /// mapping an add would create or a replace would leave behind,
-    /// recipe keys the write does not touch included.
-    pub yaml: String,
-    /// Why the draft cannot be saved: a name the add would refuse, the
-    /// parser's message when `schema.yaml` would not load with it, or
-    /// the schema diagnostics it would introduce (a recipe the load
-    /// disables), one per line. `None` when the write would go through,
-    /// with or without warnings.
-    pub problem: Option<String>,
-    /// Where in the draft's formula the problem sits, as a one-based
-    /// column, when it is a `compute` expression the parser or the type
-    /// check rejects at a spot: the same column the text names, as
-    /// data for the editor to mark. `None` for every other problem.
-    pub problem_column: Option<usize>,
-}
-
-/// A field's `default:` as the editor sends it.
-#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum DefaultWrite {
-    /// A `$`-generator, written as its token.
-    Generator { generator: Generator },
-    /// A literal, in the form the item editor's set endpoint sends a
-    /// value (a JSON scalar; a duration as its shorthand text). Written
-    /// to the file as it arrives and judged by the schema parser, which
-    /// runs every literal default through the field's own coercion.
-    Literal {
-        #[ts(type = "unknown")]
-        value: serde_yaml::Value,
-    },
-}
-
-/// One rule as the editor writes it: the header plus the rows of
-/// [`RuleShape`]. The read payload's
-/// [`RuleData`](crate::schema_definition_data::RuleData) with its rows
-/// in place of the text body. What the form GETs is what it PUTs back;
-/// on a replace, `name` may differ from the name in the path, which
-/// renames the rule.
-#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
-pub struct RuleDefinitionWrite {
-    /// Unique kebab-case identifier.
-    pub name: String,
-    /// Human-readable explanation; `None` clears it.
-    #[serde(default)]
-    pub description: Option<String>,
-    /// Whether a violation is an error or a warning. Written only when
-    /// it is not the default.
-    #[serde(default)]
-    pub severity: Severity,
-    /// The `match`, `require` and `count` blocks as rows.
-    pub shape: RuleShape,
-}
-
-/// What [`preview_rule`] answers: the rule's entry as the write would
-/// put it in the file, and the parser's verdict on the file with it.
-#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
-pub struct RulePreview {
-    /// The rule's mapping as YAML text, without the list dash. Empty
-    /// when the rows cannot be written as one rule at all; `problem`
-    /// says why.
-    pub yaml: String,
-    /// Why `schema.yaml` would not load with this rule in it, in the
-    /// parser's words; `None` when it would.
-    pub problem: Option<String>,
-}
-
-/// What depends on a field: the answer [`field_usage`] gives.
-///
-/// The schema's own references come by name — the rules and the
-/// recipes naming the field — because a client shows them as a list to
-/// edit first. Everything outside the schema file comes as the
-/// diagnostics the removal would introduce, with their scope, which is
-/// how a client tells a view from a config role from an item.
-#[derive(Debug, Clone, Serialize, ts_rs::TS)]
-pub struct FieldUsage {
-    /// The rules whose `match`, `require` or `count` names the field,
-    /// directly or through its inverse (`children.status` names
-    /// `status`, and `parent` through `children`). In file order.
-    pub rules: Vec<String>,
-    /// The other fields whose `aggregate` or `pull` climbs or reads
-    /// the field (`aggregate.over`, `pull.over`, `pull.field`). In
-    /// declaration order. A `compute` expression reading the field is
-    /// reported through `introduced` instead, as the warning it would
-    /// become.
-    pub recipes: Vec<String>,
-    /// Set when removing the field would leave `schema.yaml` unable to
-    /// load, with the parser's message. `rules` and `recipes` are the
-    /// explanation when either is non-empty; the message is for a
-    /// client to show when neither names anything. `introduced` is
-    /// empty then: nothing further can be asked of a schema that does
-    /// not parse.
-    pub parse_error: Option<String>,
-    /// The diagnostics removing the field would introduce, each with
-    /// its scope: config findings for the views and the `config.yaml`
-    /// roles naming the field and for recipes reading it, item findings
-    /// for every item holding a value.
-    pub introduced: Vec<Diagnostic>,
-}
+//
+// The wire shapes the operations take and answer with —
+// `FieldDefinitionWrite`, `RuleDefinitionWrite`, `FieldPreview`,
+// `RulePreview`, `FieldUsage` — live in `crate::mutation_data` beside
+// the other endpoint contracts.
 
 /// The outcome of a successful schema write.
 #[derive(Debug)]
@@ -364,15 +219,11 @@ pub enum SchemaWriteError {
     #[error("field '{name}' is named by {slots} in config.yaml; change the config first")]
     NamedByConfig { name: String, slots: String },
 
-    #[error("field '{name}' has a recipe (compute, when, pull or aggregate) type-checked against '{current}'; changing its type to '{requested}' means editing schema.yaml")]
-    RecipeTypeLocked {
-        name: String,
-        current: FieldType,
-        requested: FieldType,
-    },
-
-    #[error("field '{name}' cannot change type from '{current}' to '{requested}': existing values could become invalid")]
-    TypeChangeNotAllowed {
+    /// A type change can invalidate every item's value at once, and a
+    /// recipe was type-checked against the type; it is made in
+    /// `schema.yaml`, where the load judges the result.
+    #[error("field '{name}' is declared '{current}' and keeps that type here; to make it '{requested}', change the type in schema.yaml")]
+    TypeChange {
         name: String,
         current: FieldType,
         requested: FieldType,
@@ -392,7 +243,7 @@ pub enum SchemaWriteError {
 
     /// The rows cannot be written as one rule: an operator twice on a
     /// reference, or an equality beside another test on the same
-    /// reference. See [`RuleShape::to_yaml_entries`].
+    /// reference. See [`crate::rule_shape::RuleShape::to_yaml_entries`].
     #[error("the rule's rows cannot be written: {detail}")]
     InvalidRule { detail: String },
 
@@ -443,18 +294,17 @@ pub fn add_field(
     finalize(context, Written::Field(name.to_owned()))
 }
 
-/// Replace a field's written properties, keeping its position and the
-/// recipe keys the editor does not write.
+/// Replace a field's definition, keeping its position.
 ///
-/// The field's existing mapping is the starting point: the properties
-/// the definition sets are overwritten in place, those it no longer
-/// sets (a `values:` list after a change to `string`, a cleared
-/// description, a cleared rollup) are removed, and everything else —
-/// `compute`, `when`, `pull`, and `default` beside a `when` — is left
-/// exactly as the file has it.
+/// The field's existing mapping is the starting point: every key the
+/// editor writes (`WRITTEN_KEYS`) is overwritten in place or removed
+/// when the definition no longer sets it (a `values:` list after a
+/// change to `string`, a cleared description, a cleared rollup, a
+/// recipe switched off), and any other key is left exactly as the file
+/// has it.
 ///
-/// A type change is allowed only for a field without a recipe, and only
-/// to a type in [`widening_targets`].
+/// The type is never changed: a definition declaring another type is
+/// refused ([`SchemaWriteError::TypeChange`]).
 pub fn update_field(
     config: &Config,
     project_root: &Path,
@@ -472,22 +322,8 @@ pub fn update_field(
             .ok_or_else(|| SchemaWriteError::FieldNotFound {
                 name: name.to_owned(),
             })?;
-    let current_type = current.field_type();
-    if definition.field_type != current_type {
-        if current.has_fill_mechanism() {
-            return Err(SchemaWriteError::RecipeTypeLocked {
-                name: name.to_owned(),
-                current: current_type,
-                requested: definition.field_type,
-            });
-        }
-        if !widening_targets(current_type).contains(&definition.field_type) {
-            return Err(SchemaWriteError::TypeChangeNotAllowed {
-                name: name.to_owned(),
-                current: current_type,
-                requested: definition.field_type,
-            });
-        }
+    if let Some(refusal) = type_change_refusal(name, current.field_type(), definition) {
+        return Err(refusal);
     }
     let entry = fields_mut(&mut context.document)
         .get_mut(name)
@@ -518,18 +354,19 @@ pub fn preview_field(
     definition: &FieldDefinitionWrite,
 ) -> Result<FieldPreview, SchemaWriteError> {
     let mut context = load_for_write(config, project_root, config_path)?;
-    let exists = context.current.fields.contains_key(name);
-    let refusal = match (replacing, exists) {
-        (true, false) => Some(SchemaWriteError::FieldNotFound {
+    let current = context.current.fields.get(name);
+    let refusal = match (replacing, current) {
+        (true, None) => Some(SchemaWriteError::FieldNotFound {
             name: name.to_owned(),
         }),
+        (true, Some(current)) => type_change_refusal(name, current.field_type(), definition),
         (false, _) if !is_valid_field_name(name) => Some(SchemaWriteError::InvalidName {
             name: name.to_owned(),
         }),
-        (false, true) => Some(SchemaWriteError::DuplicateName {
+        (false, Some(_)) => Some(SchemaWriteError::DuplicateName {
             name: name.to_owned(),
         }),
-        (true, true) | (false, false) => None,
+        (false, None) => None,
     };
 
     let fields = fields_mut(&mut context.document);
@@ -809,15 +646,8 @@ pub fn preview_rule(
     definition: &RuleDefinitionWrite,
 ) -> Result<RulePreview, SchemaWriteError> {
     let schema_path = project_root.join(&config.schema);
-    let existing_invalid = |error: SchemaLoadError| SchemaWriteError::ExistingInvalid {
-        path: schema_path.clone(),
-        detail: error.to_string(),
-    };
-    let text = std::fs::read_to_string(&schema_path)
-        .map_err(|error| existing_invalid(SchemaLoadError::ReadFailed(error)))?;
-    let current = parse_schema(&text).map_err(existing_invalid)?;
-    let mut document: serde_yaml::Value = serde_yaml::from_str(&text)
-        .map_err(|error| existing_invalid(SchemaLoadError::InvalidYaml(error)))?;
+    let (current, mut document) = load_schema_with_document(&schema_path)
+        .map_err(|error| existing_invalid(&schema_path, error))?;
 
     let entry = match rule_entry(definition) {
         Ok(entry) => entry,
@@ -881,7 +711,7 @@ fn rules_mut(document: &mut serde_yaml::Value) -> &mut serde_yaml::Sequence {
 }
 
 /// A rule's entry in the file: name, description, severity when not the
-/// default, then the rows as [`RuleShape::to_yaml_entries`] writes them.
+/// default, then the rows as [`crate::rule_shape::RuleShape::to_yaml_entries`] writes them.
 fn rule_entry(definition: &RuleDefinitionWrite) -> Result<serde_yaml::Value, SchemaWriteError> {
     let invalid = |detail: String| SchemaWriteError::InvalidRule { detail };
     let mut entry = serde_yaml::Mapping::new();
@@ -1066,17 +896,8 @@ fn load_for_write<'a>(
     config_path: &'a Path,
 ) -> Result<WriteContext<'a>, SchemaWriteError> {
     let schema_path = project_root.join(&config.schema);
-    let existing_invalid = |error: SchemaLoadError| SchemaWriteError::ExistingInvalid {
-        path: schema_path.clone(),
-        detail: error.to_string(),
-    };
-    let text = std::fs::read_to_string(&schema_path)
-        .map_err(|error| existing_invalid(SchemaLoadError::ReadFailed(error)))?;
-    let current = parse_schema(&text).map_err(existing_invalid)?;
-    // The validating parse accepted the same text, so a generic parse
-    // cannot fail on syntax; a failure here would be a serde_yaml bug.
-    let document: serde_yaml::Value = serde_yaml::from_str(&text)
-        .map_err(|error| existing_invalid(SchemaLoadError::InvalidYaml(error)))?;
+    let (current, document) = load_schema_with_document(&schema_path)
+        .map_err(|error| existing_invalid(&schema_path, error))?;
 
     let project = load_project_with_schema(config, project_root, config_path, current, None)?;
 
@@ -1092,6 +913,31 @@ fn load_for_write<'a>(
     })
 }
 
+/// The refusal a replace of the field named `name`, declared
+/// `current_type`, earns when `definition` declares another type; `None`
+/// when the type is kept. Asked by the write and by the preview, so the
+/// two cannot disagree.
+fn type_change_refusal(
+    name: &str,
+    current_type: FieldType,
+    definition: &FieldDefinitionWrite,
+) -> Option<SchemaWriteError> {
+    (definition.field_type != current_type).then(|| SchemaWriteError::TypeChange {
+        name: name.to_owned(),
+        current: current_type,
+        requested: definition.field_type,
+    })
+}
+
+/// The current `schema.yaml` cannot be read as a schema, so nothing can
+/// be written back; see [`SchemaWriteError::ExistingInvalid`].
+fn existing_invalid(schema_path: &Path, error: SchemaLoadError) -> SchemaWriteError {
+    SchemaWriteError::ExistingInvalid {
+        path: schema_path.to_path_buf(),
+        detail: error.to_string(),
+    }
+}
+
 /// The `fields:` mapping of a loaded schema's tree. The typed parse
 /// already required it to be a mapping.
 fn fields_mut(document: &mut serde_yaml::Value) -> &mut serde_yaml::Mapping {
@@ -1099,10 +945,6 @@ fn fields_mut(document: &mut serde_yaml::Value) -> &mut serde_yaml::Mapping {
         .get_mut("fields")
         .and_then(serde_yaml::Value::as_mapping_mut)
         .expect("a loaded schema has a fields mapping")
-}
-
-fn yaml_key(key: &str) -> serde_yaml::Value {
-    serde_yaml::Value::String(key.to_owned())
 }
 
 /// The properties a definition spells out, as `(key, value)` pairs in
@@ -1273,9 +1115,8 @@ fn aggregate_entry(aggregate: &AggregateConfig) -> serde_yaml::Value {
 /// bound is written without a fraction (`min: 0`, not `min: 0.0`), a
 /// float field's bound keeps the shape the editor sent.
 fn numeric_bound(value: f64, field_type: FieldType) -> serde_yaml::Value {
-    let is_whole = value.fract() == 0.0 && value.abs() < (i64::MAX as f64);
-    if field_type == FieldType::Integer && is_whole {
-        serde_yaml::Value::Number((value as i64).into())
+    if field_type == FieldType::Integer {
+        crate::yaml_tree::number(value)
     } else {
         serde_yaml::Value::Number(value.into())
     }
@@ -1399,7 +1240,7 @@ fn drop_key_from_item_files(items: &[WorkItem], key: &str, schema: &Schema) -> V
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::schema::AggregateFunction;
+    use crate::model::schema::{AggregateFunction, Generator};
 
     fn definition(field_type: FieldType, shape: FieldShape) -> FieldDefinitionWrite {
         FieldDefinitionWrite {

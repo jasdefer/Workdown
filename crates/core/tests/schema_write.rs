@@ -21,10 +21,10 @@ use workdown_core::model::schema::{
     PullConfig, RoundMode,
 };
 use workdown_core::model::FieldValue;
+use workdown_core::mutation_data::{DefaultWrite, FieldDefinitionWrite, RuleDefinitionWrite};
 use workdown_core::operations::schema_write::{
     add_field, add_rule, field_usage, preview_field, preview_rule, remove_field, remove_rule,
-    reorder_fields, update_field, update_rule, DefaultWrite, FieldDefinitionWrite, RemovedValues,
-    RuleDefinitionWrite, SchemaWriteError,
+    reorder_fields, update_field, update_rule, RemovedValues, SchemaWriteError,
 };
 use workdown_core::parser::config::load_config;
 use workdown_core::parser::schema::load_schema;
@@ -581,25 +581,6 @@ fn add_field_with_a_pull_writes_the_block_and_clearing_the_recipe_removes_it() {
 }
 
 #[test]
-fn update_field_widens_the_type_and_drops_the_old_type_properties() {
-    let (_directory, root, config) = setup();
-    write_item(&root, "a", "priority: high\n");
-    let before = fields_tree(&root);
-    let text = definition(FieldType::String, FieldShape::Text { pattern: None });
-
-    let outcome = update_field(&config, &root, config_path(), "priority", &text).unwrap();
-
-    // Every value valid under `choice` is valid under `string`, so the
-    // item holding `high` raises nothing new.
-    assert!(!outcome.mutation_caused_warning);
-    let after = fields_tree(&root);
-    assert_untouched(&before, &after, &["priority"]);
-    assert_eq!(property_keys(&after, "priority"), ["type", "required"]);
-    let reloaded = load_schema(&root.join(".workdown/schema.yaml")).unwrap();
-    assert_eq!(reloaded.fields["priority"].field_type(), FieldType::String);
-}
-
-#[test]
 fn update_field_writes_the_relation_settings_and_clearing_them_removes_the_keys() {
     let (_directory, root, config) = setup();
     let before = fields_tree(&root);
@@ -642,26 +623,7 @@ fn update_field_writes_the_relation_settings_and_clearing_them_removes_the_keys(
 }
 
 #[test]
-fn update_field_of_a_recipe_field_cannot_change_its_type() {
-    let (_directory, root, config) = setup();
-    let original = schema_text(&root);
-    let text = definition(FieldType::String, FieldShape::Text { pattern: None });
-
-    let error = update_field(&config, &root, config_path(), "status_color", &text).unwrap_err();
-
-    assert!(matches!(
-        error,
-        SchemaWriteError::RecipeTypeLocked {
-            current: FieldType::Color,
-            requested: FieldType::String,
-            ..
-        }
-    ));
-    assert_eq!(schema_text(&root), original);
-}
-
-#[test]
-fn update_field_refuses_a_type_change_outside_the_widening_table() {
+fn update_field_refuses_a_type_change_and_the_preview_says_the_same() {
     let (_directory, root, config) = setup();
     let original = schema_text(&root);
     let number = definition(
@@ -676,13 +638,16 @@ fn update_field_refuses_a_type_change_outside_the_widening_table() {
 
     assert!(matches!(
         error,
-        SchemaWriteError::TypeChangeNotAllowed {
+        SchemaWriteError::TypeChange {
             current: FieldType::Choice,
             requested: FieldType::Integer,
             ..
         }
     ));
     assert_eq!(schema_text(&root), original);
+
+    let preview = preview_field(&config, &root, config_path(), "status", true, &number).unwrap();
+    assert_eq!(preview.problem.as_deref(), Some(error.to_string().as_str()));
 }
 
 #[test]

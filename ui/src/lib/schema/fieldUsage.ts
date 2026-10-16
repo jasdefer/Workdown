@@ -15,6 +15,12 @@
 
 import type { FieldUsage } from '$lib/api/generated/FieldUsage';
 
+/** The usage answer as the panel holds it while it is asked for, once it failed, and once it is in. */
+export type UsageState =
+	| { status: 'loading' }
+	| { status: 'failed'; message: string }
+	| { status: 'loaded'; summary: UsageSummary };
+
 export interface UsageSummary {
 	/** Rule names, in file order. */
 	rules: string[];

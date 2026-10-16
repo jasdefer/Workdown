@@ -162,7 +162,7 @@ to_do
 <rect x="197" y="108" width="554" height="21" opacity="1" fill="#E69F00" stroke="none"/>
 <rect x="197" y="86" width="8" height="22" opacity="1" fill="#E69F00" stroke="none"/>
 <rect x="197" y="64" width="15" height="22" opacity="1" fill="#E69F00" stroke="none"/>
-<rect x="197" y="42" width="38" height="22" opacity="1" fill="#E69F00" stroke="none"/>
+<rect x="197" y="42" width="41" height="22" opacity="1" fill="#E69F00" stroke="none"/>
 </svg>
 
 ## Values
@@ -172,5 +172,5 @@ to_do
 | done | 148 |
 | in_progress | 2 |
 | on_hold | 4 |
-| to_do | 10 |
+| to_do | 11 |
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ApiResult } from '$lib/api/client';
-import type { DerivedBlocks } from '$lib/api/generated/DerivedBlocks';
+import type { FieldRecipe } from '$lib/api/generated/FieldRecipe';
 import type { SchemaDefinitionData } from '$lib/api/generated/SchemaDefinitionData';
 import {
 	fillMechanisms,
@@ -12,8 +12,6 @@ import {
 	settingsLine,
 	typeSummary
 } from './schemaPage';
-
-const plain: DerivedBlocks = { compute: null, when: null, pull: null, aggregate: null };
 
 describe('idFirst', () => {
 	it('moves id to the top wherever the file declares it', () => {
@@ -66,28 +64,40 @@ describe('movedFieldOrder', () => {
 });
 
 describe('fillMechanisms', () => {
+	const compute: FieldRecipe = {
+		kind: 'compute',
+		expression: 'estimate * 2',
+		round: 'nearest',
+		error_on_missing: false
+	};
+	const aggregate = { function: 'sum', over: 'parent', error_on_missing: false } as const;
+
 	it('is empty for a field written by hand', () => {
-		expect(fillMechanisms({ derived: plain })).toEqual([]);
+		expect(fillMechanisms({ recipe: null, aggregate: null })).toEqual([]);
 	});
 
-	it('names each fill mechanism the field declares, in a fixed order', () => {
-		const derived: DerivedBlocks = {
-			compute: 'estimate * 2',
-			when: '- if: ...',
-			pull: 'parent.owner',
-			aggregate: 'sum'
-		};
-		expect(fillMechanisms({ derived })).toEqual([
-			'computed',
-			'conditional',
-			'pulled',
-			'aggregated'
+	it('names the recipe the field declares', () => {
+		expect(fillMechanisms({ recipe: compute, aggregate: null })).toEqual(['computed']);
+		expect(fillMechanisms({ recipe: { kind: 'when', branches: [] }, aggregate: null })).toEqual([
+			'conditional'
 		]);
+		expect(
+			fillMechanisms({
+				recipe: {
+					kind: 'pull',
+					over: 'parent',
+					field: 'owner',
+					function: 'min',
+					error_on_missing: false
+				},
+				aggregate: null
+			})
+		).toEqual(['pulled']);
 	});
 
-	it('lists the compute-plus-aggregate combination as two', () => {
-		const derived: DerivedBlocks = { ...plain, compute: 'a + b', aggregate: 'sum' };
-		expect(fillMechanisms({ derived })).toEqual(['computed', 'aggregated']);
+	it('lists the compute-plus-aggregate combination as two, recipe first', () => {
+		expect(fillMechanisms({ recipe: compute, aggregate })).toEqual(['computed', 'aggregated']);
+		expect(fillMechanisms({ recipe: null, aggregate })).toEqual(['aggregated']);
 	});
 });
 

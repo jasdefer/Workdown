@@ -13,6 +13,7 @@ import {
 	matchTestChoices,
 	testOfChoice,
 	newRuleDraft,
+	parseCount,
 	referenceKind,
 	requireTestKinds,
 	ruleProblem,
@@ -23,14 +24,16 @@ import {
 	splitReference,
 	withMatchReference,
 	withRequireReference,
-	withMatchRow,
-	withoutMatchRow,
-	withoutRequireRow,
 	type Anchor,
-	type RuleDraft
+	type RuleDraft,
+	type RuleTables
 } from './ruleDraft';
 
-const plain = { compute: null, when: null, pull: null, aggregate: null };
+/** The lists the rule engine serves, as the definition payload spells them. */
+const tables: RuleTables = {
+	rule_value_test_types: ['string', 'choice', 'integer', 'date', 'list', 'link', 'links'],
+	rule_comparable_types: ['integer', 'date']
+};
 
 function field(
 	name: string,
@@ -45,7 +48,6 @@ function field(
 		default: null,
 		resource: null,
 		shape,
-		derived: plain,
 		aggregate: null,
 		recipe: null
 	};
@@ -155,23 +157,23 @@ describe('which tests a reference takes', () => {
 		expect(testOfChoice('one_of')).toEqual({ kind: 'one_of', values: [] });
 	});
 
-	it('offers require tests by target type and counts only on the related items', () => {
-		expect(requireTestKinds('single', 'choice')).toEqual([
+	it('offers require tests by what the served lists say of the target type, counts only on the related items', () => {
+		expect(requireTestKinds('single', 'choice', tables)).toEqual([
 			'required',
 			'forbidden',
 			'values',
 			'not'
 		]);
-		expect(requireTestKinds('single', 'date')).toEqual([
+		expect(requireTestKinds('single', 'date', tables)).toEqual([
 			'required',
 			'forbidden',
 			'values',
 			'not',
 			'compare'
 		]);
-		expect(requireTestKinds('many', 'links')).toEqual(['required', 'forbidden']);
-		expect(requireTestKinds('many_bare', null)).toEqual(['min_count', 'max_count']);
-		expect(requireTestKinds('incomplete', null)).toEqual([]);
+		expect(requireTestKinds('many', 'color', tables)).toEqual(['required', 'forbidden']);
+		expect(requireTestKinds('many_bare', null, tables)).toEqual(['min_count', 'max_count']);
+		expect(requireTestKinds('incomplete', null, tables)).toEqual([]);
 	});
 
 	it('compares with the other fields of the same type, plus $today for dates', () => {
@@ -246,19 +248,30 @@ describe('rows after a reference change', () => {
 			{ reference: 'start', test: { kind: 'compare', comparison: 'lt', field: 'end' } },
 			{ anchor: null, field: 'end' },
 			anchors,
-			'date'
+			'date',
+			tables
 		);
 		expect(compare.test).toEqual({ kind: 'compare', comparison: 'lt', field: 'end' });
-		const bare = withRequireReference(compare, { anchor: 'children', field: null }, anchors, null);
+		const bare = withRequireReference(
+			compare,
+			{ anchor: 'children', field: null },
+			anchors,
+			null,
+			tables
+		);
 		expect(bare).toEqual({ reference: 'children', test: { kind: 'min_count', count: 1 } });
 	});
 
-	it('replaces and removes rows by position', () => {
-		const added = withMatchRow(validShape, 0, emptyMatchRow());
-		expect(added.match_rows[0]?.reference).toBe('');
-		expect(withoutMatchRow(validShape, 0).match_rows).toEqual([]);
-		expect(withoutRequireRow(validShape, 0).require_rows).toEqual([]);
+	it('starts a require row with nothing picked', () => {
 		expect(emptyRequireRow()).toEqual({ reference: '', test: { kind: 'required' } });
+	});
+
+	it('reads a count from its input, and nothing from blank, non-numeric or negative text', () => {
+		expect(parseCount('3')).toBe(3);
+		expect(parseCount(' 0 ')).toBe(0);
+		expect(parseCount('')).toBeNull();
+		expect(parseCount('abc')).toBeNull();
+		expect(parseCount('-1')).toBeNull();
 	});
 });
 
@@ -283,29 +296,25 @@ describe('drafts and the write body', () => {
 });
 
 describe('ruleProblem', () => {
-	it('accepts a complete draft', () => {
-		expect(ruleProblem(draft(), ['other'], null)).toBeNull();
+	it('accepts a filled-in draft', () => {
+		expect(ruleProblem(draft())).toBeNull();
 	});
 
-	it('judges the name: blank, not kebab-case, taken, but not its own', () => {
-		expect(ruleProblem(draft({ name: '' }), [], null)).toBe('Enter a name.');
-		expect(ruleProblem(draft({ name: 'Open_Needs' }), [], null)).toContain('kebab-case');
-		expect(ruleProblem(draft(), ['open-needs-points'], null)).toBe(
-			"A rule named 'open-needs-points' already exists."
-		);
-		expect(ruleProblem(draft(), ['open-needs-points'], 'open-needs-points')).toBeNull();
+	it('wants a name, but leaves its spelling and uniqueness to the server', () => {
+		expect(ruleProblem(draft({ name: '' }))).toBe('Enter a name.');
+		expect(ruleProblem(draft({ name: 'Open_Needs' }))).toBeNull();
 	});
 
-	it('wants every row complete', () => {
+	it('wants every row filled in', () => {
 		const noField = { ...validShape, match_rows: [emptyMatchRow()] };
-		expect(ruleProblem(draft({ shape: noField }), [], null)).toBe('Every condition needs a field.');
+		expect(ruleProblem(draft({ shape: noField }))).toBe('Every condition needs a field.');
 		const noValue = {
 			...validShape,
 			match_rows: [
 				{ reference: 'status', quantifier: null, test: { kind: 'one_of' as const, values: [] } }
 			]
 		};
-		expect(ruleProblem(draft({ shape: noValue }), [], null)).toContain('at least one value');
+		expect(ruleProblem(draft({ shape: noValue }))).toContain('at least one value');
 		const noCompare = {
 			...validShape,
 			require_rows: [
@@ -315,32 +324,13 @@ describe('ruleProblem', () => {
 				}
 			]
 		};
-		expect(ruleProblem(draft({ shape: noCompare }), [], null)).toBe(
-			'Pick a field to compare with.'
-		);
+		expect(ruleProblem(draft({ shape: noCompare }))).toBe('Pick a field to compare with.');
 	});
 
-	it('refuses the same test twice on one reference', () => {
-		const twice = {
-			...validShape,
-			match_rows: [
-				{ reference: 'status', quantifier: null, test: { kind: 'not' as const, values: ['open'] } },
-				{ reference: 'status', quantifier: null, test: { kind: 'not' as const, values: ['done'] } }
-			]
-		};
-		expect(ruleProblem(draft({ shape: twice }), [], null)).toBe(
-			"'status' has the same test twice."
-		);
-	});
-
-	it('wants something to require, and a bound on a count', () => {
+	it('leaves what the parser judges to the server: nothing to require, a count without a bound', () => {
 		const nothing = { ...validShape, require_rows: [], count: null };
-		expect(ruleProblem(draft({ shape: nothing }), [], null)).toBe('Add a requirement or a count.');
+		expect(ruleProblem(draft({ shape: nothing }))).toBeNull();
 		const unbounded = { ...validShape, require_rows: [], count: { min: null, max: null } };
-		expect(ruleProblem(draft({ shape: unbounded }), [], null)).toBe(
-			'The count needs a minimum or a maximum.'
-		);
-		const counted = { ...validShape, require_rows: [], count: { min: null, max: 3 } };
-		expect(ruleProblem(draft({ shape: counted }), [], null)).toBeNull();
+		expect(ruleProblem(draft({ shape: unbounded }))).toBeNull();
 	});
 });

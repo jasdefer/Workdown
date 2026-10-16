@@ -33,3 +33,4 @@ pub mod view_data;
 pub mod views_check;
 pub mod walker;
 pub mod where_check;
+pub(crate) mod yaml_tree;

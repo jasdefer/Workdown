@@ -3,8 +3,8 @@
   entry (`?rule=<name>`) or on Add rule (`?add-rule`). A header block —
   name, severity, description — then the match rows, the require rows
   and the count, and beside them the YAML the save would write, as the
-  server renders it from the rows. The footer has Save, Cancel and
-  Remove.
+  server renders it from the rows. The shell — columns, YAML pane,
+  footer — is `DraftPanel`, shared with the field editor.
 
   The panel copies the rule into a draft when it mounts and never reads
   the rule again, for the reason the field panel gives: the page behind
@@ -34,17 +34,20 @@
 	import type { RequireRow } from '$lib/api/generated/RequireRow';
 	import type { RuleData } from '$lib/api/generated/RuleData';
 	import type { RuleDefinitionWrite } from '$lib/api/generated/RuleDefinitionWrite';
+	import type { RulePreview } from '$lib/api/generated/RulePreview';
 	import type { SchemaDefinitionData } from '$lib/api/generated/SchemaDefinitionData';
 	import type { Severity } from '$lib/api/generated/Severity';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
-	import SlideOver from '$lib/ui/SlideOver.svelte';
+	import DraftPanel from '$lib/ui/DraftPanel.svelte';
 	import MatchRows from './MatchRows.svelte';
 	import RequireRows from './RequireRows.svelte';
+	import { createPreview, type PreviewState } from './preview.svelte';
 	import {
 		anchorsOf,
 		initialRuleDraft,
 		newRuleDraft,
+		parseCount,
 		ruleProblem,
 		ruleWriteBody
 	} from './ruleDraft';
@@ -92,49 +95,30 @@
 	const severities = Object.keys(SEVERITY_LABELS) as Severity[];
 
 	const anchors = $derived(anchorsOf(definition.fields));
-	const takenNames = $derived(definition.rules.map((rule) => rule.name));
-	// What the browser can say is wrong, greying out Save with the reason.
-	const problem = $derived(ruleProblem(draft, takenNames, existing?.name ?? null));
-
-	// The server's rendering of the draft: the YAML and its verdict. Keyed
-	// by the body it answered, so an answer to an older draft is dropped
-	// and the Save guard only trusts an answer to the current one.
-	type Preview =
-		| { status: 'idle' }
-		| { status: 'failed'; message: string }
-		| { status: 'loaded'; key: string; yaml: string; problem: string | null };
-	let preview = $state<Preview>({ status: 'idle' });
-	let previewTimer: ReturnType<typeof setTimeout> | undefined;
-	let latestKey = '';
+	// What is not filled in yet, greying out Save with the reason; the
+	// server's verdict on a filled-in draft arrives through the preview.
+	const problem = $derived(ruleProblem(draft));
 
 	const editable = missingName === null && unrepresentable === null;
-	const currentKey = $derived(JSON.stringify(ruleWriteBody(draft)));
-	const previewForCurrent = $derived(
-		preview.status === 'loaded' && preview.key === currentKey ? preview : null
+	const preview = createPreview<RuleDefinitionWrite, RulePreview>((body) =>
+		api.previewRule({ replacing: existing?.name ?? null, definition: body })
 	);
+	const body = $derived(ruleWriteBody(draft));
+	const previewForCurrent = $derived(preview.answerFor(body));
 
 	$effect(() => {
-		const key = currentKey;
+		const request = body;
 		if (!editable) return;
-		latestKey = key;
-		clearTimeout(previewTimer);
-		previewTimer = setTimeout(() => {
-			void loadPreview(key, JSON.parse(key) as RuleDefinitionWrite);
-		}, 300);
-		return () => {
-			clearTimeout(previewTimer);
-		};
+		return preview.schedule(request);
 	});
 
-	async function loadPreview(key: string, body: RuleDefinitionWrite): Promise<void> {
-		const result = await api.previewRule({ replacing: existing?.name ?? null, definition: body });
-		if (key !== latestKey) return;
-		if (result.data === undefined) {
-			preview = { status: 'failed', message: result.error ?? 'The preview could not be loaded.' };
-			return;
-		}
-		preview = { status: 'loaded', key, yaml: result.data.yaml, problem: result.data.problem };
-	}
+	// A rule the rows cannot carry is shown as the file has it, in the
+	// same pane the preview would use.
+	const shownAsText = $derived<PreviewState<RulePreview>>(
+		existing !== null && unrepresentable !== null
+			? { status: 'loaded', key: '', answer: { yaml: existing.body, problem: null } }
+			: preview.state
+	);
 
 	onMount(() => {
 		void schemaStore.load();
@@ -170,36 +154,33 @@
 	// One bound of the count from its input; blank clears it.
 	function setCountBound(bound: 'min' | 'max', text: string): void {
 		if (draft.shape.count === null) return;
-		draft.shape = { ...draft.shape, count: { ...draft.shape.count, [bound]: boundOf(text) } };
-	}
-
-	function boundOf(text: string): number | null {
-		if (text.trim() === '') return null;
-		const parsed = Number.parseInt(text, 10);
-		return Number.isNaN(parsed) || parsed < 0 ? null : parsed;
+		draft.shape = { ...draft.shape, count: { ...draft.shape.count, [bound]: parseCount(text) } };
 	}
 </script>
 
-<SlideOver
+<DraftPanel
 	label={existing === null ? 'New rule' : 'Rule editor'}
-	size="wide"
-	placement="docked"
+	title={existing === null ? 'New rule' : 'Edit rule'}
+	missing={missingName === null ? null : { noun: 'rule', name: missingName }}
+	{saveError}
+	{saving}
+	readOnly={unrepresentable !== null}
+	saveDisabled={problem !== null || previewForCurrent?.problem != null}
+	saveTitle={problem ?? previewForCurrent?.problem ?? null}
+	saveLabel={existing === null ? (saving ? 'Adding…' : 'Add rule') : saving ? 'Saving…' : 'Save'}
+	showRemove={existing !== null}
+	removeDisabled={false}
+	removeTitle={null}
+	bind:removeButton
+	preview={shownAsText}
+	previewPlaceholder={null}
+	previewHint={unrepresentable === null ? 'As the save writes it.' : 'As the file has it.'}
+	onsubmit={() => void save()}
 	{onclose}
+	onremove={() => (confirmingRemove = true)}
 >
-	{#snippet header()}
-		<span class="panel-title">{existing === null ? 'New rule' : 'Edit rule'}</span>
-	{/snippet}
-
-	{#if missingName !== null}
-		<p class="error" role="alert">There is no rule named <code>{missingName}</code>.</p>
-		<div class="actions">
-			<button type="button" class="cancel" onclick={onclose}>Close</button>
-		</div>
-	{:else if existing !== null && unrepresentable !== null}
-		<div class="rule-form">
-			{#if saveError !== null}
-				<p class="error" role="alert">{saveError}</p>
-			{/if}
+	{#snippet main()}
+		{#if existing !== null && unrepresentable !== null}
 			<div class="row">
 				<span class="label">Name</span>
 				<code class="locked-name">{existing.name}</code>
@@ -207,198 +188,119 @@
 			<p class="hint warning">
 				This rule cannot be edited here: {unrepresentable}. Edit it in schema.yaml.
 			</p>
-			<pre class="yaml">{existing.body}</pre>
-			<div class="actions">
-				<button type="button" class="cancel" onclick={onclose}>Cancel</button>
-				<button
-					type="button"
-					class="remove"
-					bind:this={removeButton}
+		{:else}
+			<!-- ── Header block ─────────────────────────────────── -->
+
+			<label class="row">
+				<span class="label">Name</span>
+				<input
+					type="text"
+					bind:value={draft.name}
 					disabled={saving}
-					onclick={() => (confirmingRemove = true)}
-				>
-					Remove
-				</button>
-			</div>
-		</div>
-	{:else}
-		<form
-			class="rule-form"
-			onsubmit={(event) => {
-				event.preventDefault();
-				void save();
-			}}
-		>
-			{#if saveError !== null}
-				<p class="error" role="alert">{saveError}</p>
-			{/if}
+					placeholder="kebab-case"
+					spellcheck="false"
+				/>
+			</label>
 
-			<!-- Two columns when the panel is wide enough: what is edited
-			     on the left, the YAML it becomes on the right. -->
-			<div class="columns">
-				<div class="main">
-					<!-- ── Header block ─────────────────────────────────── -->
+			<label class="row">
+				<span class="label">Severity</span>
+				<select bind:value={draft.severity} disabled={saving}>
+					{#each severities as severity (severity)}
+						<option value={severity}>{SEVERITY_LABELS[severity]}</option>
+					{/each}
+				</select>
+			</label>
 
-					<label class="row">
-						<span class="label">Name</span>
-						<input
-							type="text"
-							bind:value={draft.name}
-							disabled={saving}
-							placeholder="kebab-case"
-							spellcheck="false"
-						/>
-					</label>
+			<label class="row">
+				<span class="label">Description</span>
+				<textarea rows="2" bind:value={draft.description} disabled={saving}></textarea>
+			</label>
 
-					<label class="row">
-						<span class="label">Severity</span>
-						<select bind:value={draft.severity} disabled={saving}>
-							{#each severities as severity (severity)}
-								<option value={severity}>{SEVERITY_LABELS[severity]}</option>
-							{/each}
-						</select>
-					</label>
+			<!-- ── Rows ─────────────────────────────────────────── -->
 
-					<label class="row">
-						<span class="label">Description</span>
-						<textarea rows="2" bind:value={draft.description} disabled={saving}></textarea>
-					</label>
+			<MatchRows
+				rows={draft.shape.match_rows}
+				{anchors}
+				fields={definition.fields}
+				items={schemaStore.items}
+				palette={schemaStore.palette}
+				optionsOfResource={schemaStore.optionsOfResource}
+				disabled={saving}
+				onchange={(rows: MatchRow[]) => {
+					draft.shape = { ...draft.shape, match_rows: rows };
+				}}
+			/>
 
-					<!-- ── Rows ─────────────────────────────────────────── -->
+			<RequireRows
+				rows={draft.shape.require_rows}
+				{anchors}
+				fields={definition.fields}
+				tables={definition}
+				items={schemaStore.items}
+				palette={schemaStore.palette}
+				disabled={saving}
+				onchange={(rows: RequireRow[]) => {
+					draft.shape = { ...draft.shape, require_rows: rows };
+				}}
+			/>
 
-					<MatchRows
-						rows={draft.shape.match_rows}
-						{anchors}
-						fields={definition.fields}
-						items={schemaStore.items}
-						palette={schemaStore.palette}
-						optionsOfResource={schemaStore.optionsOfResource}
+			<!-- ── Count ────────────────────────────────────────── -->
+
+			<fieldset class="count">
+				<label class="row inline">
+					<input
+						type="checkbox"
+						checked={draft.shape.count !== null}
 						disabled={saving}
-						onchange={(rows: MatchRow[]) => {
-							draft.shape = { ...draft.shape, match_rows: rows };
+						onchange={(event: Event & { currentTarget: HTMLInputElement }) => {
+							draft.shape = {
+								...draft.shape,
+								count: event.currentTarget.checked ? { min: null, max: null } : null
+							};
 						}}
 					/>
-
-					<RequireRows
-						rows={draft.shape.require_rows}
-						{anchors}
-						fields={definition.fields}
-						items={schemaStore.items}
-						palette={schemaStore.palette}
-						disabled={saving}
-						onchange={(rows: RequireRow[]) => {
-							draft.shape = { ...draft.shape, require_rows: rows };
-						}}
-					/>
-
-					<!-- ── Count ────────────────────────────────────────── -->
-
-					<fieldset class="count">
-						<label class="row inline">
+					<span class="label">Limit how many items may match</span>
+				</label>
+				{#if draft.shape.count !== null}
+					<div class="bounds">
+						<label class="bound">
+							<span class="hint">at least</span>
 							<input
-								type="checkbox"
-								checked={draft.shape.count !== null}
+								type="number"
+								min="0"
+								step="1"
+								value={draft.shape.count.min ?? ''}
 								disabled={saving}
 								onchange={(event: Event & { currentTarget: HTMLInputElement }) => {
-									draft.shape = {
-										...draft.shape,
-										count: event.currentTarget.checked ? { min: null, max: null } : null
-									};
+									setCountBound('min', event.currentTarget.value);
 								}}
 							/>
-							<span class="label">Limit how many items may match</span>
 						</label>
-						{#if draft.shape.count !== null}
-							<div class="bounds">
-								<label class="bound">
-									<span class="hint">at least</span>
-									<input
-										type="number"
-										min="0"
-										step="1"
-										value={draft.shape.count.min ?? ''}
-										disabled={saving}
-										onchange={(event: Event & { currentTarget: HTMLInputElement }) => {
-											setCountBound('min', event.currentTarget.value);
-										}}
-									/>
-								</label>
-								<label class="bound">
-									<span class="hint">at most</span>
-									<input
-										type="number"
-										min="0"
-										step="1"
-										value={draft.shape.count.max ?? ''}
-										disabled={saving}
-										onchange={(event: Event & { currentTarget: HTMLInputElement }) => {
-											setCountBound('max', event.currentTarget.value);
-										}}
-									/>
-								</label>
-							</div>
-						{/if}
-					</fieldset>
-				</div>
-
-				<aside class="side">
-					<!-- ── YAML ─────────────────────────────────────────── -->
-
-					<section class="preview" aria-label="YAML">
-						<div class="section-head">
-							<span class="label">In schema.yaml</span>
-							<span class="hint">As the save writes it.</span>
-						</div>
-						{#if preview.status === 'failed'}
-							<span class="hint warning">Could not preview: {preview.message}</span>
-						{:else if preview.status === 'loaded'}
-							{#if preview.yaml !== ''}
-								<pre class="yaml">{preview.yaml}</pre>
-							{/if}
-							{#if preview.problem !== null}
-								<span class="hint warning" role="alert">{preview.problem}</span>
-							{/if}
-						{:else}
-							<span class="hint">…</span>
-						{/if}
-					</section>
-				</aside>
-			</div>
-
-			<!-- ── Footer ───────────────────────────────────────────── -->
-
-			{#if problem !== null}
-				<span class="hint">{problem}</span>
-			{/if}
-			<div class="actions">
-				<button
-					type="submit"
-					class="primary"
-					disabled={saving || problem !== null || previewForCurrent?.problem != null}
-					title={problem ?? previewForCurrent?.problem ?? undefined}
-				>
-					{#if existing === null}
-						{saving ? 'Adding…' : 'Add rule'}
-					{:else}
-						{saving ? 'Saving…' : 'Save'}
-					{/if}
-				</button>
-				<button type="button" class="cancel" onclick={onclose}>Cancel</button>
-				{#if existing !== null}
-					<button
-						type="button"
-						class="remove"
-						bind:this={removeButton}
-						disabled={saving}
-						onclick={() => (confirmingRemove = true)}
-					>
-						Remove
-					</button>
+						<label class="bound">
+							<span class="hint">at most</span>
+							<input
+								type="number"
+								min="0"
+								step="1"
+								value={draft.shape.count.max ?? ''}
+								disabled={saving}
+								onchange={(event: Event & { currentTarget: HTMLInputElement }) => {
+									setCountBound('max', event.currentTarget.value);
+								}}
+							/>
+						</label>
+					</div>
 				{/if}
-			</div>
-		</form>
-	{/if}
-</SlideOver>
+			</fieldset>
+		{/if}
+	{/snippet}
+
+	{#snippet footerNote()}
+		{#if unrepresentable === null && problem !== null}
+			<span class="hint">{problem}</span>
+		{/if}
+	{/snippet}
+</DraftPanel>
 
 {#if confirmingRemove && removeButton !== undefined && existing !== null}
 	<ConfirmDialog
@@ -416,17 +318,6 @@
 {/if}
 
 <style>
-	.panel-title {
-		font-weight: 600;
-		color: var(--color-fg);
-	}
-
-	.rule-form {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-3);
-	}
-
 	.row {
 		display: flex;
 		flex-direction: column;
@@ -501,124 +392,5 @@
 
 	.bound input {
 		width: 5rem;
-	}
-
-	.section-head {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: var(--space-2);
-	}
-
-	.preview {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-1);
-		padding: var(--space-3);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		background-color: var(--color-surface);
-	}
-
-	.yaml {
-		margin: 0;
-		padding: var(--space-2);
-		border-radius: var(--radius-sm);
-		background-color: var(--color-bg);
-		font-size: var(--text-sm);
-		overflow-x: auto;
-		white-space: pre;
-	}
-
-	.columns {
-		display: grid;
-		grid-template-columns: 1fr;
-		gap: var(--space-4);
-	}
-
-	/* The panel body is the container; from 40rem on, the rows and the
-	   YAML sit side by side, the same break as the field panel's. */
-	@container (min-width: 40rem) {
-		.columns {
-			grid-template-columns: 3fr 2fr;
-			align-items: start;
-		}
-	}
-
-	.main,
-	.side {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-3);
-		min-width: 0;
-	}
-
-	.actions {
-		display: flex;
-		align-items: center;
-		gap: var(--space-3);
-		padding-top: var(--space-2);
-	}
-
-	.primary {
-		background-color: var(--color-accent);
-		color: var(--color-accent-fg);
-		border: 1px solid var(--color-accent);
-		border-radius: var(--radius-sm);
-		padding: 0.35rem var(--space-4);
-		font-size: var(--text-sm);
-		font-weight: 600;
-		cursor: pointer;
-	}
-
-	.primary:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-
-	.cancel {
-		background: none;
-		border: none;
-		color: var(--color-fg-muted);
-		font-size: var(--text-sm);
-		cursor: pointer;
-		padding: 0;
-	}
-
-	/* Beside Cancel behind a thin rule, as the field panel places it. */
-	.remove {
-		margin-left: var(--space-1);
-		padding-left: var(--space-4);
-		border-left: 1px solid var(--color-border);
-		border-radius: 0;
-		border-top: none;
-		border-right: none;
-		border-bottom: none;
-		background: none;
-		color: var(--color-error-fg);
-		font-size: var(--text-sm);
-		padding-top: 0.35rem;
-		padding-right: 0;
-		padding-bottom: 0.35rem;
-		cursor: pointer;
-	}
-
-	.remove:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.error {
-		color: var(--color-error-fg);
-		background-color: var(--color-error-bg);
-		padding: var(--space-2);
-		border-radius: var(--radius-sm);
-		font-size: var(--text-sm);
-		margin: 0;
-	}
-
-	.error code {
-		background-color: transparent;
-		padding: 0;
 	}
 </style>

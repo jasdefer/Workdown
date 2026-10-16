@@ -49,12 +49,10 @@ use workdown_core::model::view_slots;
 use workdown_core::model::views::{Aggregate, Bucket, DisplayConfig, ViewSummary, ViewType};
 use workdown_core::model::WorkItemId;
 use workdown_core::mutation_data::{
-    CreateField, CreateItem, CreateItemResult, CreateView, FieldMutation, FieldMutationResult,
-    PreviewField, PreviewRule, ReorderFields, SchemaMutationResult, SetViewFilter, UpdateView,
-    ViewDefinition, ViewMutationResult,
-};
-use workdown_core::operations::schema_write::{
-    DefaultWrite, FieldDefinitionWrite, FieldPreview, FieldUsage, RuleDefinitionWrite, RulePreview,
+    CreateField, CreateItem, CreateItemResult, CreateView, DefaultWrite, FieldDefinitionWrite,
+    FieldMutation, FieldMutationResult, FieldPreview, FieldUsage, PreviewField, PreviewRule,
+    ReorderFields, RuleDefinitionWrite, RulePreview, SchemaMutationResult, SetViewFilter,
+    UpdateView, ViewDefinition, ViewMutationResult,
 };
 use workdown_core::project_data::ProjectIdentity;
 use workdown_core::query::clause::{Clause, Condition};
@@ -67,10 +65,9 @@ use workdown_core::schema_data::{
     SchemaData,
 };
 use workdown_core::schema_definition_data::{
-    ComparisonOperatorData, DefaultData, DerivedBlocks, FieldDefinitionData, FieldRecipe,
-    FieldShape, FieldTypeAggregateFunctions, FieldTypeGenerators, FieldTypeProperties,
-    FieldTypePullSources, FieldTypeWidening, PullSource, RuleData, RuleShapeData,
-    SchemaDefinitionData, ShapeKind, WhenBranchData,
+    ComparisonOperatorData, DefaultData, FieldDefinitionData, FieldRecipe, FieldShape,
+    FieldTypeAggregateFunctions, FieldTypeGenerators, FieldTypeProperties, FieldTypePullSources,
+    PullSource, RuleData, RuleShapeData, SchemaDefinitionData, ShapeKind, WhenBranchData,
 };
 use workdown_core::timer_data::{
     EffortFieldState, StartTimer, TimerMode, TimerPhase, TimerStartOutcome, TimerState,
@@ -191,7 +188,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<FieldDefinitionData>();
     exports.add::<FieldShape>();
     exports.add::<DefaultData>();
-    exports.add::<DerivedBlocks>();
     exports.add::<RuleData>();
     exports.add::<RuleShapeData>();
     exports.add::<RuleShape>();
@@ -219,7 +215,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<ComparisonOperator>();
     exports.add::<ComparisonOperatorData>();
     exports.add::<FieldTypeGenerators>();
-    exports.add::<FieldTypeWidening>();
     exports.add::<FieldProperty>();
     exports.add::<Generator>();
     exports.add::<AggregateFunction>();
