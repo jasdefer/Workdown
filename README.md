@@ -68,6 +68,12 @@ serve:
 
 Inside a devcontainer or remote SSH session, `--open` will silently fail to launch a browser (there's no display); VS Code's auto-forwarded-port notification handles the same job. The UI is local-only — `workdown serve` binds to `127.0.0.1` and never exposes anything to the network.
 
+### Schema editor
+
+The **Schema** page shows `schema.yaml` as a table — every field with its type, settings, default, what fills it and what uses it — and the rules below it. Clicking a row opens the field editor: name, type, required, description and default, then the settings of the type (bounds, pattern, resource, the ordered values of a choice, the cycle policy and inverse of a relation), and how the value comes about — set by hand, rolled up along a `link` field, pulled from linked items, computed by a formula, or chosen by conditions tried top to bottom. Rules are edited the same way, as rows of relation, field, test and value, with pickers that offer only what the schema has. Beside every form the panel shows the exact entry the save would write to the file, rendered by the server, and its verdict: a draft the schema would not load with greys out **Save** with the reason, before anything is written. **Remove** stays greyed out, with the reason, while a view, a config role, a rule or a recipe names the field.
+
+Two things to know. A save from the browser rewrites `schema.yaml` without its comments — the file stays the source of truth for its content, not its formatting. And the editor changes no field's type; that remains an edit of the file, because a type change can invalidate every item at once.
+
 ### Effort timer
 
 The web UI includes an effort timer — an open-ended stopwatch or a pomodoro interval (25 minutes work, 5 minutes break). Stopping it adds the measured time, rounded to whole minutes, to the timed item's effort field. It appears once `defaults.effort_field` in `.workdown/config.yaml` names a `duration` field from your schema:
