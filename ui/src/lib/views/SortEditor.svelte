@@ -1,8 +1,12 @@
 <!--
-  The `sort:` slot as rows of field → direction, with add/remove. Owns
-  the row state and reports every edit up via `onchange` with the full
-  list, so the view form stays the single source of truth for what gets
-  saved. Seeded once from `initialKeys`; the host re-keys the component
+  A view's item order as rows of field → direction, with add/remove.
+  Works entirely in the structured `SortSpec` shape the wire carries —
+  the `sort:` key grammar stays server-side, exactly as the filter
+  builder never writes clause syntax. Owns the draft rows (keyed by a
+  local id, the same idiom as the metric rows editor) and reports the
+  complete key list up on every edit, skipping rows whose field is not
+  yet picked, so the view form stays the single source of truth for what
+  gets saved. Seeded once from `initial`; the host re-keys the component
   to re-seed.
 
   Every schema field is offered, plus the virtual `id` — the server
@@ -11,53 +15,76 @@
 -->
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import type { SortDirection } from '$lib/api/generated/SortDirection';
+	import type { SortSpec } from '$lib/api/generated/SortSpec';
 	import { schemaStore } from '$lib/stores/schema.svelte';
-	import type { SortDirection, SortKey } from './sortSlot';
 
 	interface Props {
-		/** Keys to seed the rows from, resolved by the host before mount. */
-		initialKeys: SortKey[];
+		/** Persisted keys to seed from (edit mode); absent or empty means id order. */
+		initial?: SortSpec[] | undefined;
 		/** Fires with the complete key list whenever an edit changes it. */
-		onchange: (keys: SortKey[]) => void;
+		onchange: (keys: SortSpec[]) => void;
 	}
 
-	let { initialKeys, onchange }: Props = $props();
+	let { initial, onchange }: Props = $props();
 
-	let idCounter = untrack(() => Math.max(0, ...initialKeys.map((key) => key.localId)));
+	interface RowDraft {
+		/** Stable key for `{#each}`; never leaves the component. */
+		localId: number;
+		/** Empty until a field is picked; such a row contributes no key. */
+		field: string;
+		direction: SortDirection;
+	}
+
+	let idCounter = 0;
 	const nextId = (): number => (idCounter += 1);
+	const newRow = (): RowDraft => ({ localId: nextId(), field: '', direction: 'asc' });
 
-	let keys = $state<SortKey[]>(untrack(() => [...initialKeys]));
+	/** A persisted key back into draft shape — inverse of `toSpec`. */
+	const fromSpec = (spec: SortSpec): RowDraft => ({
+		localId: nextId(),
+		field: spec.field,
+		direction: spec.direction
+	});
+
+	// Seeded once from the resolved prop — the host re-keys this component
+	// when the edited view changes, so this deliberately doesn't track.
+	let rows = $state<RowDraft[]>(untrack(() => (initial ?? []).map(fromSpec)));
+
+	function toSpec(row: RowDraft): SortSpec {
+		return { field: row.field, direction: row.direction };
+	}
 
 	function emit(): void {
-		onchange(keys);
+		onchange(rows.filter((row) => row.field !== '').map(toSpec));
 	}
 
-	function addKey(): void {
-		keys = [...keys, { localId: nextId(), field: '', direction: 'asc' }];
-		// An empty row contributes no key yet — nothing to emit until filled.
-	}
-
-	function updateKey(updated: SortKey): void {
-		keys = keys.map((key) => (key.localId === updated.localId ? updated : key));
+	function update(localId: number, patch: Partial<RowDraft>): void {
+		rows = rows.map((row) => (row.localId === localId ? { ...row, ...patch } : row));
 		emit();
 	}
 
-	function removeKey(localId: number): void {
-		keys = keys.filter((key) => key.localId !== localId);
+	function add(): void {
+		rows = [...rows, newRow()];
+		// An empty row contributes no key yet — nothing to emit until filled.
+	}
+
+	function remove(localId: number): void {
+		rows = rows.filter((row) => row.localId !== localId);
 		emit();
 	}
 </script>
 
 <div class="editor">
-	{#each keys as key, index (key.localId)}
+	{#each rows as row, index (row.localId)}
 		<div class="row">
 			<span class="ordinal">{index === 0 ? 'by' : 'then'}</span>
 			<select
 				class="field"
 				aria-label="Sort field"
-				value={key.field}
+				value={row.field}
 				onchange={(event: Event & { currentTarget: HTMLSelectElement }) => {
-					updateKey({ ...key, field: event.currentTarget.value });
+					update(row.localId, { field: event.currentTarget.value });
 				}}
 			>
 				<option value="">Select field…</option>
@@ -69,9 +96,9 @@
 			<select
 				class="direction"
 				aria-label="Sort direction"
-				value={key.direction}
+				value={row.direction}
 				onchange={(event: Event & { currentTarget: HTMLSelectElement }) => {
-					updateKey({ ...key, direction: event.currentTarget.value as SortDirection });
+					update(row.localId, { direction: event.currentTarget.value as SortDirection });
 				}}
 			>
 				<option value="asc">ascending</option>
@@ -82,18 +109,18 @@
 				class="remove"
 				aria-label="Remove sort key"
 				onclick={() => {
-					removeKey(key.localId);
+					remove(row.localId);
 				}}>×</button
 			>
 		</div>
 	{/each}
 
-	{#if keys.length === 0}
+	{#if rows.length === 0}
 		<p class="hint">No sort — items in id order.</p>
 	{/if}
 
 	<div class="add-row">
-		<button type="button" class="action" onclick={addKey}>+ Add sort key</button>
+		<button type="button" class="action" onclick={add}>+ Add sort key</button>
 	</div>
 </div>
 

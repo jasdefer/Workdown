@@ -42,7 +42,7 @@
     "sort_key": {
       "type": "string",
       "description": "A field name, optionally followed by `:asc` or `:desc` — the `workdown query --sort` grammar. The field must exist in schema.yaml (or be the virtual `id`); any field type sorts.",
-      "pattern": "^[a-z_][a-z0-9_]*(:(asc|desc))?$"
+      "pattern": "^\\s*[a-z_][a-z0-9_]*\\s*(:\\s*(asc|desc)\\s*)?$"
     },
 
     "sort": {

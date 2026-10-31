@@ -188,7 +188,7 @@ mod checked_view_tests {
         View {
             id: id.to_owned(),
             where_clauses: Vec::new(),
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Table,
         }

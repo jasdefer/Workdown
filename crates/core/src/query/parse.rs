@@ -13,20 +13,23 @@ use crate::query::types::{
 // ── Error ───────────────────────────────────────────────────────────
 
 /// Errors produced when parsing a `--where` expression.
+///
+/// The message never repeats the expression: every caller already has
+/// it and prefixes it (`--where 'x': …`, `clause 'x': …`), so a message
+/// that quoted it too would read it twice. The variants still carry it
+/// for a caller that wants to match on it.
 #[derive(Debug, thiserror::Error)]
 pub enum QueryParseError {
     #[error("empty filter expression")]
     Empty,
 
-    #[error("cannot parse filter expression: '{raw}'")]
+    #[error("cannot parse filter expression: no operator recognized")]
     UnknownOperator { raw: String },
 
     #[error("invalid regex '/{pattern}/': {reason}")]
     InvalidRegex { pattern: String, reason: String },
 
-    #[error(
-        "'{raw}': the value list after '{operator}' must not be empty or contain empty members"
-    )]
+    #[error("the value list after '{operator}' must not be empty or contain empty members")]
     EmptyValueList { raw: String, operator: &'static str },
 }
 
@@ -269,16 +272,20 @@ fn desugar_membership(field_name: &str, operator: Operator, values: &[String]) -
 
 /// Errors produced when parsing a sort key — one `--sort` flag, or one
 /// entry of a view's `sort:` slot.
+///
+/// Like [`QueryParseError`], the message never repeats the key: every
+/// caller already has it and prefixes it (`--sort 'x': …`, `key 'x': …`),
+/// so a message that quoted it too would read it twice.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SortParseError {
     #[error("empty sort key")]
     Empty,
 
-    #[error("'{raw}': a sort key is a field name, optionally followed by ':asc' or ':desc'")]
-    MissingField { raw: String },
+    #[error("a sort key is a field name, optionally followed by ':asc' or ':desc'")]
+    MissingField,
 
-    #[error("'{raw}': unknown direction '{direction}', expected 'asc' or 'desc'")]
-    UnknownDirection { raw: String, direction: String },
+    #[error("unknown direction '{direction}', expected 'asc' or 'desc'")]
+    UnknownDirection { direction: String },
 }
 
 /// Parse a single sort key into a [`SortSpec`].
@@ -306,16 +313,13 @@ pub fn parse_sort(input: &str) -> Result<SortSpec, SortParseError> {
         None => (trimmed, None),
     };
     if field.is_empty() {
-        return Err(SortParseError::MissingField {
-            raw: trimmed.to_owned(),
-        });
+        return Err(SortParseError::MissingField);
     }
     let direction = match direction {
         None | Some("asc") => SortDirection::Ascending,
         Some("desc") => SortDirection::Descending,
         Some(other) => {
             return Err(SortParseError::UnknownDirection {
-                raw: trimmed.to_owned(),
                 direction: other.to_owned(),
             })
         }
@@ -792,11 +796,8 @@ mod tests {
         assert_eq!(field_name(comparison), "status");
         assert_eq!(comparison.operand.text(), "open");
     }
-}
 
-#[cfg(test)]
-mod sort_tests {
-    use super::*;
+    // ── Sort keys ───────────────────────────────────────────────
 
     fn spec(field: &str, direction: SortDirection) -> SortSpec {
         SortSpec {
@@ -840,12 +841,7 @@ mod sort_tests {
 
     #[test]
     fn direction_without_field_is_rejected() {
-        assert_eq!(
-            parse_sort(":desc"),
-            Err(SortParseError::MissingField {
-                raw: ":desc".into()
-            })
-        );
+        assert_eq!(parse_sort(":desc"), Err(SortParseError::MissingField));
     }
 
     #[test]
@@ -853,9 +849,18 @@ mod sort_tests {
         assert_eq!(
             parse_sort("created:descending"),
             Err(SortParseError::UnknownDirection {
-                raw: "created:descending".into(),
                 direction: "descending".into(),
             })
         );
+    }
+
+    #[test]
+    fn a_spec_displays_as_the_key_that_parses_to_it() {
+        // `Display` is the inverse of `parse_sort`, in the short form the
+        // file is written in: ascending needs no suffix.
+        for key in ["created", "priority:desc"] {
+            assert_eq!(parse_sort(key).unwrap().to_string(), key);
+        }
+        assert_eq!(parse_sort("created:asc").unwrap().to_string(), "created");
     }
 }

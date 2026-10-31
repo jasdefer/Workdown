@@ -11,13 +11,14 @@ use tempfile::TempDir;
 use workdown_core::model::config::Config;
 use workdown_core::model::schema::Severity;
 use workdown_core::model::views::Views;
+use workdown_core::mutation_data::ViewDefinition;
 use workdown_core::operations::view_write::{
     add_view, create_view, delete_view, set_view_filter, update_view, ViewWriteError,
 };
 use workdown_core::parser::config::load_config;
 use workdown_core::parser::views::load_views;
 use workdown_core::query::clause::{Clause, Condition};
-use workdown_core::query::types::Operator;
+use workdown_core::query::types::{Operator, SortDirection, SortSpec};
 
 /// A raw passthrough clause — used where a test only cares that the
 /// clause string lands in the file, not how it was built.
@@ -208,7 +209,7 @@ fn create_view_slugs_name_to_id() {
     let definition: serde_yaml::Value =
         serde_yaml::from_str("type: board\nfield: status\n").unwrap();
 
-    let outcome = create_view(&config, &root, "My Status Board", definition, &[]).unwrap();
+    let outcome = create_view(&config, &root, "My Status Board", definition, &[], &[]).unwrap();
 
     assert_eq!(outcome.view_id, "my-status-board");
     let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
@@ -227,6 +228,7 @@ fn create_view_injects_the_filter_clauses() {
         "Open Board",
         definition,
         &[raw("status=open")],
+        &[],
     )
     .unwrap();
 
@@ -235,17 +237,26 @@ fn create_view_injects_the_filter_clauses() {
 }
 
 #[test]
-fn create_view_keeps_the_sort_slot_in_its_short_form() {
+fn create_view_serializes_the_structured_sort_keys_into_the_slot() {
     let (_dir, root, config) = setup();
-    let definition: serde_yaml::Value =
-        serde_yaml::from_str("type: table\nsort: status:desc\n").unwrap();
+    let definition: serde_yaml::Value = serde_yaml::from_str("type: table\n").unwrap();
+    let sort = [SortSpec {
+        field: "status".to_owned(),
+        direction: SortDirection::Descending,
+    }];
 
-    let outcome = create_view(&config, &root, "Recent", definition, &[]).unwrap();
+    let outcome = create_view(&config, &root, "Recent", definition, &[], &sort).unwrap();
 
     assert!(!outcome.mutation_caused_warning);
+    // One key lands in the short string form, the grammar's own spelling.
     assert!(read_views(&root).contains("sort: status:desc\n"));
     let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
-    assert_eq!(reloaded.views[0].sort, vec!["status:desc"]);
+    assert_eq!(reloaded.views[0].sort_keys, vec!["status:desc"]);
+    // …and comes back to the form structured, with no `sort` left in the
+    // flat definition for the form to carry by accident.
+    let seed = ViewDefinition::from_view(&reloaded.views[0]).unwrap();
+    assert_eq!(seed.sort, sort);
+    assert!(!seed.definition.as_mapping().unwrap().contains_key("sort"));
 }
 
 #[test]
@@ -255,7 +266,7 @@ fn create_view_overwrites_supplied_id_with_the_slug() {
     let definition: serde_yaml::Value =
         serde_yaml::from_str("id: ignored\ntype: board\nfield: status\n").unwrap();
 
-    let outcome = create_view(&config, &root, "Real Name", definition, &[]).unwrap();
+    let outcome = create_view(&config, &root, "Real Name", definition, &[], &[]).unwrap();
 
     assert_eq!(outcome.view_id, "real-name");
 }
@@ -266,7 +277,7 @@ fn create_view_blank_name_errors_without_writing() {
     let definition: serde_yaml::Value =
         serde_yaml::from_str("type: board\nfield: status\n").unwrap();
 
-    let error = create_view(&config, &root, "   ", definition, &[]).unwrap_err();
+    let error = create_view(&config, &root, "   ", definition, &[], &[]).unwrap_err();
 
     assert!(matches!(error, ViewWriteError::InvalidName { .. }));
     assert!(!root.join(".workdown/views.yaml").exists());
@@ -494,6 +505,7 @@ fn update_view_replaces_definition_in_place() {
         None,
         definition("type: tree\nfield: parent\n"),
         &[],
+        &[],
     )
     .unwrap();
 
@@ -522,6 +534,7 @@ fn update_view_replaces_the_filter() {
         None,
         definition("type: board\nfield: status\n"),
         &[condition("status", Operator::Equal, Some("open"))],
+        &[],
     )
     .unwrap();
 
@@ -544,6 +557,7 @@ fn update_view_empty_filter_clears_where() {
         None,
         definition("type: board\nfield: status\n"),
         &[],
+        &[],
     )
     .unwrap();
 
@@ -562,6 +576,7 @@ fn update_view_unknown_id_errors_without_writing() {
         "nope",
         None,
         definition("type: board\nfield: status\n"),
+        &[],
         &[],
     )
     .unwrap_err();
@@ -582,6 +597,7 @@ fn update_view_invalid_definition_errors_without_writing() {
         "first",
         None,
         definition("type: board\n"),
+        &[],
         &[],
     )
     .unwrap_err();
@@ -604,6 +620,7 @@ fn update_view_with_bad_field_reference_writes_with_warning() {
         None,
         definition("type: board\nfield: nope\n"),
         &[],
+        &[],
     )
     .unwrap();
 
@@ -622,6 +639,7 @@ fn update_view_with_new_name_renames_the_id() {
         "first",
         Some("Sprint Board"),
         definition("type: board\nfield: status\n"),
+        &[],
         &[],
     )
     .unwrap();
@@ -645,6 +663,7 @@ fn update_view_rename_removes_the_old_rendered_file() {
         "first",
         Some("Sprint Board"),
         definition("type: board\nfield: status\n"),
+        &[],
         &[],
     )
     .unwrap();
@@ -677,6 +696,7 @@ fn update_view_rename_to_same_slug_is_not_a_rename() {
         Some("First"),
         definition("type: board\nfield: status\n"),
         &[],
+        &[],
     )
     .unwrap();
 
@@ -697,6 +717,7 @@ fn update_view_rename_to_existing_id_errors_without_writing() {
         Some("Second"),
         definition("type: board\nfield: status\n"),
         &[],
+        &[],
     )
     .unwrap_err();
 
@@ -715,6 +736,7 @@ fn update_view_blank_name_errors_without_writing() {
         "first",
         Some("   "),
         definition("type: board\nfield: status\n"),
+        &[],
         &[],
     )
     .unwrap_err();
@@ -738,6 +760,7 @@ fn update_view_rename_keeps_preexisting_warning_unflagged() {
         "first",
         Some("Sprint Board"),
         definition("type: board\nfield: nope\n"),
+        &[],
         &[],
     )
     .unwrap();
@@ -763,6 +786,7 @@ fn update_view_rename_flags_a_warning_it_introduces() {
         "first",
         Some("Sprint Board"),
         definition("type: board\nfield: nope\n"),
+        &[],
         &[],
     )
     .unwrap();
@@ -805,6 +829,7 @@ fn create_view_serializes_metric_row_filters() {
             "type: metric\nmetrics:\n  - aggregate: count\n    filter:\n      - kind: comparison\n        field: status\n        operator: equal\n        value: open\n",
         ),
         &[],
+        &[],
     )
     .unwrap();
 
@@ -825,6 +850,7 @@ fn update_view_replaces_metric_row_filters() {
         definition(
             "type: metric\nmetrics:\n  - label: Open\n    aggregate: count\n    filter:\n      - kind: comparison\n        field: status\n        operator: equal\n        value: done\n  - aggregate: count\n    filter: []\n",
         ),
+        &[],
         &[],
     )
     .unwrap();
@@ -848,6 +874,7 @@ fn update_view_metric_row_filter_with_bad_shape_errors_without_writing() {
         None,
         definition("type: metric\nmetrics:\n  - aggregate: count\n    filter: 5\n"),
         &[],
+        &[],
     )
     .unwrap_err();
 
@@ -864,7 +891,7 @@ fn metric_row_filters_round_trip_through_view_definition() {
     write_views(&root, METRIC_VIEW);
     let views = load_views(&root.join(".workdown/views.yaml")).unwrap();
 
-    let seed = workdown_core::mutation_data::ViewDefinition::from_view(&views.views[0]).unwrap();
+    let seed = ViewDefinition::from_view(&views.views[0]).unwrap();
     let serde_yaml::Value::Mapping(mapping) = &seed.definition else {
         panic!("definition must be a mapping");
     };
@@ -885,7 +912,16 @@ fn metric_row_filters_round_trip_through_view_definition() {
         );
     }
 
-    update_view(&config, &root, "stats", None, seed.definition, &seed.filter).unwrap();
+    update_view(
+        &config,
+        &root,
+        "stats",
+        None,
+        seed.definition,
+        &seed.filter,
+        &seed.sort,
+    )
+    .unwrap();
 
     let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
     assert_eq!(

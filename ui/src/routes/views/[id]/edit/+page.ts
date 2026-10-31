@@ -1,7 +1,8 @@
 // Fetches the edit-form seed for /views/[id]/edit: the view's flat
-// definition plus its filter as structured clauses — exactly the shape
-// the save will PUT back. Maps 422/404 to SvelteKit `error()` so the
-// route-level `+error.svelte` boundary renders.
+// definition plus its filter as structured clauses and its order as
+// structured sort keys — exactly the shape the save will PUT back. Maps
+// 422/404 to SvelteKit `error()` so the route-level `+error.svelte`
+// boundary renders.
 
 import { error } from '@sveltejs/kit';
 import { api } from '$lib/api/client';

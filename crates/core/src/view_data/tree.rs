@@ -132,7 +132,7 @@ mod tests {
         View {
             id: "my-tree".into(),
             where_clauses: where_clauses.into_iter().map(str::to_owned).collect(),
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Tree {
                 field: field.to_owned(),
@@ -202,20 +202,21 @@ mod tests {
             ],
         );
         let mut view = tree_view("parent", vec![]);
-        // `done` sorts before `open` as text; descending reverses it, so
-        // the sort — not the id — must be what puts b before a.
-        view.sort = vec!["status:desc".into()];
+        // `done` sorts before `open` as text, so ascending status puts
+        // each `b` before its `a` — the reverse of id order, which is
+        // what an ignored sort would produce.
+        view.sort_keys = vec!["status".into()];
 
         let data = extract_tree(&view, &store, &schema);
 
         let root_ids: Vec<&str> = data.roots.iter().map(|node| node.id.as_str()).collect();
-        assert_eq!(root_ids, vec!["root-a", "root-b"]);
-        let child_ids: Vec<&str> = data.roots[0]
+        assert_eq!(root_ids, vec!["root-b", "root-a"]);
+        let child_ids: Vec<&str> = data.roots[1]
             .children
             .iter()
             .map(|node| node.id.as_str())
             .collect();
-        assert_eq!(child_ids, vec!["child-a", "child-b"]);
+        assert_eq!(child_ids, vec!["child-b", "child-a"]);
     }
 
     #[test]

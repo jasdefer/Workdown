@@ -123,7 +123,7 @@ mod tests {
         View {
             id: "my-graph".into(),
             where_clauses: vec![],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Graph {
                 field: field.to_owned(),
@@ -349,7 +349,7 @@ mod tests {
         let view = View {
             id: "g".into(),
             where_clauses: vec!["status=open".into()],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Graph {
                 field: "depends_on".into(),
@@ -405,7 +405,7 @@ mod tests {
         View {
             id: "my-graph".into(),
             where_clauses: vec![],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Graph {
                 field: field.to_owned(),
@@ -491,7 +491,7 @@ mod tests {
         let view = View {
             id: "g".into(),
             where_clauses: vec!["status=open".into()],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Graph {
                 field: "depends_on".into(),

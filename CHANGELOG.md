@@ -20,9 +20,7 @@ its source — internal refactors are deliberately absent.
   web app agree on it, a rendered view names it in its caption, the
   view form in the web app edits it as a list of field-and-direction
   rows, and `workdown validate` reports a key naming an unknown field
-  or a direction other than `asc`/`desc` as an error. `workdown query
-  --sort` now refuses the same keys the same way instead of silently
-  sorting by nothing.
+  or a direction other than `asc`/`desc` as an error.
 - The web app's schema page edits fields. Clicking a row opens a
   slide-over with the field's name, type, required flag, description
   and default — the default entered with the same editor an item's
@@ -188,6 +186,15 @@ its source — internal refactors are deliberately absent.
   verdict before Save.
 
 ### Changed
+
+- `workdown query` refuses a `--where` clause or a `--sort` key that
+  names a field no item carries, and a `--sort` direction other than
+  `asc`/`desc`, with the same reasons `workdown validate` gives a view's
+  `where:` and `sort:`. Before, an unknown filter field silently matched
+  nothing and an unknown sort key silently sorted by nothing.
+- `workdown query` without `--sort` lists items by id. It used to list
+  them by file name, which differs only for an item whose frontmatter
+  sets its own `id`.
 
 - A schema with a `choice` or `multichoice` field whose `values` list
   the same value twice, or contain a blank value, is now refused at

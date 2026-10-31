@@ -11,7 +11,8 @@
 		initial={{
 			id: data.viewId,
 			definition: data.seed.definition,
-			filter: data.seed.filter
+			filter: data.seed.filter,
+			sort: data.seed.sort
 		}}
 	/>
 {/key}

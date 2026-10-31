@@ -36,6 +36,7 @@ use crate::parser;
 use crate::parser::schema::SchemaLoadError;
 use crate::parser::views::{serialize_views, view_from_value};
 use crate::query::clause::{clauses_to_strings, decompose_clauses, Clause};
+use crate::query::types::SortSpec;
 use crate::store::Store;
 
 // ── Public types ─────────────────────────────────────────────────────
@@ -160,28 +161,36 @@ pub fn add_view(
 /// overwritten by the slug (the name is authoritative). A name with no
 /// alphanumeric characters is rejected. A metric view's rows may carry
 /// their per-row filter as structured `filter` clauses — serialized into
-/// each row's `where:` exactly like the view-level filter.
+/// each row's `where:` exactly like the view-level filter. The item order
+/// arrives as structured `sort` keys and is serialized into `sort:` the
+/// same way.
 pub fn create_view(
     config: &Config,
     project_root: &Path,
     name: &str,
     definition: serde_yaml::Value,
     filter: &[Clause],
+    sort: &[SortSpec],
 ) -> Result<ViewWriteOutcome, ViewWriteError> {
     let id = slug_view_id(name)?;
-    let definition = prepare_definition(definition, &id, filter)?;
+    let definition = prepare_definition(definition, &id, filter, sort)?;
     add_view(config, project_root, definition)
 }
 
 /// Inject the slugged `id` and, when non-empty, the serialized `where`
-/// clauses into a definition mapping, and fold each metric row's structured
-/// `filter` back into its `where:` strings. Filters arrive structured and
-/// are serialized here (via [`clauses_to_strings`]) so the clause grammar
-/// stays in `core`, not the UI.
+/// clauses and `sort` keys into a definition mapping, and fold each metric
+/// row's structured `filter` back into its `where:` strings. Filters and
+/// sort keys arrive structured and are serialized here (via
+/// [`clauses_to_strings`] and [`SortSpec`]'s `Display`) so neither grammar
+/// leaves `core` for the UI. An empty list leaves the mapping's own key
+/// alone, so a raw API caller may still embed `where` or `sort` strings
+/// directly; the form never does, since the definition it receives has
+/// both stripped out (see [`crate::mutation_data::ViewDefinition`]).
 fn prepare_definition(
     definition: serde_yaml::Value,
     id: &str,
     filter: &[Clause],
+    sort: &[SortSpec],
 ) -> Result<serde_yaml::Value, ViewWriteError> {
     let serde_yaml::Value::Mapping(mut mapping) = definition else {
         return Err(ViewWriteError::InvalidDefinition {
@@ -196,16 +205,23 @@ fn prepare_definition(
     if !where_clauses.is_empty() {
         mapping.insert(
             serde_yaml::Value::String("where".to_owned()),
-            serde_yaml::Value::Sequence(
-                where_clauses
-                    .into_iter()
-                    .map(serde_yaml::Value::String)
-                    .collect(),
-            ),
+            string_sequence(where_clauses),
+        );
+    }
+    if !sort.is_empty() {
+        // Always a list here; the parser's model round-trip writes a
+        // single key back in its short string form.
+        mapping.insert(
+            serde_yaml::Value::String("sort".to_owned()),
+            string_sequence(sort.iter().map(SortSpec::to_string).collect()),
         );
     }
     metric_filters_to_where(&mut mapping)?;
     Ok(serde_yaml::Value::Mapping(mapping))
+}
+
+fn string_sequence(strings: Vec<String>) -> serde_yaml::Value {
+    serde_yaml::Value::Sequence(strings.into_iter().map(serde_yaml::Value::String).collect())
 }
 
 /// Fold each metric row's structured `filter` into its persisted `where:`
@@ -320,6 +336,7 @@ pub fn update_view(
     new_name: Option<&str>,
     definition: serde_yaml::Value,
     filter: &[Clause],
+    sort: &[SortSpec],
 ) -> Result<ViewWriteOutcome, ViewWriteError> {
     let mut context = load_for_write(config, project_root)?;
     let pre_diagnostics = context.pre_check();
@@ -334,7 +351,7 @@ pub fn update_view(
         return Err(ViewWriteError::DuplicateId { id: target_id });
     }
 
-    let definition = prepare_definition(definition, &target_id, filter)?;
+    let definition = prepare_definition(definition, &target_id, filter, sort)?;
     let new_view = build_view(definition)?;
 
     // A diagnostic's identity includes the view id, so diffing across a

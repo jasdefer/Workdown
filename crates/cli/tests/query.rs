@@ -69,6 +69,16 @@ fn sort_flag_rejects_an_unknown_field() {
 }
 
 #[test]
+fn where_flag_rejects_an_unknown_field() {
+    // Same rule, same wording as `--sort`: a field no item carries is an
+    // error, not an empty result.
+    Project::new()
+        .run(&["query", "--where", "created=2026-01-01"])
+        .assert_code(1)
+        .assert_stderr_contains("--where 'created=2026-01-01': unknown field 'created'");
+}
+
+#[test]
 fn sort_flag_rejects_an_unknown_direction() {
     Project::new()
         .run(&["query", "--sort", "title:descending"])

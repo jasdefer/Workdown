@@ -161,7 +161,7 @@ mod tests {
         View {
             id: "my-heatmap".into(),
             where_clauses: vec![],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Heatmap {
                 x: x.to_owned(),

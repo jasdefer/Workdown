@@ -163,7 +163,7 @@ mod tests {
         View {
             id: "v".into(),
             where_clauses: vec![],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::GanttByDepth {
                 start: start.to_owned(),
@@ -179,7 +179,7 @@ mod tests {
         View {
             id: "v".into(),
             where_clauses: vec![],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::GanttByDepth {
                 start: start.to_owned(),
@@ -403,7 +403,7 @@ mod tests {
         let view = View {
             id: "v".into(),
             where_clauses: vec!["team=b".into()],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::GanttByDepth {
                 start: "start".into(),

@@ -201,7 +201,7 @@ mod tests {
         View {
             id: "my-line".into(),
             where_clauses: vec![],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::LineChart {
                 x: x.to_owned(),

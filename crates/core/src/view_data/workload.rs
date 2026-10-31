@@ -249,7 +249,7 @@ mod tests {
         View {
             id: "my-workload".into(),
             where_clauses: vec![],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Workload {
                 start: start.to_owned(),
@@ -264,7 +264,7 @@ mod tests {
         View {
             id: "my-workload".into(),
             where_clauses: vec![],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Workload {
                 start: start.to_owned(),

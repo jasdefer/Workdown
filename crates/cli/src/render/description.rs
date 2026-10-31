@@ -14,15 +14,18 @@
 //! module — callers tolerate an empty string.
 
 use workdown_core::model::views::{Aggregate, View, ViewKind};
+use workdown_core::query::parse::parse_sort;
+use workdown_core::query::types::SortDirection;
 
 /// Build the caption for a view, ready to be emitted right under the
 /// rendered `# Heading`. Returns an empty string for view kinds that
 /// don't need a description (currently only `table`).
 ///
 /// A view with `sort:` keys gets its order appended as a second
-/// sentence on the kinds that list items in that order — board, tree,
-/// graph, and the otherwise caption-less table — so a reader of the
-/// rendered file can tell `created:desc` from alphabetical.
+/// sentence on the kinds that list items in that order
+/// ([`ViewKind::lists_in_view_order`] — board, tree, graph, and the
+/// otherwise caption-less table), so a reader of the rendered file can
+/// tell `created:desc` from alphabetical.
 pub fn description_for(view: &View) -> String {
     let caption = kind_description(view);
     match order_sentence(view) {
@@ -33,23 +36,25 @@ pub fn description_for(view: &View) -> String {
 }
 
 /// The sort keys as prose: `Ordered by \`priority\` descending, then
-/// \`created\`.` — or `None` for kinds whose items have an order of
-/// their own (gantt by time, treemap by size) or no item list at all.
+/// \`created\`.` — or `None` when the kind does not show the order in
+/// its body, or there are no keys.
+///
+/// Reads each key with the one real parser; the keys were validated
+/// before the view reached a renderer, so a key that fails here is a
+/// programming error, not a user's typo.
 fn order_sentence(view: &View) -> Option<String> {
-    let lists_in_view_order = matches!(
-        view.kind,
-        ViewKind::Board { .. } | ViewKind::Tree { .. } | ViewKind::Graph { .. } | ViewKind::Table
-    );
-    if !lists_in_view_order || view.sort.is_empty() {
+    if !view.kind.lists_in_view_order() || view.sort_keys.is_empty() {
         return None;
     }
     let keys: Vec<String> = view
-        .sort
+        .sort_keys
         .iter()
-        .map(|key| match key.split_once(':') {
-            Some((field, "desc")) => format!("`{}` descending", field.trim()),
-            Some((field, _)) => format!("`{}`", field.trim()),
-            None => format!("`{}`", key.trim()),
+        .map(|key| {
+            let spec = parse_sort(key).expect("views_check validates sort keys before rendering");
+            match spec.direction {
+                SortDirection::Ascending => format!("`{}`", spec.field),
+                SortDirection::Descending => format!("`{}` descending", spec.field),
+            }
         })
         .collect();
     Some(format!("Ordered by {}.", keys.join(", then ")))
@@ -203,7 +208,7 @@ mod tests {
         View {
             id: "v".into(),
             where_clauses: vec![],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind,
         }
@@ -225,14 +230,14 @@ mod tests {
         let mut board = view(ViewKind::Board {
             field: "status".into(),
         });
-        board.sort = vec!["priority:desc".into(), "created".into()];
+        board.sort_keys = vec!["priority:desc".into(), "created".into()];
         assert_eq!(
             description_for(&board),
             "Cards grouped into columns by `status`. Ordered by `priority` descending, then `created`."
         );
 
         let mut table = view(ViewKind::Table);
-        table.sort = vec!["created:desc".into()];
+        table.sort_keys = vec!["created:desc".into()];
         assert_eq!(description_for(&table), "Ordered by `created` descending.");
 
         let mut gantt = view(ViewKind::Gantt {
@@ -242,7 +247,7 @@ mod tests {
             after: None,
             group: None,
         });
-        gantt.sort = vec!["created".into()];
+        gantt.sort_keys = vec!["created".into()];
         assert_eq!(
             description_for(&gantt),
             "Timeline of items from `start` to `end`."

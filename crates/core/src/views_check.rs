@@ -35,14 +35,11 @@ use crate::model::diagnostic::{
     ConfigDiagnosticKind, Diagnostic, FileDiagnosticKind, ViewLocation,
 };
 use crate::model::resources::Resources;
-use crate::model::schema::{
-    is_relation_anchor, FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity,
-};
+use crate::model::schema::{FieldDefinition, FieldType, FieldTypeConfig, Schema, Severity};
 use crate::model::view_slots::{self, SlotSpec};
 use crate::model::views::{Aggregate, MetricRow, View, ViewKind, Views};
 use crate::parser::views::{ViewsLoadError, ViewsValidationError};
 use crate::query::parse::{parse_sort, parse_where};
-use crate::query::types::{FieldReference, Predicate};
 use crate::store::Store;
 use crate::where_check;
 
@@ -413,17 +410,18 @@ fn check_display(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>)
 // ── Sort keys (cross-cutting) ────────────────────────────────────────
 
 /// Check the view's `sort:` keys: each one parses in the
-/// `field[:asc|:desc]` grammar, and names a schema field or the virtual
-/// `id`. Existence-only — every field type sorts, since the sorter has a
-/// comparison for each — and `id` is accepted because it is projected
-/// into every item's fields at load, so sorting by it is well-defined
-/// (and is the default tiebreaker anyway).
+/// `field[:asc|:desc]` grammar, and names a field items carry
+/// ([`Schema::is_item_field`] — any schema field or the virtual `id`).
+/// Existence-only: every field type sorts, since the sorter has a
+/// comparison for each, and sorting by `id` is well-defined (it is the
+/// default tiebreaker anyway). `workdown query --sort` applies the same
+/// two rules to its flag.
 fn check_sort(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
     let locus = SlotLocus::view(view.id.as_str());
-    for raw in &view.sort {
+    for raw in &view.sort_keys {
         match parse_sort(raw) {
             Ok(spec) => {
-                if spec.field != "id" && !ctx.schema.fields.contains_key(&spec.field) {
+                if !ctx.schema.is_item_field(&spec.field) {
                     out.push(ctx.error(ConfigDiagnosticKind::ViewUnknownField {
                         location: locus.at("sort"),
                         field_name: spec.field,
@@ -776,7 +774,12 @@ fn check_where_clauses(
     for raw in where_clauses {
         match parse_where(raw) {
             Ok(predicate) => {
-                walk_predicate(&predicate, locus, ctx, out);
+                for field_name in where_check::unknown_fields(&predicate, ctx.schema) {
+                    out.push(ctx.error(ConfigDiagnosticKind::ViewUnknownField {
+                        location: locus.at("where"),
+                        field_name,
+                    }));
+                }
                 // Operand checking runs after the field walk and never
                 // instead of it: an operand judged against a field that
                 // doesn't exist would be noise on top of the real error.
@@ -796,55 +799,6 @@ fn check_where_clauses(
                 raw: raw.clone(),
                 detail: err.to_string(),
             })),
-        }
-    }
-}
-
-fn walk_predicate(
-    predicate: &Predicate,
-    locus: SlotLocus,
-    ctx: &ViewCheckContext,
-    out: &mut Vec<Diagnostic>,
-) {
-    match predicate {
-        Predicate::Comparison(comparison) => {
-            check_where_field_ref(&comparison.field, locus, ctx, out)
-        }
-        Predicate::And(inner) | Predicate::Or(inner) => {
-            for p in inner {
-                walk_predicate(p, locus, ctx, out);
-            }
-        }
-        Predicate::Not(inner) => walk_predicate(inner, locus, ctx, out),
-    }
-}
-
-fn check_where_field_ref(
-    field_ref: &FieldReference,
-    locus: SlotLocus,
-    ctx: &ViewCheckContext,
-    out: &mut Vec<Diagnostic>,
-) {
-    match field_ref {
-        FieldReference::Local(name) => {
-            if name == "id" {
-                return;
-            }
-            if !ctx.schema.fields.contains_key(name) {
-                out.push(ctx.error(ConfigDiagnosticKind::ViewUnknownField {
-                    location: locus.at("where"),
-                    field_name: name.clone(),
-                }));
-            }
-        }
-        FieldReference::Related { relation, .. } => {
-            if is_relation_anchor(relation, &ctx.schema.fields) {
-                return;
-            }
-            out.push(ctx.error(ConfigDiagnosticKind::ViewUnknownField {
-                location: locus.at("where"),
-                field_name: relation.clone(),
-            }));
         }
     }
 }

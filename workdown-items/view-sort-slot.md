@@ -49,8 +49,22 @@ A view may declare an optional `sort:` slot that fixes the order of its items, w
    no session override; the web table's header click stays session-local
    and sits above the configured order, which becomes its secondary key.
 6. **Web UI:** a cross-kind *Sort* control in the view form — per key a
-   field picker and an asc/desc toggle, with a button for further keys —
-   serialized into the grammar.
-7. **`workdown query --sort` comes along:** the CLI rejects an unknown
-   field or direction the same way, so the one grammar behaves the same
-   on both surfaces.
+   field picker and an asc/desc toggle, with a button for further keys.
+   The keys cross the wire structured (`SortSpec`, generated TypeScript),
+   beside the definition like the filter's clauses, and core serializes
+   them into the slot — the key grammar has one parser and one writer,
+   both in Rust. (Revised in review from "serialized into the grammar by
+   the form", which would have been a second parser to keep in step.)
+7. **`workdown query` comes along:** `--sort` rejects an unknown field
+   or direction the same way a view's `sort:` is rejected, asking the
+   same core functions. `--where` now does the same for an unknown field
+   instead of matching nothing, so the two flags and the two slots share
+   one rule.
+8. **Id order everywhere:** the sorter breaks every remaining tie by id,
+   including when there are no keys at all, so bare `workdown query`
+   lists by id rather than by file name. One tiebreaker, implemented
+   once, instead of a special case per surface.
+9. **Which kinds show the order is a method, not prose:**
+   `ViewKind::lists_in_view_order`, an exhaustive match the caption
+   reads, and a row in the add-a-view-kind checklist — so a new kind has
+   to answer the question.

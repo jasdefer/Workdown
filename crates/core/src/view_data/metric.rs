@@ -131,7 +131,7 @@ mod tests {
         View {
             id: "my-metric".into(),
             where_clauses: vec![],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Metric { metrics: rows },
         }

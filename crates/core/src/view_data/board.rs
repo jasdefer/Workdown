@@ -132,7 +132,7 @@ mod tests {
         View {
             id: "my-board".into(),
             where_clauses: vec![],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Board {
                 field: field.to_owned(),
@@ -421,7 +421,7 @@ mod tests {
         };
         let store = make_store(&schema, vec![item("a", 1), item("b", 3), item("c", 2)]);
         let mut view = board_view("status");
-        view.sort = vec!["points:desc".into()];
+        view.sort_keys = vec!["points:desc".into()];
 
         let data = extract_board(&view, &store, &schema);
 

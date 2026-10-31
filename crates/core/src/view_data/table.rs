@@ -150,7 +150,7 @@ mod tests {
         View {
             id: "my-table".to_owned(),
             where_clauses: where_clauses.into_iter().map(str::to_owned).collect(),
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig {
                 title: title.map(str::to_owned),
                 fields: Some(columns.into_iter().map(str::to_owned).collect()),

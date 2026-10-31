@@ -304,12 +304,14 @@ pub enum UnplacedReason {
 ///
 /// [`super::filter::filtered_items`] decides the order once (the view's
 /// `sort:` keys, then id). An extractor that merely iterates those items
-/// preserves it for free; one that collects items from another source —
-/// tree children found through reverse links, unplaced cards gathered
-/// out of resolution order — asks this index to sort them the same way.
-/// An item outside the indexed set (none today: every unplaced card and
-/// every tree child is a filtered item) sorts last, by id, rather than
-/// panicking.
+/// preserves it for free, and most do: their unplaced cards are pushed
+/// during that one pass, so re-sorting them here changes nothing and is
+/// kept only so every kind's footer states its order the same way. Two
+/// lists are genuinely built out of order and need this index: tree
+/// children, found through the store's reverse links, and the treemap's
+/// unplaced cards, gathered while walking its forest. An item outside
+/// the indexed set (none today: every unplaced card and every tree child
+/// is a filtered item) sorts last, by id, rather than panicking.
 pub(super) struct ViewOrder<'a> {
     position: HashMap<&'a str, usize>,
 }
@@ -537,7 +539,7 @@ mod tests {
         View {
             id: "v".to_owned(),
             where_clauses: vec![],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig {
                 fields: fields.map(|names| names.into_iter().map(str::to_owned).collect()),
                 ..DisplayConfig::default()

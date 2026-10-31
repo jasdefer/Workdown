@@ -28,7 +28,7 @@ pub fn filtered_items<'store>(
     store: &'store Store,
     schema: &Schema,
 ) -> Vec<&'store WorkItem> {
-    run_filter(&view.where_clauses, &view.sort, store, schema)
+    run_filter(&view.where_clauses, &view.sort_keys, store, schema)
 }
 
 /// Like [`filtered_items`], but AND-combines additional `where` clauses
@@ -49,16 +49,16 @@ pub fn filtered_items_with_extras<'store>(
     }
     let mut combined = view.where_clauses.clone();
     combined.extend(extras.iter().cloned());
-    run_filter(&combined, &view.sort, store, schema)
+    run_filter(&combined, &view.sort_keys, store, schema)
 }
 
 fn run_filter<'store>(
     where_clauses: &[String],
-    sort: &[String],
+    sort_keys: &[String],
     store: &'store Store,
     schema: &Schema,
 ) -> Vec<&'store WorkItem> {
-    let sort: Vec<SortSpec> = sort
+    let sort: Vec<SortSpec> = sort_keys
         .iter()
         .map(|key| parse_sort(key).expect("views_check validates sort keys before extraction"))
         .collect();
@@ -67,13 +67,10 @@ fn run_filter<'store>(
         sort,
         fields: vec![],
     };
-    let (_columns, mut items) = filter_and_sort(&request, store, schema)
+    // The sorter breaks every remaining tie by id, so no keys at all is
+    // plain id order — nothing to add here.
+    let (_columns, items) = filter_and_sort(&request, store, schema)
         .expect("views_check validates where clauses before extraction");
-    // The sorter already breaks ties by id when it has keys; without
-    // keys it leaves store order, which is no order at all.
-    if request.sort.is_empty() {
-        items.sort_by(|left, right| left.id.as_str().cmp(right.id.as_str()));
-    }
     items
 }
 
@@ -108,7 +105,7 @@ mod tests {
         View {
             id: "t".into(),
             where_clauses: vec![],
-            sort: sort.into_iter().map(str::to_owned).collect(),
+            sort_keys: sort.into_iter().map(str::to_owned).collect(),
             display: DisplayConfig::default(),
             kind: ViewKind::Table,
         }

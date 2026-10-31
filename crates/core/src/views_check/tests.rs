@@ -117,7 +117,7 @@ fn one_view(kind: ViewKind) -> Views {
         views: vec![View {
             id: "v".into(),
             where_clauses: vec![],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind,
         }],
@@ -130,7 +130,7 @@ fn view_with_where(kind: ViewKind, where_clauses: Vec<String>) -> Views {
         views: vec![View {
             id: "v".into(),
             where_clauses,
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind,
         }],
@@ -143,7 +143,7 @@ fn view_with_display(kind: ViewKind, display: DisplayConfig) -> Views {
         views: vec![View {
             id: "v".into(),
             where_clauses: vec![],
-            sort: vec![],
+            sort_keys: vec![],
             display,
             kind,
         }],
@@ -1795,7 +1795,7 @@ fn view_with_sort(kind: ViewKind, sort: Vec<String>) -> Views {
         views: vec![View {
             id: "v".into(),
             where_clauses: vec![],
-            sort,
+            sort_keys: sort,
             display: DisplayConfig::default(),
             kind,
         }],

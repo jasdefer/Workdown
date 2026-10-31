@@ -120,7 +120,7 @@ mod tests {
         View {
             id: "my-bar".into(),
             where_clauses: vec![],
-            sort: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::BarChart {
                 group_by: group_by.to_owned(),

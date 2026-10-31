@@ -393,7 +393,7 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
     Ok(View {
         id: raw.id,
         where_clauses: raw.where_clauses,
-        sort: raw.sort.map(SortSlot::into_keys).unwrap_or_default(),
+        sort_keys: raw.sort.map(SortSlot::into_keys).unwrap_or_default(),
         display: raw.display.unwrap_or_default(),
         kind,
     })
@@ -442,7 +442,7 @@ fn raw_view_from(view: &View) -> RawView {
         id: view.id.clone(),
         view_type: view.kind.view_type(),
         where_clauses: view.where_clauses.clone(),
-        sort: SortSlot::from_keys(&view.sort),
+        sort: SortSlot::from_keys(&view.sort_keys),
         display: raw_display_from(&view.display),
         title: None,
         columns: None,
@@ -656,7 +656,7 @@ mod tests {
     fn parse_sort_as_single_string() {
         let view =
             parse_single("views:\n  - id: recent\n    type: table\n    sort: created:desc\n");
-        assert_eq!(view.sort, vec!["created:desc"]);
+        assert_eq!(view.sort_keys, vec!["created:desc"]);
     }
 
     #[test]
@@ -664,13 +664,13 @@ mod tests {
         let view = parse_single(
             "views:\n  - id: b\n    type: board\n    field: status\n    sort: [priority:desc, created]\n",
         );
-        assert_eq!(view.sort, vec!["priority:desc", "created"]);
+        assert_eq!(view.sort_keys, vec!["priority:desc", "created"]);
     }
 
     #[test]
     fn absent_sort_is_empty() {
         let view = parse_single("views:\n  - id: b\n    type: board\n    field: status\n");
-        assert!(view.sort.is_empty());
+        assert!(view.sort_keys.is_empty());
     }
 
     #[test]

@@ -140,14 +140,16 @@ export const api = {
 		} satisfies SetViewFilter),
 	/**
 	 * Create a view. `name` is slugged to the id server-side; `definition`
-	 * is the kind + slots (no id); `filter` is the optional structured filter.
+	 * is the kind + slots (no id); `filter` and `sort` are the optional
+	 * structured filter and item order.
 	 */
 	createView: (body: CreateView) => request<ViewMutationResult>('POST', '/api/views', body),
 	/**
 	 * The persisted view decomposed for the edit form: the flat definition
-	 * (no id, no where; a metric view's rows carry structured `filter`
-	 * clauses) plus the view-level filter as structured clauses — exactly
-	 * the shape `updateView` takes back.
+	 * (no id, no where, no sort; a metric view's rows carry structured
+	 * `filter` clauses) plus the view-level filter as structured clauses
+	 * and the order as structured sort keys — exactly the shape
+	 * `updateView` takes back.
 	 */
 	getViewDefinition: (id: string) =>
 		request<ViewDefinition>('GET', `/api/views/${encodeURIComponent(id)}/definition`),

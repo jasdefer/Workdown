@@ -148,18 +148,19 @@ Thirteen kinds exist today. A fourteenth touches the places below. The right-han
 | 5 | Extractor module plus `ViewData` variant — `crates/core/src/view_data/` | compiler |
 | 6 | Markdown renderer — `crates/cli/src/render/`, dispatched by `render_view_data` and counted by `emit_unplaced_warnings` in `crates/cli/src/commands/render.rs` | compiler (both matches are exhaustive) |
 | 7 | View subtitle — `crates/cli/src/render/description.rs` | compiler |
-| 8 | Wire types — one `exports.add::<T>()` line per new struct in `crates/core/examples/gen_types.rs`, then `cargo xtask gen-types` (which also re-emits the row 3 table as `ui/src/lib/api/generated/viewSlotTypes.ts`) | the UI type check, indirectly — a forgotten type has no `.ts` file, so `npm run check` fails on the dangling import in whatever references it |
-| 9 | `crates/core/defaults/views.schema.json` (editor autocomplete) | `crates/core/tests/views_schema.rs` — `schema_accepts_exactly_the_enum_view_types` compares the schema's `view.oneOf` branches against `ViewType::VARIANTS`, and `full_example_covers_every_view_type` keeps the fixture the shape tests run through complete |
-| 10 | `VIEW_KIND_CONTROLS` — `ui/src/lib/views/viewKinds.ts` | TypeScript: `Record<ViewType, …>` is exhaustive over the generated union — but only once row 8 has regenerated `ViewType` |
-| 11 | `KIND_LABELS` in the same file, whose keys *are* the picker list (`VIEW_KINDS` is derived from them) | TypeScript: another `Record<ViewType, …>` |
-| 12 | Nothing — the accepted field types come from the row 3 table via `VIEW_SLOT_TYPES` | TypeScript: a control naming a slot the table lacks is an error, and the list itself cannot be retyped by hand |
-| 13 | Component plus branch in `ui/src/lib/views/ViewRenderer.svelte` | TypeScript: the `{:else}` branch passes `data` to `unrenderedKind(data: never)`, which only type-checks while the chain is exhaustive |
-| 14 | The view-kind table in [docs/views.md](views.md) | `crates/core/tests/docs_guides.rs` |
-| 15 | Recording-dot support, if the kind presents items: compare each item against `timerStore.runningItemId` | **nothing**, and it is reimplemented independently in six components today (board `Card`, `GanttChart`, `GraphView`, `TableView`, `TreeNode`, `TreemapView`). A new kind has to copy it — tracked as `recording-dot-extraction`, since the fix is an extraction rather than a guard |
+| 8 | Whether the kind lists its items in the view's order (`sort:` keys, else id) or has an order of its own — `ViewKind::lists_in_view_order` in `crates/core/src/model/views.rs`, which decides whether the subtitle names the order | compiler (exhaustive match) |
+| 9 | Wire types — one `exports.add::<T>()` line per new struct in `crates/core/examples/gen_types.rs`, then `cargo xtask gen-types` (which also re-emits the row 3 table as `ui/src/lib/api/generated/viewSlotTypes.ts`) | the UI type check, indirectly — a forgotten type has no `.ts` file, so `npm run check` fails on the dangling import in whatever references it |
+| 10 | `crates/core/defaults/views.schema.json` (editor autocomplete) | `crates/core/tests/views_schema.rs` — `schema_accepts_exactly_the_enum_view_types` compares the schema's `view.oneOf` branches against `ViewType::VARIANTS`, and `full_example_covers_every_view_type` keeps the fixture the shape tests run through complete |
+| 11 | `VIEW_KIND_CONTROLS` — `ui/src/lib/views/viewKinds.ts` | TypeScript: `Record<ViewType, …>` is exhaustive over the generated union — but only once row 9 has regenerated `ViewType` |
+| 12 | `KIND_LABELS` in the same file, whose keys *are* the picker list (`VIEW_KINDS` is derived from them) | TypeScript: another `Record<ViewType, …>` |
+| 13 | Nothing — the accepted field types come from the row 3 table via `VIEW_SLOT_TYPES` | TypeScript: a control naming a slot the table lacks is an error, and the list itself cannot be retyped by hand |
+| 14 | Component plus branch in `ui/src/lib/views/ViewRenderer.svelte` | TypeScript: the `{:else}` branch passes `data` to `unrenderedKind(data: never)`, which only type-checks while the chain is exhaustive |
+| 15 | The view-kind table in [docs/views.md](views.md) | `crates/core/tests/docs_guides.rs` |
+| 16 | Recording-dot support, if the kind presents items: compare each item against `timerStore.runningItemId` | **nothing**, and it is reimplemented independently in six components today (board `Card`, `GanttChart`, `GraphView`, `TableView`, `TreeNode`, `TreemapView`). A new kind has to copy it — tracked as `recording-dot-extraction`, since the fix is an extraction rather than a guard |
 
 **No change needed** in `crates/server`, which serializes `ViewData` and knows nothing about kinds, nor anywhere in the load spine (store, derive, checks).
 
-A workable order: 1–7 in one pass, leaning on `cargo check` to walk you through the exhaustive matches; then 8 to regenerate types and the slot table; then 10–13 under `npm run check`; then 9 and 14, which the Rust test suite will remind you about.
+A workable order: 1–8 in one pass, leaning on `cargo check` to walk you through the exhaustive matches; then 9 to regenerate types and the slot table; then 11–14 under `npm run check`; then 10 and 15, which the Rust test suite will remind you about.
 
 A new **field type** has the same shape, one table smaller: the `FieldType` enum and the property matrix in `crates/core/src/model/schema.rs` are compiler-enforced, and their two mirrors — `crates/core/defaults/schema.schema.json` and the type table in [docs/schema.md](schema.md) — are covered by `crates/core/tests/schema_schema.rs` (which probes every type/property pair against `field_property_allowed`) and `crates/core/tests/docs_guides.rs`.
 

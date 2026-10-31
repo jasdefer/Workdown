@@ -29,6 +29,8 @@ use crate::operations::set::{BooleanMode, CollectionMode, SetOperation, SetOutco
 use crate::operations::view_write::ViewWriteOutcome;
 use crate::parser::views::view_to_value;
 use crate::query::clause::{decompose_clauses, Clause};
+use crate::query::parse::parse_sort;
+use crate::query::types::SortSpec;
 use crate::rule_shape::RuleShape;
 use crate::schema_definition_data::{FieldRecipe, FieldShape};
 
@@ -174,12 +176,17 @@ pub struct CreateView {
     /// view's `where:`. Omitted → no filter.
     #[serde(default)]
     pub filter: Vec<Clause>,
+    /// Optional item order, as structured keys (the shape the sort editor
+    /// uses). `core` serializes them into the view's `sort:`, so the web
+    /// app never writes the key grammar. Omitted → id order.
+    #[serde(default)]
+    pub sort: Vec<SortSpec>,
 }
 
 /// A request to replace an existing view's whole definition — the write
-/// half of the edit form. `definition` and `filter` take the same shapes
-/// [`CreateView`] does. `name`, when present, renames the view: it is
-/// slugged to a new id server-side exactly like creation. Name → id is
+/// half of the edit form. `definition`, `filter` and `sort` take the same
+/// shapes [`CreateView`] does. `name`, when present, renames the view: it
+/// is slugged to a new id server-side exactly like creation. Name → id is
 /// lossy (only the id is persisted), so the form seeds its name field by
 /// prettifying the id and omits `name` here unless the user actually
 /// edited it — an untouched label can never cause an accidental rename.
@@ -191,36 +198,52 @@ pub struct UpdateView {
     pub definition: serde_yaml::Value,
     #[serde(default)]
     pub filter: Vec<Clause>,
+    #[serde(default)]
+    pub sort: Vec<SortSpec>,
 }
 
 /// A persisted view decomposed for the edit form: the flat definition
-/// (without `id` and `where`) plus the filter as structured clauses —
-/// exactly the shape [`UpdateView`] takes back, so what the form GETs is
-/// what it PUTs. A metric view's rows get the same treatment: each entry's
-/// `where:` strings are replaced by a structured `filter` clause list.
-/// Returned by `GET /api/views/{id}/definition`.
+/// (without `id`, `where` and `sort`) plus the filter as structured
+/// clauses and the order as structured sort keys — exactly the shape
+/// [`UpdateView`] takes back, so what the form GETs is what it PUTs. A
+/// metric view's rows get the same treatment: each entry's `where:`
+/// strings are replaced by a structured `filter` clause list. Returned by
+/// `GET /api/views/{id}/definition`.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 pub struct ViewDefinition {
     #[ts(type = "Record<string, unknown>")]
     pub definition: serde_yaml::Value,
     pub filter: Vec<Clause>,
+    pub sort: Vec<SortSpec>,
 }
 
 impl ViewDefinition {
     /// Decompose a persisted view. `id` leaves the mapping because the
     /// write path derives it (from the path, or a rename's `name`);
     /// `where` leaves — at the view level and per metric row — because
-    /// filters travel as structured clauses.
+    /// filters travel as structured clauses; `sort` leaves because the
+    /// keys travel as structured [`SortSpec`]s. A sort key the grammar
+    /// rejects is dropped from the seed rather than failing the whole
+    /// decomposition: such a view is already an error at validation and
+    /// renders nothing, and saving the form without the key is the
+    /// repair. (A filter clause has a raw escape hatch for the same
+    /// situation; the sort grammar is too small to need one.)
     pub fn from_view(view: &View) -> Result<Self, serde_yaml::Error> {
         let mut value = view_to_value(view)?;
         if let serde_yaml::Value::Mapping(ref mut mapping) = value {
             mapping.shift_remove("id");
             mapping.shift_remove("where");
+            mapping.shift_remove("sort");
             crate::operations::view_write::metric_where_to_filters(mapping)?;
         }
         Ok(Self {
             definition: value,
             filter: decompose_clauses(&view.where_clauses),
+            sort: view
+                .sort_keys
+                .iter()
+                .filter_map(|key| parse_sort(key).ok())
+                .collect(),
         })
     }
 }

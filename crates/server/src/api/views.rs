@@ -311,6 +311,7 @@ async fn create_view_handler(
         &request.name,
         request.definition,
         &request.filter,
+        &request.sort,
     ) {
         Ok(outcome) => {
             let result = ViewMutationResult::from_outcome(&outcome);
@@ -399,6 +400,7 @@ async fn update_view_handler(
         request.name.as_deref(),
         request.definition,
         &request.filter,
+        &request.sort,
     ))
 }
 

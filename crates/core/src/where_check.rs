@@ -1,16 +1,21 @@
-//! Check the *operands* of a filter clause, not just its field names.
+//! Check a parsed filter clause against the schema: the fields it
+//! names, and the operands it compares them with.
 //!
-//! [`crate::views_check`] resolves the field a `where:` clause names and
-//! stops there, so `status=nonsense` on a `choice` field validates
-//! cleanly, matches nothing, and renders an empty view with nothing to
-//! explain it. This module answers the other half of the question: given
-//! the field, could this operand ever match?
+//! Two questions, two entry points. [`unknown_fields`] asks whether every
+//! field reference resolves — a local name must be a field items carry,
+//! a relation anchor (`parent.status`) must be a link field or an
+//! inverse name. [`check_predicate`] asks the other half: given the
+//! field, could this operand ever match? Without it `status=nonsense`
+//! on a `choice` field validates cleanly, matches nothing, and renders
+//! an empty view with nothing to explain it.
 //!
-//! Like `display_check`, it reports neutral [`ValueViolation`]s
-//! rather than diagnostics, because three callers wrap them differently —
-//! a view's `where:`, a metric row's per-row `where:`, and an ad-hoc
+//! Like `display_check`, both report neutral findings rather than
+//! diagnostics, because three callers wrap them differently — a view's
+//! `where:`, a metric row's per-row `where:`, and an ad-hoc
 //! `workdown query --where`, which has no file to pin a diagnostic to at
-//! all.
+//! all. The field question is an error everywhere (the clause can never
+//! be answered); the operand question is a warning (the clause is
+//! well-formed, it just selects nothing).
 //!
 //! Two kinds of "could never match" live here:
 //!
@@ -50,7 +55,7 @@ use std::collections::HashSet;
 use crate::model::date::parse_date;
 use crate::model::message::one_of;
 use crate::model::resources::Resources;
-use crate::model::schema::{FieldTypeConfig, Schema};
+use crate::model::schema::{is_relation_anchor, FieldTypeConfig, Schema};
 use crate::model::FieldValue;
 use crate::query::types::{Comparison, FieldReference, Operator, Predicate};
 use crate::resources_check::validatable_fields;
@@ -87,7 +92,47 @@ impl ValueViolation {
     }
 }
 
-// ── Entry point ──────────────────────────────────────────────────────
+// ── Field references ─────────────────────────────────────────────────
+
+/// The field references in a predicate that do not resolve, in traversal
+/// order, one entry per occurrence: a local name that is neither a schema
+/// field nor the virtual `id` ([`Schema::is_item_field`]), or a relation
+/// anchor that is neither a link field nor a declared inverse. Empty
+/// means every comparison in the predicate names something that exists.
+///
+/// Returns the names rather than diagnostics for the same reason
+/// [`check_predicate`] does: `views_check` pins them to a slot, the CLI
+/// refuses the flag.
+pub fn unknown_fields(predicate: &Predicate, schema: &Schema) -> Vec<String> {
+    let mut unknown = Vec::new();
+    collect_unknown_fields(predicate, schema, &mut unknown);
+    unknown
+}
+
+fn collect_unknown_fields(predicate: &Predicate, schema: &Schema, out: &mut Vec<String>) {
+    match predicate {
+        Predicate::Comparison(comparison) => match &comparison.field {
+            FieldReference::Local(name) => {
+                if !schema.is_item_field(name) {
+                    out.push(name.clone());
+                }
+            }
+            FieldReference::Related { relation, .. } => {
+                if !is_relation_anchor(relation, &schema.fields) {
+                    out.push(relation.clone());
+                }
+            }
+        },
+        Predicate::And(inner) | Predicate::Or(inner) => {
+            for predicate in inner {
+                collect_unknown_fields(predicate, schema, out);
+            }
+        }
+        Predicate::Not(inner) => collect_unknown_fields(inner, schema, out),
+    }
+}
+
+// ── Operands ─────────────────────────────────────────────────────────
 
 /// Check every comparison in a predicate. Returns one violation per
 /// offending operand, in traversal order; an empty vector means every
@@ -822,6 +867,41 @@ mod tests {
         assert_eq!(violation.field, "parent.status");
         // …while the option set comes from the target field.
         assert_eq!(violation.expected, "one of: open, in_progress, done");
+    }
+
+    // ── Field references ────────────────────────────────────────
+
+    #[test]
+    fn every_schema_field_the_id_and_relation_anchors_resolve() {
+        let predicate = parse_where("status=open").unwrap();
+        assert!(unknown_fields(&predicate, &schema()).is_empty());
+        for clause in ["id=alpha", "parent.status=open", "children.status=open"] {
+            let predicate = parse_where(clause).unwrap();
+            assert!(
+                unknown_fields(&predicate, &schema()).is_empty(),
+                "{clause} should resolve"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_names_are_listed_per_occurrence_in_traversal_order() {
+        let predicate = parse_where("typo=x").unwrap();
+        assert_eq!(unknown_fields(&predicate, &schema()), ["typo"]);
+
+        // A relation anchor that is neither a link field nor an inverse.
+        let predicate = parse_where("owner.status=open").unwrap();
+        assert_eq!(unknown_fields(&predicate, &schema()), ["owner"]);
+
+        // Every comparison of a combined predicate is visited, and a name
+        // that is wrong twice is reported twice — the caller may pin each
+        // occurrence to its own clause.
+        let combined = Predicate::And(vec![
+            parse_where("ghost=1").unwrap(),
+            parse_where("status=open").unwrap(),
+            Predicate::Not(Box::new(parse_where("ghost=2").unwrap())),
+        ]);
+        assert_eq!(unknown_fields(&combined, &schema()), ["ghost", "ghost"]);
     }
 
     // ── Message shaping ─────────────────────────────────────────
