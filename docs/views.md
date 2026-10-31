@@ -145,8 +145,8 @@ The order a view lists its items in. One sort key as a string, or several as a l
 - Comparison is by field type, as in `workdown query --sort`: numbers numerically, dates chronologically, durations by length, text alphabetically. Items with no value for a key sort last in either direction.
 - Any schema field sorts, and so does the virtual `id`. `workdown validate` reports a key naming a field the schema does not declare, or a direction other than `asc`/`desc`, as an error — the view is skipped like any other misconfigured view.
 - Where the order shows, per kind: board cards within a column (column order stays the schema's value order), table rows, tree roots and siblings at every level, graph nodes, and the `## Unplaced` footer of every kind. Gantt bars keep their own order (section, then start, then id) and treemap nodes stay size-descending; on those kinds `sort:` reaches only the footer.
-- `workdown render` and `workdown serve` agree on the order: it is resolved once in the shared extraction layer. In the web app, clicking a table column header still sorts the rows for that session only; the configured order then acts as the secondary key, since the click sorts a list that is already in it. The view form edits the slot as rows of field and direction; like the filter, they cross the wire structured and the key grammar is written by the server.
-- A rendered board, tree, graph or table with a `sort:` says so in its caption: `Ordered by \`priority\` descending, then \`created\`.`
+- `workdown render` and `workdown serve` agree on the order: it is resolved once in the shared extraction layer. In the web app, clicking a table column header still sorts the rows for that session only; the configured order then acts as the secondary key, since the click sorts a list that is already in it. The view form edits the slot as rows of field and direction; like the filter, they cross the wire structured and the key grammar is written by core, never by the web app.
+- A rendered board, tree, graph or table with a `sort:` says so in its caption: ``Ordered by `priority` descending, then `created`.``
 
 ## Display roles — `display:`
 

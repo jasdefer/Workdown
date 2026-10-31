@@ -195,6 +195,10 @@ its source — internal refactors are deliberately absent.
 - `workdown query` without `--sort` lists items by id. It used to list
   them by file name, which differs only for an item whose frontmatter
   sets its own `id`.
+- A `--where` expression the grammar rejects is reported once, as
+  `--where '<expression>': <reason>`; the reason no longer repeats the
+  expression. The same applies to the `workdown validate` diagnostic for
+  a view's `where:` clause.
 
 - A schema with a `choice` or `multichoice` field whose `values` list
   the same value twice, or contain a blank value, is now refused at

@@ -319,7 +319,7 @@
 		{/if}
 	{/each}
 
-	<div class="filter-section">
+	<div class="cross-cutting-section">
 		<span class="label">Filter (optional)</span>
 		<FilterBuilder
 			initialClauses={initialFilter}
@@ -329,7 +329,7 @@
 		/>
 	</div>
 
-	<div class="filter-section">
+	<div class="cross-cutting-section">
 		<span class="label">Sort (optional)</span>
 		<SortEditor
 			initial={initialSort}
@@ -407,7 +407,7 @@
 		font-size: var(--text-sm);
 	}
 
-	.filter-section {
+	.cross-cutting-section {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-2);

@@ -174,9 +174,11 @@ fn parse_sort_arguments(arguments: &[String], schema: &Schema) -> anyhow::Result
         .collect()
 }
 
-/// The one wording for a flag naming a field that does not exist.
+/// The one wording for a flag naming a field that does not exist — the
+/// same words `ConfigDiagnosticKind::ViewUnknownField` displays for a
+/// view's slot, so the flag and the slot read alike.
 fn unknown_field_detail(field_name: &str) -> String {
-    format!("unknown field '{field_name}' (not defined in schema.yaml)")
+    format!("unknown field '{field_name}'")
 }
 
 /// Parse --fields argument into column names.

@@ -121,7 +121,7 @@ pub(super) struct GanttResolution<'a> {
 ///
 /// Applies the view's `where`-filter, picks one of the three input recipes
 /// from `cfg`, and returns the resulting bars + unplaced cards. Unplaced
-/// cards are sorted by id (final order); bars are returned in resolution
+/// cards are in the view's order (final order); bars are returned in resolution
 /// order — callers add their own bar sort (section-aware in
 /// `extract_gantt`, partition-then-(start,id) in by-initiative).
 pub(super) fn resolve_bars(

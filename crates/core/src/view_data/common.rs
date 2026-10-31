@@ -222,7 +222,7 @@ pub fn effective_fields<'view>(view: &'view View, schema: &'view Schema) -> Vec<
         Some(fields) => fields
             .iter()
             .map(String::as_str)
-            .filter(|name| *name == "id" || schema.fields.contains_key(*name))
+            .filter(|name| schema.is_item_field(name))
             .collect(),
     }
 }
@@ -303,15 +303,13 @@ pub enum UnplacedReason {
 /// that lists built elsewhere can be put back into it.
 ///
 /// [`super::filter::filtered_items`] decides the order once (the view's
-/// `sort:` keys, then id). An extractor that merely iterates those items
-/// preserves it for free, and most do: their unplaced cards are pushed
-/// during that one pass, so re-sorting them here changes nothing and is
-/// kept only so every kind's footer states its order the same way. Two
-/// lists are genuinely built out of order and need this index: tree
-/// children, found through the store's reverse links, and the treemap's
-/// unplaced cards, gathered while walking its forest. An item outside
-/// the indexed set (none today: every unplaced card and every tree child
-/// is a filtered item) sorts last, by id, rather than panicking.
+/// `sort:` keys, then id). The invariant every extractor upholds: a
+/// list it hands out — the unplaced footer, a node's children — is in
+/// that order. An extractor restores it with this index after it has
+/// finished collecting, whether or not its collection happened to
+/// preserve it, so the invariant does not depend on how many passes the
+/// extractor makes. An item outside the indexed set sorts last, by id,
+/// rather than panicking.
 pub(super) struct ViewOrder<'a> {
     position: HashMap<&'a str, usize>,
 }

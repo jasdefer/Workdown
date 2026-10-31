@@ -68,3 +68,16 @@ A view may declare an optional `sort:` slot that fixes the order of its items, w
    `ViewKind::lists_in_view_order`, an exhaustive match the caption
    reads, and a row in the add-a-view-kind checklist — so a new kind has
    to answer the question.
+10. **A sort key the grammar rejects is dropped from the edit-form
+    seed** (`ViewDefinition::from_view`), not carried as a raw row the
+    way an unparsable filter clause is. Such a view is already an error
+    at validation and renders nothing; saving the form without the key
+    is the repair. Accepted in review as a deliberate asymmetry: the
+    grammar is two dropdowns wide, and a raw escape hatch would cost
+    more editor than the mistake it would show.
+11. **The footer re-sort is unconditional.** Every extractor restores
+    the view order on its unplaced list via `ViewOrder`, including the
+    single-pass extractors whose list already is in order. The call
+    states the invariant rather than depending on how many passes an
+    extractor happens to make, so a later second pass cannot break the
+    footer order silently.
