@@ -74,7 +74,7 @@ pub fn load_views(path: &Path) -> Result<Views, ViewsLoadError> {
 /// Build a single [`View`] from a YAML value carrying one view's slots.
 ///
 /// The value uses the same flat shape as one entry in the `views:` list:
-/// `id`, `type`, optional `where`, and the type-specific slots. Validates
+/// `id`, `type`, optional `where` and `sort`, and the type-specific slots. Validates
 /// exactly as a hand-edited file would — unknown slots are rejected
 /// (`deny_unknown_fields`) and per-type required slots are enforced by
 /// `convert_view`. Used by the view-write path to turn a UI/API view
@@ -85,7 +85,7 @@ pub fn view_from_value(value: serde_yaml::Value) -> Result<View, ViewsLoadError>
 }
 
 /// Serialize a single [`View`] to the flat YAML value shape one entry in
-/// the `views:` list takes — `id`, `type`, optional `where`, and the slots
+/// the `views:` list takes — `id`, `type`, optional `where` and `sort`, and the slots
 /// its kind uses.
 ///
 /// The exact inverse of [`view_from_value`] (covered by the round-trip
@@ -99,7 +99,7 @@ pub fn view_to_value(view: &View) -> Result<serde_yaml::Value, serde_yaml::Error
 ///
 /// The inverse of [`parse_views`]: emits a file that re-parses to an
 /// equal [`Views`] (covered by the round-trip test). Only slots the view
-/// kind actually uses are written, empty `where` lists are omitted, and
+/// kind actually uses are written, empty `where` lists and `sort` slots are omitted, and
 /// the `directory:` key is emitted only when it differs from the default.
 ///
 /// This rebuilds the file from the model, so a user's comments and key
@@ -179,6 +179,11 @@ struct RawView {
     #[serde(default, rename = "where", skip_serializing_if = "Vec::is_empty")]
     where_clauses: Vec<String>,
 
+    // Cross-cutting item order. Allowed on every view type; a single
+    // key is written as a string, several as a list — see [`SortSlot`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sort: Option<SortSlot>,
+
     // Cross-cutting display roles. Allowed on every view type; each
     // kind renders the roles it can place. Roles left unset inherit
     // the project defaults from `config.yaml` at render time.
@@ -248,6 +253,34 @@ struct RawView {
     // Workload
     #[serde(default, skip_serializing_if = "Option::is_none")]
     working_days: Option<Vec<Weekday>>,
+}
+
+/// The YAML shape of a view's `sort:` slot: one key as a plain string
+/// (`sort: created:desc`), several as a list (`sort: [priority:desc,
+/// created]`). Both read into the same `Vec<String>` on the model; on
+/// the way back out a single key is written in the short form.
+#[derive(Deserialize, Serialize)]
+#[serde(untagged)]
+enum SortSlot {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl SortSlot {
+    fn into_keys(self) -> Vec<String> {
+        match self {
+            Self::One(key) => vec![key],
+            Self::Many(keys) => keys,
+        }
+    }
+
+    fn from_keys(keys: &[String]) -> Option<Self> {
+        match keys {
+            [] => None,
+            [key] => Some(Self::One(key.clone())),
+            many => Some(Self::Many(many.to_vec())),
+        }
+    }
 }
 
 /// One row inside a metric view's `metrics:` list.
@@ -360,6 +393,7 @@ fn convert_view(raw: RawView) -> Result<View, ViewsValidationError> {
     Ok(View {
         id: raw.id,
         where_clauses: raw.where_clauses,
+        sort: raw.sort.map(SortSlot::into_keys).unwrap_or_default(),
         display: raw.display.unwrap_or_default(),
         kind,
     })
@@ -408,6 +442,7 @@ fn raw_view_from(view: &View) -> RawView {
         id: view.id.clone(),
         view_type: view.kind.view_type(),
         where_clauses: view.where_clauses.clone(),
+        sort: SortSlot::from_keys(&view.sort),
         display: raw_display_from(&view.display),
         title: None,
         columns: None,
@@ -615,6 +650,34 @@ mod tests {
             "views:\n  - id: issues-only\n    type: board\n    field: status\n    where:\n      - \"type=issue\"\n      - \"status!=removed\"\n",
         );
         assert_eq!(view.where_clauses, vec!["type=issue", "status!=removed"]);
+    }
+
+    #[test]
+    fn parse_sort_as_single_string() {
+        let view =
+            parse_single("views:\n  - id: recent\n    type: table\n    sort: created:desc\n");
+        assert_eq!(view.sort, vec!["created:desc"]);
+    }
+
+    #[test]
+    fn parse_sort_as_list() {
+        let view = parse_single(
+            "views:\n  - id: b\n    type: board\n    field: status\n    sort: [priority:desc, created]\n",
+        );
+        assert_eq!(view.sort, vec!["priority:desc", "created"]);
+    }
+
+    #[test]
+    fn absent_sort_is_empty() {
+        let view = parse_single("views:\n  - id: b\n    type: board\n    field: status\n");
+        assert!(view.sort.is_empty());
+    }
+
+    #[test]
+    fn sort_round_trips_short_form_for_one_key_and_list_for_several() {
+        let yaml = "views:\n- id: one\n  type: table\n  sort: created:desc\n- id: two\n  type: table\n  sort:\n  - priority:desc\n  - created\n";
+        let views = parse_views(yaml).unwrap();
+        assert_eq!(serialize_views(&views).unwrap(), yaml);
     }
 
     #[test]

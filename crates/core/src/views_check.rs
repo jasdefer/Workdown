@@ -9,8 +9,8 @@
 //! `views.yaml` is either present in `schema.fields`, is a recognized
 //! relation name (forward link/links field name, or an inverse name from
 //! `schema.inverse_table`), or is the virtual `"id"` field in a slot that
-//! accepts it — text display roles (resolved specially at extraction) and
-//! `where:` clauses. Structural slots (board `field`, chart grouping, axes,
+//! accepts it — text display roles (resolved specially at extraction),
+//! `where:` clauses and `sort:` keys. Structural slots (board `field`, chart grouping, axes,
 //! date windows, aggregate values) reject it: the id is unique per item,
 //! so grouping or plotting by it degenerates into one group per item.
 //! The id *is* projected into `item.fields` at load, so such a view would
@@ -41,7 +41,7 @@ use crate::model::schema::{
 use crate::model::view_slots::{self, SlotSpec};
 use crate::model::views::{Aggregate, MetricRow, View, ViewKind, Views};
 use crate::parser::views::{ViewsLoadError, ViewsValidationError};
-use crate::query::parse::parse_where;
+use crate::query::parse::{parse_sort, parse_where};
 use crate::query::types::{FieldReference, Predicate};
 use crate::store::Store;
 use crate::where_check;
@@ -148,6 +148,7 @@ pub fn evaluate(
             &view.where_clauses,
             &mut out,
         );
+        check_sort(view, &ctx, &mut out);
     }
     out
 }
@@ -406,6 +407,35 @@ fn check_display(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>)
             },
         };
         out.push(ctx.error(kind));
+    }
+}
+
+// ── Sort keys (cross-cutting) ────────────────────────────────────────
+
+/// Check the view's `sort:` keys: each one parses in the
+/// `field[:asc|:desc]` grammar, and names a schema field or the virtual
+/// `id`. Existence-only — every field type sorts, since the sorter has a
+/// comparison for each — and `id` is accepted because it is projected
+/// into every item's fields at load, so sorting by it is well-defined
+/// (and is the default tiebreaker anyway).
+fn check_sort(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
+    let locus = SlotLocus::view(view.id.as_str());
+    for raw in &view.sort {
+        match parse_sort(raw) {
+            Ok(spec) => {
+                if spec.field != "id" && !ctx.schema.fields.contains_key(&spec.field) {
+                    out.push(ctx.error(ConfigDiagnosticKind::ViewUnknownField {
+                        location: locus.at("sort"),
+                        field_name: spec.field,
+                    }));
+                }
+            }
+            Err(err) => out.push(ctx.error(ConfigDiagnosticKind::ViewSortParseError {
+                location: locus.at("sort"),
+                raw: raw.clone(),
+                detail: err.to_string(),
+            })),
+        }
     }
 }
 

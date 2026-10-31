@@ -31,8 +31,8 @@ use crate::model::WorkItemId;
 use crate::store::Store;
 
 use super::common::{
-    as_axis, as_size, build_card, resolve_title, sort_unplaced, ChartValue, ItemRef, SizeValue,
-    UnplacedCard, UnplacedReason,
+    as_axis, as_size, build_card, resolve_title, ChartValue, ItemRef, SizeValue, UnplacedCard,
+    UnplacedReason, ViewOrder,
 };
 use super::filter::filtered_items;
 
@@ -124,7 +124,7 @@ pub fn extract_line_chart(view: &View, store: &Store, schema: &Schema) -> LineCh
     collected.sort_by(|(_, left), (_, right)| {
         compare_axis(&left.x, &right.x).then_with(|| left.id.as_str().cmp(right.id.as_str()))
     });
-    sort_unplaced(&mut unplaced);
+    ViewOrder::of(&items).sort_unplaced(&mut unplaced);
 
     LineChartData {
         x_field: x.clone(),
@@ -201,6 +201,7 @@ mod tests {
         View {
             id: "my-line".into(),
             where_clauses: vec![],
+            sort: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::LineChart {
                 x: x.to_owned(),

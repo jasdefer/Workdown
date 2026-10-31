@@ -16,13 +16,13 @@ views:
 - Each entry has a `type` that discriminates the type-specific slots.
 - `directory:` (optional) — output directory where `workdown render` writes view files, relative to project root. Defaults to `"views"`. See [Output paths](#output-paths).
 
-Every view entry also accepts two optional cross-cutting slots: `where:` (filters) and `display:` (display roles). Both are described below.
+Every view entry also accepts three optional cross-cutting slots: `where:` (filters), `sort:` (item order) and `display:` (display roles). All three are described below.
 
 Unknown top-level fields are rejected. Unknown per-view slots are rejected.
 
 ## View types (v1)
 
-Every view type also accepts the cross-cutting optional slots `where:` and `display:` on top of what the table below lists.
+Every view type also accepts the cross-cutting optional slots `where:`, `sort:` and `display:` on top of what the table below lists.
 
 `workdown render` writes one Markdown file per view (`<directory>/<id>.md`); the table lists what each renderer emits today.
 
@@ -126,6 +126,27 @@ where:
 ```
 
 OR nesting is not supported in v1 (`in` covers the common case). A structured `or:` branch can be added later without breaking existing configs.
+
+## Order — `sort:`
+
+The order a view lists its items in. One sort key as a string, or several as a list, each in the `workdown query --sort` grammar: a field name, optionally followed by `:asc` or `:desc`.
+
+```yaml
+- id: recent
+  type: table
+  sort: created:desc            # newest first
+- id: board
+  type: board
+  field: status
+  sort: [priority:desc, created]  # highest priority first, oldest first within a priority
+```
+
+- Keys apply left to right: the second breaks ties the first leaves, and so on. The item `id` breaks whatever ties remain, so an absent `sort:` is plain id order — exactly what every view rendered before the slot existed.
+- Comparison is by field type, as in `workdown query --sort`: numbers numerically, dates chronologically, durations by length, text alphabetically. Items with no value for a key sort last in either direction.
+- Any schema field sorts, and so does the virtual `id`. `workdown validate` reports a key naming a field the schema does not declare, or a direction other than `asc`/`desc`, as an error — the view is skipped like any other misconfigured view.
+- Where the order shows, per kind: board cards within a column (column order stays the schema's value order), table rows, tree roots and siblings at every level, graph nodes, and the `## Unplaced` footer of every kind. Gantt bars keep their own order (section, then start, then id) and treemap nodes stay size-descending; on those kinds `sort:` reaches only the footer.
+- `workdown render` and `workdown serve` agree on the order: it is resolved once in the shared extraction layer. In the web app, clicking a table column header still sorts the rows for that session only; the configured order then acts as the secondary key, since the click sorts a list that is already in it.
+- A rendered board, tree, graph or table with a `sort:` says so in its caption: `Ordered by \`priority\` descending, then \`created\`.`
 
 ## Display roles — `display:`
 
@@ -260,6 +281,7 @@ Severity carries meaning. An **error** describes a view that cannot produce outp
 - **Predecessor / partition link slots** — `gantt.after`, `gantt_by_initiative.root_link`, and `gantt_by_depth.depth_link` must point at a `link`/`links` field (single-target only for `root_link`/`depth_link`) with `allow_cycles: false`, and not at an inverse relation name (e.g. `children` when `parent.inverse: children`).
 - **Heatmap bucket coupling** — if `bucket:` is set, at least one of `x` or `y` must resolve to a `date` field.
 - **Count + value** — `aggregate: count` combined with `value:` is an error wherever an aggregate lives: `bar_chart`, `heatmap`, and each row of a `metric` view (count counts items, so a value field is meaningless). One check enforces it at all three, and a diagnostic names its location — `slot 'value'` for a view-level slot, `slot 'metrics[2].value'` for a row. The `value` slot's contents are not judged further when this fires: a slot that shouldn't be there is not also reported as mistyped.
+- **Sort keys** — each key in a view's `sort:` must parse as `field`, `field:asc` or `field:desc`, and the field must exist in `schema.yaml` (or be `id`). Any field type is accepted. The same rules apply to `workdown query --sort`, which refuses the same keys with the same reasons.
 - **Where-clause parsing** — each string in a view's `where:` list must parse as a valid `--where` expression.
 - **Where-clause field references** — local field names must exist in `schema.fields` (or be `id`); relation names (left side of a dot) must resolve to a `link`/`links` field or a known inverse name.
 - **Where-clause operands** *(warning)* — the value a clause compares against must be one the field could actually hold. Applies to a view's `where:` and to a metric row's per-row `where:`. See [Operand checking](#operand-checking) for the rules and the exclusions.

@@ -48,7 +48,7 @@ use crate::store::Store;
 use crate::walker::targets_of;
 
 use super::common::{
-    as_date, as_duration_seconds, build_card, sort_unplaced, Card, UnplacedCard, UnplacedReason,
+    as_date, as_duration_seconds, build_card, Card, UnplacedCard, UnplacedReason, ViewOrder,
 };
 use super::filter::filtered_items;
 
@@ -160,7 +160,7 @@ pub(super) fn resolve_bars(
         ),
     };
 
-    sort_unplaced(&mut unplaced);
+    ViewOrder::of(&items).sort_unplaced(&mut unplaced);
     (bars, unplaced)
 }
 
@@ -576,6 +576,7 @@ mod tests {
         View {
             id: "my-gantt".into(),
             where_clauses: vec![],
+            sort: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Gantt {
                 start: start.to_owned(),
@@ -591,6 +592,7 @@ mod tests {
         View {
             id: "my-gantt".into(),
             where_clauses: vec![],
+            sort: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Gantt {
                 start: start.to_owned(),
@@ -606,6 +608,7 @@ mod tests {
         View {
             id: "my-gantt".into(),
             where_clauses: vec![],
+            sort: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Gantt {
                 start: start.to_owned(),
@@ -1460,6 +1463,7 @@ mod tests {
         let view = View {
             id: "v".into(),
             where_clauses: vec!["team=b".into()],
+            sort: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Gantt {
                 start: "start".to_owned(),

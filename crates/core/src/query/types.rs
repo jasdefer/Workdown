@@ -265,7 +265,10 @@ pub struct QueryRequest {
 }
 
 /// A single sort specification: field name and direction.
-#[derive(Debug, Clone)]
+///
+/// Built by [`crate::query::parse::parse_sort`] from the `field[:asc|:desc]`
+/// grammar that `workdown query --sort` and a view's `sort:` slot share.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SortSpec {
     pub field: String,
     pub direction: SortDirection,

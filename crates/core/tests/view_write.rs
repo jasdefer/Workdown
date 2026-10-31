@@ -235,6 +235,20 @@ fn create_view_injects_the_filter_clauses() {
 }
 
 #[test]
+fn create_view_keeps_the_sort_slot_in_its_short_form() {
+    let (_dir, root, config) = setup();
+    let definition: serde_yaml::Value =
+        serde_yaml::from_str("type: table\nsort: status:desc\n").unwrap();
+
+    let outcome = create_view(&config, &root, "Recent", definition, &[]).unwrap();
+
+    assert!(!outcome.mutation_caused_warning);
+    assert!(read_views(&root).contains("sort: status:desc\n"));
+    let reloaded = load_views(&root.join(".workdown/views.yaml")).unwrap();
+    assert_eq!(reloaded.views[0].sort, vec!["status:desc"]);
+}
+
+#[test]
 fn create_view_overwrites_supplied_id_with_the_slug() {
     let (_dir, root, config) = setup();
     // A stray `id` in the definition is ignored — the name is authoritative.

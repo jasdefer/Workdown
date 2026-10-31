@@ -13,11 +13,11 @@ Cards grouped into columns by `status`.
 - [Check comparison references in rules at schema load](../workdown-items/rule-comparison-reference-check.md)
 - [Compare a field with a literal in a rule's match block](../workdown-items/rule-literal-comparisons.md)
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md)
-- [Per-view item order: a `sort:` slot on views](../workdown-items/view-sort-slot.md)
 
 ## in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
+- [Per-view item order: a `sort:` slot on views](../workdown-items/view-sort-slot.md)
 
 ## on_hold
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)

@@ -4,10 +4,12 @@ use std::path::Path;
 
 use crate::cli::{self, QueryFormat, QueryOutput};
 use workdown_core::model::config::Config;
+use workdown_core::model::schema::Schema;
 use workdown_core::project::load_project;
 use workdown_core::query;
 use workdown_core::query::format::DelimitedOptions;
-use workdown_core::query::types::{Predicate, QueryRequest, SortDirection, SortSpec};
+use workdown_core::query::parse::parse_sort;
+use workdown_core::query::types::{Predicate, QueryRequest, SortSpec};
 use workdown_core::where_check;
 
 /// In-cell separator for list/multichoice/links values in delimited output.
@@ -55,8 +57,10 @@ pub fn run_query(
         }
     }
 
-    // Parse --sort arguments into sort specs.
-    let sort = parse_sort_arguments(sort_arguments);
+    // Parse --sort arguments into sort specs. A key the grammar rejects
+    // or a field the schema lacks is an error, exactly as it is for a
+    // view's `sort:` slot — the two share the grammar and the rules.
+    let sort = parse_sort_arguments(sort_arguments, schema)?;
 
     // Parse --fields argument into column names.
     let fields = parse_fields_argument(fields_argument);
@@ -141,26 +145,21 @@ fn parse_where_clauses(clauses: &[String]) -> anyhow::Result<Option<Predicate>> 
     })
 }
 
-/// Parse --sort arguments into sort specifications.
-fn parse_sort_arguments(arguments: &[String]) -> Vec<SortSpec> {
+/// Parse --sort arguments into sort specifications, refusing a key the
+/// shared grammar rejects and a field the schema does not declare (the
+/// virtual `id` is always sortable).
+fn parse_sort_arguments(arguments: &[String], schema: &Schema) -> anyhow::Result<Vec<SortSpec>> {
     arguments
         .iter()
         .map(|argument| {
-            if let Some((field, direction_string)) = argument.split_once(':') {
-                let direction = match direction_string {
-                    "desc" => SortDirection::Descending,
-                    _ => SortDirection::Ascending,
-                };
-                SortSpec {
-                    field: field.to_owned(),
-                    direction,
-                }
-            } else {
-                SortSpec {
-                    field: argument.to_owned(),
-                    direction: SortDirection::Ascending,
-                }
+            let spec = parse_sort(argument).map_err(|error| anyhow::anyhow!("--sort {error}"))?;
+            if spec.field != "id" && !schema.fields.contains_key(&spec.field) {
+                anyhow::bail!(
+                    "--sort '{argument}': unknown field '{}' (not defined in schema.yaml)",
+                    spec.field
+                );
             }
+            Ok(spec)
         })
         .collect()
 }

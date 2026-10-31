@@ -25,7 +25,7 @@ use crate::model::FieldValue;
 use crate::store::Store;
 
 use super::aggregate::compute_aggregate;
-use super::common::{build_card, sort_unplaced, ChartValue, UnplacedCard, UnplacedReason};
+use super::common::{build_card, ChartValue, UnplacedCard, UnplacedReason, ViewOrder};
 use super::filter::filtered_items_with_extras;
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
@@ -80,7 +80,7 @@ fn extract_row(view: &View, row: &MetricRow, store: &Store, schema: &Schema) -> 
         }
     };
 
-    sort_unplaced(&mut unplaced);
+    ViewOrder::of(&items).sort_unplaced(&mut unplaced);
 
     MetricRowData {
         label: resolve_label(row),
@@ -131,6 +131,7 @@ mod tests {
         View {
             id: "my-metric".into(),
             where_clauses: vec![],
+            sort: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Metric { metrics: rows },
         }

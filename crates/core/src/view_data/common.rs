@@ -9,6 +9,7 @@
 //! unrenderable — so the renderer can show them in a side panel or ignore
 //! them.
 
+use std::collections::HashMap;
 use std::ops::Add;
 
 use chrono::NaiveDate;
@@ -298,10 +299,52 @@ pub enum UnplacedReason {
     },
 }
 
-/// Sort unplaced cards by work-item id ascending — the stable order every
-/// view presents its "couldn't place these" list in.
-pub(super) fn sort_unplaced(unplaced: &mut [UnplacedCard]) {
-    unplaced.sort_by(|left, right| left.card.id.as_str().cmp(right.card.id.as_str()));
+/// The order the filter stage handed a view's items over in, captured so
+/// that lists built elsewhere can be put back into it.
+///
+/// [`super::filter::filtered_items`] decides the order once (the view's
+/// `sort:` keys, then id). An extractor that merely iterates those items
+/// preserves it for free; one that collects items from another source —
+/// tree children found through reverse links, unplaced cards gathered
+/// out of resolution order — asks this index to sort them the same way.
+/// An item outside the indexed set (none today: every unplaced card and
+/// every tree child is a filtered item) sorts last, by id, rather than
+/// panicking.
+pub(super) struct ViewOrder<'a> {
+    position: HashMap<&'a str, usize>,
+}
+
+impl<'a> ViewOrder<'a> {
+    /// Index `items` in the order given.
+    pub(super) fn of(items: &[&'a WorkItem]) -> Self {
+        Self {
+            position: items
+                .iter()
+                .enumerate()
+                .map(|(index, item)| (item.id.as_str(), index))
+                .collect(),
+        }
+    }
+
+    fn rank<'id>(&self, id: &'id str) -> (usize, &'id str) {
+        (self.position.get(id).copied().unwrap_or(usize::MAX), id)
+    }
+
+    /// Put unplaced cards into the view's order.
+    pub(super) fn sort_unplaced(&self, unplaced: &mut [UnplacedCard]) {
+        unplaced.sort_by(|left, right| {
+            self.rank(left.card.id.as_str())
+                .cmp(&self.rank(right.card.id.as_str()))
+        });
+    }
+
+    /// Put work items into the view's order.
+    pub(super) fn sort_items(&self, items: &mut [&WorkItem]) {
+        items.sort_by(|left, right| {
+            self.rank(left.id.as_str())
+                .cmp(&self.rank(right.id.as_str()))
+        });
+    }
 }
 
 // ── Chart values ────────────────────────────────────────────────────
@@ -476,10 +519,25 @@ mod tests {
     use crate::model::views::ViewKind;
     use crate::view_data::test_support::{make_item, make_schema};
 
+    #[test]
+    fn view_order_restores_the_indexed_order_and_puts_strangers_last_by_id() {
+        let first = make_item("z-first", vec![], "");
+        let second = make_item("a-second", vec![], "");
+        let stranger_b = make_item("b-stranger", vec![], "");
+        let stranger_a = make_item("a-stranger", vec![], "");
+        let order = ViewOrder::of(&[&first, &second]);
+
+        let mut items = vec![&stranger_b, &second, &stranger_a, &first];
+        order.sort_items(&mut items);
+        let ids: Vec<&str> = items.iter().map(|item| item.id.as_str()).collect();
+        assert_eq!(ids, ["z-first", "a-second", "a-stranger", "b-stranger"]);
+    }
+
     fn view_with_fields(fields: Option<Vec<&str>>) -> View {
         View {
             id: "v".to_owned(),
             where_clauses: vec![],
+            sort: vec![],
             display: DisplayConfig {
                 fields: fields.map(|names| names.into_iter().map(str::to_owned).collect()),
                 ..DisplayConfig::default()

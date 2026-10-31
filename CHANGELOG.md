@@ -9,6 +9,20 @@ its source — internal refactors are deliberately absent.
 
 ### Added
 
+- Views take a `sort:` slot that fixes the order of their items, in the
+  `workdown query --sort` grammar: `sort: created:desc` for newest
+  first, `sort: [priority:desc, created]` for a multi-key order. The
+  item id breaks remaining ties, so views without the slot render
+  exactly as before. The order shows wherever a view lists items —
+  board cards within a column, table rows, tree siblings, graph nodes,
+  the unplaced footer of every kind — while gantt bars and treemap
+  nodes keep their own time and size order. `workdown render` and the
+  web app agree on it, a rendered view names it in its caption, the
+  view form in the web app edits it as a list of field-and-direction
+  rows, and `workdown validate` reports a key naming an unknown field
+  or a direction other than `asc`/`desc` as an error. `workdown query
+  --sort` now refuses the same keys the same way instead of silently
+  sorting by nothing.
 - The web app's schema page edits fields. Clicking a row opens a
   slide-over with the field's name, type, required flag, description
   and default — the default entered with the same editor an item's

@@ -132,6 +132,7 @@ mod tests {
         View {
             id: "my-board".into(),
             where_clauses: vec![],
+            sort: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Board {
                 field: field.to_owned(),
@@ -389,6 +390,47 @@ mod tests {
         assert_eq!(data.columns[0].cards.len(), 2);
         assert_eq!(data.columns[1].cards.len(), 1);
         assert_eq!(data.columns[2].cards.len(), 1);
+    }
+
+    #[test]
+    fn cards_within_column_follow_the_view_sort() {
+        let schema = make_schema(vec![
+            (
+                "status",
+                FieldTypeConfig::Choice {
+                    values: vec!["open".into()],
+                },
+            ),
+            (
+                "points",
+                FieldTypeConfig::Integer {
+                    min: None,
+                    max: None,
+                },
+            ),
+        ]);
+        let item = |id: &str, points: i64| {
+            make_item(
+                id,
+                vec![
+                    ("status", FieldValue::Choice("open".into())),
+                    ("points", FieldValue::Integer(points)),
+                ],
+                "",
+            )
+        };
+        let store = make_store(&schema, vec![item("a", 1), item("b", 3), item("c", 2)]);
+        let mut view = board_view("status");
+        view.sort = vec!["points:desc".into()];
+
+        let data = extract_board(&view, &store, &schema);
+
+        let ids: Vec<&str> = data.columns[0]
+            .cards
+            .iter()
+            .map(|card| card.id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["b", "c", "a"]);
     }
 
     #[test]

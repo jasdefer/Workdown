@@ -18,7 +18,44 @@ use workdown_core::model::views::{Aggregate, View, ViewKind};
 /// Build the caption for a view, ready to be emitted right under the
 /// rendered `# Heading`. Returns an empty string for view kinds that
 /// don't need a description (currently only `table`).
+///
+/// A view with `sort:` keys gets its order appended as a second
+/// sentence on the kinds that list items in that order — board, tree,
+/// graph, and the otherwise caption-less table — so a reader of the
+/// rendered file can tell `created:desc` from alphabetical.
 pub fn description_for(view: &View) -> String {
+    let caption = kind_description(view);
+    match order_sentence(view) {
+        Some(order) if caption.is_empty() => order,
+        Some(order) => format!("{caption} {order}"),
+        None => caption,
+    }
+}
+
+/// The sort keys as prose: `Ordered by \`priority\` descending, then
+/// \`created\`.` — or `None` for kinds whose items have an order of
+/// their own (gantt by time, treemap by size) or no item list at all.
+fn order_sentence(view: &View) -> Option<String> {
+    let lists_in_view_order = matches!(
+        view.kind,
+        ViewKind::Board { .. } | ViewKind::Tree { .. } | ViewKind::Graph { .. } | ViewKind::Table
+    );
+    if !lists_in_view_order || view.sort.is_empty() {
+        return None;
+    }
+    let keys: Vec<String> = view
+        .sort
+        .iter()
+        .map(|key| match key.split_once(':') {
+            Some((field, "desc")) => format!("`{}` descending", field.trim()),
+            Some((field, _)) => format!("`{}`", field.trim()),
+            None => format!("`{}`", key.trim()),
+        })
+        .collect();
+    Some(format!("Ordered by {}.", keys.join(", then ")))
+}
+
+fn kind_description(view: &View) -> String {
     match &view.kind {
         ViewKind::Board { field } => {
             format!("Cards grouped into columns by `{field}`.")
@@ -166,6 +203,7 @@ mod tests {
         View {
             id: "v".into(),
             where_clauses: vec![],
+            sort: vec![],
             display: DisplayConfig::default(),
             kind,
         }
@@ -179,6 +217,35 @@ mod tests {
         assert_eq!(
             description_for(&v),
             "Cards grouped into columns by `status`."
+        );
+    }
+
+    #[test]
+    fn sort_keys_append_an_order_sentence_where_items_follow_them() {
+        let mut board = view(ViewKind::Board {
+            field: "status".into(),
+        });
+        board.sort = vec!["priority:desc".into(), "created".into()];
+        assert_eq!(
+            description_for(&board),
+            "Cards grouped into columns by `status`. Ordered by `priority` descending, then `created`."
+        );
+
+        let mut table = view(ViewKind::Table);
+        table.sort = vec!["created:desc".into()];
+        assert_eq!(description_for(&table), "Ordered by `created` descending.");
+
+        let mut gantt = view(ViewKind::Gantt {
+            start: "start".into(),
+            end: Some("end".into()),
+            duration: None,
+            after: None,
+            group: None,
+        });
+        gantt.sort = vec!["created".into()];
+        assert_eq!(
+            description_for(&gantt),
+            "Timeline of items from `start` to `end`."
         );
     }
 

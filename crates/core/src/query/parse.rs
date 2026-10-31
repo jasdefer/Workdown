@@ -1,10 +1,14 @@
-//! Parser for `--where` CLI expressions.
+//! Parsers for the `--where` and `--sort` expression grammars.
 //!
 //! Each `--where` flag carries a single expression string. Multiple flags
 //! are combined into [`Predicate::And`] by the command layer — this parser
-//! handles one expression at a time.
+//! handles one expression at a time. [`parse_sort`] reads one sort key the
+//! same way; both grammars are shared with `views.yaml`, whose `where:`
+//! and `sort:` slots hold the same strings.
 
-use crate::query::types::{Comparison, FieldReference, Operand, Operator, Predicate, QueryRegex};
+use crate::query::types::{
+    Comparison, FieldReference, Operand, Operator, Predicate, QueryRegex, SortDirection, SortSpec,
+};
 
 // ── Error ───────────────────────────────────────────────────────────
 
@@ -259,6 +263,67 @@ fn desugar_membership(field_name: &str, operator: Operator, values: &[String]) -
     } else {
         Predicate::Or(comparisons)
     }
+}
+
+// ── Sort keys ───────────────────────────────────────────────────────
+
+/// Errors produced when parsing a sort key — one `--sort` flag, or one
+/// entry of a view's `sort:` slot.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum SortParseError {
+    #[error("empty sort key")]
+    Empty,
+
+    #[error("'{raw}': a sort key is a field name, optionally followed by ':asc' or ':desc'")]
+    MissingField { raw: String },
+
+    #[error("'{raw}': unknown direction '{direction}', expected 'asc' or 'desc'")]
+    UnknownDirection { raw: String, direction: String },
+}
+
+/// Parse a single sort key into a [`SortSpec`].
+///
+/// # Syntax
+///
+/// | Form | Example | Meaning |
+/// |------|---------|---------|
+/// | Bare field | `created` | ascending |
+/// | Explicit direction | `priority:desc` | descending; `:asc` spells ascending out |
+///
+/// Whitespace around the key and around the colon is ignored. Any other
+/// direction is an error rather than a silent ascending: a typo in
+/// `views.yaml` should be reported, not rendered.
+///
+/// Whether the field exists is not this parser's question — the CLI asks
+/// the schema, and `views_check` asks it for a view.
+pub fn parse_sort(input: &str) -> Result<SortSpec, SortParseError> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err(SortParseError::Empty);
+    }
+    let (field, direction) = match trimmed.split_once(':') {
+        Some((field, direction)) => (field.trim(), Some(direction.trim())),
+        None => (trimmed, None),
+    };
+    if field.is_empty() {
+        return Err(SortParseError::MissingField {
+            raw: trimmed.to_owned(),
+        });
+    }
+    let direction = match direction {
+        None | Some("asc") => SortDirection::Ascending,
+        Some("desc") => SortDirection::Descending,
+        Some(other) => {
+            return Err(SortParseError::UnknownDirection {
+                raw: trimmed.to_owned(),
+                direction: other.to_owned(),
+            })
+        }
+    };
+    Ok(SortSpec {
+        field: field.to_owned(),
+        direction,
+    })
 }
 
 /// Check that a field name is non-empty.
@@ -726,5 +791,71 @@ mod tests {
         let comparison = as_comparison(&predicate);
         assert_eq!(field_name(comparison), "status");
         assert_eq!(comparison.operand.text(), "open");
+    }
+}
+
+#[cfg(test)]
+mod sort_tests {
+    use super::*;
+
+    fn spec(field: &str, direction: SortDirection) -> SortSpec {
+        SortSpec {
+            field: field.to_owned(),
+            direction,
+        }
+    }
+
+    #[test]
+    fn bare_field_is_ascending() {
+        assert_eq!(
+            parse_sort("created").unwrap(),
+            spec("created", SortDirection::Ascending)
+        );
+    }
+
+    #[test]
+    fn explicit_directions() {
+        assert_eq!(
+            parse_sort("created:asc").unwrap(),
+            spec("created", SortDirection::Ascending)
+        );
+        assert_eq!(
+            parse_sort("created:desc").unwrap(),
+            spec("created", SortDirection::Descending)
+        );
+    }
+
+    #[test]
+    fn whitespace_is_ignored() {
+        assert_eq!(
+            parse_sort("  priority : desc ").unwrap(),
+            spec("priority", SortDirection::Descending)
+        );
+    }
+
+    #[test]
+    fn empty_key_is_rejected() {
+        assert_eq!(parse_sort("   "), Err(SortParseError::Empty));
+    }
+
+    #[test]
+    fn direction_without_field_is_rejected() {
+        assert_eq!(
+            parse_sort(":desc"),
+            Err(SortParseError::MissingField {
+                raw: ":desc".into()
+            })
+        );
+    }
+
+    #[test]
+    fn unknown_direction_is_rejected_not_defaulted() {
+        assert_eq!(
+            parse_sort("created:descending"),
+            Err(SortParseError::UnknownDirection {
+                raw: "created:descending".into(),
+                direction: "descending".into(),
+            })
+        );
     }
 }

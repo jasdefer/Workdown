@@ -44,6 +44,16 @@ pub struct View {
     /// [`crate::query::parse::parse_where`].
     pub where_clauses: Vec<String>,
 
+    /// The order the view lists its items in: sort keys in the
+    /// `workdown query --sort` grammar (`field` or `field:desc`), parsed
+    /// by [`crate::query::parse::parse_sort`] and applied left to right
+    /// with the item id as the final tiebreaker. Empty means id order —
+    /// what every view had before the slot existed. Board cards within
+    /// a column, table rows, tree siblings, graph nodes and every kind's
+    /// unplaced footer follow it; gantt bars and treemap nodes keep
+    /// their own intrinsic order (time, size).
+    pub sort: Vec<String>,
+
     /// Cross-cutting display roles for this view. Roles left unset here
     /// inherit the project-wide defaults from `config.yaml` — see
     /// [`View::with_display_defaults`].
@@ -561,12 +571,14 @@ mod tests {
         let bare = View {
             id: "bare".into(),
             where_clauses: vec![],
+            sort: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Table,
         };
         let own = View {
             id: "own".into(),
             where_clauses: vec![],
+            sort: vec![],
             display: DisplayConfig {
                 title: Some("assignee".into()),
                 ..DisplayConfig::default()

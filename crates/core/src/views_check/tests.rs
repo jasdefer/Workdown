@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::model::diagnostic::DiagnosticBody;
-use crate::model::schema::{FieldDefinition, FieldTypeConfig, Schema};
+use crate::model::schema::{FieldDefinition, FieldTypeConfig, Schema, Severity};
 use crate::model::views::{
     Aggregate, Bucket, ColorRole, DisplayConfig, MetricRow, View, ViewKind, Views,
 };
@@ -117,6 +117,7 @@ fn one_view(kind: ViewKind) -> Views {
         views: vec![View {
             id: "v".into(),
             where_clauses: vec![],
+            sort: vec![],
             display: DisplayConfig::default(),
             kind,
         }],
@@ -129,6 +130,7 @@ fn view_with_where(kind: ViewKind, where_clauses: Vec<String>) -> Views {
         views: vec![View {
             id: "v".into(),
             where_clauses,
+            sort: vec![],
             display: DisplayConfig::default(),
             kind,
         }],
@@ -141,6 +143,7 @@ fn view_with_display(kind: ViewKind, display: DisplayConfig) -> Views {
         views: vec![View {
             id: "v".into(),
             where_clauses: vec![],
+            sort: vec![],
             display,
             kind,
         }],
@@ -1782,6 +1785,71 @@ fn metric_per_row_where_unknown_field_pinpoints_index() {
                 && location.slot == "where"
                 && field_name == "typo_field"
     )));
+}
+
+// ── Sort keys ──────────────────────────────────────────────
+
+fn view_with_sort(kind: ViewKind, sort: Vec<String>) -> Views {
+    Views {
+        output_dir: PathBuf::from("views"),
+        views: vec![View {
+            id: "v".into(),
+            where_clauses: vec![],
+            sort,
+            display: DisplayConfig::default(),
+            kind,
+        }],
+    }
+}
+
+#[test]
+fn sort_accepts_any_schema_field_and_id() {
+    let diagnostics = check_views(
+        &view_with_sort(
+            ViewKind::Table,
+            vec![
+                "start_date:desc".into(),
+                "effort".into(),
+                "parent:asc".into(),
+                "id".into(),
+            ],
+        ),
+        &simple_schema(),
+        test_views_path(),
+    );
+    assert!(diagnostics.is_empty(), "got {diagnostics:?}");
+}
+
+#[test]
+fn sort_unknown_field_errors_at_the_sort_slot() {
+    let diagnostics = check_views(
+        &view_with_sort(ViewKind::Table, vec!["created:desc".into()]),
+        &simple_schema(),
+        test_views_path(),
+    );
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].severity, Severity::Error);
+    assert!(matches!(
+        view_kind(&diagnostics[0]),
+        ConfigDiagnosticKind::ViewUnknownField { location, field_name }
+            if location.slot == "sort" && field_name == "created"
+    ));
+}
+
+#[test]
+fn sort_unknown_direction_errors_instead_of_defaulting() {
+    let diagnostics = check_views(
+        &view_with_sort(ViewKind::Table, vec!["effort:descending".into()]),
+        &simple_schema(),
+        test_views_path(),
+    );
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].severity, Severity::Error);
+    assert!(matches!(
+        view_kind(&diagnostics[0]),
+        ConfigDiagnosticKind::ViewSortParseError { location, raw, .. }
+            if location.slot == "sort" && raw == "effort:descending"
+    ));
 }
 
 // ── Where-clause checks ────────────────────────────────────

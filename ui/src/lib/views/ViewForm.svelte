@@ -1,7 +1,7 @@
 <!--
   Compose a view: name → kind → the slots that kind needs (field pickers
   constrained by schema metadata) → an optional filter (reusing
-  FilterBuilder) → Save. Save is gated until the name and required slots
+  FilterBuilder) → an optional sort (SortEditor) → Save. Save is gated until the name and required slots
   are filled; the server re-validates and any diagnostics surface.
 
   Two modes, one form. Without `initial` it creates: on save the view is
@@ -21,7 +21,9 @@
 	import FilterBuilder from '$lib/filters/FilterBuilder.svelte';
 	import GanttInput from './GanttInput.svelte';
 	import MetricRowsEditor from './MetricRowsEditor.svelte';
+	import SortEditor from './SortEditor.svelte';
 	import { prettifyId } from './prettify';
+	import { sortKeysToSlot, sortSlotToKeys, type SortKey } from './sortSlot';
 	import {
 		AGGREGATES,
 		BUCKETS,
@@ -44,20 +46,22 @@
 	/**
 	 * Split a persisted flat definition into the form's working parts:
 	 * the kind, the editable slots (with `display.fields` folded into the
-	 * form-local `columns` slot), and the display roles the form does not
-	 * edit (title, subtitle, color) — carried through untouched so an
-	 * edit round-trip never drops what was set by hand in `views.yaml`.
-	 * An explicitly empty `fields: []` (the documented "show no fields"
-	 * override, distinct from unset) is not editable as columns either;
-	 * it stays in the carried-through part so it survives a save.
+	 * form-local `columns` slot), the cross-kind `sort` slot as editor
+	 * rows, and the display roles the form does not edit (title,
+	 * subtitle, color) — carried through untouched so an edit round-trip
+	 * never drops what was set by hand in `views.yaml`. An explicitly
+	 * empty `fields: []` (the documented "show no fields" override,
+	 * distinct from unset) is not editable as columns either; it stays
+	 * in the carried-through part so it survives a save.
 	 */
 	function seedFromDefinition(source: Record<string, unknown> | undefined): {
 		kind: ViewType;
 		slots: Record<string, unknown>;
+		sort: SortKey[];
 		displayRest: Record<string, unknown>;
 	} {
-		if (source === undefined) return { kind: 'board', slots: {}, displayRest: {} };
-		const { type, display, ...slots } = source;
+		if (source === undefined) return { kind: 'board', slots: {}, sort: [], displayRest: {} };
+		const { type, display, sort, ...slots } = source;
 		const displayRecord = isRecord(display) ? display : {};
 		const { fields, ...displayRest } = displayRecord;
 		if (Array.isArray(fields) && fields.length > 0) {
@@ -65,7 +69,13 @@
 		} else if (Array.isArray(fields)) {
 			(displayRest as Record<string, unknown>).fields = fields;
 		}
-		return { kind: type as ViewType, slots, displayRest };
+		let sortId = 0;
+		return {
+			kind: type as ViewType,
+			slots,
+			sort: sortSlotToKeys(sort, () => (sortId += 1)),
+			displayRest
+		};
 	}
 
 	// Seeded once from the resolved prop — the host re-keys this component
@@ -83,6 +93,9 @@
 	let definition = $state<Record<string, unknown>>(seeded.slots);
 	const displayRest = seeded.displayRest;
 	let filterClauses = $state<Clause[]>(initialFilter);
+	// Kind-independent like the filter and the display roles, so a kind
+	// switch (which resets the slots) leaves the sort keys alone.
+	let sortKeys = $state<SortKey[]>(seeded.sort);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 
@@ -155,6 +168,10 @@
 		}
 		if (Object.keys(display).length > 0) {
 			payload.display = display;
+		}
+		const sort = sortKeysToSlot(sortKeys);
+		if (sort !== undefined) {
+			payload.sort = sort;
 		}
 		const result =
 			initial !== undefined
@@ -302,6 +319,16 @@
 			initialClauses={initialFilter}
 			onchange={(clauses: Clause[]) => {
 				filterClauses = clauses;
+			}}
+		/>
+	</div>
+
+	<div class="filter-section">
+		<span class="label">Sort (optional)</span>
+		<SortEditor
+			initialKeys={seeded.sort}
+			onchange={(keys: SortKey[]) => {
+				sortKeys = keys;
 			}}
 		/>
 	</div>
