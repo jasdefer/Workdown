@@ -43,6 +43,7 @@ views:
     where:
       - "type=issue"
       - "status!=removed"
+    sort: priority:desc
   - id: hierarchy
     type: tree
     field: parent
@@ -53,6 +54,7 @@ views:
     type: table
     display:
       fields: [id, title, type, status, start_date, end_date]
+    sort: [status, created:desc]
   - id: roadmap
     type: gantt
     start: start_date
@@ -188,6 +190,42 @@ views:
     type: board
     field: status
     size: effort
+",
+    );
+}
+
+#[test]
+fn sort_with_unknown_direction_rejected() {
+    // The Rust side rejects `created:sideways` in `views_check`; the
+    // schema's key pattern has to agree so the editor flags it too.
+    let schema = guard();
+    schema.assert_invalid(
+        "\
+views:
+  - id: bad-direction
+    type: table
+    sort: created:sideways
+",
+    );
+}
+
+#[test]
+fn sort_must_be_a_string_or_a_list_of_strings() {
+    let schema = guard();
+    schema.assert_invalid(
+        "\
+views:
+  - id: typed-wrong
+    type: table
+    sort: 123
+",
+    );
+    schema.assert_invalid(
+        "\
+views:
+  - id: empty-list
+    type: table
+    sort: []
 ",
     );
 }

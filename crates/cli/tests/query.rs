@@ -61,6 +61,32 @@ fn sort_flag_orders_and_desc_reverses() {
 }
 
 #[test]
+fn sort_flag_rejects_an_unknown_field() {
+    Project::new()
+        .run(&["query", "--sort", "created:desc"])
+        .assert_code(1)
+        .assert_stderr_contains("unknown field 'created'");
+}
+
+#[test]
+fn where_flag_rejects_an_unknown_field() {
+    // Same rule, same wording as `--sort`: a field no item carries is an
+    // error, not an empty result.
+    Project::new()
+        .run(&["query", "--where", "created=2026-01-01"])
+        .assert_code(1)
+        .assert_stderr_contains("--where 'created=2026-01-01': unknown field 'created'");
+}
+
+#[test]
+fn sort_flag_rejects_an_unknown_direction() {
+    Project::new()
+        .run(&["query", "--sort", "title:descending"])
+        .assert_code(1)
+        .assert_stderr_contains("unknown direction 'descending'");
+}
+
+#[test]
 fn fields_flag_picks_the_columns() {
     let output = Project::new().run(&["query", "--fields", "id,points", "--format", "json"]);
     output.assert_code(0);

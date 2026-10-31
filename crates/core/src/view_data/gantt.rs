@@ -48,7 +48,7 @@ use crate::store::Store;
 use crate::walker::targets_of;
 
 use super::common::{
-    as_date, as_duration_seconds, build_card, sort_unplaced, Card, UnplacedCard, UnplacedReason,
+    as_date, as_duration_seconds, build_card, Card, UnplacedCard, UnplacedReason, ViewOrder,
 };
 use super::filter::filtered_items;
 
@@ -121,7 +121,7 @@ pub(super) struct GanttResolution<'a> {
 ///
 /// Applies the view's `where`-filter, picks one of the three input recipes
 /// from `cfg`, and returns the resulting bars + unplaced cards. Unplaced
-/// cards are sorted by id (final order); bars are returned in resolution
+/// cards are in the view's order (final order); bars are returned in resolution
 /// order — callers add their own bar sort (section-aware in
 /// `extract_gantt`, partition-then-(start,id) in by-initiative).
 pub(super) fn resolve_bars(
@@ -160,7 +160,7 @@ pub(super) fn resolve_bars(
         ),
     };
 
-    sort_unplaced(&mut unplaced);
+    ViewOrder::of(&items).sort_unplaced(&mut unplaced);
     (bars, unplaced)
 }
 
@@ -576,6 +576,7 @@ mod tests {
         View {
             id: "my-gantt".into(),
             where_clauses: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Gantt {
                 start: start.to_owned(),
@@ -591,6 +592,7 @@ mod tests {
         View {
             id: "my-gantt".into(),
             where_clauses: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Gantt {
                 start: start.to_owned(),
@@ -606,6 +608,7 @@ mod tests {
         View {
             id: "my-gantt".into(),
             where_clauses: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Gantt {
                 start: start.to_owned(),
@@ -1460,6 +1463,7 @@ mod tests {
         let view = View {
             id: "v".into(),
             where_clauses: vec!["team=b".into()],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Gantt {
                 start: "start".to_owned(),

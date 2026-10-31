@@ -3,7 +3,10 @@
 //! Produces a tree of references into the store, walking a single link
 //! field upward (child→parent as declared) to identify roots and
 //! downward (via reverse links) to collect children. Cycle-safe via a
-//! visited set; children at every level are sorted by id.
+//! visited set. Roots keep the order the filtered items arrived in —
+//! the view's order — and children at every level, discovered through
+//! the store's reverse links rather than the filtered list, are put back
+//! into that same order via [`ViewOrder`].
 //!
 //! Callers map [`Traversal`] to a variant-specific node type (`TreeNode`,
 //! `TreemapNode`) — this module stays data-structure-agnostic.
@@ -12,6 +15,8 @@ use std::collections::HashSet;
 
 use crate::model::{FieldValue, WorkItem, WorkItemId};
 use crate::store::Store;
+
+use super::common::ViewOrder;
 
 pub(super) struct Traversal<'store> {
     pub item: &'store WorkItem,
@@ -30,17 +35,18 @@ pub(super) fn walk_forest<'store>(
     store: &'store Store,
 ) -> Vec<Traversal<'store>> {
     let filtered_ids: HashSet<&str> = items.iter().map(|item| item.id.as_str()).collect();
-    let mut roots: Vec<&'store WorkItem> = items
+    let order = ViewOrder::of(items);
+    // `items` already carries the view's order, so filtering preserves it.
+    let roots: Vec<&'store WorkItem> = items
         .iter()
         .copied()
         .filter(|item| is_root(item, field, &filtered_ids))
         .collect();
-    roots.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
 
     let mut visited: HashSet<WorkItemId> = HashSet::new();
     roots
         .into_iter()
-        .map(|item| walk_node(item, field, store, &filtered_ids, &mut visited))
+        .map(|item| walk_node(item, field, store, &filtered_ids, &order, &mut visited))
         .collect()
 }
 
@@ -56,6 +62,7 @@ fn walk_node<'store>(
     field: &str,
     store: &'store Store,
     filtered_ids: &HashSet<&str>,
+    order: &ViewOrder<'_>,
     visited: &mut HashSet<WorkItemId>,
 ) -> Traversal<'store> {
     visited.insert(item.id.clone());
@@ -65,10 +72,10 @@ fn walk_node<'store>(
         .filter(|child| filtered_ids.contains(child.id.as_str()))
         .filter(|child| !visited.contains(&child.id))
         .collect();
-    children_items.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
+    order.sort_items(&mut children_items);
     let children = children_items
         .into_iter()
-        .map(|child| walk_node(child, field, store, filtered_ids, visited))
+        .map(|child| walk_node(child, field, store, filtered_ids, order, visited))
         .collect();
     Traversal { item, children }
 }

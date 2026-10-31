@@ -22,8 +22,8 @@ use crate::model::views::{View, ViewKind};
 use crate::store::Store;
 
 use super::common::{
-    as_size, build_card, sort_unplaced, zero_for_size_field, Card, SizeValue, UnplacedCard,
-    UnplacedReason,
+    as_size, build_card, zero_for_size_field, Card, SizeValue, UnplacedCard, UnplacedReason,
+    ViewOrder,
 };
 use super::filter::filtered_items;
 use super::traverse::{walk_forest, Traversal};
@@ -65,7 +65,7 @@ pub fn extract_treemap(view: &View, store: &Store, schema: &Schema) -> TreemapDa
         .map(|node| node.size)
         .fold(zero, |left, right| left + right);
 
-    sort_unplaced(&mut unplaced);
+    ViewOrder::of(&items).sort_unplaced(&mut unplaced);
 
     TreemapData {
         group_field: group.clone(),
@@ -173,6 +173,7 @@ mod tests {
         View {
             id: "my-treemap".into(),
             where_clauses: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Treemap {
                 group: group.to_owned(),

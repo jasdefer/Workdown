@@ -44,6 +44,15 @@ pub struct View {
     /// [`crate::query::parse::parse_where`].
     pub where_clauses: Vec<String>,
 
+    /// The order the view lists its items in: sort keys in the
+    /// `workdown query --sort` grammar (`field` or `field:desc`), parsed
+    /// by [`crate::query::parse::parse_sort`] and applied left to right
+    /// with the item id as the final tiebreaker. Empty means id order —
+    /// what every view had before the slot existed. Which kinds show it
+    /// in their body is [`ViewKind::lists_in_view_order`]; every kind's
+    /// unplaced footer follows it.
+    pub sort_keys: Vec<String>,
+
     /// Cross-cutting display roles for this view. Roles left unset here
     /// inherit the project-wide defaults from `config.yaml` — see
     /// [`View::with_display_defaults`].
@@ -388,6 +397,34 @@ impl ViewKind {
             Self::Heatmap { .. } => ViewType::Heatmap,
         }
     }
+
+    /// Whether this kind lists its items in the view's order — the
+    /// `sort_keys`, or id order when there are none — as the filter stage
+    /// hands them over: board cards within a column, table rows, tree
+    /// roots and siblings, graph nodes.
+    ///
+    /// False for a kind whose items have an intrinsic order of their own
+    /// (gantt bars by time, treemap nodes by size) or no item list at all
+    /// (charts, workload, metric aggregate), where the order reaches only
+    /// the unplaced footer. The caption that names the order is written
+    /// for the kinds that answer true, so a reader of the rendered file
+    /// is never told about an order the body does not show.
+    ///
+    /// An exhaustive match, so a new kind has to answer the question.
+    pub fn lists_in_view_order(&self) -> bool {
+        match self {
+            Self::Board { .. } | Self::Tree { .. } | Self::Graph { .. } | Self::Table => true,
+            Self::Gantt { .. }
+            | Self::GanttByInitiative { .. }
+            | Self::GanttByDepth { .. }
+            | Self::BarChart { .. }
+            | Self::LineChart { .. }
+            | Self::Workload { .. }
+            | Self::Metric { .. }
+            | Self::Treemap { .. }
+            | Self::Heatmap { .. } => false,
+        }
+    }
 }
 
 /// The v1 view types.
@@ -561,12 +598,14 @@ mod tests {
         let bare = View {
             id: "bare".into(),
             where_clauses: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Table,
         };
         let own = View {
             id: "own".into(),
             where_clauses: vec![],
+            sort_keys: vec![],
             display: DisplayConfig {
                 title: Some("assignee".into()),
                 ..DisplayConfig::default()

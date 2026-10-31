@@ -381,6 +381,17 @@ pub enum ConfigDiagnosticKind {
         detail: String,
     },
 
+    /// A `sort:` key is not in the `field[:asc|:desc]` grammar — an
+    /// empty key, a bare direction, or a direction other than `asc` and
+    /// `desc`. A key naming a field the schema lacks is a
+    /// [`Self::ViewUnknownField`] at slot `sort` instead.
+    ViewSortParseError {
+        #[serde(flatten)]
+        location: ViewLocation,
+        raw: String,
+        detail: String,
+    },
+
     /// A `where:` clause parses and names a real field, but compares it
     /// against an operand that could never match — a value outside the
     /// field's option set, or one that cannot be read as its type. The
@@ -757,6 +768,7 @@ fn view_id_of(kind: &ConfigDiagnosticKind) -> Option<&str> {
         | ConfigDiagnosticKind::ViewVirtualIdNotAllowed { location }
         | ConfigDiagnosticKind::ViewFieldTypeMismatch { location, .. }
         | ConfigDiagnosticKind::ViewWhereParseError { location, .. }
+        | ConfigDiagnosticKind::ViewSortParseError { location, .. }
         | ConfigDiagnosticKind::ViewWhereUnknownValue { location, .. }
         | ConfigDiagnosticKind::ViewCountAggregateWithValue { location }
         | ConfigDiagnosticKind::ViewAggregateTypeMismatch { location, .. }
@@ -1041,6 +1053,13 @@ impl std::fmt::Display for ConfigDiagnosticKind {
                 detail,
             } => {
                 write!(f, "{location}, clause '{raw}': {detail}")
+            }
+            ConfigDiagnosticKind::ViewSortParseError {
+                location,
+                raw,
+                detail,
+            } => {
+                write!(f, "{location}, key '{raw}': {detail}")
             }
             ConfigDiagnosticKind::ViewWhereUnknownValue {
                 location,

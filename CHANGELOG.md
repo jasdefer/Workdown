@@ -9,6 +9,18 @@ its source — internal refactors are deliberately absent.
 
 ### Added
 
+- Views take a `sort:` slot that fixes the order of their items, in the
+  `workdown query --sort` grammar: `sort: created:desc` for newest
+  first, `sort: [priority:desc, created]` for a multi-key order. The
+  item id breaks remaining ties, so views without the slot render
+  exactly as before. The order shows wherever a view lists items —
+  board cards within a column, table rows, tree siblings, graph nodes,
+  the unplaced footer of every kind — while gantt bars and treemap
+  nodes keep their own time and size order. `workdown render` and the
+  web app agree on it, a rendered view names it in its caption, the
+  view form in the web app edits it as a list of field-and-direction
+  rows, and `workdown validate` reports a key naming an unknown field
+  or a direction other than `asc`/`desc` as an error.
 - The web app's schema page edits fields. Clicking a row opens a
   slide-over with the field's name, type, required flag, description
   and default — the default entered with the same editor an item's
@@ -174,6 +186,19 @@ its source — internal refactors are deliberately absent.
   verdict before Save.
 
 ### Changed
+
+- `workdown query` refuses a `--where` clause or a `--sort` key that
+  names a field no item carries, and a `--sort` direction other than
+  `asc`/`desc`, with the same reasons `workdown validate` gives a view's
+  `where:` and `sort:`. Before, an unknown filter field silently matched
+  nothing and an unknown sort key silently sorted by nothing.
+- `workdown query` without `--sort` lists items by id. It used to list
+  them by file name, which differs only for an item whose frontmatter
+  sets its own `id`.
+- A `--where` expression the grammar rejects is reported once, as
+  `--where '<expression>': <reason>`; the reason no longer repeats the
+  expression. The same applies to the `workdown validate` diagnostic for
+  a view's `where:` clause.
 
 - A schema with a `choice` or `multichoice` field whose `values` list
   the same value twice, or contain a blank value, is now refused at

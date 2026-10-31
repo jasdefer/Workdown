@@ -1,8 +1,9 @@
 <!--
   Compose a view: name → kind → the slots that kind needs (field pickers
   constrained by schema metadata) → an optional filter (reusing
-  FilterBuilder) → Save. Save is gated until the name and required slots
-  are filled; the server re-validates and any diagnostics surface.
+  FilterBuilder) → an optional sort (SortEditor) → Save. Save is gated
+  until the name and required slots are filled; the server re-validates
+  and any diagnostics surface.
 
   Two modes, one form. Without `initial` it creates: on save the view is
   POSTed and we navigate to it. With `initial` (the view's id plus the
@@ -15,12 +16,14 @@
 	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { Clause } from '$lib/api/generated/Clause';
+	import type { SortSpec } from '$lib/api/generated/SortSpec';
 	import type { ViewType } from '$lib/api/generated/ViewType';
 	import { api } from '$lib/api/client';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import FilterBuilder from '$lib/filters/FilterBuilder.svelte';
 	import GanttInput from './GanttInput.svelte';
 	import MetricRowsEditor from './MetricRowsEditor.svelte';
+	import SortEditor from './SortEditor.svelte';
 	import { prettifyId } from './prettify';
 	import {
 		AGGREGATES,
@@ -36,7 +39,12 @@
 
 	interface Props {
 		/** Present in edit mode: the view being edited and its persisted state. */
-		initial?: { id: string; definition: Record<string, unknown>; filter: Clause[] };
+		initial?: {
+			id: string;
+			definition: Record<string, unknown>;
+			filter: Clause[];
+			sort: SortSpec[];
+		};
 	}
 
 	let { initial }: Props = $props();
@@ -49,7 +57,9 @@
 	 * edit round-trip never drops what was set by hand in `views.yaml`.
 	 * An explicitly empty `fields: []` (the documented "show no fields"
 	 * override, distinct from unset) is not editable as columns either;
-	 * it stays in the carried-through part so it survives a save.
+	 * it stays in the carried-through part so it survives a save. The
+	 * filter and the sort are not in here: they arrive structured beside
+	 * the definition, never inside it.
 	 */
 	function seedFromDefinition(source: Record<string, unknown> | undefined): {
 		kind: ViewType;
@@ -74,15 +84,20 @@
 	// The name a saved edit compares against: sending it unchanged would
 	// be a no-op rename at best and an accidental one at worst.
 	const initialName = untrack(() => (initial !== undefined ? prettifyId(initial.id) : ''));
-	// The filter seed, resolved once and used both as the working state's
-	// start value and as the builder's seed, so the two cannot diverge.
+	// The filter and sort seeds, resolved once and used both as the
+	// working state's start value and as their editor's seed, so the two
+	// cannot diverge.
 	const initialFilter = untrack(() => initial?.filter ?? []);
+	const initialSort = untrack(() => initial?.sort ?? []);
 
 	let name = $state(initialName);
 	let kind = $state<ViewType>(seeded.kind);
 	let definition = $state<Record<string, unknown>>(seeded.slots);
 	const displayRest = seeded.displayRest;
 	let filterClauses = $state<Clause[]>(initialFilter);
+	// Kind-independent like the filter and the display roles, so a kind
+	// switch (which resets the slots) leaves the sort keys alone.
+	let sortKeys = $state<SortSpec[]>(initialSort);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 
@@ -156,14 +171,22 @@
 		if (Object.keys(display).length > 0) {
 			payload.display = display;
 		}
+		// The filter and the sort travel structured beside the definition;
+		// core serializes both into their `views.yaml` slots.
 		const result =
 			initial !== undefined
 				? await api.updateView(initial.id, {
 						name: name !== initialName ? name : null,
 						definition: payload,
-						filter: filterClauses
+						filter: filterClauses,
+						sort: sortKeys
 					})
-				: await api.createView({ name, definition: payload, filter: filterClauses });
+				: await api.createView({
+						name,
+						definition: payload,
+						filter: filterClauses,
+						sort: sortKeys
+					});
 		saving = false;
 		if (result.error !== undefined) {
 			error = result.error;
@@ -296,12 +319,22 @@
 		{/if}
 	{/each}
 
-	<div class="filter-section">
+	<div class="cross-cutting-section">
 		<span class="label">Filter (optional)</span>
 		<FilterBuilder
 			initialClauses={initialFilter}
 			onchange={(clauses: Clause[]) => {
 				filterClauses = clauses;
+			}}
+		/>
+	</div>
+
+	<div class="cross-cutting-section">
+		<span class="label">Sort (optional)</span>
+		<SortEditor
+			initial={initialSort}
+			onchange={(keys: SortSpec[]) => {
+				sortKeys = keys;
 			}}
 		/>
 	</div>
@@ -374,7 +407,7 @@
 		font-size: var(--text-sm);
 	}
 
-	.filter-section {
+	.cross-cutting-section {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-2);

@@ -39,6 +39,24 @@
       "pattern": "^[a-z_][a-z0-9_]*$"
     },
 
+    "sort_key": {
+      "type": "string",
+      "description": "A field name, optionally followed by `:asc` or `:desc` — the `workdown query --sort` grammar. The field must exist in schema.yaml (or be the virtual `id`); any field type sorts.",
+      "pattern": "^\\s*[a-z_][a-z0-9_]*\\s*(:\\s*(asc|desc)\\s*)?$"
+    },
+
+    "sort": {
+      "description": "The order the view lists its items in: one sort key as a string, or several applied left to right as a list. The item id breaks remaining ties, so an absent `sort` is plain id order. Board cards within a column, table rows, tree siblings, graph nodes and every kind's unplaced footer follow it; gantt bars (time) and treemap nodes (size) keep their own order.",
+      "anyOf": [
+        { "$ref": "#/$defs/sort_key" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sort_key" },
+          "minItems": 1
+        }
+      ]
+    },
+
     "aggregate": {
       "type": "string",
       "description": "Aggregation function for chart and metric views.",
@@ -131,6 +149,7 @@
         "type":  { "const": "board" },
         "where": { "$ref": "#/$defs/where_clauses" },
         "display": { "$ref": "#/$defs/display" },
+        "sort":    { "$ref": "#/$defs/sort" },
         "field": { "$ref": "#/$defs/field_name" }
       },
       "required": ["id", "type", "field"],
@@ -145,6 +164,7 @@
         "type":  { "const": "tree" },
         "where": { "$ref": "#/$defs/where_clauses" },
         "display": { "$ref": "#/$defs/display" },
+        "sort":    { "$ref": "#/$defs/sort" },
         "field": { "$ref": "#/$defs/field_name" }
       },
       "required": ["id", "type", "field"],
@@ -159,6 +179,7 @@
         "type":     { "const": "graph" },
         "where":    { "$ref": "#/$defs/where_clauses" },
         "display":    { "$ref": "#/$defs/display" },
+        "sort":       { "$ref": "#/$defs/sort" },
         "field":    { "$ref": "#/$defs/field_name" },
         "group_by": { "$ref": "#/$defs/field_name" }
       },
@@ -173,7 +194,8 @@
         "id":    { "$ref": "#/$defs/view_id" },
         "type":  { "const": "table" },
         "where": { "$ref": "#/$defs/where_clauses" },
-        "display": { "$ref": "#/$defs/display" }
+        "display": { "$ref": "#/$defs/display" },
+        "sort":    { "$ref": "#/$defs/sort" }
       },
       "required": ["id", "type"],
       "additionalProperties": false
@@ -187,6 +209,7 @@
         "type":     { "const": "gantt" },
         "where":    { "$ref": "#/$defs/where_clauses" },
         "display":    { "$ref": "#/$defs/display" },
+        "sort":       { "$ref": "#/$defs/sort" },
         "start":    { "$ref": "#/$defs/field_name" },
         "end":      { "$ref": "#/$defs/field_name" },
         "duration": { "$ref": "#/$defs/field_name" },
@@ -208,6 +231,7 @@
         "type":      { "const": "gantt_by_initiative" },
         "where":     { "$ref": "#/$defs/where_clauses" },
         "display":     { "$ref": "#/$defs/display" },
+        "sort":        { "$ref": "#/$defs/sort" },
         "start":     { "$ref": "#/$defs/field_name" },
         "end":       { "$ref": "#/$defs/field_name" },
         "duration":  { "$ref": "#/$defs/field_name" },
@@ -232,6 +256,7 @@
         "type":       { "const": "gantt_by_depth" },
         "where":      { "$ref": "#/$defs/where_clauses" },
         "display":      { "$ref": "#/$defs/display" },
+        "sort":         { "$ref": "#/$defs/sort" },
         "start":      { "$ref": "#/$defs/field_name" },
         "end":        { "$ref": "#/$defs/field_name" },
         "duration":   { "$ref": "#/$defs/field_name" },
@@ -256,6 +281,7 @@
         "type":      { "const": "bar_chart" },
         "where":     { "$ref": "#/$defs/where_clauses" },
         "display":     { "$ref": "#/$defs/display" },
+        "sort":        { "$ref": "#/$defs/sort" },
         "group_by":  { "$ref": "#/$defs/field_name" },
         "value":     { "$ref": "#/$defs/field_name" },
         "aggregate": { "$ref": "#/$defs/aggregate" }
@@ -273,6 +299,7 @@
         "type":  { "const": "line_chart" },
         "where": { "$ref": "#/$defs/where_clauses" },
         "display": { "$ref": "#/$defs/display" },
+        "sort":    { "$ref": "#/$defs/sort" },
         "x":     { "$ref": "#/$defs/field_name" },
         "y":     { "$ref": "#/$defs/field_name" },
         "group": {
@@ -292,6 +319,7 @@
         "type":         { "const": "workload" },
         "where":        { "$ref": "#/$defs/where_clauses" },
         "display":        { "$ref": "#/$defs/display" },
+        "sort":           { "$ref": "#/$defs/sort" },
         "start":        { "$ref": "#/$defs/field_name" },
         "end":          { "$ref": "#/$defs/field_name" },
         "effort":       { "$ref": "#/$defs/field_name" },
@@ -309,6 +337,7 @@
         "type":    { "const": "metric" },
         "where":   { "$ref": "#/$defs/where_clauses" },
         "display":   { "$ref": "#/$defs/display" },
+        "sort":      { "$ref": "#/$defs/sort" },
         "metrics": {
           "type": "array",
           "description": "Ordered list of stat rows. Empty arrays are allowed (renders heading-only).",
@@ -341,6 +370,7 @@
         "type":  { "const": "treemap" },
         "where": { "$ref": "#/$defs/where_clauses" },
         "display": { "$ref": "#/$defs/display" },
+        "sort":    { "$ref": "#/$defs/sort" },
         "group": { "$ref": "#/$defs/field_name" },
         "size":  { "$ref": "#/$defs/field_name" }
       },
@@ -356,6 +386,7 @@
         "type":      { "const": "heatmap" },
         "where":     { "$ref": "#/$defs/where_clauses" },
         "display":     { "$ref": "#/$defs/display" },
+        "sort":        { "$ref": "#/$defs/sort" },
         "x":         { "$ref": "#/$defs/field_name" },
         "y":         { "$ref": "#/$defs/field_name" },
         "value":     { "$ref": "#/$defs/field_name" },

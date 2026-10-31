@@ -154,7 +154,7 @@
 | [view-kind-sync-guards](../workdown-items/view-kind-sync-guards.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [render-flow-doc](../workdown-items/render-flow-doc.md) |
 | [view-order-in-extractor](../workdown-items/view-order-in-extractor.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [view-presentation](../workdown-items/view-presentation.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [server](../workdown-items/server.md) |
-| [view-sort-slot](../workdown-items/view-sort-slot.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
+| [view-sort-slot](../workdown-items/view-sort-slot.md) | in_progress | [misc-work](../workdown-items/misc-work.md) |  |
 | [view-write-backend](../workdown-items/view-write-backend.md) | done | [view-authoring](../workdown-items/view-authoring.md) |  |
 | [views-check-metric-row-dedup](../workdown-items/views-check-metric-row-dedup.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [views-config-path](../workdown-items/views-config-path.md) | done | [foundation](../workdown-items/foundation.md) |  |

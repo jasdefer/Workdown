@@ -56,7 +56,7 @@ use workdown_core::mutation_data::{
 };
 use workdown_core::project_data::ProjectIdentity;
 use workdown_core::query::clause::{Clause, Condition};
-use workdown_core::query::types::Operator;
+use workdown_core::query::types::{Operator, SortDirection, SortSpec};
 use workdown_core::rule_shape::{
     Comparison, MatchRow, Quantifier, RequireRow, RequireTest, RuleShape, ScalarTest, ScalarValue,
 };
@@ -229,6 +229,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<Operator>();
     exports.add::<Condition>();
     exports.add::<Clause>();
+    exports.add::<SortDirection>();
+    exports.add::<SortSpec>();
 
     // Mutation contracts (POST /api/items/:id/fields/:field, POST /api/items).
     exports.add::<FieldMutation>();

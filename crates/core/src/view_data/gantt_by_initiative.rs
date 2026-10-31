@@ -185,6 +185,7 @@ mod tests {
         View {
             id: "v".into(),
             where_clauses: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::GanttByInitiative {
                 start: start.to_owned(),
@@ -200,6 +201,7 @@ mod tests {
         View {
             id: "v".into(),
             where_clauses: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::GanttByInitiative {
                 start: start.to_owned(),
@@ -462,6 +464,7 @@ mod tests {
         let view = View {
             id: "v".into(),
             where_clauses: vec!["team=b".into()],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::GanttByInitiative {
                 start: "start".into(),
@@ -601,6 +604,7 @@ mod tests {
         let view = View {
             id: "v".into(),
             where_clauses: vec![],
+            sort_keys: vec![],
             display: DisplayConfig {
                 title: Some("name".into()),
                 ..DisplayConfig::default()

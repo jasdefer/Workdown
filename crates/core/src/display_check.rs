@@ -108,7 +108,7 @@ fn check_text_reference(
     schema: &Schema,
     out: &mut Vec<RoleViolation>,
 ) {
-    if field_name == "id" || schema.fields.contains_key(field_name) {
+    if schema.is_item_field(field_name) {
         return;
     }
     out.push(RoleViolation::UnknownField {

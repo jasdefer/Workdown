@@ -5,6 +5,8 @@
 //! tree, graph). The [`QueryRequest`] bundles a predicate with sort and
 //! column specifications. The engine evaluates it and returns a [`QueryResult`].
 
+use serde::{Deserialize, Serialize};
+
 use crate::model::schema::FieldType;
 
 // ── Predicate model ─────────────────────────────────────────────────
@@ -256,8 +258,8 @@ pub fn operators_for(field_type: FieldType) -> Vec<Operator> {
 pub struct QueryRequest {
     /// Filter predicate. `None` means "match all items".
     pub predicate: Option<Predicate>,
-    /// Sort specifications, applied in order. Empty means "no sorting"
-    /// (items come out in store iteration order).
+    /// Sort specifications, applied in order; the item id breaks the
+    /// ties they leave. Empty means plain id order.
     pub sort: Vec<SortSpec>,
     /// Column names to include in the result. Empty means "use defaults"
     /// (id + required schema fields).
@@ -265,16 +267,38 @@ pub struct QueryRequest {
 }
 
 /// A single sort specification: field name and direction.
-#[derive(Debug, Clone)]
+///
+/// Built by [`crate::query::parse::parse_sort`] from the `field[:asc|:desc]`
+/// grammar that `workdown query --sort` and a view's `sort:` slot share;
+/// its `Display` writes that grammar back (`created`, `priority:desc`),
+/// so the two are exact inverses. It is also the wire shape the view
+/// form exchanges — `ts_rs` emits the matching TypeScript — so the web
+/// app never reads or writes the grammar itself, exactly as it never
+/// builds a filter clause (see [`crate::query::clause`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub struct SortSpec {
     pub field: String,
     pub direction: SortDirection,
 }
 
-/// Sort direction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+impl std::fmt::Display for SortSpec {
+    /// The key as the grammar spells it: a bare field for ascending (the
+    /// default direction needs no suffix), `field:desc` otherwise.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.direction {
+            SortDirection::Ascending => write!(f, "{}", self.field),
+            SortDirection::Descending => write!(f, "{}:desc", self.field),
+        }
+    }
+}
+
+/// Sort direction. Serialized as the grammar's own words, `asc` and
+/// `desc`, so a wire value reads like the key it stands for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 pub enum SortDirection {
+    #[serde(rename = "asc")]
     Ascending,
+    #[serde(rename = "desc")]
     Descending,
 }
 

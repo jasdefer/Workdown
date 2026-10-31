@@ -4,10 +4,12 @@ use std::path::Path;
 
 use crate::cli::{self, QueryFormat, QueryOutput};
 use workdown_core::model::config::Config;
+use workdown_core::model::schema::Schema;
 use workdown_core::project::load_project;
 use workdown_core::query;
 use workdown_core::query::format::DelimitedOptions;
-use workdown_core::query::types::{Predicate, QueryRequest, SortDirection, SortSpec};
+use workdown_core::query::parse::parse_sort;
+use workdown_core::query::types::{Predicate, QueryRequest, SortSpec};
 use workdown_core::where_check;
 
 /// In-cell separator for list/multichoice/links values in delimited output.
@@ -38,8 +40,10 @@ pub fn run_query(
     let store = &project.store;
     let schema = &project.schema;
 
-    // Parse --where clauses into a single predicate (ANDed together).
-    let predicate = parse_where_clauses(where_clauses)?;
+    // Parse --where clauses into a single predicate (ANDed together). A
+    // clause the grammar rejects or a field the schema lacks is an error,
+    // exactly as it is for a view's `where:` slot.
+    let predicate = parse_where_clauses(where_clauses, schema)?;
 
     // An operand that can never match makes an ad-hoc query look like a
     // project with no matching items. Say which clause is responsible —
@@ -55,8 +59,10 @@ pub fn run_query(
         }
     }
 
-    // Parse --sort arguments into sort specs.
-    let sort = parse_sort_arguments(sort_arguments);
+    // Parse --sort arguments into sort specs. A key the grammar rejects
+    // or a field the schema lacks is an error, exactly as it is for a
+    // view's `sort:` slot — the two share the grammar and the rules.
+    let sort = parse_sort_arguments(sort_arguments, schema)?;
 
     // Parse --fields argument into column names.
     let fields = parse_fields_argument(fields_argument);
@@ -128,11 +134,21 @@ fn build_delimited_options(output: QueryOutput) -> anyhow::Result<DelimitedOptio
     })
 }
 
-/// Parse --where clauses into a single predicate.
-fn parse_where_clauses(clauses: &[String]) -> anyhow::Result<Option<Predicate>> {
+/// Parse --where clauses into a single predicate, refusing a clause the
+/// grammar rejects and one naming a field that does not exist — the same
+/// two rules `views_check` applies to a view's `where:`, asked of the
+/// same core functions, so the flag and the slot cannot drift. Each
+/// clause is checked on its own so the message can name the one at
+/// fault.
+fn parse_where_clauses(clauses: &[String], schema: &Schema) -> anyhow::Result<Option<Predicate>> {
     let mut predicates = Vec::new();
     for clause in clauses {
-        predicates.push(query::parse::parse_where(clause)?);
+        let predicate = query::parse::parse_where(clause)
+            .map_err(|error| anyhow::anyhow!("--where '{clause}': {error}"))?;
+        if let Some(field_name) = where_check::unknown_fields(&predicate, schema).first() {
+            anyhow::bail!("--where '{clause}': {}", unknown_field_detail(field_name));
+        }
+        predicates.push(predicate);
     }
     Ok(match predicates.len() {
         0 => None,
@@ -141,28 +157,28 @@ fn parse_where_clauses(clauses: &[String]) -> anyhow::Result<Option<Predicate>> 
     })
 }
 
-/// Parse --sort arguments into sort specifications.
-fn parse_sort_arguments(arguments: &[String]) -> Vec<SortSpec> {
+/// Parse --sort arguments into sort specifications, refusing a key the
+/// shared grammar rejects and a field items do not carry — the same two
+/// rules `views_check` applies to a view's `sort:`.
+fn parse_sort_arguments(arguments: &[String], schema: &Schema) -> anyhow::Result<Vec<SortSpec>> {
     arguments
         .iter()
         .map(|argument| {
-            if let Some((field, direction_string)) = argument.split_once(':') {
-                let direction = match direction_string {
-                    "desc" => SortDirection::Descending,
-                    _ => SortDirection::Ascending,
-                };
-                SortSpec {
-                    field: field.to_owned(),
-                    direction,
-                }
-            } else {
-                SortSpec {
-                    field: argument.to_owned(),
-                    direction: SortDirection::Ascending,
-                }
+            let spec = parse_sort(argument)
+                .map_err(|error| anyhow::anyhow!("--sort '{argument}': {error}"))?;
+            if !schema.is_item_field(&spec.field) {
+                anyhow::bail!("--sort '{argument}': {}", unknown_field_detail(&spec.field));
             }
+            Ok(spec)
         })
         .collect()
+}
+
+/// The one wording for a flag naming a field that does not exist — the
+/// same words `ConfigDiagnosticKind::ViewUnknownField` displays for a
+/// view's slot, so the flag and the slot read alike.
+fn unknown_field_detail(field_name: &str) -> String {
+    format!("unknown field '{field_name}'")
 }
 
 /// Parse --fields argument into column names.

@@ -41,6 +41,20 @@ pub struct Schema {
 }
 
 impl Schema {
+    /// True iff `name` is a field every loaded item carries: a field this
+    /// schema declares, or the virtual `id`, which the loader projects
+    /// into each item's field map (see `store::coerce::coerce_fields`).
+    ///
+    /// The existence-only test behind every slot that accepts any field
+    /// type — display text roles, `where:` field references, `sort:`
+    /// keys, the `fields` display list — so "is there such a field" is
+    /// answered in one place. Inverse relation names (`children` for a
+    /// `parent` link) are deliberately not fields: they are resolved by
+    /// the relation walks, never present on an item.
+    pub fn is_item_field(&self, name: &str) -> bool {
+        name == "id" || self.fields.contains_key(name)
+    }
+
     /// Assemble a schema from its fields and rules, deriving the
     /// inverse table.
     ///

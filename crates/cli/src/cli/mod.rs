@@ -69,7 +69,8 @@ pub enum Command {
         #[arg(long = "where", value_name = "EXPR")]
         where_clauses: Vec<String>,
 
-        /// Sort by field (repeatable for multi-sort). Format: field or field:desc
+        /// Sort by field (repeatable for multi-sort). Format: field, field:asc or field:desc.
+        /// Same grammar as the `sort:` slot of a view in views.yaml.
         #[arg(long = "sort", value_name = "FIELD[:dir]")]
         sort: Vec<String>,
 

@@ -2,8 +2,9 @@
 //!
 //! Walks a link field (e.g. `parent`) upward to identify roots and
 //! downward to collect children. Items whose link target is outside the
-//! filtered set, absent, or broken become roots. Siblings at every level
-//! are sorted by id ascending.
+//! filtered set, absent, or broken become roots. Roots and siblings at
+//! every level follow the view's order — its `sort:` keys, or id order
+//! when the slot is absent.
 //!
 //! Each node mirrors a table row — resolved title, background, and a
 //! `cells` list parallel to the columns derived from the `fields`
@@ -131,6 +132,7 @@ mod tests {
         View {
             id: "my-tree".into(),
             where_clauses: where_clauses.into_iter().map(str::to_owned).collect(),
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::Tree {
                 field: field.to_owned(),
@@ -185,6 +187,36 @@ mod tests {
             .map(|node| node.id.as_str())
             .collect();
         assert_eq!(child_ids, vec!["child-a", "child-b"]);
+    }
+
+    #[test]
+    fn roots_and_siblings_follow_the_view_sort() {
+        let schema = parent_schema();
+        let (_tmp, store) = make_store_with_files(
+            &schema,
+            vec![
+                ("root-a.md", "---\nstatus: open\n---\n"),
+                ("root-b.md", "---\nstatus: done\n---\n"),
+                ("child-a.md", "---\nstatus: open\nparent: root-a\n---\n"),
+                ("child-b.md", "---\nstatus: done\nparent: root-a\n---\n"),
+            ],
+        );
+        let mut view = tree_view("parent", vec![]);
+        // `done` sorts before `open` as text, so ascending status puts
+        // each `b` before its `a` — the reverse of id order, which is
+        // what an ignored sort would produce.
+        view.sort_keys = vec!["status".into()];
+
+        let data = extract_tree(&view, &store, &schema);
+
+        let root_ids: Vec<&str> = data.roots.iter().map(|node| node.id.as_str()).collect();
+        assert_eq!(root_ids, vec!["root-b", "root-a"]);
+        let child_ids: Vec<&str> = data.roots[1]
+            .children
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect();
+        assert_eq!(child_ids, vec!["child-b", "child-a"]);
     }
 
     #[test]

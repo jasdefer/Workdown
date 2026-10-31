@@ -17,12 +17,12 @@ use crate::query::types::{SortDirection, SortSpec};
 ///
 /// Applies specs left-to-right: the first spec is the primary sort key,
 /// the second breaks ties from the first, and so on. When all specs
-/// produce equal orderings, items are ordered by ID for determinism.
+/// produce equal orderings, items are ordered by ID for determinism —
+/// which makes an empty spec list plain id order, the one order every
+/// surface (`workdown query`, every view) falls back to. Store order is
+/// file-name order, and an item's id can differ from its file name, so
+/// "no keys" is not a reason to skip the sort.
 pub fn sort_items(items: &mut [&WorkItem], specs: &[SortSpec], schema: &Schema) {
-    if specs.is_empty() {
-        return;
-    }
-
     items.sort_by(|item_a, item_b| {
         for spec in specs {
             let field_type = schema
@@ -229,6 +229,21 @@ mod tests {
             body: String::new(),
             source_path: PathBuf::from(format!("{id}.md")),
         }
+    }
+
+    // ── No keys ─────────────────────────────────────────────────
+
+    #[test]
+    fn no_specs_is_id_order_not_input_order() {
+        let schema = test_schema();
+        let item_b = make_item("b", vec![]);
+        let item_a = make_item("a", vec![]);
+        let mut items = vec![&item_b, &item_a];
+
+        sort_items(&mut items, &[], &schema);
+
+        let ids: Vec<&str> = items.iter().map(|item| item.id.as_str()).collect();
+        assert_eq!(ids, ["a", "b"]);
     }
 
     // ── Sort by string field ────────────────────────────────────

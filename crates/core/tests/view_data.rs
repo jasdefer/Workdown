@@ -62,6 +62,7 @@ views:
       title: title
   - id: item-table
     type: table
+    sort: points:desc
     display:
       fields: [id, title, status, points]
   - id: hierarchy
@@ -201,6 +202,12 @@ fn extract_exercises_every_variant() {
                     .collect();
                 assert_eq!(column_names, vec!["id", "title", "status", "points"]);
                 assert_eq!(table.rows.len(), 4);
+                // `sort: points:desc` — 13, 5, 3, 2 — not the id order.
+                let row_ids: Vec<&str> = table.rows.iter().map(|row| row.id.as_str()).collect();
+                assert_eq!(
+                    row_ids,
+                    vec!["epic-auth", "task-login", "task-logout", "task-reset"]
+                );
                 // id column always produces a non-None cell.
                 for row in &table.rows {
                     assert!(row.cells[0].is_some());

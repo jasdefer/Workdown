@@ -20,9 +20,7 @@ use crate::model::WorkItem;
 use crate::store::Store;
 
 use super::aggregate::aggregate_bucket;
-use super::common::{
-    build_card, group_keys, sort_unplaced, ChartValue, UnplacedCard, UnplacedReason,
-};
+use super::common::{build_card, group_keys, ChartValue, UnplacedCard, UnplacedReason, ViewOrder};
 use super::filter::filtered_items;
 
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
@@ -95,7 +93,7 @@ pub fn extract_bar_chart(view: &View, store: &Store, schema: &Schema) -> BarChar
         }
     }
 
-    sort_unplaced(&mut unplaced);
+    ViewOrder::of(&items).sort_unplaced(&mut unplaced);
 
     BarChartData {
         group_by: group_by.clone(),
@@ -122,6 +120,7 @@ mod tests {
         View {
             id: "my-bar".into(),
             where_clauses: vec![],
+            sort_keys: vec![],
             display: DisplayConfig::default(),
             kind: ViewKind::BarChart {
                 group_by: group_by.to_owned(),
