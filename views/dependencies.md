@@ -8,11 +8,14 @@ flowchart TD
         burndown-chart-design["Decide where the burndown's time axis comes from"]
     end
     subgraph misc-work ["Miscellaneous improvements"]
+        error-page-polish["A centered error page with a 404 illustration"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
+        item-overlay-redesign["Redesign the work item overlay in the web UI"]
         prepare-commit-msg-hook["Prefill terminal commits with the generated message"]
         project-load-cache["Cache the project load in the server (when it starts to hurt)"]
         recording-dot-extraction["Extract the recording indicator the six item-presenting views each rebuilt"]
         rule-comparison-reference-check["Check comparison references in rules at schema load"]
+        ui-toolchain-upgrade["Major upgrades of the web UI's lint and SvelteKit toolchain"]
         view-sort-slot["Per-view item order: a `sort:` slot on views"]
     end
     subgraph multi-project-support ["Multi-project support"]
@@ -20,6 +23,8 @@ flowchart TD
     end
     subgraph schema-expressions ["Derived field expressions"]
         expression-logical-combinators["`and` / `or` / `not` in the expression grammar"]
+        pull-copy-over-link["Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice"]
+        pull-root-anchor["A project-level start for unanchored roots, without a synthetic milestone item"]
         rule-literal-comparisons["Compare a field with a literal in a rule's match block"]
         when-map-shorthand["`map:` — lookup-table shorthand over the `when:` evaluator"]
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]

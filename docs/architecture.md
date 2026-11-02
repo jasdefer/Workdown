@@ -156,7 +156,7 @@ Thirteen kinds exist today. A fourteenth touches the places below. The right-han
 | 13 | Nothing — the accepted field types come from the row 3 table via `VIEW_SLOT_TYPES` | TypeScript: a control naming a slot the table lacks is an error, and the list itself cannot be retyped by hand |
 | 14 | Component plus branch in `ui/src/lib/views/ViewRenderer.svelte` | TypeScript: the `{:else}` branch passes `data` to `unrenderedKind(data: never)`, which only type-checks while the chain is exhaustive |
 | 15 | The view-kind table in [docs/views.md](views.md) | `crates/core/tests/docs_guides.rs` |
-| 16 | Recording-dot support, if the kind presents items: compare each item against `timerStore.runningItemId` | **nothing**, and it is reimplemented independently in six components today (board `Card`, `GanttChart`, `GraphView`, `TableView`, `TreeNode`, `TreemapView`). A new kind has to copy it — tracked as `recording-dot-extraction`, since the fix is an extraction rather than a guard |
+| 16 | Item-state marks, if the kind presents items: the recording dot (compare each item against `timerStore.runningItemId`) and the selection ring (ask `selectionStore.markOf(id)` for `open`, `last` or none, and style both) | **nothing**, and both are reimplemented independently in six components today (board `Card`, `GanttChart`, `GraphView`, `TableView`, `TreeNode`, `TreemapView`), each in the view's own idiom. A new kind has to copy them — tracked as `recording-dot-extraction`, since the fix is an extraction rather than a guard |
 
 **No change needed** in `crates/server`, which serializes `ViewData` and knows nothing about kinds, nor anywhere in the load spine (store, derive, checks).
 

@@ -3,7 +3,7 @@
 The frontend for the Workdown web app — a [SvelteKit](https://svelte.dev/docs/kit)
 (Svelte 5 + TypeScript) single-page app, served by the `workdown serve` subcommand.
 It is how a project is worked on in a browser rather than in an editor: it renders
-every view kind declared in `views.yaml`, edits an item's fields in a detail panel,
+every view kind declared in `views.yaml`, edits an item's fields in a detail dialog,
 creates items and views, builds `where:` filters interactively, runs the effort
 timer, and refetches on a live-update ping when files change on disk. `workdown serve`
 embeds this app's built bundle directly into the Rust binary (via `rust-embed`) and

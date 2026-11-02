@@ -7,6 +7,7 @@
 	import type { Card } from '$lib/api/generated/Card';
 	import { draggable } from '$lib/dnd/dnd';
 	import { activateOnKey, openItem } from '$lib/items/itemLink';
+	import { selectionStore } from '$lib/stores/selection.svelte';
 	import { timerStore } from '$lib/stores/timer.svelte';
 	import RecordingDot from '$lib/timer/RecordingDot.svelte';
 	import Markdown from '$lib/ui/Markdown.svelte';
@@ -27,6 +28,7 @@
 	let { card, dragEnabled = false }: Props = $props();
 
 	const displayTitle = $derived(cardLabel(card));
+	const mark = $derived(selectionStore.markOf(card.id));
 
 	// Click (when not a drag) opens the detail panel via `?item=`. The
 	// card can be draggable, so it can't be an anchor — navigate in JS.
@@ -39,6 +41,8 @@
 <div
 	class="card"
 	class:tinted={card.background !== null}
+	class:open={mark === 'open'}
+	class:last={mark === 'last'}
 	style:--item-color={card.background}
 	use:draggable={{ id: card.id, enabled: dragEnabled }}
 	role="button"
@@ -101,6 +105,18 @@
 	.card:focus-visible {
 		outline: 2px solid var(--color-fg-muted);
 		outline-offset: 1px;
+	}
+
+	/* The selection marks (tokens.css): a ring on the card whose detail
+	   is open, a fainter one where the reader was last. */
+	.card.open {
+		outline: 2px solid var(--color-mark);
+		outline-offset: 2px;
+	}
+
+	.card.last {
+		outline: 2px solid var(--color-mark-trace);
+		outline-offset: 2px;
 	}
 
 	.card-header {

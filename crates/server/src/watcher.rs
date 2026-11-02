@@ -12,7 +12,11 @@
 //! Only `.md`, `.yaml`, and `.yml` files count as changes — an allowlist,
 //! which by construction ignores every editor scratch file (`.swp`,
 //! trailing-`~`, vim's extension-less `4913` probe, `.tmp`) without our
-//! having to enumerate them.
+//! having to enumerate them. Only events that record a write count,
+//! never an access: Linux reports every `open()` as an event, and the
+//! server reads the very files it watches on each request — counting
+//! reads would make each page load ping the next (see
+//! `records_change`).
 //!
 //! A `config.yaml` change pings like any other, but the server holds the
 //! config it read at startup — see ADR-013 for that asymmetry, and for
@@ -24,8 +28,10 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use notify_debouncer_full::notify::{RecommendedWatcher, RecursiveMode};
-use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, RecommendedCache};
+use notify_debouncer_full::notify::{EventKind, RecommendedWatcher, RecursiveMode};
+use notify_debouncer_full::{
+    new_debouncer, DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache,
+};
 use tokio::sync::broadcast;
 
 use workdown_core::model::config::Config;
@@ -53,10 +59,7 @@ pub fn start(
         // A watch error means we may have *missed* events; the safe
         // response is identical to a real change — tell clients to refetch.
         let should_notify = match result {
-            Ok(batch) => batch
-                .iter()
-                .flat_map(|event| event.paths.iter())
-                .any(|path| is_watched_file(path)),
+            Ok(batch) => changed_paths(&batch).any(is_watched_file),
             Err(_errors) => true,
         };
         if should_notify {
@@ -94,17 +97,16 @@ pub fn start(
 /// every ref update. Everything else in `.git` is deliberately ignored
 /// — above all the index, which the status endpoint's own `git status`
 /// may refresh: reacting to it would make every refresh trigger the
-/// next one.
+/// next one. For the same reason only writes count, not accesses:
+/// every git command opens `HEAD` to read it, so an access event there
+/// would turn each status recount into the next `git` event.
 pub fn start_git_watch(
     git_directory: &Path,
     git_events: broadcast::Sender<()>,
 ) -> Result<WatchGuard> {
     let mut debouncer = new_debouncer(DEBOUNCE, None, move |result: DebounceEventResult| {
         let should_notify = match result {
-            Ok(batch) => batch
-                .iter()
-                .flat_map(|event| event.paths.iter())
-                .any(|path| is_repository_movement(path)),
+            Ok(batch) => changed_paths(&batch).any(is_repository_movement),
             Err(_errors) => true,
         };
         if should_notify {
@@ -130,6 +132,26 @@ pub fn start_git_watch(
     }
 
     Ok(debouncer)
+}
+
+/// The paths of every event in a batch that records a write, in batch
+/// order. Both watchers judge their allowlists over these.
+fn changed_paths(batch: &[DebouncedEvent]) -> impl Iterator<Item = &Path> {
+    batch
+        .iter()
+        .filter(|event| records_change(&event.kind))
+        .flat_map(|event| event.paths.iter().map(PathBuf::as_path))
+}
+
+/// True for an event kind that can only come from a write — a create,
+/// a modify (data, metadata, rename) or a remove — and for the
+/// backend's unclassified kinds, which are kept out of caution. False
+/// for every access: Linux inotify reports each `open()` and
+/// `close()` of a watched file, and a read changes nothing. A write
+/// never arrives as an access alone (the data write is its own event),
+/// so nothing is lost by dropping them.
+fn records_change(kind: &EventKind) -> bool {
+    !matches!(kind, EventKind::Access(_))
 }
 
 /// True when a path inside the git directory records the repository
@@ -244,6 +266,34 @@ mod tests {
         assert!(!is_repository_movement(Path::new(".git/index")));
         assert!(!is_repository_movement(Path::new(".git/index.lock")));
         assert!(!is_repository_movement(Path::new(".git/config")));
+    }
+
+    #[test]
+    fn only_writes_record_a_change() {
+        use notify_debouncer_full::notify::event::{
+            AccessKind, AccessMode, CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode,
+        };
+        // Reads: the server opening the files it watches, git opening
+        // HEAD on every command.
+        assert!(!records_change(&EventKind::Access(AccessKind::Open(
+            AccessMode::Any
+        ))));
+        assert!(!records_change(&EventKind::Access(AccessKind::Read)));
+        assert!(!records_change(&EventKind::Access(AccessKind::Close(
+            AccessMode::Write
+        ))));
+        // Writes, in every form an editor or git produces them.
+        assert!(records_change(&EventKind::Create(CreateKind::File)));
+        assert!(records_change(&EventKind::Modify(ModifyKind::Data(
+            DataChange::Any
+        ))));
+        assert!(records_change(&EventKind::Modify(ModifyKind::Name(
+            RenameMode::Both
+        ))));
+        assert!(records_change(&EventKind::Remove(RemoveKind::File)));
+        // Unclassified kinds are kept, out of caution.
+        assert!(records_change(&EventKind::Any));
+        assert!(records_change(&EventKind::Other));
     }
 
     #[test]

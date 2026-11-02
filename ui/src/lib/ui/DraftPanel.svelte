@@ -1,6 +1,6 @@
 <!--
-  The shell the schema editor's panels share: a docked slide-over with
-  a form in two columns — what is edited on the left (`main`), the YAML
+  The shell the schema editor's panels share: a docked panel with a
+  form in two columns — what is edited on the left (`main`), the YAML
   the save would write and anything else only shown on the right
   (`side`) — and a footer with Save, Cancel and Remove. The field and
   the rule panel differ in what they edit, not in how a draft is shown,
@@ -19,10 +19,10 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import type { PreviewAnswer, PreviewState } from '$lib/schema/preview.svelte';
-	import SlideOver from './SlideOver.svelte';
+	import DockedPanel from './DockedPanel.svelte';
 
 	interface Props {
-		/** The slide-over's accessible name. */
+		/** The panel's accessible name. */
 		label: string;
 		/** The heading. */
 		title: string;
@@ -85,7 +85,7 @@
 	}: Props = $props();
 </script>
 
-<SlideOver {label} size="wide" placement="docked" {onclose}>
+<DockedPanel {label} size="wide" {onclose}>
 	{#snippet header()}
 		<span class="panel-title">{title}</span>
 	{/snippet}
@@ -168,7 +168,7 @@
 			</div>
 		</form>
 	{/if}
-</SlideOver>
+</DockedPanel>
 
 <style>
 	.panel-title {

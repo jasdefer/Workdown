@@ -1,6 +1,6 @@
 <!--
   The timer's fixed slot on the item editing surface — the one component
-  the slide-over panel and the standalone item page share, so both get it
+  the item dialog and the standalone item page share, so both get it
   for free. Sits in the same place on every item regardless of schema,
   which makes it the natural "place the timer would be": with no effort
   field configured, this is where the hint naming `defaults.effort_field`

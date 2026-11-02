@@ -34,6 +34,7 @@
 <script lang="ts">
 	import type { Card as CardData } from '$lib/api/generated/Card';
 	import { itemHref } from '$lib/items/itemLink';
+	import { selectionStore } from '$lib/stores/selection.svelte';
 	import { timerStore } from '$lib/stores/timer.svelte';
 	import Card from '$lib/views/board/Card.svelte';
 	import { formatIsoDate } from '$lib/views/format';
@@ -175,7 +176,13 @@
 						</div>
 					{/if}
 					{#each section.bars as bar (bar.card.id)}
-						<div class="row" style="height: {ROW_HEIGHT}px;">
+						{@const mark = selectionStore.markOf(bar.card.id)}
+						<div
+							class="row"
+							class:open={mark === 'open'}
+							class:last={mark === 'last'}
+							style="height: {ROW_HEIGHT}px;"
+						>
 							<a class="row-label" href={itemHref(bar.card.id)} title={barLabel(bar)}
 								>{barLabel(bar)}</a
 							>
@@ -348,6 +355,21 @@
 	.row {
 		display: flex;
 		border-bottom: 1px solid var(--color-border);
+	}
+
+	/* The selection marks (tokens.css) as an inset band along the row,
+	   label and track alike — the bar is the item's body here and
+	   already carries the recording outline, so the row takes the mark. */
+	.row.open {
+		box-shadow:
+			inset 0 2px 0 0 var(--color-mark),
+			inset 0 -2px 0 0 var(--color-mark);
+	}
+
+	.row.last {
+		box-shadow:
+			inset 0 2px 0 0 var(--color-mark-trace),
+			inset 0 -2px 0 0 var(--color-mark-trace);
 	}
 
 	.row-label {

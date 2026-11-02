@@ -1,5 +1,5 @@
 <!--
-  The field editor: the slide-over the schema page opens on a row click
+  The field editor: the docked panel the schema page opens on a row click
   (`?field=<name>`) or on Add field (`?add`). A header block every type
   shares — name, type, required, description, default — then the
   type-specific block, the "Value" section with the way the value is

@@ -36,6 +36,7 @@
 	import type { SizeValue } from '$lib/api/generated/SizeValue';
 	import type { Card as CardData } from '$lib/api/generated/Card';
 	import { activateOnKey, openItem } from '$lib/items/itemLink';
+	import { selectionStore } from '$lib/stores/selection.svelte';
 	import { timerStore } from '$lib/stores/timer.svelte';
 	import { textColorOn } from '$lib/views/colorContrast';
 	import { formatScalar } from '$lib/views/format';
@@ -312,6 +313,24 @@
 									>
 								{/if}
 							{/if}
+							<!-- The selection marks (tokens.css): a ring drawn over the
+							     tile, so it composes with the recording stroke instead
+							     of replacing it. Two strokes on one path — a light base
+							     and the dashed accent over it — because an uncolored
+							     leaf is itself accent-filled, where a plain ring vanishes. -->
+							{#if laid.node.card !== null}
+								{@const mark = selectionStore.markOf(laid.node.card.id)}
+								{#if mark !== null}
+									{@const inset = {
+										x: 2,
+										y: 2,
+										width: Math.max(0, laid.width - 4),
+										height: Math.max(0, laid.height - 4)
+									}}
+									<rect class="mark-base {mark}" {...inset} />
+									<rect class="mark {mark}" {...inset} />
+								{/if}
+							{/if}
 						</g>
 					{/if}
 				{/each}
@@ -367,6 +386,33 @@
 	.leaf.recording {
 		stroke: var(--color-recording);
 		stroke-width: 2;
+	}
+
+	.mark-base,
+	.mark {
+		fill: none;
+		stroke-width: 3;
+		pointer-events: none;
+	}
+
+	.mark-base {
+		stroke: var(--color-card);
+	}
+
+	.mark {
+		stroke-dasharray: 6 4;
+	}
+
+	.mark.open {
+		stroke: var(--color-mark);
+	}
+
+	.mark-base.last {
+		stroke-opacity: 0.5;
+	}
+
+	.mark.last {
+		stroke: var(--color-mark-trace);
 	}
 
 	.frame {

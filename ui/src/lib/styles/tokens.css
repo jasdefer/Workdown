@@ -48,6 +48,14 @@
 	   The alias resolves at use time, so the dark override flows through. */
 	--color-recording: var(--color-danger);
 
+	/* The selection marks: the ring on the item whose detail is open,
+	   and the fainter trace on the one opened last (itemMark.ts). The
+	   accent, so a mark reads as "where you are", not as a status; the
+	   trace is the same hue at half strength. Each view kind draws the
+	   ring in its own vocabulary (outline, inset band, stroke, halo). */
+	--color-mark: var(--color-accent);
+	--color-mark-trace: color-mix(in srgb, var(--color-accent) 50%, transparent);
+
 	/* Spacing — 4px scale */
 	--space-1: 0.25rem;
 	--space-2: 0.5rem;

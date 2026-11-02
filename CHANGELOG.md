@@ -5,6 +5,25 @@ tagged version into the top of that version's GitHub release page, so
 entries are written for people using workdown, not for people reading
 its source — internal refactors are deliberately absent.
 
+## Unreleased
+
+### Changed
+
+- Opening an item from a view shows its detail in a centered dialog
+  instead of a narrow panel at the right edge: the frontmatter fields
+  on the left and the Markdown body on the right when the window is
+  wide enough, stacked otherwise. The opened item is ringed in the
+  view behind the dialog and keeps a fainter trace after the dialog
+  closes, so you can see where you last were. Escape, the close button
+  or a click outside closes it.
+
+### Fixed
+
+- On Linux, `workdown serve` no longer reloads the open page several
+  times a second: the file watcher counted the server's own reads of
+  the project files as changes, and with git controls on the git pill
+  recounted in the same loop. Only writes count now.
+
 ## 0.2.8 - 2026-10-31
 
 ### Added
