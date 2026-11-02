@@ -180,6 +180,35 @@
 		box-shadow: inset 4px 0 0 0 var(--item-color);
 	}
 
+	/* The selection marks (tokens.css), identical to the table: an inset
+	   band along the row's top and bottom edges on every cell, composed
+	   with the colour stripe on the title cell. */
+	:global(.tree .row.open .cell) {
+		box-shadow:
+			inset 0 2px 0 0 var(--color-mark),
+			inset 0 -2px 0 0 var(--color-mark);
+	}
+
+	:global(.tree .row.last .cell) {
+		box-shadow:
+			inset 0 2px 0 0 var(--color-mark-trace),
+			inset 0 -2px 0 0 var(--color-mark-trace);
+	}
+
+	:global(.tree .row.tinted.open .cell.title) {
+		box-shadow:
+			inset 4px 0 0 0 var(--item-color),
+			inset 0 2px 0 0 var(--color-mark),
+			inset 0 -2px 0 0 var(--color-mark);
+	}
+
+	:global(.tree .row.tinted.last .cell.title) {
+		box-shadow:
+			inset 4px 0 0 0 var(--item-color),
+			inset 0 2px 0 0 var(--color-mark-trace),
+			inset 0 -2px 0 0 var(--color-mark-trace);
+	}
+
 	:global(.tree .row.header .cell) {
 		position: sticky;
 		top: 0;

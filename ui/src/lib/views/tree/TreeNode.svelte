@@ -18,6 +18,7 @@
 	import type { TreeNode } from '$lib/api/generated/TreeNode';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { itemHref } from '$lib/items/itemLink';
+	import { selectionStore } from '$lib/stores/selection.svelte';
 	import { timerStore } from '$lib/stores/timer.svelte';
 	import RecordingDot from '$lib/timer/RecordingDot.svelte';
 	import Cell from '$lib/views/table/Cell.svelte';
@@ -38,6 +39,7 @@
 	const expanded = $derived(expandedIds.has(id));
 	const hasChildren = $derived(node.children.length > 0);
 	const displayTitle = $derived(cardLabel(node));
+	const mark = $derived(selectionStore.markOf(id));
 	const indentStyle = $derived(`--indent: ${(depth * 1.25).toString()}rem`);
 </script>
 
@@ -45,6 +47,8 @@
 	class="row"
 	role="row"
 	class:tinted={node.background !== null}
+	class:open={mark === 'open'}
+	class:last={mark === 'last'}
 	style:--item-color={node.background}
 >
 	<div class="cell title" style={indentStyle}>

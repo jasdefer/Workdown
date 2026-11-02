@@ -85,7 +85,7 @@
 	}: Props = $props();
 </script>
 
-<SlideOver {label} size="wide" placement="docked" {onclose}>
+<SlideOver {label} size="wide" {onclose}>
 	{#snippet header()}
 		<span class="panel-title">{title}</span>
 	{/snippet}

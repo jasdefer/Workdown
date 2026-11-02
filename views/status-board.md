@@ -9,12 +9,16 @@ Cards grouped into columns by `status`.
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
+- [Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice](../workdown-items/pull-copy-over-link.md)
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md)
 - [Check comparison references in rules at schema load](../workdown-items/rule-comparison-reference-check.md)
 - [Compare a field with a literal in a rule's match block](../workdown-items/rule-literal-comparisons.md)
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md)
+- [Major upgrades of the web UI's lint and SvelteKit toolchain](../workdown-items/ui-toolchain-upgrade.md)
 
 ## in_progress
+- [A centered error page with a 404 illustration](../workdown-items/error-page-polish.md)
+- [Redesign the work item overlay in the web UI](../workdown-items/item-overlay-redesign.md)
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
 - [Per-view item order: a `sort:` slot on views](../workdown-items/view-sort-slot.md)

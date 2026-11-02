@@ -1,9 +1,15 @@
 <!--
-  The item editing surface, shared by the slide-over panel and the
+  The item editing surface, shared by the item dialog and the
   standalone `/items/:id` page. Self-sufficient: given an id it fetches
   the item (`GET /api/items/:id`) and the schema (once, cached), renders
   a per-field editor for every schema field, and shows the body
   read-only.
+
+  Two areas: the frontmatter fields and the Markdown body. Laid out by
+  the host's width (a size container), not the window's: side by side
+  with the body the wider column when there is room, the fields staying
+  in view while a long body scrolls; stacked otherwise. The dialog and
+  the standalone page therefore share one layout rule.
 
   Each field edit POSTs through `api.setField` and, on success, refetches
   the item so computed/cascading values reflect reality (and tells the
@@ -98,7 +104,7 @@
 	</header>
 
 	<!-- The timer's fixed slot: same place on every item regardless of
-	     schema, shared by the panel and the standalone page. -->
+	     schema, shared by the dialog and the standalone page. -->
 	<TimerSlot {itemId} />
 
 	{#if loadError}
@@ -112,42 +118,44 @@
 
 		<DiagnosticList diagnostics={warnings} label="Warnings from the last change" />
 
-		<dl class="fields card">
-			{#each editableFields as field (field.name)}
-				<dt>
-					<span
-						class="field-name"
-						class:has-help={field.description !== null}
-						title={field.description}>{field.name}</span
-					>
-					{#if field.required}<span class="req" title="required">*</span>{/if}
-					{#if field.aggregate}<span class="note">computed</span>{/if}
-				</dt>
-				<dd>
-					<ValueEditor
-						spec={specOfFieldSchema(field)}
-						value={valueOf(field.name)}
-						items={schemaStore.items}
-						palette={schemaStore.palette}
-						resourceOptions={schemaStore.resourceOptions(field)}
-						disabled={busy}
-						onchange={(value: FieldValue | null) => {
-							void commit(field.name, mutationFor(value));
-						}}
-					/>
-					{#if field.resource}<small class="muted">values from “{field.resource}”</small>{/if}
-				</dd>
-			{/each}
-		</dl>
+		<div class="areas">
+			<dl class="fields card">
+				{#each editableFields as field (field.name)}
+					<dt>
+						<span
+							class="field-name"
+							class:has-help={field.description !== null}
+							title={field.description}>{field.name}</span
+						>
+						{#if field.required}<span class="req" title="required">*</span>{/if}
+						{#if field.aggregate}<span class="note">computed</span>{/if}
+					</dt>
+					<dd>
+						<ValueEditor
+							spec={specOfFieldSchema(field)}
+							value={valueOf(field.name)}
+							items={schemaStore.items}
+							palette={schemaStore.palette}
+							resourceOptions={schemaStore.resourceOptions(field)}
+							disabled={busy}
+							onchange={(value: FieldValue | null) => {
+								void commit(field.name, mutationFor(value));
+							}}
+						/>
+						{#if field.resource}<small class="muted">values from “{field.resource}”</small>{/if}
+					</dd>
+				{/each}
+			</dl>
 
-		<section class="body card">
-			<h3>Description</h3>
-			{#if item.body.trim().length > 0}
-				<Markdown content={item.body} />
-			{:else}
-				<p class="muted">No description. Edit the body in your editor.</p>
-			{/if}
-		</section>
+			<section class="body card">
+				<h3>Description</h3>
+				{#if item.body.trim().length > 0}
+					<Markdown content={item.body} />
+				{:else}
+					<p class="muted">No description. Edit the body in your editor.</p>
+				{/if}
+			</section>
+		</div>
 	{/if}
 </div>
 
@@ -198,6 +206,26 @@
 
 	.item-editor.tinted .card {
 		border-left: 4px solid var(--item-color);
+	}
+
+	.areas {
+		display: grid;
+		gap: var(--space-3);
+		align-items: start;
+	}
+
+	/* Side by side once the host is wide enough for a column of fields
+	   beside a readable body; the fields stick while the body scrolls,
+	   so an edit never means scrolling back up past the description. */
+	@container (min-width: 52rem) {
+		.areas {
+			grid-template-columns: minmax(20rem, 2fr) 3fr;
+		}
+
+		.fields {
+			position: sticky;
+			top: 0;
+		}
 	}
 
 	.fields {

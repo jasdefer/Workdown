@@ -1,18 +1,12 @@
 <!--
-  The side-panel chrome: a panel at the right edge of the content area
-  with a header row (the host's links on the left, the close button on
-  the right) and a scrolling body. The item detail and the schema field
-  editor are both this panel around their own content; what opens and
+  The docked panel chrome: a panel beside the page in a flex row the
+  host lays out, with a header row (the host's links on the left, the
+  close button on the right) and a scrolling body. The page shrinks to
+  the remaining width, so its content stays fully visible while the
+  panel is open — for a form whose source should stay in view, like
+  the schema field editor beside the table of fields. What opens and
   closes it is the host's URL state, so `onclose` is the host's to
   interpret.
-
-  Two placements. An overlay slides over the page: anchored to
-  `.app-main` (the layout marks it `position: relative`), not the
-  viewport, so it fills the content area below the app header and the
-  header and the timer pill's expanded panel stay reachable. A docked
-  panel sits beside the page in a flex row the host lays out, and the
-  page shrinks to the remaining width — for a page whose content should
-  stay fully visible while the panel is open, like a table of fields.
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
@@ -22,37 +16,20 @@
 		label: string;
 		onclose: () => void;
 		/**
-		 * How much of the content area the panel takes on a wide window:
-		 * `narrow` for a column of fields, `wide` for a form with sections
-		 * side by side. Either fills the window when it is narrower.
+		 * How much of the row the panel takes on a wide window: `narrow`
+		 * for a column of fields, `wide` for a form with sections side by
+		 * side. Either fills the window when it is narrower.
 		 */
 		size?: 'narrow' | 'wide';
-		/**
-		 * Over the page (the default), or beside it in a flex row the
-		 * host lays out.
-		 */
-		placement?: 'overlay' | 'docked';
 		/** The header's left side: a link, a title, or nothing. */
 		header?: Snippet;
 		children: Snippet;
 	}
 
-	let {
-		label,
-		onclose,
-		size = 'narrow',
-		placement = 'overlay',
-		header,
-		children
-	}: Props = $props();
+	let { label, onclose, size = 'narrow', header, children }: Props = $props();
 </script>
 
-<aside
-	class="panel"
-	class:wide={size === 'wide'}
-	class:docked={placement === 'docked'}
-	aria-label={label}
->
+<aside class="panel" class:wide={size === 'wide'} aria-label={label}>
 	<header>
 		<div class="header-start">
 			{#if header}{@render header()}{/if}
@@ -65,35 +42,22 @@
 </aside>
 
 <style>
+	/* Full height of the host's row, its width taken from the row. */
 	.panel {
-		position: absolute;
-		top: 0;
-		right: 0;
-		bottom: 0;
-		width: min(28rem, 100%);
-		background-color: var(--color-surface);
-		border-left: 1px solid var(--color-border);
-		box-shadow: var(--shadow-sm);
-		display: flex;
-		flex-direction: column;
-		z-index: 10;
-	}
-
-	/* Half the content area on a wide window, never less than the
-	   narrow panel, the whole window on a small one. */
-	.panel.wide {
-		width: min(max(28rem, 50%), 100%);
-	}
-
-	/* In the host's row: full height of the row, its width taken from
-	   the row rather than from `.app-main`, nothing to float above. */
-	.panel.docked {
-		position: static;
 		flex: 0 0 auto;
 		align-self: stretch;
 		min-height: 0;
-		z-index: auto;
-		box-shadow: none;
+		width: min(28rem, 100%);
+		background-color: var(--color-surface);
+		border-left: 1px solid var(--color-border);
+		display: flex;
+		flex-direction: column;
+	}
+
+	/* Half the row on a wide window, never less than the narrow panel,
+	   the whole window on a small one. */
+	.panel.wide {
+		width: min(max(28rem, 50%), 100%);
 	}
 
 	header {

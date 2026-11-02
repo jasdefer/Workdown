@@ -1,8 +1,8 @@
 <!--
   Single-view page: a toolbar with the view's authoring actions, the
   diagnostic banner, then the `<ViewRenderer>` which dispatches on
-  `data.result.data.type`. `?item=...` in the URL mounts the (stub)
-  ItemPanel.
+  `data.result.data.type`. `?item=...` in the URL mounts the item dialog
+  and makes that item the selected one, so the view marks it.
 -->
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
@@ -12,13 +12,23 @@
 	import DisplayBar from '$lib/views/DisplayBar.svelte';
 	import ViewRenderer from '$lib/views/ViewRenderer.svelte';
 	import ViewToolbar from '$lib/views/ViewToolbar.svelte';
-	import ItemPanel from './ItemPanel.svelte';
+	import { selectionStore } from '$lib/stores/selection.svelte';
+	import ItemDialog from './ItemDialog.svelte';
 
 	let { data }: { data: PageData } = $props();
 
-	// Closing the panel drops `?item=` — load() depends on the query
-	// param, so this re-runs and unmounts the panel.
-	function closePanel(): void {
+	// The open item follows the URL; leaving the page (or the param)
+	// clears it, and the store keeps it as the last opened.
+	$effect(() => {
+		selectionStore.setOpen(data.itemId);
+		return () => {
+			selectionStore.setOpen(null);
+		};
+	});
+
+	// Closing the dialog drops `?item=` — load() depends on the query
+	// param, so this re-runs and unmounts the dialog.
+	function closeDialog(): void {
 		void goto(`/views/${encodeURIComponent(data.viewId)}`, { keepFocus: true, noScroll: true });
 	}
 </script>
@@ -48,7 +58,7 @@
 </div>
 
 {#if data.itemId}
-	<ItemPanel itemId={data.itemId} onclose={closePanel} onmutate={() => invalidateAll()} />
+	<ItemDialog itemId={data.itemId} onclose={closeDialog} onmutate={() => invalidateAll()} />
 {/if}
 
 <style>

@@ -178,12 +178,8 @@
 
 	/* Flex container so view-page's `flex: 1` can constrain against
 	   a known height — that's what lets columns scroll independently
-	   instead of the whole page scrolling. Positioned so overlays that
-	   belong below the header (the item slide-over) can anchor to it
-	   instead of the viewport — the header, and the timer pill's
-	   expanded panel, stay visible above them. */
+	   instead of the whole page scrolling. */
 	.app-main {
-		position: relative;
 		flex: 1;
 		min-height: 0;
 		padding: var(--space-6);

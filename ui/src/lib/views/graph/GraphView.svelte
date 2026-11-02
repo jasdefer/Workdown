@@ -40,6 +40,7 @@
 	import type { Card as CardData } from '$lib/api/generated/Card';
 	import type { TreeNode } from '$lib/api/generated/TreeNode';
 	import { openItem } from '$lib/items/itemLink';
+	import { selectionStore } from '$lib/stores/selection.svelte';
 	import { textColorOn } from '$lib/views/colorContrast';
 	import { cardLabel } from '$lib/views/prettify';
 	import { themeStore, type Theme } from '$lib/stores/theme.svelte';
@@ -200,13 +201,28 @@
 			'border-color': token('--color-recording'),
 			'border-width': 2
 		};
+		// The selection marks (tokens.css) as a halo behind the node — the
+		// overlay, not the border, so an open item that is also being timed
+		// shows both. The trace is the same halo at half the opacity.
+		const openStyle: cytoscape.Css.Node = {
+			'overlay-color': token('--color-mark'),
+			'overlay-padding': 6,
+			'overlay-opacity': 0.3
+		};
+		const lastStyle: cytoscape.Css.Node = {
+			'overlay-color': token('--color-mark'),
+			'overlay-padding': 6,
+			'overlay-opacity': 0.15
+		};
 		return [
 			{ selector: 'node', style: nodeStyle },
 			{ selector: 'node[itemColor]', style: coloredNodeStyle },
 			{ selector: ':parent', style: parentStyle },
 			{ selector: ':parent[itemColor]', style: coloredParentStyle },
 			{ selector: 'edge', style: edgeStyle },
-			{ selector: 'node.recording', style: recordingStyle }
+			{ selector: 'node.recording', style: recordingStyle },
+			{ selector: 'node.open', style: openStyle },
+			{ selector: 'node.last', style: lastStyle }
 		];
 	}
 
@@ -285,6 +301,18 @@
 		if (graph === undefined) return;
 		graph.nodes().removeClass('recording');
 		if (runningId !== null) graph.getElementById(runningId).addClass('recording');
+	});
+
+	// Mark the open item and the last opened one; a selection outside
+	// this view is a no-op for the same reason.
+	$effect(() => {
+		const graph = cy;
+		const openId = selectionStore.openId;
+		const lastId = selectionStore.lastId;
+		if (graph === undefined) return;
+		graph.nodes().removeClass('open last');
+		if (openId !== null) graph.getElementById(openId).addClass('open');
+		if (lastId !== null && lastId !== openId) graph.getElementById(lastId).addClass('last');
 	});
 </script>
 
