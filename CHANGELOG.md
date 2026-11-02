@@ -17,6 +17,13 @@ its source — internal refactors are deliberately absent.
   closes, so you can see where you last were. Escape, the close button
   or a click outside closes it.
 
+### Fixed
+
+- On Linux, `workdown serve` no longer reloads the open page several
+  times a second: the file watcher counted the server's own reads of
+  the project files as changes, and with git controls on the git pill
+  recounted in the same loop. Only writes count now.
+
 ## 0.2.8 - 2026-10-31
 
 ### Added
