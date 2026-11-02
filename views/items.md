@@ -58,6 +58,7 @@
 | [full-git-loop](../workdown-items/full-git-loop.md) | done |  |  |
 | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) | done | [renderers](../workdown-items/renderers.md) | [render-gantt](../workdown-items/render-gantt.md), [duration-field-type](../workdown-items/duration-field-type.md) |
 | [gantt-predecessor-mode](../workdown-items/gantt-predecessor-mode.md) | done | [renderers](../workdown-items/renderers.md) | [gantt-duration-mode](../workdown-items/gantt-duration-mode.md) |
+| [git-status-event-loop](../workdown-items/git-status-event-loop.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [git-sync-controls](../workdown-items/git-sync-controls.md) | done | [full-git-loop](../workdown-items/full-git-loop.md) |  |
 | [github-render-action](../workdown-items/github-render-action.md) | removed | [polish](../workdown-items/polish.md) |  |
 | [graph-item-open](../workdown-items/graph-item-open.md) | done |  |  |
@@ -83,6 +84,7 @@
 | [publish-branch-from-push](../workdown-items/publish-branch-from-push.md) | done | [full-git-loop](../workdown-items/full-git-loop.md) |  |
 | [pull-copy-over-link](../workdown-items/pull-copy-over-link.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [pull-fields](../workdown-items/pull-fields.md) |
 | [pull-fields](../workdown-items/pull-fields.md) | done | [schema-expressions](../workdown-items/schema-expressions.md) | [computed-fields](../workdown-items/computed-fields.md), [aggregate-rollup](../workdown-items/aggregate-rollup.md) |
+| [pull-root-anchor](../workdown-items/pull-root-anchor.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [pull-fields](../workdown-items/pull-fields.md) |
 | [query-value-consolidation](../workdown-items/query-value-consolidation.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [readme-visualization-update](../workdown-items/readme-visualization-update.md) | done | [polish](../workdown-items/polish.md) |  |
 | [recording-dot-extraction](../workdown-items/recording-dot-extraction.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |

@@ -19,6 +19,7 @@ Hierarchical outline following `parent` upward to roots.
 - [Derived field expressions](../workdown-items/schema-expressions.md) — status: in_progress
   - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md) — status: on_hold
   - [Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice](../workdown-items/pull-copy-over-link.md) — status: to_do
+  - [A project-level start for unanchored roots, without a synthetic milestone item](../workdown-items/pull-root-anchor.md) — status: to_do
   - [Compare a field with a literal in a rule's match block](../workdown-items/rule-literal-comparisons.md) — status: to_do
   - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md) — status: on_hold
   - [`then:` values beyond literals — `$today`, fields, expressions](../workdown-items/when-then-value-expressions.md) — status: on_hold

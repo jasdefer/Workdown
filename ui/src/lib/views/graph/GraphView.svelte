@@ -303,16 +303,17 @@
 		if (runningId !== null) graph.getElementById(runningId).addClass('recording');
 	});
 
-	// Mark the open item and the last opened one; a selection outside
-	// this view is a no-op for the same reason.
+	// The selection marks: every node asks the store which mark it
+	// carries, as the DOM views do per item, so the precedence between
+	// the two lives in `markOf` alone.
 	$effect(() => {
 		const graph = cy;
-		const openId = selectionStore.openId;
-		const lastId = selectionStore.lastId;
 		if (graph === undefined) return;
-		graph.nodes().removeClass('open last');
-		if (openId !== null) graph.getElementById(openId).addClass('open');
-		if (lastId !== null && lastId !== openId) graph.getElementById(lastId).addClass('last');
+		graph.nodes().forEach((node) => {
+			const mark = selectionStore.markOf(node.id());
+			node.toggleClass('open', mark === 'open');
+			node.toggleClass('last', mark === 'last');
+		});
 	});
 </script>
 

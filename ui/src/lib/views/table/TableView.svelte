@@ -365,31 +365,29 @@
 	/* The selection marks (tokens.css) as an inset band along the row's
 	   top and bottom edges — a row cannot carry an outline, and a shadow
 	   adds no height, so marked rows stay aligned with the rest. The
-	   first cell composes the band with the colour stripe. */
-	tbody tr.open td {
-		box-shadow:
-			inset 0 2px 0 0 var(--color-mark),
-			inset 0 -2px 0 0 var(--color-mark);
+	   mark class picks the colour; the first cell composes the band
+	   with the colour stripe. */
+	tbody tr.open {
+		--mark: var(--color-mark);
 	}
 
+	tbody tr.last {
+		--mark: var(--color-mark-trace);
+	}
+
+	tbody tr.open td,
 	tbody tr.last td {
 		box-shadow:
-			inset 0 2px 0 0 var(--color-mark-trace),
-			inset 0 -2px 0 0 var(--color-mark-trace);
+			inset 0 2px 0 0 var(--mark),
+			inset 0 -2px 0 0 var(--mark);
 	}
 
-	tbody tr.tinted.open td:first-child {
-		box-shadow:
-			inset 4px 0 0 0 var(--item-color),
-			inset 0 2px 0 0 var(--color-mark),
-			inset 0 -2px 0 0 var(--color-mark);
-	}
-
+	tbody tr.tinted.open td:first-child,
 	tbody tr.tinted.last td:first-child {
 		box-shadow:
 			inset 4px 0 0 0 var(--item-color),
-			inset 0 2px 0 0 var(--color-mark-trace),
-			inset 0 -2px 0 0 var(--color-mark-trace);
+			inset 0 2px 0 0 var(--mark),
+			inset 0 -2px 0 0 var(--mark);
 	}
 
 	th:first-child,

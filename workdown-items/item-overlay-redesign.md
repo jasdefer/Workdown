@@ -62,3 +62,31 @@ Redesign how an item's detail is presented when opened from a view.
    for the dialog mechanics the browser owns; no server change, no
    server test. A browser click-through in the container is the visual
    check before the commit, not a test in the repo.
+
+## Decisions from the review (2026-11-02)
+
+8. **One modal chrome.** The dialog had copied the commit dialog's
+   mechanics (the `showModal` effect with teardown, the backdrop click,
+   the centering that the global reset makes necessary) instead of
+   sharing them. Both now use `ModalDialog` in `lib/ui`, with two sizes:
+   `form` (as tall as its content) and `workspace` (a fixed large box
+   whose host scrolls inside). The teardown guard lives there once, so
+   no host needs its own. `ConfirmDialog` stays its own popover: it
+   positions itself at measured coordinates with an invisible backdrop,
+   a different thing on the same element.
+9. **`SlideOver` is `DockedPanel`.** Only the docked placement remained
+   and the name said otherwise.
+10. **Graph marks through `markOf`.** The graph view had re-encoded the
+    open-over-last precedence; it now asks the store per node like the
+    other five.
+11. **Checklist row 16** in `docs/architecture.md` names both item-state
+    marks, and `recording-dot-extraction` covers the selection ring too.
+12. **Escape goes through the URL too.** The click-through found the
+    dialog closed with `?item=` still in the URL: the native Escape had
+    closed the element while the close navigation was superseded by a
+    live-update reload (see [[git-status-event-loop]] for why reloads
+    were constant in the test). The chrome now prevents the native
+    `cancel` and hands it to `onclose`, so the element only ever closes
+    when the host unmounts it — the URL stays the one truth, as decision
+    5 says, and a lost navigation leaves the dialog visibly open for a
+    second Escape instead of silently out of step.

@@ -180,33 +180,31 @@
 		box-shadow: inset 4px 0 0 0 var(--item-color);
 	}
 
-	/* The selection marks (tokens.css), identical to the table: an inset
-	   band along the row's top and bottom edges on every cell, composed
-	   with the colour stripe on the title cell. */
-	:global(.tree .row.open .cell) {
-		box-shadow:
-			inset 0 2px 0 0 var(--color-mark),
-			inset 0 -2px 0 0 var(--color-mark);
+	/* The selection marks (tokens.css), identical to the table: the mark
+	   class picks the colour, an inset band runs along the row's top and
+	   bottom edges on every cell, and the title cell composes it with
+	   the colour stripe. */
+	:global(.tree .row.open) {
+		--mark: var(--color-mark);
 	}
 
+	:global(.tree .row.last) {
+		--mark: var(--color-mark-trace);
+	}
+
+	:global(.tree .row.open .cell),
 	:global(.tree .row.last .cell) {
 		box-shadow:
-			inset 0 2px 0 0 var(--color-mark-trace),
-			inset 0 -2px 0 0 var(--color-mark-trace);
+			inset 0 2px 0 0 var(--mark),
+			inset 0 -2px 0 0 var(--mark);
 	}
 
-	:global(.tree .row.tinted.open .cell.title) {
-		box-shadow:
-			inset 4px 0 0 0 var(--item-color),
-			inset 0 2px 0 0 var(--color-mark),
-			inset 0 -2px 0 0 var(--color-mark);
-	}
-
+	:global(.tree .row.tinted.open .cell.title),
 	:global(.tree .row.tinted.last .cell.title) {
 		box-shadow:
 			inset 4px 0 0 0 var(--item-color),
-			inset 0 2px 0 0 var(--color-mark-trace),
-			inset 0 -2px 0 0 var(--color-mark-trace);
+			inset 0 2px 0 0 var(--mark),
+			inset 0 -2px 0 0 var(--mark);
 	}
 
 	:global(.tree .row.header .cell) {

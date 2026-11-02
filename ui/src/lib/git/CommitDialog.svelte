@@ -12,17 +12,16 @@
   reloaded so the list is current — the set of changes may have moved
   under the dialog — and the typed message is kept.
 
-  A centered native <dialog> opened with showModal(): top layer, inert
-  page, Escape for free. State lives in the git store; wording in
-  `commitDialog.ts` (unit-tested).
+  Centered in the shared `ModalDialog` chrome (form size). State lives
+  in the git store; wording in `commitDialog.ts` (unit-tested).
 -->
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { gitStore } from '$lib/stores/git.svelte';
+	import ModalDialog from '$lib/ui/ModalDialog.svelte';
 	import { pluralize } from '$lib/views/format';
 	import { checklist, groupFiles, splitDetails } from './commitDialog';
 
-	let dialog = $state<HTMLDialogElement>();
 	let textarea = $state<HTMLTextAreaElement>();
 	let message = $state('');
 	// The generated message seeds the box once; a reload after a stale
@@ -37,15 +36,6 @@
 	const canConfirm = $derived(
 		preview !== null && preview.files.length > 0 && message.trim().length > 0 && !gitStore.busy
 	);
-
-	$effect(() => {
-		if (dialog === undefined || dialog.open) return;
-		const element = dialog;
-		element.showModal();
-		return () => {
-			element.close();
-		};
-	});
 
 	$effect(() => {
 		if (preview !== null && !seeded) {
@@ -70,15 +60,9 @@
 	function close(): void {
 		gitStore.closeCommitDialog();
 	}
-
-	function onclick(event: MouseEvent): void {
-		// The box is fully covered by `.content`; a click on the dialog
-		// element itself landed on the backdrop.
-		if (event.target === dialog) close();
-	}
 </script>
 
-<dialog bind:this={dialog} aria-labelledby="commit-dialog-title" onclose={close} {onclick}>
+<ModalDialog labelledby="commit-dialog-title" onclose={close}>
 	<div class="content">
 		<p class="title" id="commit-dialog-title">Commit &amp; push</p>
 
@@ -196,30 +180,9 @@
 			</div>
 		{/if}
 	</div>
-</dialog>
+</ModalDialog>
 
 <style>
-	dialog {
-		/* The global reset zeroes every margin, which takes away the user
-		   agent's `margin: auto` that centers a modal dialog — so center
-		   it explicitly. */
-		position: fixed;
-		inset: 0;
-		margin: auto;
-		width: min(44rem, calc(100vw - 2rem));
-		max-height: calc(100vh - 2rem);
-		padding: 0;
-		background-color: var(--color-card);
-		color: var(--color-fg);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		box-shadow: var(--shadow-sm);
-	}
-
-	dialog::backdrop {
-		background: rgb(0 0 0 / 0.3);
-	}
-
 	.content {
 		padding: var(--space-4) var(--space-6);
 		display: flex;

@@ -34,6 +34,16 @@ is why the extraction has a real design question in it: how much of
 the placement belongs to the shared piece and how much stays with the
 view. That question is why it is its own item.
 
+## The selection ring has the same shape (added 2026-11-02)
+
+Since [[item-overlay-redesign]] the same six components also mark the
+item whose detail is open and the one opened last: each asks
+`selectionStore.markOf(id)` and styles the answer in its own idiom (an
+outline on the card, an inset band on the row, a halo on the graph
+node, a dashed ring on the tile). Same six copies, same missing
+reminder, same fix — whatever extraction carries the recording dot
+should carry the selection ring too, so this item covers both.
+
 ## Where it came from
 
 Split out of [[view-kind-sync-guards]], which closed the other
@@ -43,6 +53,6 @@ refactor instead.
 
 ## Objective
 
-One recording indicator, used by every item-presenting view, with the
-checklist row naming it — so a new view kind adds a line rather than a
-copy.
+One recording indicator and one selection ring, used by every
+item-presenting view, with the checklist row naming them — so a new
+view kind adds a line rather than a copy.
