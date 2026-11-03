@@ -12,6 +12,7 @@
 -->
 <script lang="ts">
 	import ItemEditor from '$lib/items/ItemEditor.svelte';
+	import { itemHref, standaloneItemHref } from '$lib/items/itemLink';
 	import ModalDialog from '$lib/ui/ModalDialog.svelte';
 
 	interface Props {
@@ -26,12 +27,13 @@
 <ModalDialog label="Item detail" size="workspace" {onclose}>
 	<div class="content">
 		<header>
-			<a class="standalone" href="/items/{itemId}">Open standalone ↗</a>
+			<a class="standalone" href={standaloneItemHref(itemId)}>Open standalone ↗</a>
 			<button type="button" class="close" aria-label="Close item detail" onclick={onclose}>×</button
 			>
 		</header>
 		<div class="body">
-			<ItemEditor {itemId} {onmutate} />
+			<!-- A reference followed from inside swaps the dialog's item. -->
+			<ItemEditor {itemId} {onmutate} hrefFor={itemHref} />
 		</div>
 	</div>
 </ModalDialog>

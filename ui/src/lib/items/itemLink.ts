@@ -27,3 +27,10 @@ export function activateOnKey(event: KeyboardEvent, activate: () => void): void 
 		activate();
 	}
 }
+
+// The standalone page's address — for leaving the view (the dialog's
+// open-standalone link) and for following a reference from that page,
+// where there is no dialog to swap.
+export function standaloneItemHref(id: string): string {
+	return `/items/${encodeURIComponent(id)}`;
+}

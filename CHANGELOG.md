@@ -5,6 +5,18 @@ tagged version into the top of that version's GitHub release page, so
 entries are written for people using workdown, not for people reading
 its source — internal refactors are deliberately absent.
 
+## Unreleased
+
+### Fixed
+
+- References to other work items in the item detail are links. `[[id]]`
+  and `[text](id.md)` in the body open that item: in the dialog by
+  swapping the dialog's item, on the standalone page by navigating to
+  it. A `parent`, `depends_on` or other link field shows the ids it
+  names as links under its picker. A reference to an id no item has is
+  shown as dotted, muted text with the reason in its tooltip instead of
+  leading to a 404.
+
 ## 0.2.9 - 2026-11-02
 
 ### Changed

@@ -1,7 +1,7 @@
 ---
 id: item-body-links-dead
 title: Links to other work items do not work in the item detail
-status: in_progress
+status: done
 parent: misc-work
 tags: [web-ui, bug]
 ---

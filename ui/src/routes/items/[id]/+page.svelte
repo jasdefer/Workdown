@@ -6,6 +6,7 @@
 -->
 <script lang="ts">
 	import ItemEditor from '$lib/items/ItemEditor.svelte';
+	import { standaloneItemHref } from '$lib/items/itemLink';
 	import { selectionStore } from '$lib/stores/selection.svelte';
 	import type { PageData } from './$types';
 
@@ -21,7 +22,8 @@
 
 <section class="standalone">
 	<div class="content">
-		<ItemEditor itemId={data.itemId} />
+		<!-- A reference followed from here navigates to that item's page. -->
+		<ItemEditor itemId={data.itemId} hrefFor={standaloneItemHref} />
 	</div>
 </section>
 
