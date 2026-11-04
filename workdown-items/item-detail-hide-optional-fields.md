@@ -1,7 +1,7 @@
 ---
 id: item-detail-hide-optional-fields
 title: Let the reader hide optional fields in the item detail
-status: in_progress
+status: done
 parent: misc-work
 depends_on: [item-overlay-redesign]
 tags: [web-ui]

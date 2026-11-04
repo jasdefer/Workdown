@@ -6,7 +6,6 @@ Hierarchical outline following `parent` upward to roots.
   - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md) — status: to_do
 - [Miscellaneous improvements](../workdown-items/misc-work.md) — status: in_progress
   - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md) — status: to_do
-  - [Let the reader hide optional fields in the item detail](../workdown-items/item-detail-hide-optional-fields.md) — status: in_progress
   - [Let the item detail open at the side again for quick browsing](../workdown-items/item-detail-side-placement.md) — status: to_do
   - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md) — status: to_do
   - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md) — status: on_hold
