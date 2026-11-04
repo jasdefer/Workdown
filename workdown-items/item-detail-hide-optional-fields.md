@@ -1,7 +1,7 @@
 ---
 id: item-detail-hide-optional-fields
 title: Let the reader hide optional fields in the item detail
-status: to_do
+status: in_progress
 parent: misc-work
 depends_on: [item-overlay-redesign]
 tags: [web-ui]
@@ -39,3 +39,48 @@ hidden field still has to be visible.
 - **Empty versus optional.** Hiding only fields that are both optional
   and empty is a different, smaller feature; decide whether that is
   enough.
+
+## Decisions taken (2026-11-04)
+
+1. **The schema says which fields fold, not a rule.** A field definition
+   in `schema.yaml` takes `collapsed: true`. Nothing is derived from
+   `required`, from `when`/`compute`, or from whether the item has a
+   value: a mechanical rule cannot tell a tint color from an effort
+   rolled up over children, and a positive "show these" list would
+   silently drop every field added later. A negative list fails safe.
+   Empty fields stay visible, so the reader sees directly what is not
+   set.
+2. **Collapsed, never hidden.** The item detail (modal and standalone
+   page, through the shared editor) shows the unflagged fields as today
+   and, at the end of the fields column, one row "Show N more fields"
+   that unfolds the flagged ones in schema order, fully editable. No
+   row when the schema flags nothing. The header is untouched.
+3. **Detail only.** Views, `workdown render`, the display-role fallback
+   and the CLI are not affected by the flag.
+4. **Closed on every open.** No remembered state in the browser or the
+   session; the fold keeps its state while the same item stays open,
+   since the editor is not remounted on the reload after a save.
+5. **Opens by itself** when a warning from the last save names a
+   collapsed field, so a warning never points at something out of
+   sight. Nothing else forces it open; a missing required field that
+   is also flagged stays folded on open, because the detail shows no
+   validation on open today.
+6. **No restrictions.** A boolean on any field, required or derived
+   included; no validation rule, no interaction with display roles.
+7. **The flag's path:** the core field definition and its parser, the
+   JSON schema, the schema guide's common options table, the schema
+   endpoint's per-field entry the item editor reads, and the schema
+   editor's read and write types with a checkbox beside "required" in
+   the field form. The editor part is mandatory: it rewrites the file
+   from its model and would otherwise drop the flag on the next save.
+8. **Defaults.** The default schema `workdown init` copies flags
+   `status_color`. This repo's own `color` field gets the flag only
+   after the release is tagged, since the pre-commit hook runs the
+   installed binary, which must know the key first.
+9. **Tests.** Core: the parser round-trips the flag and it defaults to
+   false. Server: the schema endpoint carries it and the schema
+   editor's write keeps it. UI: one Vitest case for "a warning on a
+   collapsed field opens the fold". Nothing for the fold itself.
+10. **ADR-008** gets one paragraph under its consequences recording the
+    single per-field presentation flag and why a negative list was
+    chosen over a `fields` list.

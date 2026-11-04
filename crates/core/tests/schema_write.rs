@@ -115,6 +115,7 @@ fn definition(field_type: FieldType, shape: FieldShape) -> FieldDefinitionWrite 
     FieldDefinitionWrite {
         field_type,
         required: false,
+        collapsed: false,
         description: None,
         default: None,
         resource: None,
@@ -618,6 +619,29 @@ fn update_field_writes_the_relation_settings_and_clearing_them_removes_the_keys(
 
     assert_eq!(
         property_keys(&fields_tree(&root), "related_to"),
+        ["type", "required"]
+    );
+}
+
+#[test]
+fn update_field_writes_collapsed_only_when_set_and_clearing_it_removes_the_key() {
+    let (_directory, root, config) = setup();
+    let before = fields_tree(&root);
+    let mut folded = definition(FieldType::Date, FieldShape::Scalar);
+    folded.collapsed = true;
+
+    update_field(&config, &root, config_path(), "updated", &folded).unwrap();
+
+    let after = fields_tree(&root);
+    assert_untouched(&before, &after, &["updated"]);
+    assert_eq!(after["updated"]["collapsed"], serde_yaml::Value::Bool(true));
+
+    let unfolded = definition(FieldType::Date, FieldShape::Scalar);
+    update_field(&config, &root, config_path(), "updated", &unfolded).unwrap();
+
+    // Never written as `collapsed: false`: the key is simply gone.
+    assert_eq!(
+        property_keys(&fields_tree(&root), "updated"),
         ["type", "required"]
     );
 }

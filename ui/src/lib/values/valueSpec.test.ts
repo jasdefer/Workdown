@@ -9,6 +9,7 @@ describe('specOfFieldSchema', () => {
 				field_type: 'integer',
 				description: null,
 				required: true,
+				collapsed: false,
 				values: null,
 				min: 0,
 				max: 10,

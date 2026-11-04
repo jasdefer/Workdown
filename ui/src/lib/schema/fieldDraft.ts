@@ -46,6 +46,8 @@ export interface FieldDraft {
 	name: string;
 	fieldType: FieldType;
 	required: boolean;
+	/** Folded away in the item detail. */
+	collapsed: boolean;
 	/** As typed; blank writes as no description. */
 	description: string;
 	default: DraftDefault | null;
@@ -75,6 +77,7 @@ export function initialDraft(field: FieldDefinitionData): FieldDraft {
 		name: field.name,
 		fieldType: field.field_type,
 		required: field.required,
+		collapsed: field.collapsed,
 		description: field.description ?? '',
 		default: draftDefaultOf(field),
 		resource: field.resource,
@@ -104,6 +107,7 @@ export function newDraft(tables: TypeTables, fieldType: FieldType): FieldDraft {
 		name: '',
 		fieldType,
 		required: false,
+		collapsed: false,
 		description: '',
 		default: null,
 		resource: null,
@@ -916,6 +920,7 @@ export function writeBody(draft: FieldDraft): FieldDefinitionWrite {
 	return {
 		field_type: draft.fieldType,
 		required: draft.required,
+		collapsed: draft.collapsed,
 		description: description === '' ? null : description,
 		default: writeDefaultOf(draft.default),
 		resource: resource === '' ? null : resource,

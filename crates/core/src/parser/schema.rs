@@ -909,6 +909,7 @@ fn convert_field(raw: RawFieldDefinition) -> FieldDefinition {
         type_config,
         description: raw.description,
         required: raw.required,
+        collapsed: raw.collapsed,
         default: raw.default,
         resource: raw.resource,
         aggregate: raw.aggregate,
@@ -1377,6 +1378,10 @@ mod tests {
         let status = &schema.fields["status"];
         assert_eq!(status.field_type(), FieldType::Choice);
         assert!(status.required);
+        // Absent in the file: the flag defaults to false.
+        assert!(!status.collapsed);
+        // The default schema folds its tint color away in the item detail.
+        assert!(schema.fields["status_color"].collapsed);
         match &status.type_config {
             FieldTypeConfig::Choice { values } => assert_eq!(
                 values,

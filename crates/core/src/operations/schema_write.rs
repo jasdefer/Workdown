@@ -267,8 +267,8 @@ pub enum SchemaWriteError {
 /// Add a field, appended at the end of `fields:`.
 ///
 /// The properties are written in a fixed order — type, the
-/// type-specific properties, required, default, description, resource,
-/// aggregate — so a created entry reads like a hand-written one.
+/// type-specific properties, required, collapsed, default, description,
+/// resource, aggregate — so a created entry reads like a hand-written one.
 pub fn add_field(
     config: &Config,
     project_root: &Path,
@@ -848,7 +848,7 @@ fn recipes_naming_field(schema: &Schema, name: &str) -> Vec<String> {
 /// Every key the editor may set or clear on a field; a replace removes
 /// each one the definition no longer spells and leaves any other key
 /// alone.
-const WRITTEN_KEYS: [&str; 15] = [
+const WRITTEN_KEYS: [&str; 16] = [
     "type",
     "values",
     "pattern",
@@ -857,6 +857,7 @@ const WRITTEN_KEYS: [&str; 15] = [
     "allow_cycles",
     "inverse",
     "required",
+    "collapsed",
     "default",
     "description",
     "resource",
@@ -949,8 +950,9 @@ fn fields_mut(document: &mut serde_yaml::Value) -> &mut serde_yaml::Mapping {
 
 /// The properties a definition spells out, as `(key, value)` pairs in
 /// the order they are written: type, the type-specific properties,
-/// required, default, description, resource, aggregate. Only set
-/// properties appear.
+/// required, collapsed, default, description, resource, aggregate. Only
+/// set properties appear; `collapsed` counts as set only when true, so
+/// an entry never carries `collapsed: false`.
 fn written_properties(definition: &FieldDefinitionWrite) -> Vec<(&'static str, serde_yaml::Value)> {
     use serde_yaml::Value;
 
@@ -1001,6 +1003,9 @@ fn written_properties(definition: &FieldDefinitionWrite) -> Vec<(&'static str, s
     }
 
     properties.push(("required", Value::Bool(definition.required)));
+    if definition.collapsed {
+        properties.push(("collapsed", Value::Bool(true)));
+    }
     match &definition.default {
         None => {}
         Some(DefaultWrite::Generator { generator }) => {
@@ -1246,6 +1251,7 @@ mod tests {
         FieldDefinitionWrite {
             field_type,
             required: false,
+            collapsed: false,
             description: None,
             default: None,
             resource: None,
@@ -1361,6 +1367,7 @@ rules:
             },
         );
         full.required = true;
+        full.collapsed = true;
         full.default = Some(DefaultWrite::Literal {
             value: serde_yaml::Value::String("a".to_owned()),
         });
@@ -1383,6 +1390,7 @@ rules:
                 "type",
                 "values",
                 "required",
+                "collapsed",
                 "default",
                 "description",
                 "resource",

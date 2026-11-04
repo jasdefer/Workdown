@@ -11,6 +11,11 @@
   in view while a long body scrolls; stacked otherwise. The dialog and
   the standalone page therefore share one layout rule.
 
+  Fields the schema marks `collapsed: true` sit behind one "Show N more
+  fields" row at the end of the fields column, closed every time an item
+  is opened and opened by a save whose warnings name one of them
+  (`collapsedFields.ts`). Once open they are editors like any other.
+
   Each field edit POSTs through `api.setField` and, on success, refetches
   the item so computed/cascading values reflect reality (and tells the
   host via `onmutate` so an underlying view can refresh too). Hard
@@ -35,6 +40,7 @@
 		referenceOfId,
 		type ItemLinkResolver
 	} from '$lib/items/bodyLinks';
+	import { foldLabel, foldOpensFor } from '$lib/items/collapsedFields';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import TimerSlot from '$lib/timer/TimerSlot.svelte';
 	import DiagnosticList from '$lib/ui/DiagnosticList.svelte';
@@ -59,6 +65,8 @@
 	let actionError = $state<string | null>(null);
 	let warnings = $state<Diagnostic[]>([]);
 	let busy = $state(false);
+	// The fold over the collapsed fields: closed on every open, no memory.
+	let showCollapsed = $state(false);
 
 	async function loadItem(id: string): Promise<void> {
 		item = null;
@@ -74,9 +82,11 @@
 	}
 
 	// Refetch whenever the target item changes; ensure the schema is loaded.
+	// The fold closes with the switch, so a new item starts folded.
 	$effect(() => {
 		void schemaStore.load();
 		void loadItem(itemId);
+		showCollapsed = false;
 	});
 
 	function valueOf(name: string): FieldValue | null {
@@ -100,12 +110,21 @@
 			return;
 		}
 		warnings = result.diagnostics;
+		if (foldOpensFor(warnings, collapsedNames)) showCollapsed = true;
 		await loadItem(itemId);
 		onmutate?.();
 	}
 
 	// `id` is the immutable identity (shown as the header), not an editor.
 	const editableFields = $derived(schemaStore.fields.filter((field) => field.name !== 'id'));
+	const shownFields = $derived(editableFields.filter((field) => !field.collapsed));
+	const collapsedFields = $derived(editableFields.filter((field) => field.collapsed));
+	const collapsedNames = $derived(new Set(collapsedFields.map((field) => field.name)));
+	// Collapsed fields follow the shown ones once unfolded, each group in
+	// schema order, so a field never changes place while the fold toggles.
+	const visibleFields = $derived(
+		showCollapsed ? [...shownFields, ...collapsedFields] : shownFields
+	);
 
 	// Which ids exist, from the schema's item index — `null` until it has
 	// loaded, so references are not flashed dead in the meantime.
@@ -142,52 +161,66 @@
 		<DiagnosticList diagnostics={warnings} label="Warnings from the last change" />
 
 		<div class="areas">
-			<dl class="fields card">
-				{#each editableFields as field (field.name)}
-					<dt>
-						<span
-							class="field-name"
-							class:has-help={field.description !== null}
-							title={field.description}>{field.name}</span
-						>
-						{#if field.required}<span class="req" title="required">*</span>{/if}
-						{#if field.aggregate}<span class="note">computed</span>{/if}
-					</dt>
-					<dd>
-						<ValueEditor
-							spec={specOfFieldSchema(field)}
-							value={valueOf(field.name)}
-							items={schemaStore.items}
-							palette={schemaStore.palette}
-							resourceOptions={schemaStore.resourceOptions(field)}
-							disabled={busy}
-							onchange={(value: FieldValue | null) => {
-								void commit(field.name, mutationFor(value));
-							}}
-						/>
-						{#if field.resource}<small class="muted">values from “{field.resource}”</small>{/if}
-						{#if field.field_type === 'link' || field.field_type === 'links'}
-							{@const targets = stringsOf(valueOf(field.name))}
-							{#if targets.length > 0}
-								<!-- The picker edits the value; this row follows it. Labels
-								     match the picker and the table: a live reference by its
-								     prettified id, a dead one by the raw id it fails on. -->
-								<nav class="follow" aria-label="Open {field.name}">
-									{#each targets as id (id)}
-										{@const reference = referenceOfId(id, linkResolver)}
-										{@const label = prettifyId(id)}
-										{#if reference.kind === 'item'}
-											<a class="item-link" href={reference.href} title="Open {id}">{label}</a>
-										{:else}
-											<span class="item-link dead" title={missingTitle(id)}>{id}</span>
-										{/if}
-									{/each}
-								</nav>
+			<div class="fields card">
+				<dl class="field-grid">
+					{#each visibleFields as field (field.name)}
+						<dt>
+							<span
+								class="field-name"
+								class:has-help={field.description !== null}
+								title={field.description}>{field.name}</span
+							>
+							{#if field.required}<span class="req" title="required">*</span>{/if}
+							{#if field.aggregate}<span class="note">computed</span>{/if}
+						</dt>
+						<dd>
+							<ValueEditor
+								spec={specOfFieldSchema(field)}
+								value={valueOf(field.name)}
+								items={schemaStore.items}
+								palette={schemaStore.palette}
+								resourceOptions={schemaStore.resourceOptions(field)}
+								disabled={busy}
+								onchange={(value: FieldValue | null) => {
+									void commit(field.name, mutationFor(value));
+								}}
+							/>
+							{#if field.resource}<small class="muted">values from “{field.resource}”</small>{/if}
+							{#if field.field_type === 'link' || field.field_type === 'links'}
+								{@const targets = stringsOf(valueOf(field.name))}
+								{#if targets.length > 0}
+									<!-- The picker edits the value; this row follows it. Labels
+									     match the picker and the table: a live reference by its
+									     prettified id, a dead one by the raw id it fails on. -->
+									<nav class="follow" aria-label="Open {field.name}">
+										{#each targets as id (id)}
+											{@const reference = referenceOfId(id, linkResolver)}
+											{@const label = prettifyId(id)}
+											{#if reference.kind === 'item'}
+												<a class="item-link" href={reference.href} title="Open {id}">{label}</a>
+											{:else}
+												<span class="item-link dead" title={missingTitle(id)}>{id}</span>
+											{/if}
+										{/each}
+									</nav>
+								{/if}
 							{/if}
-						{/if}
-					</dd>
-				{/each}
-			</dl>
+						</dd>
+					{/each}
+				</dl>
+				{#if collapsedFields.length > 0}
+					<!-- Closed: the shown fields and this row. Open: the collapsed
+					     fields follow the shown ones, this row moves below them. -->
+					<button
+						type="button"
+						class="fold"
+						aria-expanded={showCollapsed}
+						onclick={() => (showCollapsed = !showCollapsed)}
+					>
+						{foldLabel(collapsedFields.length, showCollapsed)}
+					</button>
+				{/if}
+			</div>
 
 			<section class="body card">
 				<h3>Description</h3>
@@ -271,11 +304,36 @@
 	}
 
 	.fields {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+	}
+
+	.field-grid {
 		display: grid;
 		grid-template-columns: minmax(6rem, 9rem) 1fr;
 		gap: var(--space-2) var(--space-3);
 		margin: 0;
 		align-items: start;
+	}
+
+	/* The fold row reads as a quiet link, not a button: it only reveals
+	   what is already there. */
+	.fold {
+		align-self: flex-start;
+		background: none;
+		border: 0;
+		padding: 0;
+		font: inherit;
+		font-size: var(--text-sm);
+		color: var(--color-fg-muted);
+		cursor: pointer;
+	}
+
+	.fold:hover,
+	.fold:focus-visible {
+		color: var(--color-fg);
+		text-decoration: underline;
 	}
 
 	dt {

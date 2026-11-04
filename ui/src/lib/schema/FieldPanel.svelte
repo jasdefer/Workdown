@@ -338,6 +338,12 @@
 			<span class="label">Required</span>
 		</label>
 
+		<label class="row inline">
+			<input type="checkbox" bind:checked={draft.collapsed} disabled={saving} />
+			<span class="label">Collapsed</span>
+			<span class="hint">Folded away behind "more fields" when an item is opened.</span>
+		</label>
+
 		<label class="row">
 			<span class="label">Description</span>
 			<textarea rows="3" bind:value={draft.description} disabled={saving}></textarea>

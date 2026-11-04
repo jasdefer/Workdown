@@ -119,6 +119,8 @@ async fn get_schema_carries_per_type_editor_metadata() {
     let status = field("status");
     assert_eq!(status["field_type"], "choice");
     assert_eq!(status["required"], true);
+    // The fold flag rides with every field, false when the file is silent.
+    assert_eq!(status["collapsed"], false);
     let status_values: Vec<&str> = status["values"]
         .as_array()
         .expect("choice carries values")

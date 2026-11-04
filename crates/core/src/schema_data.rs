@@ -132,6 +132,10 @@ pub struct FieldSchema {
     pub description: Option<String>,
     /// Whether the field must be present on every item.
     pub required: bool,
+    /// Whether the item detail folds the field away behind its "more
+    /// fields" row, from `collapsed:` in the schema. The field stays
+    /// editable once unfolded.
+    pub collapsed: bool,
     /// Allowed values for `choice` / `multichoice`; `None` otherwise.
     pub values: Option<Vec<String>>,
     /// Inclusive lower bound for `integer` / `float`; `None` otherwise.
@@ -182,6 +186,7 @@ impl FieldSchema {
             field_type: definition.field_type(),
             description: definition.description.clone(),
             required: definition.required,
+            collapsed: definition.collapsed,
             values,
             min,
             max,
