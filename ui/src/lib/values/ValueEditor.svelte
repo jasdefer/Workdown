@@ -23,6 +23,7 @@
 	import type { ResourceOption } from '$lib/api/generated/ResourceOption';
 	import Chip from '$lib/ui/Chip.svelte';
 	import { prettifyId } from '$lib/views/prettify';
+	import { stringsOf } from './fieldValue';
 	import type { ValueSpec } from './valueSpec';
 
 	interface Props {
@@ -68,8 +69,7 @@
 	const strayValues = $derived.by(() => {
 		if (!picksFromResource) return [];
 		const known = new Set(resourceOptions.map((option) => option.id));
-		const current = spec.fieldType === 'list' ? asArray : asScalar === '' ? [] : [asScalar];
-		return current.filter((entry) => !known.has(entry));
+		return stringsOf(value).filter((entry) => !known.has(entry));
 	});
 
 	// The current color value resolved to hex — palette names resolve

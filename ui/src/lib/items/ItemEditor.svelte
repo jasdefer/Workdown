@@ -16,6 +16,12 @@
   host via `onmutate` so an underlying view can refresh too). Hard
   failures show an inline error; save-with-warning successes show the
   returned diagnostics — the file was still written.
+
+  References to other items are links: `[[id]]` and `[text](id.md)` in
+  the body, and a follow row under each link/links field next to its
+  picker. Where a link leads is the host's call (`hrefFor`): the dialog
+  swaps its item, the standalone page navigates. A reference to an id
+  no item has is shown as dead text, not a 404 (`bodyLinks.ts`).
 -->
 <script lang="ts">
 	import { api } from '$lib/api/client';
@@ -23,21 +29,30 @@
 	import type { FieldMutation } from '$lib/api/generated/FieldMutation';
 	import type { FieldValue } from '$lib/api/generated/FieldValue';
 	import type { ItemDetail } from '$lib/api/generated/ItemDetail';
+	import {
+		itemLinkExtension,
+		missingTitle,
+		referenceOfId,
+		type ItemLinkResolver
+	} from '$lib/items/bodyLinks';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import TimerSlot from '$lib/timer/TimerSlot.svelte';
 	import DiagnosticList from '$lib/ui/DiagnosticList.svelte';
 	import Markdown from '$lib/ui/Markdown.svelte';
+	import { stringsOf } from '$lib/values/fieldValue';
 	import { specOfFieldSchema } from '$lib/values/valueSpec';
 	import ValueEditor from '$lib/values/ValueEditor.svelte';
 	import { prettifyId } from '$lib/views/prettify';
 
 	interface Props {
 		itemId: string;
+		/** The href that opens another item from this host. */
+		hrefFor: (id: string) => string;
 		/** Called after a successful mutation so a host view can refetch. */
 		onmutate?: () => void;
 	}
 
-	let { itemId, onmutate }: Props = $props();
+	let { itemId, hrefFor, onmutate }: Props = $props();
 
 	let item = $state<ItemDetail | null>(null);
 	let loadError = $state<string | null>(null);
@@ -91,6 +106,14 @@
 
 	// `id` is the immutable identity (shown as the header), not an editor.
 	const editableFields = $derived(schemaStore.fields.filter((field) => field.name !== 'id'));
+
+	// Which ids exist, from the schema's item index — `null` until it has
+	// loaded, so references are not flashed dead in the meantime.
+	const linkResolver = $derived<ItemLinkResolver>({
+		knownIds: schemaStore.value === null ? null : new Set(schemaStore.items),
+		hrefFor
+	});
+	const bodyExtensions = $derived([itemLinkExtension(linkResolver)]);
 </script>
 
 <div
@@ -143,6 +166,25 @@
 							}}
 						/>
 						{#if field.resource}<small class="muted">values from “{field.resource}”</small>{/if}
+						{#if field.field_type === 'link' || field.field_type === 'links'}
+							{@const targets = stringsOf(valueOf(field.name))}
+							{#if targets.length > 0}
+								<!-- The picker edits the value; this row follows it. Labels
+								     match the picker and the table: a live reference by its
+								     prettified id, a dead one by the raw id it fails on. -->
+								<nav class="follow" aria-label="Open {field.name}">
+									{#each targets as id (id)}
+										{@const reference = referenceOfId(id, linkResolver)}
+										{@const label = prettifyId(id)}
+										{#if reference.kind === 'item'}
+											<a class="item-link" href={reference.href} title="Open {id}">{label}</a>
+										{:else}
+											<span class="item-link dead" title={missingTitle(id)}>{id}</span>
+										{/if}
+									{/each}
+								</nav>
+							{/if}
+						{/if}
 					</dd>
 				{/each}
 			</dl>
@@ -150,7 +192,7 @@
 			<section class="body card">
 				<h3>Description</h3>
 				{#if item.body.trim().length > 0}
-					<Markdown content={item.body} />
+					<Markdown content={item.body} extensions={bodyExtensions} />
 				{:else}
 					<p class="muted">No description. Edit the body in your editor.</p>
 				{/if}
@@ -260,6 +302,13 @@
 
 	.req {
 		color: var(--color-error-fg);
+	}
+
+	.follow {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.15rem var(--space-2);
+		font-size: var(--text-sm);
 	}
 
 	.note {

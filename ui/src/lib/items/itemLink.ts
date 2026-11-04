@@ -1,4 +1,5 @@
-// Opening an item's detail dialog from any view.
+// Where an item's detail opens: the dialog over the current view, or
+// the standalone page.
 //
 // The dialog is driven by the `?item=` query param on the current view
 // route, so navigation is just a relative URL change — SvelteKit keeps
@@ -7,6 +8,7 @@
 // `openItem` is for elements that can't be anchors (the draggable board
 // card, an SVG rectangle, a canvas-drawn graph node), and
 // `activateOnKey` gives those the keyboard half of the same gesture.
+// `standaloneItemHref` is the page an item has outside any view.
 
 import { goto } from '$app/navigation';
 
@@ -26,4 +28,11 @@ export function activateOnKey(event: KeyboardEvent, activate: () => void): void 
 		event.preventDefault();
 		activate();
 	}
+}
+
+// The standalone page's address — for leaving the view (the dialog's
+// open-standalone link) and for following a reference from that page,
+// where there is no dialog to swap.
+export function standaloneItemHref(id: string): string {
+	return `/items/${encodeURIComponent(id)}`;
 }

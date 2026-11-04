@@ -63,6 +63,24 @@ code {
 	padding: 0.25rem 0.7rem;
 }
 
+/* Item reference — the one look for a link to another work item
+ * wherever one is written: a body's `[[id]]` or `[text](id.md)`
+ * (rendered to HTML, so it can carry no component's scoped style) and
+ * the follow row under a link field. `dead` is a reference no item
+ * answers to: it reads as text rather than a link, with the reason in
+ * its title. */
+.item-link {
+	color: var(--color-accent);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.item-link.dead {
+	color: var(--color-fg-muted);
+	text-decoration: underline dotted;
+	cursor: help;
+}
+
 .sr-only {
 	position: absolute;
 	width: 1px;

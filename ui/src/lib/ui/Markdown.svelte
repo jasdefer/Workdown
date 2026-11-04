@@ -8,20 +8,30 @@
   `compact` mode is for cards and other tight surfaces: tighter
   line-height, collapsed paragraph spacing, smaller headings. Default
   mode is for item detail panels where the body has full vertical room.
+
+  `extensions` are `marked` extensions the host adds for its surface —
+  the item editor's item-link extension, which turns `[[id]]` and
+  `[text](id.md)` into links. Without any, the content renders as plain
+  Markdown on the shared default parser.
 -->
 <script lang="ts">
-	import { marked } from 'marked';
+	import { Marked, marked, type MarkedExtension } from 'marked';
 	import DOMPurify from 'dompurify';
 
 	interface Props {
 		content: string;
 		compact?: boolean;
+		extensions?: MarkedExtension[];
 	}
 
-	let { content, compact = false }: Props = $props();
+	let { content, compact = false, extensions }: Props = $props();
+
+	const parser = $derived(
+		extensions === undefined || extensions.length === 0 ? marked : new Marked(...extensions)
+	);
 
 	const html = $derived.by(() => {
-		const raw = marked.parse(content, { async: false });
+		const raw = parser.parse(content, { async: false });
 		return DOMPurify.sanitize(raw);
 	});
 </script>

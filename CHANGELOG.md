@@ -5,6 +5,14 @@ tagged version into the top of that version's GitHub release page, so
 entries are written for people using workdown, not for people reading
 its source — internal refactors are deliberately absent.
 
+## Unreleased
+
+### Added
+
+- References to other work items in the item detail are links: `[[id]]`
+  and `[text](id.md)` in the body, and the items a link field names.
+  A reference to an item that does not exist is shown as dead text.
+
 ## 0.2.9 - 2026-11-02
 
 ### Changed
