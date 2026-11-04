@@ -1,7 +1,7 @@
 ---
 id: error-page-polish
 title: A centered error page with a 404 illustration
-status: in_progress
+status: done
 parent: misc-work
 tags: [web-ui]
 ---

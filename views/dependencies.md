@@ -8,15 +8,14 @@ flowchart TD
         burndown-chart-design["Decide where the burndown's time axis comes from"]
     end
     subgraph misc-work ["Miscellaneous improvements"]
-        error-page-polish["A centered error page with a 404 illustration"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
-        item-overlay-redesign["Redesign the work item overlay in the web UI"]
+        item-detail-hide-optional-fields["Let the reader hide optional fields in the item detail"]
+        item-detail-side-placement["Let the item detail open at the side again for quick browsing"]
         prepare-commit-msg-hook["Prefill terminal commits with the generated message"]
         project-load-cache["Cache the project load in the server (when it starts to hurt)"]
         recording-dot-extraction["Extract the recording indicator the six item-presenting views each rebuilt"]
         rule-comparison-reference-check["Check comparison references in rules at schema load"]
         ui-toolchain-upgrade["Major upgrades of the web UI's lint and SvelteKit toolchain"]
-        view-sort-slot["Per-view item order: a `sort:` slot on views"]
     end
     subgraph multi-project-support ["Multi-project support"]
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]

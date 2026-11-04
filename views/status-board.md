@@ -6,6 +6,7 @@ Cards grouped into columns by `status`.
 - [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md)
 - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
+- [Let the item detail open at the side again for quick browsing](../workdown-items/item-detail-side-placement.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
@@ -18,11 +19,9 @@ Cards grouped into columns by `status`.
 - [Major upgrades of the web UI's lint and SvelteKit toolchain](../workdown-items/ui-toolchain-upgrade.md)
 
 ## in_progress
-- [A centered error page with a 404 illustration](../workdown-items/error-page-polish.md)
-- [Redesign the work item overlay in the web UI](../workdown-items/item-overlay-redesign.md)
+- [Let the reader hide optional fields in the item detail](../workdown-items/item-detail-hide-optional-fields.md)
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
-- [Per-view item order: a `sort:` slot on views](../workdown-items/view-sort-slot.md)
 
 ## on_hold
 - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md)
@@ -69,6 +68,7 @@ Cards grouped into columns by `status`.
 - [Add `duration` field type](../workdown-items/duration-field-type.md)
 - [Project-level effort field in config.yaml](../workdown-items/effort-field-config.md)
 - [Stopwatch in the web app that records effort](../workdown-items/effort-timer.md)
+- [A centered error page with a 404 illustration](../workdown-items/error-page-polish.md)
 - [Resolve the current date at evaluation time, reproducibly](../workdown-items/evaluation-time-now.md)
 - [Explicit `in` operator; `=` becomes always-literal](../workdown-items/explicit-in-operator.md)
 - [Integer precision and NaN in comparison evaluation](../workdown-items/expression-comparison-corner-cases.md)
@@ -84,7 +84,9 @@ Cards grouped into columns by `status`.
 - [Git sync controls in the web UI](../workdown-items/git-sync-controls.md)
 - [Clicking an item in the graph view does not open it](../workdown-items/graph-item-open.md)
 - [Optional --install-hooks for pre-commit render](../workdown-items/init-install-hooks.md)
+- [Links to other work items do not work in the item detail](../workdown-items/item-body-links-dead.md)
 - [Item mutations](../workdown-items/item-mutations.md)
+- [Redesign the work item overlay in the web UI](../workdown-items/item-overlay-redesign.md)
 - [File watcher and SSE for live updates](../workdown-items/live-updates.md)
 - [Maintenance pass: findings from the 2026-08 codebase review](../workdown-items/maintenance-review-2026-08.md)
 - [One voice for validation messages](../workdown-items/message-style-consistency.md)
@@ -165,6 +167,7 @@ Cards grouped into columns by `status`.
 - [Make the non-Rust schema mirrors fail loudly when they drift](../workdown-items/view-kind-sync-guards.md)
 - [Sort and group view items in one place, not per renderer](../workdown-items/view-order-in-extractor.md)
 - [View & item presentation](../workdown-items/view-presentation.md)
+- [Per-view item order: a `sort:` slot on views](../workdown-items/view-sort-slot.md)
 - [Persist view definitions to views.yaml](../workdown-items/view-write-backend.md)
 - [Collapse the metric-row duplicates of the generic view checks](../workdown-items/views-check-metric-row-dedup.md)
 - [Add views path to config; ship default views.yaml](../workdown-items/views-config-path.md)

@@ -1,7 +1,7 @@
 ---
 id: item-overlay-redesign
 title: Redesign the work item overlay in the web UI
-status: in_progress
+status: done
 parent: misc-work
 tags: [web-ui]
 ---
