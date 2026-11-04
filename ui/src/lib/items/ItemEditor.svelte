@@ -39,6 +39,7 @@
 	import TimerSlot from '$lib/timer/TimerSlot.svelte';
 	import DiagnosticList from '$lib/ui/DiagnosticList.svelte';
 	import Markdown from '$lib/ui/Markdown.svelte';
+	import { stringsOf } from '$lib/values/fieldValue';
 	import { specOfFieldSchema } from '$lib/values/valueSpec';
 	import ValueEditor from '$lib/values/ValueEditor.svelte';
 	import { prettifyId } from '$lib/views/prettify';
@@ -113,12 +114,6 @@
 		hrefFor
 	});
 	const bodyExtensions = $derived([itemLinkExtension(linkResolver)]);
-
-	// The ids a link or links value names, as a list either way.
-	function linkTargets(value: FieldValue | null): string[] {
-		if (Array.isArray(value)) return value.filter((entry) => typeof entry === 'string');
-		return typeof value === 'string' && value.length > 0 ? [value] : [];
-	}
 </script>
 
 <div
@@ -172,14 +167,17 @@
 						/>
 						{#if field.resource}<small class="muted">values from “{field.resource}”</small>{/if}
 						{#if field.field_type === 'link' || field.field_type === 'links'}
-							{@const targets = linkTargets(valueOf(field.name))}
+							{@const targets = stringsOf(valueOf(field.name))}
 							{#if targets.length > 0}
-								<!-- The picker edits the value; this row follows it. -->
+								<!-- The picker edits the value; this row follows it. Labels
+								     match the picker and the table: a live reference by its
+								     prettified id, a dead one by the raw id it fails on. -->
 								<nav class="follow" aria-label="Open {field.name}">
 									{#each targets as id (id)}
 										{@const reference = referenceOfId(id, linkResolver)}
+										{@const label = prettifyId(id)}
 										{#if reference.kind === 'item'}
-											<a class="item-link" href={reference.href} title="Open {id}">{id}</a>
+											<a class="item-link" href={reference.href} title="Open {id}">{label}</a>
 										{:else}
 											<span class="item-link dead" title={missingTitle(id)}>{id}</span>
 										{/if}
@@ -311,7 +309,6 @@
 		flex-wrap: wrap;
 		gap: 0.15rem var(--space-2);
 		font-size: var(--text-sm);
-		font-family: var(--font-mono);
 	}
 
 	.note {

@@ -7,15 +7,11 @@ its source — internal refactors are deliberately absent.
 
 ## Unreleased
 
-### Fixed
+### Added
 
-- References to other work items in the item detail are links. `[[id]]`
-  and `[text](id.md)` in the body open that item: in the dialog by
-  swapping the dialog's item, on the standalone page by navigating to
-  it. A `parent`, `depends_on` or other link field shows the ids it
-  names as links under its picker. A reference to an id no item has is
-  shown as dotted, muted text with the reason in its tooltip instead of
-  leading to a 404.
+- References to other work items in the item detail are links: `[[id]]`
+  and `[text](id.md)` in the body, and the items a link field names.
+  A reference to an item that does not exist is shown as dead text.
 
 ## 0.2.9 - 2026-11-02
 
