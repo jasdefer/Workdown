@@ -1,7 +1,8 @@
-// The fold in the item detail: fields the schema marks `collapsed: true`
-// sit behind one "Show N more fields" row, closed every time an item is
-// opened. Nothing is remembered. The only decisions worth a test are
-// pulled out here: when the fold opens on its own, and what its row says.
+// The fold in the item detail and the new-item form: fields the schema
+// marks `collapsed: true` sit behind one "Show N more fields" row,
+// closed every time an item or the form is opened. Nothing is
+// remembered. The only decisions worth a test are pulled out here: when
+// the fold opens on its own (the detail only), and what its row says.
 
 import type { Diagnostic } from '$lib/api/generated/Diagnostic';
 

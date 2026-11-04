@@ -66,7 +66,7 @@
 	let warnings = $state<Diagnostic[]>([]);
 	let busy = $state(false);
 	// The fold over the collapsed fields: closed on every open, no memory.
-	let showCollapsed = $state(false);
+	let foldOpen = $state(false);
 
 	async function loadItem(id: string): Promise<void> {
 		item = null;
@@ -86,7 +86,7 @@
 	$effect(() => {
 		void schemaStore.load();
 		void loadItem(itemId);
-		showCollapsed = false;
+		foldOpen = false;
 	});
 
 	function valueOf(name: string): FieldValue | null {
@@ -110,7 +110,7 @@
 			return;
 		}
 		warnings = result.diagnostics;
-		if (foldOpensFor(warnings, collapsedNames)) showCollapsed = true;
+		if (foldOpensFor(warnings, collapsedNames)) foldOpen = true;
 		await loadItem(itemId);
 		onmutate?.();
 	}
@@ -122,9 +122,7 @@
 	const collapsedNames = $derived(new Set(collapsedFields.map((field) => field.name)));
 	// Collapsed fields follow the shown ones once unfolded, each group in
 	// schema order, so a field never changes place while the fold toggles.
-	const visibleFields = $derived(
-		showCollapsed ? [...shownFields, ...collapsedFields] : shownFields
-	);
+	const visibleFields = $derived(foldOpen ? [...shownFields, ...collapsedFields] : shownFields);
 
 	// Which ids exist, from the schema's item index — `null` until it has
 	// loaded, so references are not flashed dead in the meantime.
@@ -214,10 +212,10 @@
 					<button
 						type="button"
 						class="fold"
-						aria-expanded={showCollapsed}
-						onclick={() => (showCollapsed = !showCollapsed)}
+						aria-expanded={foldOpen}
+						onclick={() => (foldOpen = !foldOpen)}
 					>
-						{foldLabel(collapsedFields.length, showCollapsed)}
+						{foldLabel(collapsedFields.length, foldOpen)}
 					</button>
 				{/if}
 			</div>

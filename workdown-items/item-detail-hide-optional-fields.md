@@ -84,3 +84,17 @@ hidden field still has to be visible.
 10. **ADR-008** gets one paragraph under its consequences recording the
     single per-field presentation flag and why a negative list was
     chosen over a `fields` list.
+
+## Decisions taken in review (2026-11-04)
+
+11. **The new-item form folds too.** Same row, same label, closed when
+    the form opens; the id override stays the last row of the grid, the
+    unfolded fields slot in above it. Nothing opens the fold on its own
+    there, since a create with warnings replaces the form with the link
+    to the item.
+12. **The schema table shows the flag** in a "Collapsed" column beside
+    "Required", the same check mark, so a reader sees which fields fold
+    without opening each row.
+13. **One UI test for the round trip** of a set flag through the field
+    draft into the write body, since decision 7 names that link as the
+    one that would otherwise drop the flag on the next save.

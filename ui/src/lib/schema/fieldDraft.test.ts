@@ -145,6 +145,12 @@ describe('initialDraft', () => {
 		});
 	});
 
+	it('carries a set collapsed flag through to the write, so a save never drops it', () => {
+		const draft = initialDraft(served({ collapsed: true }));
+		expect(draft.collapsed).toBe(true);
+		expect(writeBody(draft).collapsed).toBe(true);
+	});
+
 	it('keeps a generator default as a generator', () => {
 		const draft = initialDraft(served({ default: { kind: 'generator', generator: '$today' } }));
 		expect(draft.default).toEqual({ kind: 'generator', generator: '$today' });

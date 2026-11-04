@@ -115,11 +115,11 @@ pub struct FieldDefinition {
     /// Whether this field must be present on every work item.
     pub required: bool,
 
-    /// Whether the item detail in the web app folds this field away
-    /// behind a "more fields" row. Presentation only: the field stays
-    /// editable there and nothing else (views, render, the CLI) reads
-    /// it. Set by hand in `schema.yaml` on helper fields a reader
-    /// rarely wants to see, like a condition-derived color.
+    /// Whether the web app's item detail and new-item form fold this
+    /// field away behind a "more fields" row. Presentation only: the
+    /// field stays editable there and nothing else (views, render, the
+    /// CLI) reads it. Set by hand in `schema.yaml` on helper fields a
+    /// reader rarely wants to see, like a condition-derived color.
     pub collapsed: bool,
 
     /// Default value applied by `workdown add`.

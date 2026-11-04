@@ -9,12 +9,18 @@
   create with no warnings navigates to the new item; a save-with-warning
   create surfaces the diagnostics and offers a link rather than hiding
   them behind a redirect.
+
+  Fields the schema marks `collapsed: true` sit behind one "Show N more
+  fields" row, closed when the form opens, as in the item detail
+  (`$lib/items/collapsedFields.ts`). Unfolded, they are editors like
+  any other and their values go into the draft the same way.
 -->
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api/client';
 	import type { Diagnostic } from '$lib/api/generated/Diagnostic';
 	import type { FieldValue } from '$lib/api/generated/FieldValue';
+	import { foldLabel } from '$lib/items/collapsedFields';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import DiagnosticList from '$lib/ui/DiagnosticList.svelte';
 	import { specOfFieldSchema } from '$lib/values/valueSpec';
@@ -26,6 +32,8 @@
 	let actionError = $state<string | null>(null);
 	let warnings = $state<Diagnostic[]>([]);
 	let created = $state<string | null>(null);
+	// The fold over the collapsed fields: closed when the form opens.
+	let foldOpen = $state(false);
 
 	$effect(() => {
 		void schemaStore.load();
@@ -34,6 +42,11 @@
 	// Every field except the identity, which comes from the override or a
 	// slug of `title`.
 	const formFields = $derived(schemaStore.fields.filter((field) => field.name !== 'id'));
+	const shownFields = $derived(formFields.filter((field) => !field.collapsed));
+	const collapsedFields = $derived(formFields.filter((field) => field.collapsed));
+	// Collapsed fields follow the shown ones once unfolded, each group in
+	// schema order; the id override stays the last row either way.
+	const visibleFields = $derived(foldOpen ? [...shownFields, ...collapsedFields] : shownFields);
 
 	function draftValue(name: string): FieldValue | null {
 		return (draft[name] ?? null) as FieldValue | null;
@@ -96,41 +109,53 @@
 					void submit();
 				}}
 			>
-				<dl class="fields card">
-					{#each formFields as field (field.name)}
-						<dt>
-							<span
-								class="field-name"
-								class:has-help={field.description !== null}
-								title={field.description}>{field.name}</span
-							>
-							{#if field.required}<span class="req" title="required">*</span>{/if}
-						</dt>
+				<div class="fields card">
+					<dl class="field-grid">
+						{#each visibleFields as field (field.name)}
+							<dt>
+								<span
+									class="field-name"
+									class:has-help={field.description !== null}
+									title={field.description}>{field.name}</span
+								>
+								{#if field.required}<span class="req" title="required">*</span>{/if}
+							</dt>
+							<dd>
+								<ValueEditor
+									spec={specOfFieldSchema(field)}
+									value={draftValue(field.name)}
+									items={schemaStore.items}
+									palette={schemaStore.palette}
+									resourceOptions={schemaStore.resourceOptions(field)}
+									disabled={submitting}
+									onchange={(value: FieldValue | null) => {
+										applyToDraft(field.name, value);
+									}}
+								/>
+							</dd>
+						{/each}
+
+						<dt><span class="field-name">id</span></dt>
 						<dd>
-							<ValueEditor
-								spec={specOfFieldSchema(field)}
-								value={draftValue(field.name)}
-								items={schemaStore.items}
-								palette={schemaStore.palette}
-								resourceOptions={schemaStore.resourceOptions(field)}
+							<input
+								type="text"
+								placeholder="optional — defaults to a slug of the title"
+								bind:value={explicitId}
 								disabled={submitting}
-								onchange={(value: FieldValue | null) => {
-									applyToDraft(field.name, value);
-								}}
 							/>
 						</dd>
-					{/each}
-
-					<dt><span class="field-name">id</span></dt>
-					<dd>
-						<input
-							type="text"
-							placeholder="optional — defaults to a slug of the title"
-							bind:value={explicitId}
-							disabled={submitting}
-						/>
-					</dd>
-				</dl>
+					</dl>
+					{#if collapsedFields.length > 0}
+						<button
+							type="button"
+							class="fold"
+							aria-expanded={foldOpen}
+							onclick={() => (foldOpen = !foldOpen)}
+						>
+							{foldLabel(collapsedFields.length, foldOpen)}
+						</button>
+					{/if}
+				</div>
 
 				<div class="actions">
 					<a href="/" class="cancel">Cancel</a>
@@ -176,11 +201,36 @@
 	}
 
 	.fields {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+	}
+
+	.field-grid {
 		display: grid;
 		grid-template-columns: minmax(6rem, 9rem) 1fr;
 		gap: var(--space-2) var(--space-3);
 		margin: 0;
 		align-items: start;
+	}
+
+	/* The fold row reads as a quiet link, not a button: it only reveals
+	   what is already there. Same rule as the item detail's. */
+	.fold {
+		align-self: flex-start;
+		background: none;
+		border: 0;
+		padding: 0;
+		font: inherit;
+		font-size: var(--text-sm);
+		color: var(--color-fg-muted);
+		cursor: pointer;
+	}
+
+	.fold:hover,
+	.fold:focus-visible {
+		color: var(--color-fg);
+		text-decoration: underline;
 	}
 
 	dt {
