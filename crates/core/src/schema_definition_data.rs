@@ -51,7 +51,7 @@ use crate::model::schema::{
 use crate::parser::schema::{parse_schema_with_document, SchemaLoadError};
 use crate::project::LoadError;
 use crate::rule_shape::RuleShape;
-use crate::rules::assertion::{equality_defined, ordering_defined};
+use crate::rules::assertion::ordering_defined;
 use crate::rules::condition::value_test_defined;
 
 // ── Wire types ────────────────────────────────────────────────────────
@@ -102,13 +102,10 @@ pub struct SchemaDefinitionData {
     /// condition): those the rule engine compares a value of. In
     /// [`FieldType`] declaration order.
     pub rule_value_test_types: Vec<FieldType>,
-    /// The types a rule may test field to field for equality
-    /// (`eq_field`): those the rule engine compares by value. In
-    /// [`FieldType`] declaration order.
-    pub rule_equality_types: Vec<FieldType>,
     /// The types a rule may order field to field (`lt_field` and the
     /// rest): those the rule engine has an order for. In [`FieldType`]
-    /// declaration order.
+    /// declaration order. Equality (`eq_field`) has no list: the engine
+    /// tests every type by value, so the editor offers it on all.
     pub rule_comparable_types: Vec<FieldType>,
     /// The comparison operators a condition row may use, each with the
     /// symbol the grammar spells it as, in the grammar's order.
@@ -358,9 +355,9 @@ pub struct FieldTypePullSources {
     /// The source types a `link` pull copies, in [`FieldType`]
     /// declaration order.
     pub copy_sources: Vec<FieldType>,
-    /// Only the source types with at least one function, in
-    /// [`FieldType`] declaration order.
-    pub sources: Vec<PullSource>,
+    /// The source types a `links` pull reduces: only those with at
+    /// least one function, in [`FieldType`] declaration order.
+    pub reduction_sources: Vec<PullSource>,
 }
 
 /// One source type a `links` pull may read, with the functions that
@@ -465,7 +462,7 @@ pub fn build(yaml: &str) -> Result<SchemaDefinitionData, SchemaLoadError> {
                     .copied()
                     .filter(|&source_type| pull_copy_fits(source_type, field_type))
                     .collect(),
-                sources: FieldType::VARIANTS
+                reduction_sources: FieldType::VARIANTS
                     .iter()
                     .map(|&source_type| PullSource {
                         field_type: source_type,
@@ -501,11 +498,6 @@ pub fn build(yaml: &str) -> Result<SchemaDefinitionData, SchemaLoadError> {
             .iter()
             .copied()
             .filter(|&field_type| value_test_defined(field_type))
-            .collect(),
-        rule_equality_types: FieldType::VARIANTS
-            .iter()
-            .copied()
-            .filter(|&field_type| equality_defined(field_type))
             .collect(),
         rule_comparable_types: FieldType::VARIANTS
             .iter()
@@ -1039,7 +1031,7 @@ rules:
                 .iter()
                 .find(|row| row.field_type == field_type)
                 .unwrap()
-                .sources
+                .reduction_sources
                 .clone()
         };
         assert_eq!(data.pull_sources_by_type.len(), FieldType::VARIANTS.len());
@@ -1099,14 +1091,6 @@ rules:
         assert!(!data.pull_types.contains(&FieldType::Link));
         assert!(!data.pull_types.contains(&FieldType::Links));
         assert!(data.pull_types.contains(&FieldType::Choice));
-    }
-
-    #[test]
-    fn rule_equality_types_are_every_type_and_comparable_types_only_the_ordered() {
-        let data = built();
-        assert_eq!(data.rule_equality_types, FieldType::VARIANTS.to_vec());
-        assert!(data.rule_comparable_types.contains(&FieldType::Date));
-        assert!(!data.rule_comparable_types.contains(&FieldType::Choice));
     }
 
     #[test]

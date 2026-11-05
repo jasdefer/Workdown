@@ -17,8 +17,10 @@
   grey.
 
   Owns no state: the draft's pull is the value, and a change goes up
-  as the whole new config; the panel conforms the field and function
-  to a changed relation.
+  as the whole new config. A field change is conformed here
+  (`withPullSource`, from the `sources` given); a relation change goes
+  up as is and the panel's `onPullChange` conforms it, because the
+  fields readable through the new relation are not known here.
 -->
 <script lang="ts">
 	import type { AggregateFunction } from '$lib/api/generated/AggregateFunction';
@@ -104,7 +106,7 @@
 						<option value={strayFunction}>{strayFunction} (does not fit)</option>
 					{/if}
 					{#if missingFunction}
-						<option value="">— function —</option>
+						<option value="" disabled>Function…</option>
 					{/if}
 				</select>
 			</label>

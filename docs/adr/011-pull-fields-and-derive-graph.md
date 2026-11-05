@@ -26,6 +26,14 @@ structurally could not evaluate.
   with `compute` and `when`; the mechanisms now read *aggregate = same
   field, reverse links, transitive; pull = other field, forward links,
   one hop; compute/when = same item*.
+- Over a `link` the pull copies instead of reducing (2026-11-05): one
+  target means nothing to reduce, so `function` is left out, the value
+  lands as it is, and every type but the relations can be pulled this
+  way — the way a few fields written once on a root reach every
+  descendant. Over a `links` nothing changes: `function` stays
+  required with its type restrictions. One `PullConfig` with an
+  optional `function`, not two config shapes: which case applies is
+  only known once `over` resolves, so the config check decides.
 - The derive orchestrator schedules one unified dependency graph over
   (item, field) nodes — edges from compute/when references (same
   item), pull sources (forward links), and aggregate children (reverse

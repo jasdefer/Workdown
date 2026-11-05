@@ -706,10 +706,11 @@ pub(crate) fn aggregate_result_type(
     }
 }
 
-/// Whether a reduction producing `result_type` may land in a field
-/// declared `declared_type`: the same type, or a whole number in a
-/// `float` field. The one place this is spelled; the pull check and the
-/// pull-source table the web app is served both ask here.
+/// Whether a value of `result_type` may land in a field declared
+/// `declared_type`: the same type, or a whole number in a `float`
+/// field. The one place this widening is spelled, for a reduction's
+/// result and for a copied value alike; the pull check, the pull-source
+/// table the web app is served and [`pull_copy_fits`] all ask here.
 pub(crate) fn aggregate_result_fits(result_type: FieldType, declared_type: FieldType) -> bool {
     result_type == declared_type
         || (result_type == FieldType::Integer && declared_type == FieldType::Float)

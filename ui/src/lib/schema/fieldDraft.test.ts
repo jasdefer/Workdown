@@ -94,7 +94,7 @@ const tables: TypeTables = {
 		{
 			field_type: 'integer',
 			copy_sources: ['integer'],
-			sources: [
+			reduction_sources: [
 				{ field_type: 'integer', functions: ['sum', 'min', 'max', 'count'] },
 				{ field_type: 'date', functions: ['count'] }
 			]
@@ -102,10 +102,10 @@ const tables: TypeTables = {
 		{
 			field_type: 'date',
 			copy_sources: ['date'],
-			sources: [{ field_type: 'date', functions: ['min', 'max', 'average'] }]
+			reduction_sources: [{ field_type: 'date', functions: ['min', 'max', 'average'] }]
 		},
-		{ field_type: 'string', copy_sources: ['string'], sources: [] },
-		{ field_type: 'link', copy_sources: [], sources: [] }
+		{ field_type: 'string', copy_sources: ['string'], reduction_sources: [] },
+		{ field_type: 'link', copy_sources: [], reduction_sources: [] }
 	],
 	expression_readable_types: [
 		'string',

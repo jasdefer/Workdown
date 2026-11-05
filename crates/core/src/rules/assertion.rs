@@ -151,7 +151,7 @@ fn check_operator(
 
     // Field-to-field comparisons — skip when either operand is null.
     if let Some(ref other_ref) = operator.eq_field {
-        if let Some(detail) = check_field_comparison(item, field_ref, other_ref, "==", ctx) {
+        if let Some(detail) = check_field_equality(item, field_ref, other_ref, ctx) {
             return Some(detail);
         }
     }
@@ -209,13 +209,13 @@ fn check_operator(
 
 // ── Field-to-field comparison ───────────────────────────────────────
 
-/// Compare two field values for equality. Returns a violation detail if
-/// they are not equal, or `None` if they are equal or either is null.
-fn check_field_comparison(
+/// Test two field values for equality (`eq_field`). Returns a violation
+/// detail if they are not equal, or `None` if they are equal or either
+/// is null. The ordered operators are [`check_field_ordering`].
+fn check_field_equality(
     item: &WorkItem,
     field_ref: &str,
     other_ref: &str,
-    operator_str: &str,
     ctx: &EvalContext,
 ) -> Option<String> {
     let this_value = resolve_single_value(item, field_ref, ctx)?;
@@ -225,7 +225,7 @@ fn check_field_comparison(
         return None;
     }
     Some(format!(
-        "'{field_ref}' must {operator_str} '{}'",
+        "'{field_ref}' must == '{}'",
         display_operand(other_ref, other_value),
     ))
 }
@@ -285,36 +285,14 @@ fn resolve_single_value<'a>(
     }
 }
 
-/// Whether two values of `field_type` can be tested for equality, so
-/// that `eq_field` means something: every type, because a field value
-/// of any type is a definite value. Two values of different types are
-/// simply unequal (an integer and a float compare numerically, the one
-/// pairing the file can spell two ways). The rules editor reads this to
-/// offer the comparison, beside [`ordering_defined`] for the ordered
-/// ones, so the fact is spelled here next to [`field_values_equal`].
-pub(crate) fn equality_defined(field_type: FieldType) -> bool {
-    // The exhaustive match is the point: a new type must say so here.
-    match field_type {
-        FieldType::String
-        | FieldType::Choice
-        | FieldType::Multichoice
-        | FieldType::Integer
-        | FieldType::Float
-        | FieldType::Date
-        | FieldType::Duration
-        | FieldType::Color
-        | FieldType::Boolean
-        | FieldType::List
-        | FieldType::Link
-        | FieldType::Links => true,
-    }
-}
-
 /// Whether two field values are equal for `eq_field`: by value, with
-/// an integer and a float compared numerically. Values of two other
-/// types are never equal — there is no silent skip for a type reason;
-/// a comparison that can never hold is a schema mistake for the load
-/// check to report, not for the evaluator to hide.
+/// an integer and a float compared numerically (the one pairing the
+/// file can spell two ways). Defined for every type, so the rules
+/// editor offers equality unconditionally and no served list says
+/// where; only the ordered comparisons need [`ordering_defined`].
+/// Values of two other types are never equal — there is no silent skip
+/// for a type reason; a comparison that can never hold is a schema
+/// mistake for the load check to report, not for the evaluator to hide.
 pub(crate) fn field_values_equal(left: &FieldValue, right: &FieldValue) -> bool {
     match (left, right) {
         (FieldValue::Integer(left), FieldValue::Float(right)) => (*left as f64) == *right,
@@ -424,6 +402,37 @@ mod tests {
                 "{field_type}: the list and the comparison disagree"
             );
         }
+    }
+
+    // ── field_values_equal ──────────────────────────────────────
+
+    #[test]
+    fn field_values_equal_by_value_with_integer_and_float_compared_numerically() {
+        assert!(field_values_equal(
+            &FieldValue::Choice("memo".into()),
+            &FieldValue::Choice("memo".into())
+        ));
+        assert!(!field_values_equal(
+            &FieldValue::Choice("memo".into()),
+            &FieldValue::Choice("report".into())
+        ));
+        assert!(field_values_equal(
+            &FieldValue::Integer(3),
+            &FieldValue::Float(3.0)
+        ));
+        assert!(field_values_equal(
+            &FieldValue::Float(3.0),
+            &FieldValue::Integer(3)
+        ));
+        assert!(!field_values_equal(
+            &FieldValue::Integer(3),
+            &FieldValue::Float(3.5)
+        ));
+        // Two other types are unequal, never skipped.
+        assert!(!field_values_equal(
+            &FieldValue::String("3".into()),
+            &FieldValue::Integer(3)
+        ));
     }
 
     // ── compare_field_values ────────────────────────────────────

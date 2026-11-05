@@ -4,9 +4,9 @@
   requirement, and what the requirement needs — a list of values, a
   comparison with another field, a count. Which requirements a row
   offers follow what its reference points at and the target field's
-  type, so equality is offered where the engine tests the type by
-  value, an ordered comparison only on a date or a number, and a count
-  only on the related items themselves.
+  type, so equality is offered on every type, an ordered comparison
+  only on a date or a number, and a count only on the related items
+  themselves.
 
   Owns no draft state: the rows are the value and every change goes up
   through `onchange` as the whole new list.

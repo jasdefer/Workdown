@@ -277,7 +277,10 @@
 
 	function onPullChange(next: PullConfig): void {
 		// A new relation may read different fields, or read them
-		// differently; the field and function follow it.
+		// differently; the field and function follow it. Conformed here
+		// and not in PullBlock because only the panel has the tables and
+		// fields that say what the new relation can read; a field
+		// change PullBlock conforms itself.
 		const conformed =
 			draft.recipe?.kind === 'pull' && next.over !== draft.recipe.over
 				? withPullRelation(definition, definition.fields, draft.fieldType, next, next.over)

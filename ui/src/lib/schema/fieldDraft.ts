@@ -339,7 +339,7 @@ export function pullSources(
 			.map((field) => ({ name: field.name, functions: [] }));
 	}
 	return fields.flatMap((field) => {
-		const source = row.sources.find((entry) => entry.field_type === field.field_type);
+		const source = row.reduction_sources.find((entry) => entry.field_type === field.field_type);
 		return source === undefined ? [] : [{ name: field.name, functions: source.functions }];
 	});
 }

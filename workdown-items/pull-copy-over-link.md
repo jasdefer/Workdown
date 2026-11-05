@@ -86,10 +86,13 @@ Taken 2026-11-05.
    the ordering helper keeps serving the four ordered operators.
    Rejecting an impossible comparison at load is
    [[rule-comparison-reference-check]].
-7. **Rule editor offers equality on every type.** The server serves
-   two type lists, equality-defined and ordering-defined; the
-   requirement row offers "equals" where equality is defined and the
-   ordered comparisons only where an order is.
+7. **Rule editor offers equality on every type.** Unconditionally:
+   equality holds for every type, so no served list says where, and
+   the one list the server serves (ordering-defined) decides where
+   the ordered comparisons are offered. A first draft served a second
+   list for equality; it was dropped in review (2026-11-05) because a
+   list that is always every type carries no information, and a field
+   type without equality cannot exist.
 8. **Pull block hides "Combine with" over a `link`.** There is no
    choice to make, so the picker goes and the hint reads "An item's
    value is `field` on the item its `relation` points at".
