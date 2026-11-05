@@ -308,6 +308,10 @@ pub struct FieldDefinitionWrite {
     /// Whether every item must carry the field.
     #[serde(default)]
     pub required: bool,
+    /// Whether the item detail folds the field away; written only when
+    /// set, removed from the entry when cleared.
+    #[serde(default)]
+    pub collapsed: bool,
     /// Human-readable explanation; `None` clears it.
     #[serde(default)]
     pub description: Option<String>,

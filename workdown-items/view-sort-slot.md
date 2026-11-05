@@ -1,7 +1,7 @@
 ---
 id: view-sort-slot
 title: 'Per-view item order: a `sort:` slot on views'
-status: in_progress
+status: done
 parent: misc-work
 ---
 Every item-presenting view orders its items by id: board columns, table rows, tree siblings and the unplaced footer are all alphabetical, and nothing in `views.yaml` can change that. A project that wants to see what was created most recently — the item it just added and did not assign to anyone — has no way to express it. The table view in the web UI lets a reader click a column header, but that state is session-local and the rendered Markdown stays id-ordered.

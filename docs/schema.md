@@ -41,6 +41,7 @@ Field names are lowercase letters, digits, and underscores, starting with a lett
 |--------|------|-------------|
 | `type` | string | Required. One of the types above. |
 | `required` | boolean | Whether the field must be present. Default: `false`. |
+| `collapsed` | boolean | Whether the web app's item detail and new-item form fold the field away behind a "Show N more fields" row, for helper fields a reader rarely wants to see (a derived color, say). The field stays editable once unfolded; views, `render` and the CLI ignore the flag. Default: `false`. |
 | `default` | value | Default value applied by `workdown add`. Can be a literal or a generator. A literal must be a value the field accepts (its type, `values`, `min`/`max`, `pattern`); one that is not fails at load. |
 | `description` | string | Human-readable explanation. |
 | `resource` | string | Name of a resource section in `resources.yaml`. Valid for `string` and `list` types. See [Resources](#resources). |

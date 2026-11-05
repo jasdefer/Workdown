@@ -121,6 +121,8 @@ pub struct FieldDefinitionData {
     pub field_type: FieldType,
     /// Whether every item must carry the field.
     pub required: bool,
+    /// Whether the item detail folds the field away (`collapsed:`).
+    pub collapsed: bool,
     /// Human-readable explanation, as written.
     pub description: Option<String>,
     /// The `default:` applied at `workdown add` time, if any.
@@ -507,6 +509,7 @@ impl FieldDefinitionData {
             name: name.to_owned(),
             field_type: definition.field_type(),
             required: definition.required,
+            collapsed: definition.collapsed,
             description: definition.description.clone(),
             default: default_data(definition),
             resource: definition.resource.clone(),
@@ -655,6 +658,7 @@ fields:
     default: open
   tags:
     type: multichoice
+    collapsed: true
     values: [a, b]
   points:
     type: integer
@@ -775,6 +779,8 @@ rules:
             }
         );
         assert!(field(&data, "status").required);
+        assert!(!field(&data, "status").collapsed);
+        assert!(field(&data, "tags").collapsed);
         assert_eq!(
             field(&data, "tags").shape,
             FieldShape::Values {

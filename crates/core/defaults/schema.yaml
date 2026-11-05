@@ -54,6 +54,8 @@ fields:
   status_color:
     type: color
     description: Derived from status by the first matching branch; a color set by hand on an item wins. Tints cards and bars through the display color role in config.yaml.
+    # Folded away behind "more fields" in the web app's item detail and new-item form.
+    collapsed: true
     when:
       - if: status == "done"
         then: green

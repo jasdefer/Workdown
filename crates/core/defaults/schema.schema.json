@@ -50,6 +50,11 @@
           "default": false,
           "description": "Whether this field must be present on every work item."
         },
+        "collapsed": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the web app's item detail and new-item form fold this field away behind a 'more fields' row. The field stays editable once unfolded; views, render and the CLI ignore the flag."
+        },
         "default": {
           "description": "Default value applied by `workdown add`. Can be a literal value or a generator ($filename, $filename_pretty, $uuid, $today, $max_plus_one).",
           "oneOf": [

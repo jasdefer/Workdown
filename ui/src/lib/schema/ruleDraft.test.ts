@@ -44,6 +44,7 @@ function field(
 		name,
 		field_type,
 		required: false,
+		collapsed: false,
 		description: null,
 		default: null,
 		resource: null,

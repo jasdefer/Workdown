@@ -152,6 +152,7 @@
 								<col class="col-type" />
 								<col class="col-filled" />
 								<col class="col-required" />
+								<col class="col-collapsed" />
 								<col class="col-default" />
 								<col class="col-description" />
 							</colgroup>
@@ -162,6 +163,7 @@
 									<th scope="col">Type</th>
 									<th scope="col">Filled by</th>
 									<th scope="col">Required</th>
+									<th scope="col">Collapsed</th>
 									<th scope="col">Default</th>
 									<th scope="col">Description</th>
 								</tr>
@@ -223,6 +225,10 @@
 										</td>
 										<td class="required-cell">
 											{#if field.required}<span aria-label="required">✓</span>{/if}
+										</td>
+										<!-- Folded away in the item detail and the new-item form. -->
+										<td class="collapsed-cell">
+											{#if field.collapsed}<span aria-label="collapsed">✓</span>{/if}
 										</td>
 										<td class="default-cell">
 											{#if field.default === null}
@@ -422,7 +428,8 @@
 		width: 11%;
 	}
 
-	.col-required {
+	.col-required,
+	.col-collapsed {
 		width: 5.5rem;
 	}
 
@@ -558,7 +565,8 @@
 		overflow-wrap: anywhere;
 	}
 
-	.required-cell {
+	.required-cell,
+	.collapsed-cell {
 		text-align: center;
 	}
 

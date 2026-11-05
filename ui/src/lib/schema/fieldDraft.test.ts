@@ -117,6 +117,7 @@ function served(overrides: Partial<FieldDefinitionData>): FieldDefinitionData {
 		name: 'points',
 		field_type: 'integer',
 		required: false,
+		collapsed: false,
 		description: null,
 		default: null,
 		resource: null,
@@ -134,6 +135,7 @@ describe('initialDraft', () => {
 			name: 'points',
 			fieldType: 'integer',
 			required: false,
+			collapsed: false,
 			description: '',
 			default: null,
 			resource: null,
@@ -141,6 +143,12 @@ describe('initialDraft', () => {
 			recipe: null,
 			aggregate: null
 		});
+	});
+
+	it('carries a set collapsed flag through to the write, so a save never drops it', () => {
+		const draft = initialDraft(served({ collapsed: true }));
+		expect(draft.collapsed).toBe(true);
+		expect(writeBody(draft).collapsed).toBe(true);
 	});
 
 	it('keeps a generator default as a generator', () => {
@@ -160,6 +168,7 @@ describe('newDraft', () => {
 			name: '',
 			fieldType: 'choice',
 			required: false,
+			collapsed: false,
 			description: '',
 			default: null,
 			resource: null,
@@ -175,6 +184,7 @@ describe('retype', () => {
 		name: 'owner',
 		fieldType: 'string',
 		required: true,
+		collapsed: false,
 		description: 'Who has it',
 		default: { kind: 'generator', generator: '$filename' },
 		resource: 'people',
@@ -188,6 +198,7 @@ describe('retype', () => {
 			name: 'owner',
 			fieldType: 'date',
 			required: true,
+			collapsed: false,
 			description: 'Who has it',
 			default: null,
 			resource: null,
@@ -363,6 +374,7 @@ describe('writeBody', () => {
 		name: 'points',
 		fieldType: 'integer',
 		required: true,
+		collapsed: false,
 		description: '  Story points  ',
 		default: { kind: 'literal', value: 3 },
 		resource: null,
@@ -375,6 +387,7 @@ describe('writeBody', () => {
 		expect(writeBody(draft)).toEqual({
 			field_type: 'integer',
 			required: true,
+			collapsed: false,
 			description: 'Story points',
 			default: { kind: 'literal', value: 3 },
 			resource: null,
@@ -744,6 +757,7 @@ describe('pulls', () => {
 			name: 'blocked_points',
 			fieldType: 'integer',
 			required: false,
+			collapsed: false,
 			description: '',
 			default: null,
 			resource: null,

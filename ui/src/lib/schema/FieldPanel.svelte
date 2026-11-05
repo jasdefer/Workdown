@@ -1,7 +1,7 @@
 <!--
   The field editor: the docked panel the schema page opens on a row click
   (`?field=<name>`) or on Add field (`?add`). A header block every type
-  shares — name, type, required, description, default — then the
+  shares — name, type, required, collapsed, description, default — then the
   type-specific block, the "Value" section with the way the value is
   filled (by hand, by the first condition that holds, by a formula, or
   pulled from linked items), the rollup section for the types that
@@ -336,6 +336,12 @@
 		<label class="row inline">
 			<input type="checkbox" bind:checked={draft.required} disabled={saving} />
 			<span class="label">Required</span>
+		</label>
+
+		<label class="row inline">
+			<input type="checkbox" bind:checked={draft.collapsed} disabled={saving} />
+			<span class="label">Collapsed</span>
+			<span class="hint">Folded away behind "more fields" when an item is opened or created.</span>
 		</label>
 
 		<label class="row">

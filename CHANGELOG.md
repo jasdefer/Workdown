@@ -12,6 +12,10 @@ its source — internal refactors are deliberately absent.
 - References to other work items in the item detail are links: `[[id]]`
   and `[text](id.md)` in the body, and the items a link field names.
   A reference to an item that does not exist is shown as dead text.
+- A field can be marked `collapsed: true` in `schema.yaml`. The item
+  detail and the new-item form fold such fields away behind a "Show N
+  more fields" row; the schema editor has the checkbox and the schema
+  table a column for it.
 
 ## 0.2.9 - 2026-11-02
 
