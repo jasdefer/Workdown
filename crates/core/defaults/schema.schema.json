@@ -113,7 +113,7 @@
         },
         "pull": {
           "$ref": "#/$defs/pull",
-          "description": "Pull config for pull fields: the value derives from a different field read through a forward link and reduced, e.g. start = max of the dependencies' end."
+          "description": "Pull config for pull fields: the value derives from a different field read through a forward link — copied over a link (one target), reduced over a links, e.g. start = max of the dependencies' end."
         },
         "when": {
           "$ref": "#/$defs/when",
@@ -129,9 +129,10 @@
           "allOf": [
             { "not": { "required": ["compute"] } },
             { "not": { "required": ["when"] } },
-            { "not": { "required": ["default"] } }
+            { "not": { "required": ["default"] } },
+            { "properties": { "type": { "not": { "enum": ["link", "links"] } } } }
           ],
-          "description": "'pull' cannot be combined with 'compute' or 'when' (each derives the field's value) or with 'default' (both fill in absent values)."
+          "description": "'pull' cannot be combined with 'compute' or 'when' (each derives the field's value) or with 'default' (both fill in absent values), and is not supported on link/links fields (a derived relation would be invisible to reverse links and reference checks). Whether the source fits the field's type depends on the relation followed and is checked at load."
         },
         "when": {
           "allOf": [
@@ -142,7 +143,7 @@
           "description": "'when' cannot be combined with 'compute' (both derive the field's value) or a generator 'default' (next to 'when' the fallback is evaluated, never stamped), and is not supported on link/links fields (a derived relation would be invisible to reverse links and reference checks)."
         }
       },
-      "$comment": "One block per field type, in the order model/schema.rs declares FieldType. Each `then` lists the properties that type rejects, mirroring allowed_field_properties (and, for `aggregate` and `pull`, allowed_aggregate_functions) in crates/core/src/model/schema.rs, plus the shape a permitted property must take on that type (numeric bounds, duration bounds, `compute` without `round` outside date). crates/core/tests/schema_schema.rs probes every type/property pair against the Rust answer, so a block that drifts from the table fails there. Keep one block per type rather than sharing blocks across type lists — overlapping lists is how two entries went missing once already.",
+      "$comment": "One block per field type, in the order model/schema.rs declares FieldType. Each `then` lists the properties that type rejects, mirroring allowed_field_properties (and, for `aggregate`, allowed_aggregate_functions) in crates/core/src/model/schema.rs, plus the shape a permitted property must take on that type (numeric bounds, duration bounds, `compute` without `round` outside date). crates/core/tests/schema_schema.rs probes every type/property pair against the Rust answer, so a block that drifts from the table fails there. Keep one block per type rather than sharing blocks across type lists — overlapping lists is how two entries went missing once already.",
       "allOf": [
         {
           "if": {
@@ -156,8 +157,7 @@
               "allow_cycles": false,
               "aggregate": false,
               "inverse": false,
-              "compute": false,
-              "pull": false
+              "compute": false
             }
           }
         },
@@ -175,8 +175,7 @@
               "resource": false,
               "aggregate": false,
               "inverse": false,
-              "compute": false,
-              "pull": false
+              "compute": false
             }
           }
         },
@@ -194,8 +193,7 @@
               "resource": false,
               "aggregate": false,
               "inverse": false,
-              "compute": false,
-              "pull": false
+              "compute": false
             }
           }
         },
@@ -301,8 +299,7 @@
               "resource": false,
               "aggregate": false,
               "inverse": false,
-              "compute": false,
-              "pull": false
+              "compute": false
             }
           }
         },
@@ -341,8 +338,7 @@
               "allow_cycles": false,
               "aggregate": false,
               "inverse": false,
-              "compute": false,
-              "pull": false
+              "compute": false
             }
           }
         },
@@ -358,8 +354,7 @@
               "max": false,
               "resource": false,
               "aggregate": false,
-              "compute": false,
-              "pull": false
+              "compute": false
             }
           }
         },
@@ -375,8 +370,7 @@
               "max": false,
               "resource": false,
               "aggregate": false,
-              "compute": false,
-              "pull": false
+              "compute": false
             }
           }
         }
@@ -410,8 +404,8 @@
 
     "pull": {
       "type": "object",
-      "description": "Pull config. The value is read from a different field on the items the `over` link points at — forward direction, one hop — and reduced with `function`. A hand-written value always wins; the pull fills only absence, so items without outgoing links carry manual anchors.",
-      "required": ["over", "field", "function"],
+      "description": "Pull config. The value is read from a different field on the items the `over` link points at — forward direction, one hop. Over a `link` (one target) the value is copied as it is and `function` is left out; over a `links` the collected values are reduced with `function`. A hand-written value always wins; the pull fills only absence, so items without outgoing links carry manual anchors.",
+      "required": ["over", "field"],
       "properties": {
         "over": {
           "type": "string",
@@ -420,13 +414,13 @@
         },
         "field": {
           "type": "string",
-          "description": "The field read on each linked item.",
+          "description": "The field read on each linked item. Over a `link` it must have the field's own type (an integer may land in a float); over a `links` it must have a type `function` reduces into the field's.",
           "pattern": "^[a-z_][a-z0-9_]*$"
         },
         "function": {
           "type": "string",
           "enum": ["sum", "min", "max", "average", "median", "count", "all", "any", "none"],
-          "description": "The reduction applied to the collected values. Available functions depend on the source field type: integer/float/duration support sum, min, max, average, median, count; date supports min, max, average; boolean supports all, any, none, count."
+          "description": "The reduction applied to the collected values. Required over a `links` field, not allowed over a `link` (one target, nothing to reduce). Available functions depend on the source field type: integer/float/duration support sum, min, max, average, median, count; date supports min, max, average; boolean supports all, any, none, count."
         },
         "error_on_missing": {
           "type": "boolean",

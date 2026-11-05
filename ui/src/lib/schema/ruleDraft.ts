@@ -12,8 +12,10 @@
 // what it points at (one value, many, the related items themselves),
 // and by its target type through the lists the definition payload
 // serves from the rule engine (`rule_value_test_types`,
-// `rule_comparable_types`). Nothing here knows a type's rules.
+// `rule_equality_types`, `rule_comparable_types`). Nothing here knows
+// a type's rules.
 
+import type { Comparison } from '$lib/api/generated/Comparison';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import type { FieldType } from '$lib/api/generated/FieldType';
 import type { FieldValue } from '$lib/api/generated/FieldValue';
@@ -231,17 +233,21 @@ export function needsQuantifier(kind: ReferenceKind): boolean {
 	return kind === 'many';
 }
 
-/** The lists the rule engine serves of which types it tests by value and which it orders. */
+/**
+ * The lists the rule engine serves of which types it tests by value,
+ * which it tests field to field for equality, and which it orders.
+ */
 export type RuleTables = Pick<
 	SchemaDefinitionData,
-	'rule_value_test_types' | 'rule_comparable_types'
+	'rule_value_test_types' | 'rule_equality_types' | 'rule_comparable_types'
 >;
 
 /**
  * The require tests a reference can take, by what it points at and
  * the target field's type: presence always; a value set where the
- * engine tests the type by value; a comparison where it has an order
- * for the type; a count only on the related items themselves.
+ * engine tests the type by value; a comparison where it has an
+ * equality or an order for the type (`comparisonsFor` says which); a
+ * count only on the related items themselves.
  */
 export function requireTestKinds(
 	kind: ReferenceKind,
@@ -259,12 +265,26 @@ export function requireTestKinds(
 			if (targetType !== null && tables.rule_value_test_types.includes(targetType)) {
 				kinds.push('values', 'not');
 			}
-			if (targetType !== null && tables.rule_comparable_types.includes(targetType)) {
+			if (comparisonsFor(targetType, tables).length > 0) {
 				kinds.push('compare');
 			}
 			return kinds;
 		}
 	}
+}
+
+/**
+ * The comparisons a field of `targetType` may make with another field,
+ * in the grammar's order: equality where the engine tests the type by
+ * value, the ordered ones where it has an order for it. Empty for an
+ * unknown target.
+ */
+export function comparisonsFor(targetType: FieldType | null, tables: RuleTables): Comparison[] {
+	if (targetType === null) return [];
+	const comparisons: Comparison[] = [];
+	if (tables.rule_equality_types.includes(targetType)) comparisons.push('eq');
+	if (tables.rule_comparable_types.includes(targetType)) comparisons.push('lt', 'lte', 'gt', 'gte');
+	return comparisons;
 }
 
 /**

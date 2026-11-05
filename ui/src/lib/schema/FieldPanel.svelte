@@ -70,6 +70,7 @@
 		newPull,
 		newRollup,
 		operandChoices,
+		pullRelationKind,
 		pullRelations,
 		pullSources,
 		retype,
@@ -81,6 +82,7 @@
 		takesResource,
 		takesWhen,
 		valueKindOf,
+		withPullRelation,
 		withValueKind,
 		writeBody,
 		type ComputeRecipe,
@@ -155,7 +157,14 @@
 		operandChoices(definition, definition.fields, schemaStore.constants, existing?.name ?? null)
 	);
 	const pullRelationNames = $derived(pullRelations(definition.fields));
-	const pullSourceFields = $derived(pullSources(definition, definition.fields, draft.fieldType));
+	// What the draft's relation is decides what can be read through it:
+	// a `link` copies one field, a `links` reduces one with a function.
+	const pullRelationKindOf = $derived(
+		draft.recipe?.kind === 'pull' ? pullRelationKind(definition.fields, draft.recipe.over) : null
+	);
+	const pullSourceFields = $derived(
+		pullSources(definition, definition.fields, draft.fieldType, pullRelationKindOf)
+	);
 	const pullStart = $derived(newPull(definition, definition.fields, draft.fieldType));
 	const references = $derived(
 		expressionReferences(
@@ -267,7 +276,13 @@
 	}
 
 	function onPullChange(next: PullConfig): void {
-		draft.recipe = { kind: 'pull', ...next };
+		// A new relation may read different fields, or read them
+		// differently; the field and function follow it.
+		const conformed =
+			draft.recipe?.kind === 'pull' && next.over !== draft.recipe.over
+				? withPullRelation(definition, definition.fields, draft.fieldType, next, next.over)
+				: next;
+		draft.recipe = { kind: 'pull', ...conformed };
 	}
 
 	function onComputeChange(next: ComputeRecipe): void {
@@ -428,7 +443,7 @@
 							value="pull"
 							disabled={pullStart === null && valueKind !== 'pull'}
 							title={pullStart === null
-								? 'Needs a link or links field that forbids cycles and a field that reduces into this type'
+								? 'Needs a link or links field that forbids cycles and a field that can be read through it into this type'
 								: undefined}
 						>
 							Pulled from linked items
@@ -454,6 +469,7 @@
 					<PullBlock
 						value={draft.recipe}
 						relations={pullRelationNames}
+						relationKind={pullRelationKindOf}
 						sources={pullSourceFields}
 						disabled={saving}
 						onchange={onPullChange}

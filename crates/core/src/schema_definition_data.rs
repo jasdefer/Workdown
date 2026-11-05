@@ -43,14 +43,15 @@ use crate::condition_shape::ConditionShape;
 use crate::expression::{ComparisonOperator, ExpressionType};
 use crate::model::duration::format_duration_seconds;
 use crate::model::schema::{
-    allowed_aggregate_functions, allowed_generators, field_property_allowed, pull_functions,
-    when_allowed, AggregateConfig, AggregateFunction, DefaultValue, FieldDefinition, FieldProperty,
-    FieldType, FieldTypeConfig, Generator, PullConfig, RoundMode, Severity,
+    allowed_aggregate_functions, allowed_generators, field_property_allowed, pull_allowed,
+    pull_copy_fits, pull_functions, when_allowed, AggregateConfig, AggregateFunction, DefaultValue,
+    FieldDefinition, FieldProperty, FieldType, FieldTypeConfig, Generator, PullConfig, RoundMode,
+    Severity,
 };
 use crate::parser::schema::{parse_schema_with_document, SchemaLoadError};
 use crate::project::LoadError;
 use crate::rule_shape::RuleShape;
-use crate::rules::assertion::ordering_defined;
+use crate::rules::assertion::{equality_defined, ordering_defined};
 use crate::rules::condition::value_test_defined;
 
 // ── Wire types ────────────────────────────────────────────────────────
@@ -72,12 +73,13 @@ pub struct SchemaDefinitionData {
     /// listed because only some types take it.
     pub properties_by_type: Vec<FieldTypeProperties>,
     /// Which aggregate functions reduce values of each type; an empty
-    /// list means the type cannot be aggregated or pulled at all.
+    /// list means the type cannot be aggregated, or pulled over a
+    /// `links`, at all.
     pub aggregate_functions_by_type: Vec<FieldTypeAggregateFunctions>,
-    /// Which source types a `pull:` on a field of each type may read,
-    /// and with which functions: the reductions whose result the
-    /// field's type holds. One entry per [`FieldType`]; a type that
-    /// cannot be pulled into has no sources.
+    /// Which source types a `pull:` on a field of each type may read:
+    /// copied over a `link`, or reduced over a `links` with which
+    /// functions. One entry per [`FieldType`]; a type that cannot be
+    /// pulled into has neither.
     pub pull_sources_by_type: Vec<FieldTypePullSources>,
     /// The types whose fields a formula may read: those with a place in
     /// the expression algebra. In [`FieldType`] declaration order.
@@ -86,6 +88,10 @@ pub struct SchemaDefinitionData {
     /// declaration order. Not in `properties_by_type`: the parser polices
     /// `when` with its own check and its own message.
     pub conditional_types: Vec<FieldType>,
+    /// The types a field may carry a `pull:` recipe on, in [`FieldType`]
+    /// declaration order. Not in `properties_by_type` for `when`'s
+    /// reason; what such a field may read is `pull_sources_by_type`.
+    pub pull_types: Vec<FieldType>,
     /// The types a condition row may compare against a typed-in value:
     /// those with a literal in the expression grammar, or equal to one
     /// (a color to the text naming it). Opposite any other type the row
@@ -96,7 +102,11 @@ pub struct SchemaDefinitionData {
     /// condition): those the rule engine compares a value of. In
     /// [`FieldType`] declaration order.
     pub rule_value_test_types: Vec<FieldType>,
-    /// The types a rule may compare field to field (`lt_field` and the
+    /// The types a rule may test field to field for equality
+    /// (`eq_field`): those the rule engine compares by value. In
+    /// [`FieldType`] declaration order.
+    pub rule_equality_types: Vec<FieldType>,
+    /// The types a rule may order field to field (`lt_field` and the
     /// rest): those the rule engine has an order for. In [`FieldType`]
     /// declaration order.
     pub rule_comparable_types: Vec<FieldType>,
@@ -339,18 +349,22 @@ pub struct FieldTypeAggregateFunctions {
     pub functions: Vec<AggregateFunction>,
 }
 
-/// What a `pull:` on a field of one type may read: the source types
-/// with a reduction into it, each with its functions.
+/// What a `pull:` on a field of one type may read: over a `link`, the
+/// source types copied into it as they are; over a `links`, the source
+/// types with a reduction into it, each with its functions.
 #[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
 pub struct FieldTypePullSources {
     pub field_type: FieldType,
+    /// The source types a `link` pull copies, in [`FieldType`]
+    /// declaration order.
+    pub copy_sources: Vec<FieldType>,
     /// Only the source types with at least one function, in
     /// [`FieldType`] declaration order.
     pub sources: Vec<PullSource>,
 }
 
-/// One source type a pull may read, with the functions that reduce it
-/// into the pulling field's type.
+/// One source type a `links` pull may read, with the functions that
+/// reduce it into the pulling field's type.
 #[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
 pub struct PullSource {
     pub field_type: FieldType,
@@ -446,6 +460,11 @@ pub fn build(yaml: &str) -> Result<SchemaDefinitionData, SchemaLoadError> {
             .iter()
             .map(|&field_type| FieldTypePullSources {
                 field_type,
+                copy_sources: FieldType::VARIANTS
+                    .iter()
+                    .copied()
+                    .filter(|&source_type| pull_copy_fits(source_type, field_type))
+                    .collect(),
                 sources: FieldType::VARIANTS
                     .iter()
                     .map(|&source_type| PullSource {
@@ -466,6 +485,11 @@ pub fn build(yaml: &str) -> Result<SchemaDefinitionData, SchemaLoadError> {
             .copied()
             .filter(|&field_type| when_allowed(field_type))
             .collect(),
+        pull_types: FieldType::VARIANTS
+            .iter()
+            .copied()
+            .filter(|&field_type| pull_allowed(field_type))
+            .collect(),
         condition_literal_types: FieldType::VARIANTS
             .iter()
             .copied()
@@ -477,6 +501,11 @@ pub fn build(yaml: &str) -> Result<SchemaDefinitionData, SchemaLoadError> {
             .iter()
             .copied()
             .filter(|&field_type| value_test_defined(field_type))
+            .collect(),
+        rule_equality_types: FieldType::VARIANTS
+            .iter()
+            .copied()
+            .filter(|&field_type| equality_defined(field_type))
             .collect(),
         rule_comparable_types: FieldType::VARIANTS
             .iter()
@@ -931,7 +960,7 @@ rules:
             Some(FieldRecipe::Pull(PullConfig {
                 over: "depends_on".to_owned(),
                 field: "start".to_owned(),
-                function: AggregateFunction::Min,
+                function: Some(AggregateFunction::Min),
                 error_on_missing: false,
             }))
         );
@@ -1039,6 +1068,45 @@ rules:
             ]
         );
         assert!(sources(FieldType::Choice).is_empty());
+    }
+
+    #[test]
+    fn pull_copy_sources_are_the_same_type_and_a_whole_number_into_a_float() {
+        let data = built();
+        let copy_sources = |field_type| {
+            data.pull_sources_by_type
+                .iter()
+                .find(|row| row.field_type == field_type)
+                .unwrap()
+                .copy_sources
+                .clone()
+        };
+        assert_eq!(copy_sources(FieldType::Choice), vec![FieldType::Choice]);
+        assert_eq!(copy_sources(FieldType::String), vec![FieldType::String]);
+        assert_eq!(
+            copy_sources(FieldType::Float),
+            vec![FieldType::Integer, FieldType::Float]
+        );
+        // A copied relation would be a phantom edge, on either side.
+        assert!(copy_sources(FieldType::Link).is_empty());
+        assert!(copy_sources(FieldType::Links).is_empty());
+    }
+
+    #[test]
+    fn pull_types_are_every_type_but_the_relations() {
+        let data = built();
+        assert_eq!(data.pull_types, data.conditional_types);
+        assert!(!data.pull_types.contains(&FieldType::Link));
+        assert!(!data.pull_types.contains(&FieldType::Links));
+        assert!(data.pull_types.contains(&FieldType::Choice));
+    }
+
+    #[test]
+    fn rule_equality_types_are_every_type_and_comparable_types_only_the_ordered() {
+        let data = built();
+        assert_eq!(data.rule_equality_types, FieldType::VARIANTS.to_vec());
+        assert!(data.rule_comparable_types.contains(&FieldType::Date));
+        assert!(!data.rule_comparable_types.contains(&FieldType::Choice));
     }
 
     #[test]

@@ -22,10 +22,12 @@ flowchart TD
     subgraph schema-expressions ["Derived field expressions"]
         expression-logical-combinators["`and` / `or` / `not` in the expression grammar"]
         pull-copy-over-link["Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice"]
+        pull-copy-type-conversion["Copy into a field of a different type (`pull` over a `link` with conversion)"]
         pull-root-anchor["A project-level start for unanchored roots, without a synthetic milestone item"]
         rule-literal-comparisons["Compare a field with a literal in a rule's match block"]
         when-map-shorthand["`map:` — lookup-table shorthand over the `when:` evaluator"]
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end
     status-transition-dates["Fill in a date when a status changes, instead of typing it by hand"]
+    pull-copy-type-conversion --> pull-copy-over-link
 ```

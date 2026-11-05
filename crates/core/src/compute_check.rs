@@ -28,8 +28,8 @@ use crate::expression::{check_types, ExpressionType, ReferenceResolution, TypeCo
 use crate::model::diagnostic::{ConfigDiagnosticKind, Diagnostic};
 use crate::model::resources::Resources;
 use crate::model::schema::{
-    aggregate_result_fits, aggregate_result_type, allowed_aggregate_functions, FieldDefinition,
-    FieldType, FieldTypeConfig, PullConfig, Schema, Severity,
+    aggregate_result_fits, aggregate_result_type, allowed_aggregate_functions, pull_copy_fits,
+    AggregateFunction, FieldDefinition, FieldType, FieldTypeConfig, PullConfig, Schema, Severity,
 };
 use crate::model::FieldValue;
 
@@ -129,9 +129,10 @@ fn findings(schema: &Schema, resources: &Resources) -> Vec<Finding> {
     }
 
     // `pull:` configs: `over` must be an acyclic link field, the
-    // source field must exist, and the reduction must fit both ends.
-    // Same standard as compute expressions: one finding against
-    // `schema.yaml` disables the one field.
+    // source field must exist, and the copy (over a `link`) or the
+    // reduction (over a `links`) must fit both ends. Same standard as
+    // compute expressions: one finding against `schema.yaml` disables
+    // the one field.
     for (field_name, field_definition) in &schema.fields {
         let Some(pull) = &field_definition.pull else {
             continue;
@@ -162,9 +163,9 @@ fn pull_config_problem(
         None => return Some(format!("'over' references unknown field '{}'", pull.over)),
         Some(over) => over,
     };
-    let allow_cycles = match &over.type_config {
-        FieldTypeConfig::Link { allow_cycles, .. }
-        | FieldTypeConfig::Links { allow_cycles, .. } => *allow_cycles,
+    let (single_target, allow_cycles) = match &over.type_config {
+        FieldTypeConfig::Link { allow_cycles, .. } => (true, *allow_cycles),
+        FieldTypeConfig::Links { allow_cycles, .. } => (false, *allow_cycles),
         _ => {
             return Some(format!(
                 "'over' references field '{}' of type '{}' (must be 'link' or 'links')",
@@ -184,37 +185,82 @@ fn pull_config_problem(
         return Some(format!("'field' references unknown field '{}'", pull.field));
     };
     let source_type = source.field_type();
+    let declared_type = field_definition.field_type();
+    if single_target {
+        return pull_copy_problem(pull, source_type, declared_type);
+    }
+    let Some(function) = pull.function else {
+        return Some(format!(
+            "'function' is required over '{}', a links field — the values read from its targets need a reduction",
+            pull.over
+        ));
+    };
+    pull_reduction_problem(pull, function, source_type, declared_type)
+}
+
+/// The copy over a `link`: one source item, so no function, and the
+/// value lands as it is — the source must fit the field's type.
+fn pull_copy_problem(
+    pull: &PullConfig,
+    source_type: FieldType,
+    declared_type: FieldType,
+) -> Option<String> {
+    if let Some(function) = pull.function {
+        return Some(format!(
+            "'function' is not valid over '{}', a link field — it points at one item, whose '{}' is copied as it is, so there is nothing to {function}",
+            pull.over, pull.field
+        ));
+    }
+    if matches!(source_type, FieldType::Link | FieldType::Links) {
+        return Some(format!(
+            "'field' references field '{}' of type '{source_type}' — a copied relation would be invisible to reverse links and reference checks",
+            pull.field
+        ));
+    }
+    if !pull_copy_fits(source_type, declared_type) {
+        return Some(format!(
+            "'{}' is declared {source_type}, but the field is declared {declared_type} — a copy over a link needs the same type",
+            pull.field
+        ));
+    }
+    None
+}
+
+/// The reduction over a `links`: the function must apply to the
+/// source's type and produce the field's.
+fn pull_reduction_problem(
+    pull: &PullConfig,
+    function: AggregateFunction,
+    source_type: FieldType,
+    declared_type: FieldType,
+) -> Option<String> {
     let Some(allowed) = allowed_aggregate_functions(source_type) else {
         return Some(format!(
             "'field' references field '{}' of type '{source_type}', which no function can reduce",
             pull.field
         ));
     };
-    if !allowed.contains(&pull.function) {
+    if !allowed.contains(&function) {
         let allowed_names: Vec<String> = allowed
             .iter()
             .map(|function| function.to_string())
             .collect();
         return Some(format!(
-            "function '{}' is not valid for source field '{}' of type '{source_type}' (allowed: {})",
-            pull.function,
+            "function '{function}' is not valid for source field '{}' of type '{source_type}' (allowed: {})",
             pull.field,
             allowed_names.join(", ")
         ));
     }
-    let Some(result_type) = aggregate_result_type(pull.function, source_type) else {
+    let Some(result_type) = aggregate_result_type(function, source_type) else {
         // Unreachable: the allowed-functions check above passed.
         return Some(format!(
-            "function '{}' has no defined result for source type '{source_type}'",
-            pull.function
+            "function '{function}' has no defined result for source type '{source_type}'"
         ));
     };
-
-    let declared_type = field_definition.field_type();
     if !aggregate_result_fits(result_type, declared_type) {
         return Some(format!(
-            "{} of '{}' produces {result_type}, but the field is declared {declared_type}",
-            pull.function, pull.field
+            "{function} of '{}' produces {result_type}, but the field is declared {declared_type}",
+            pull.field
         ));
     }
     None
@@ -991,7 +1037,43 @@ fields:
     }
 
     #[test]
-    fn pull_over_single_link_field_is_accepted() {
+    fn pull_over_single_link_copies_without_a_function() {
+        // One source item, nothing to reduce: any non-relation type
+        // copies, the string here included.
+        let schema_yaml = "\
+fields:
+  parent:
+    type: link
+    allow_cycles: false
+  reference:
+    type: string
+    pull:
+      over: parent
+      field: reference
+";
+        assert!(check(schema_yaml, "").is_empty());
+    }
+
+    #[test]
+    fn pull_copy_widens_an_integer_into_a_float_field() {
+        let schema_yaml = "\
+fields:
+  parent:
+    type: link
+    allow_cycles: false
+  weight:
+    type: integer
+  inherited_weight:
+    type: float
+    pull:
+      over: parent
+      field: weight
+";
+        assert!(check(schema_yaml, "").is_empty());
+    }
+
+    #[test]
+    fn pull_function_over_single_link_is_reported() {
         let schema_yaml = "\
 fields:
   parent:
@@ -1006,7 +1088,77 @@ fields:
       field: end
       function: max
 ";
-        assert!(check(schema_yaml, "").is_empty());
+        let diagnostics = check(schema_yaml, "");
+        assert!(matches!(
+            kinds(&diagnostics)[0],
+            ConfigDiagnosticKind::PullInvalidConfig { detail, .. }
+                if detail.contains("'function' is not valid over 'parent', a link field")
+                    && detail.contains("nothing to max")
+        ));
+    }
+
+    #[test]
+    fn pull_without_function_over_links_is_reported() {
+        let schema_yaml = format!(
+            "{PULL_FIELDS}  start:
+    type: date
+    pull:
+      over: depends_on
+      field: end
+"
+        );
+        let diagnostics = check(&schema_yaml, "");
+        assert!(matches!(
+            kinds(&diagnostics)[0],
+            ConfigDiagnosticKind::PullInvalidConfig { detail, .. }
+                if detail.contains("'function' is required over 'depends_on', a links field")
+        ));
+    }
+
+    #[test]
+    fn pull_copy_type_mismatch_is_reported() {
+        let schema_yaml = "\
+fields:
+  parent:
+    type: link
+    allow_cycles: false
+  reference:
+    type: string
+  section:
+    type: integer
+    pull:
+      over: parent
+      field: reference
+";
+        let diagnostics = check(schema_yaml, "");
+        assert!(matches!(
+            kinds(&diagnostics)[0],
+            ConfigDiagnosticKind::PullInvalidConfig { detail, .. }
+                if detail.contains("'reference' is declared string, but the field is declared integer")
+        ));
+    }
+
+    #[test]
+    fn pull_copy_of_a_relation_is_reported() {
+        let schema_yaml = "\
+fields:
+  parent:
+    type: link
+    allow_cycles: false
+  owner:
+    type: link
+  inherited:
+    type: string
+    pull:
+      over: parent
+      field: owner
+";
+        let diagnostics = check(schema_yaml, "");
+        assert!(matches!(
+            kinds(&diagnostics)[0],
+            ConfigDiagnosticKind::PullInvalidConfig { detail, .. }
+                if detail.contains("'field' references field 'owner' of type 'link'")
+        ));
     }
 
     #[test]

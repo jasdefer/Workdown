@@ -221,14 +221,13 @@ fn check_field_comparison(
     let this_value = resolve_single_value(item, field_ref, ctx)?;
     let other_value = resolve_single_value(item, other_ref, ctx)?;
 
-    match compare_field_values(this_value, other_value) {
-        Some(Ordering::Equal) => None,
-        Some(_) => Some(format!(
-            "'{field_ref}' must {operator_str} '{}'",
-            display_operand(other_ref, other_value),
-        )),
-        None => None, // incompatible types — skip
+    if field_values_equal(this_value, other_value) {
+        return None;
     }
+    Some(format!(
+        "'{field_ref}' must {operator_str} '{}'",
+        display_operand(other_ref, other_value),
+    ))
 }
 
 /// Compare two field values with an ordering predicate. Returns a violation
@@ -286,6 +285,44 @@ fn resolve_single_value<'a>(
     }
 }
 
+/// Whether two values of `field_type` can be tested for equality, so
+/// that `eq_field` means something: every type, because a field value
+/// of any type is a definite value. Two values of different types are
+/// simply unequal (an integer and a float compare numerically, the one
+/// pairing the file can spell two ways). The rules editor reads this to
+/// offer the comparison, beside [`ordering_defined`] for the ordered
+/// ones, so the fact is spelled here next to [`field_values_equal`].
+pub(crate) fn equality_defined(field_type: FieldType) -> bool {
+    // The exhaustive match is the point: a new type must say so here.
+    match field_type {
+        FieldType::String
+        | FieldType::Choice
+        | FieldType::Multichoice
+        | FieldType::Integer
+        | FieldType::Float
+        | FieldType::Date
+        | FieldType::Duration
+        | FieldType::Color
+        | FieldType::Boolean
+        | FieldType::List
+        | FieldType::Link
+        | FieldType::Links => true,
+    }
+}
+
+/// Whether two field values are equal for `eq_field`: by value, with
+/// an integer and a float compared numerically. Values of two other
+/// types are never equal — there is no silent skip for a type reason;
+/// a comparison that can never hold is a schema mistake for the load
+/// check to report, not for the evaluator to hide.
+pub(crate) fn field_values_equal(left: &FieldValue, right: &FieldValue) -> bool {
+    match (left, right) {
+        (FieldValue::Integer(left), FieldValue::Float(right)) => (*left as f64) == *right,
+        (FieldValue::Float(left), FieldValue::Integer(right)) => *left == (*right as f64),
+        _ => left == right,
+    }
+}
+
 /// Whether two values of `field_type` have an order, so that a
 /// field-to-field comparison (`lt_field` and the rest) means something:
 /// every type [`compare_field_values`] has an arm for. The rules editor
@@ -309,11 +346,12 @@ pub(crate) fn ordering_defined(field_type: FieldType) -> bool {
     }
 }
 
-/// Compare two field values for rule assertions (`gt`, `lt`, etc.).
+/// Order two field values for the ordered rule assertions (`gt_field`,
+/// `lt_field` and the rest; equality is [`field_values_equal`]).
 ///
 /// Returns `None` for pairs without a defined ordering (Choice,
-/// Multichoice, List, Link, Links) so the assertion fails loudly
-/// instead of silently lex-comparing.
+/// Multichoice, Color, List, Link, Links, and any two types that do
+/// not share one) — the caller skips those, as the schema docs say.
 ///
 /// Supports Integer, Float, Date, Duration, String, Boolean — the
 /// types [`ordering_defined`] names. Cross-type Integer vs Float is

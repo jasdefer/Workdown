@@ -197,7 +197,7 @@ Conditional fields compose like computed ones: `when` and `compute` are mutually
 
 ### Pull fields
 
-Fields with a `pull` config read a *different* field from the items a forward link points at and reduce the collected values. Where aggregation flows *against* links (children roll up to parents) and `compute` stays on one item, a pull follows a link *forward* — one hop — and reduces what it finds there:
+Fields with a `pull` config read a *different* field from the items a forward link points at. Where aggregation flows *against* links (children roll up to parents) and `compute` stays on one item, a pull follows a link *forward* — one hop. Over a `links` field it reduces what it finds there:
 
 ```yaml
 fields:
@@ -220,11 +220,32 @@ fields:
 | Option | Description |
 |--------|-------------|
 | `over` | The `link` or `links` field followed forward. Must declare `allow_cycles: false` — pulled values need an acyclic dependency graph to evaluate in. |
-| `field` | The field read on each linked item. |
-| `function` | The reduction — the same functions as `aggregate`, keyed on the *source* field's type (see the table under [aggregated fields](#aggregated-fields)). The result must fit the declared type: `count` produces `integer`, `average`/`median` of numbers produce `float`. |
+| `field` | The field read on each linked item. Over a `link` it must have the pulling field's own type (an `integer` may land in a `float`); over a `links` its type must be one `function` reduces. Never a `link` or `links` — a copied relation would be a phantom edge, like a conditional one. |
+| `function` | Over a `links`: the reduction — the same functions as `aggregate`, keyed on the *source* field's type (see the table under [aggregated fields](#aggregated-fields)). The result must fit the declared type: `count` produces `integer`, `average`/`median` of numbers produce `float`. Over a `link`: left out — one target, nothing to reduce; writing one is a schema error. |
 | `error_on_missing` | Report an error naming the linked item and field when a linked item lacks the source value, instead of silently leaving the field absent. Default: `false`. |
 
-The example above is forward scheduling from minimal input: set only `depends_on` and `duration` on every item, plus a hand-written `start` on items with no dependencies. `end` computes from `start + duration`, dependents pull their `start` from their dependencies' `end`, and the chain cascades — transitivity emerges from recursion, one hop at a time. `end` is exclusive (a one-day task starting Jan 5 ends Jan 6), so a successor starting at `max(end)` doesn't double-book the last day. For a handover lag, compose through an intermediate field: pull into `earliest_start`, then `start: compute: earliest_start + $constants.handover_lag`.
+Over a `link` field there is exactly one source item, so the pull **copies** its value as it is — and since nothing is reduced, every type but the relations can be pulled this way. That is how a few fields written once on a root item reach every descendant:
+
+```yaml
+fields:
+  parent:
+    type: link
+    allow_cycles: false
+
+  reference:
+    type: string
+    required: true
+    pull: { over: parent, field: reference }   # no function: one parent, copied
+
+  format:
+    type: choice
+    values: [memo, report]
+    pull: { over: parent, field: format }
+```
+
+Write `reference` and `format` on the root only; each child copies its parent's value, each grandchild its parent's copy, and so on down the chain. A hand-written value on any item wins and is what its own descendants copy. With `required`, an item at the top of a chain that forgot its value is reported as missing the field.
+
+The first example is forward scheduling from minimal input: set only `depends_on` and `duration` on every item, plus a hand-written `start` on items with no dependencies. `end` computes from `start + duration`, dependents pull their `start` from their dependencies' `end`, and the chain cascades — transitivity emerges from recursion, one hop at a time. `end` is exclusive (a one-day task starting Jan 5 ends Jan 6), so a successor starting at `max(end)` doesn't double-book the last day. For a handover lag, compose through an intermediate field: pull into `earliest_start`, then `start: compute: earliest_start + $constants.handover_lag`.
 
 Pull values behave like every other derived value: never written to files, visible everywhere, and a hand-written frontmatter value always wins — that is what anchors the roots.
 
@@ -471,6 +492,8 @@ The quantifiers (`all`, `any`, `none`) are only valid when the field reference t
 When multiple operators are specified in the same object, all must be satisfied (AND).
 
 Field-to-field comparisons (`eq_field`, `lte_field`, etc.) are skipped when either field is null. A missing value is not a validation error for comparisons — use `required` to enforce presence separately.
+
+`eq_field` is defined for every type: two values are equal when they are the same value (an `integer` and a `float` compare numerically), so a `choice` can be held to its parent's with `eq_field: parent.format`. The ordered comparisons (`lt_field` and the rest) are defined only for `integer`, `float`, `date`, `duration`, `string` and `boolean`; on any other type, or between two types that do not compare, they are skipped.
 
 The operand may also be `$today` — the evaluation date (ADR-010), so a rule can compare a field against the present:
 

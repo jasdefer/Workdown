@@ -4,8 +4,9 @@
   requirement, and what the requirement needs — a list of values, a
   comparison with another field, a count. Which requirements a row
   offers follow what its reference points at and the target field's
-  type, so a comparison is only offered on a date or a number and a
-  count only on the related items themselves.
+  type, so equality is offered where the engine tests the type by
+  value, an ordered comparison only on a date or a number, and a count
+  only on the related items themselves.
 
   Owns no draft state: the rows are the value and every change goes up
   through `onchange` as the whole new list.
@@ -21,6 +22,7 @@
 	import ReferencePicker from './ReferencePicker.svelte';
 	import {
 		comparableFields,
+		comparisonsFor,
 		emptyRequireRow,
 		emptyRequireTest,
 		listSpecOfField,
@@ -80,7 +82,6 @@
 		gt: '>',
 		gte: '≥'
 	};
-	const comparisons = Object.keys(COMPARISON_LABELS) as Comparison[];
 
 	function replace(index: number, row: RequireRow): void {
 		onchange(rows.map((existing, position) => (position === index ? row : existing)));
@@ -158,6 +159,8 @@
 					{@const test = row.test}
 					{@const candidates = target === null ? [] : comparableFields(fields, target)}
 					{@const stray = test.field !== '' && !candidates.includes(test.field) ? test.field : null}
+					{@const comparisons = comparisonsFor(target?.field_type ?? null, tables)}
+					{@const strayComparison = comparisons.includes(test.comparison) ? null : test.comparison}
 					<select
 						class="comparison"
 						aria-label="{label}: comparison"
@@ -173,6 +176,11 @@
 						{#each comparisons as comparison (comparison)}
 							<option value={comparison}>{COMPARISON_LABELS[comparison]}</option>
 						{/each}
+						{#if strayComparison !== null}
+							<option value={strayComparison}
+								>{COMPARISON_LABELS[strayComparison]} (not defined for this type)</option
+							>
+						{/if}
 					</select>
 					<select
 						class="other"

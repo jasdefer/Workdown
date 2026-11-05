@@ -23,6 +23,7 @@ import {
 	newWhen,
 	operandChoices,
 	operandKey,
+	pullRelationKind,
 	pullRelations,
 	pullSources,
 	retype,
@@ -46,6 +47,7 @@ import {
 	withInverse,
 	withOperand,
 	withPattern,
+	withPullRelation,
 	withPullSource,
 	withValueKind,
 	withValueAdded,
@@ -67,7 +69,7 @@ const tables: TypeTables = {
 		{ field_type: 'choice', properties: ['values'], shape_kind: 'values' },
 		{
 			field_type: 'integer',
-			properties: ['min', 'max', 'aggregate', 'compute', 'pull'],
+			properties: ['min', 'max', 'aggregate', 'compute'],
 			shape_kind: 'numeric'
 		},
 		{ field_type: 'float', properties: ['min', 'max', 'compute'], shape_kind: 'numeric' },
@@ -91,13 +93,19 @@ const tables: TypeTables = {
 	pull_sources_by_type: [
 		{
 			field_type: 'integer',
+			copy_sources: ['integer'],
 			sources: [
 				{ field_type: 'integer', functions: ['sum', 'min', 'max', 'count'] },
 				{ field_type: 'date', functions: ['count'] }
 			]
 		},
-		{ field_type: 'date', sources: [{ field_type: 'date', functions: ['min', 'max', 'average'] }] },
-		{ field_type: 'string', sources: [] }
+		{
+			field_type: 'date',
+			copy_sources: ['date'],
+			sources: [{ field_type: 'date', functions: ['min', 'max', 'average'] }]
+		},
+		{ field_type: 'string', copy_sources: ['string'], sources: [] },
+		{ field_type: 'link', copy_sources: [], sources: [] }
 	],
 	expression_readable_types: [
 		'string',
@@ -109,6 +117,7 @@ const tables: TypeTables = {
 		'boolean'
 	],
 	conditional_types: ['string', 'choice', 'integer', 'float', 'date', 'duration', 'color', 'list'],
+	pull_types: ['string', 'choice', 'integer', 'float', 'date', 'duration', 'color', 'list'],
 	condition_literal_types: ['string', 'choice', 'integer', 'float', 'color', 'boolean']
 };
 
@@ -704,27 +713,49 @@ describe('pulls', () => {
 
 	it('offers a pull to the types the server lists it for', () => {
 		expect(takesPull(tables, 'integer')).toBe(true);
-		expect(takesPull(tables, 'date')).toBe(false);
+		expect(takesPull(tables, 'string')).toBe(true);
+		expect(takesPull(tables, 'link')).toBe(false);
 	});
 
-	it('follows link and links fields that forbid cycles', () => {
+	it('follows link and links fields that forbid cycles, and tells the two apart', () => {
 		expect(pullRelations(fields)).toEqual(['parent', 'depends_on']);
+		expect(pullRelationKind(fields, 'parent')).toBe('link');
+		expect(pullRelationKind(fields, 'depends_on')).toBe('links');
+		expect(pullRelationKind(fields, 'related_to')).toBeNull();
+		expect(pullRelationKind(fields, 'points')).toBeNull();
 	});
 
-	it('reads the fields whose type the served table lists, with its functions', () => {
-		expect(pullSources(tables, fields, 'integer')).toEqual([
+	it('reads through a links the fields whose type the served table reduces, with its functions', () => {
+		expect(pullSources(tables, fields, 'integer', 'links')).toEqual([
 			{ name: 'points', functions: ['sum', 'min', 'max', 'count'] },
 			{ name: 'due', functions: ['count'] }
 		]);
-		expect(pullSources(tables, fields, 'date')).toEqual([
+		expect(pullSources(tables, fields, 'date', 'links')).toEqual([
 			{ name: 'due', functions: ['min', 'max', 'average'] }
 		]);
-		expect(pullSources(tables, fields, 'string')).toEqual([]);
+		expect(pullSources(tables, fields, 'string', 'links')).toEqual([]);
 	});
 
-	it('starts with the first relation, the first source and its first function', () => {
+	it('reads through a link the fields whose type the served table copies, without a function', () => {
+		expect(pullSources(tables, fields, 'integer', 'link')).toEqual([
+			{ name: 'points', functions: [] }
+		]);
+		expect(pullSources(tables, fields, 'string', 'link')).toEqual([
+			{ name: 'title', functions: [] }
+		]);
+		expect(pullSources(tables, fields, 'integer', null)).toEqual([]);
+	});
+
+	it('starts with the first relation and the first field read through it', () => {
+		// `parent` comes first and is a link: a copy, no function.
 		expect(newPull(tables, fields, 'integer')).toEqual({
 			over: 'parent',
+			field: 'points',
+			error_on_missing: false
+		});
+		// With a links first, the first source's first function.
+		expect(newPull(tables, [dependsOn, parent, points, due], 'integer')).toEqual({
+			over: 'depends_on',
 			field: 'points',
 			function: 'sum',
 			error_on_missing: false
@@ -734,12 +765,14 @@ describe('pulls', () => {
 	it('has nothing to start with when no relation or no source fits', () => {
 		expect(newPull(tables, [loose, points], 'integer')).toBeNull();
 		expect(newPull(tables, [parent, title], 'integer')).toBeNull();
+		// A string copies through `parent` but nothing reduces it through `depends_on`.
+		expect(newPull(tables, [dependsOn, title], 'string')).toBeNull();
 	});
 
 	it('keeps the function across a source switch when the new source offers it', () => {
-		const sources = pullSources(tables, fields, 'integer');
+		const sources = pullSources(tables, fields, 'integer', 'links');
 		const counted: PullConfig = {
-			over: 'parent',
+			over: 'depends_on',
 			field: 'points',
 			function: 'count',
 			error_on_missing: true
@@ -749,6 +782,51 @@ describe('pulls', () => {
 			...counted,
 			field: 'due',
 			function: 'count'
+		});
+	});
+
+	it('drops the function on a switch to a copied source', () => {
+		const sources = pullSources(tables, fields, 'integer', 'link');
+		const counted: PullConfig = {
+			over: 'parent',
+			field: 'due',
+			function: 'count',
+			error_on_missing: true
+		};
+		expect(withPullSource(counted, sources, 'points')).toEqual({
+			over: 'parent',
+			field: 'points',
+			error_on_missing: true
+		});
+	});
+
+	it('conforms the field and function to a changed relation', () => {
+		const reduced: PullConfig = {
+			over: 'depends_on',
+			field: 'due',
+			function: 'count',
+			error_on_missing: false
+		};
+		// To a link: `due` is not copied into an integer, so the first
+		// copied field, without a function.
+		expect(withPullRelation(tables, fields, 'integer', reduced, 'parent')).toEqual({
+			over: 'parent',
+			field: 'points',
+			error_on_missing: false
+		});
+		// Back to a links: `points` stays, with its first function.
+		const copied: PullConfig = { over: 'parent', field: 'points', error_on_missing: false };
+		expect(withPullRelation(tables, fields, 'integer', copied, 'depends_on')).toEqual({
+			over: 'depends_on',
+			field: 'points',
+			function: 'sum',
+			error_on_missing: false
+		});
+		// A relation offering nothing keeps the field, for the picker to mark.
+		expect(withPullRelation(tables, fields, 'string', copied, 'depends_on')).toEqual({
+			over: 'depends_on',
+			field: 'points',
+			error_on_missing: false
 		});
 	});
 
@@ -765,14 +843,16 @@ describe('pulls', () => {
 			aggregate: null,
 			recipe: {
 				kind: 'pull',
-				over: 'parent',
+				over: 'depends_on',
 				field: 'points',
 				function: 'sum',
 				error_on_missing: false
 			}
 		};
 		expect(retype(tables, pulled, 'integer').recipe).toEqual(pulled.recipe);
-		expect(retype(tables, pulled, 'date').recipe).toBeNull();
+		expect(retype(tables, pulled, 'date').recipe).toEqual(pulled.recipe);
+		// A relation is never pulled: a derived link would be a phantom edge.
+		expect(retype(tables, pulled, 'link').recipe).toBeNull();
 	});
 });
 

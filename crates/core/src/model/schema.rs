@@ -724,10 +724,35 @@ pub fn when_allowed(field_type: FieldType) -> bool {
     !matches!(field_type, FieldType::Link | FieldType::Links)
 }
 
+/// Whether a field of `field_type` may carry a `pull:` recipe. The same
+/// answer as [`when_allowed`], for the same reason: a pulled relation
+/// would be a phantom edge. Which *source* a pull may read is a
+/// separate question — [`pull_copy_fits`] over a `link`,
+/// [`pull_functions`] over a `links` — answered by the config check
+/// once `over` has resolved. The parser's check and the type list the
+/// web app is served both ask here.
+pub fn pull_allowed(field_type: FieldType) -> bool {
+    when_allowed(field_type)
+}
+
+/// Whether a `pull:` over a `link` may copy a value of `source_type`
+/// into a field declared `declared_type`: the same type, or a whole
+/// number into a `float` field — the one widening the reductions allow
+/// — and never a relation on either side ([`pull_allowed`] on the
+/// pulling field, and a copied link would be a phantom edge too). With
+/// a single source item there is nothing to reduce, so no function
+/// takes part. The pull check and the pull-source table the web app is
+/// served both ask here.
+pub fn pull_copy_fits(source_type: FieldType, declared_type: FieldType) -> bool {
+    pull_allowed(source_type)
+        && pull_allowed(declared_type)
+        && aggregate_result_fits(source_type, declared_type)
+}
+
 /// The functions that reduce values of `source_type` into a field
-/// declared `declared_type` — what a `pull:` on such a field may name
-/// for a source of that type, in the order [`allowed_aggregate_functions`]
-/// lists them. Empty when nothing fits.
+/// declared `declared_type` — what a `pull:` over a `links` on such a
+/// field may name for a source of that type, in the order
+/// [`allowed_aggregate_functions`] lists them. Empty when nothing fits.
 pub fn pull_functions(source_type: FieldType, declared_type: FieldType) -> Vec<AggregateFunction> {
     allowed_aggregate_functions(source_type)
         .unwrap_or_default()
@@ -766,7 +791,6 @@ pub enum FieldProperty {
     Aggregate,
     Inverse,
     Compute,
-    Pull,
 }
 
 impl std::fmt::Display for FieldProperty {
@@ -781,7 +805,6 @@ impl std::fmt::Display for FieldProperty {
             Self::Aggregate => "aggregate",
             Self::Inverse => "inverse",
             Self::Compute => "compute",
-            Self::Pull => "pull",
         };
         f.write_str(s)
     }
@@ -791,11 +814,10 @@ impl std::fmt::Display for FieldProperty {
 /// rejected on that type, so a property added to
 /// `RawFieldDefinition` is invalid everywhere until a row opts in.
 ///
-/// `Aggregate` and `Pull` are absent from every row on purpose: whether
-/// a type can be aggregated is already recorded by
-/// [`allowed_aggregate_functions`], pull applies those same functions
-/// over a forward link, and [`field_property_allowed`] reads both from
-/// there rather than restating the list here.
+/// `Aggregate` is absent from every row on purpose: whether a type can
+/// be aggregated is already recorded by [`allowed_aggregate_functions`],
+/// and [`field_property_allowed`] reads it from there rather than
+/// restating the list here.
 ///
 /// The exhaustive `match` is the point of the table — a thirteenth
 /// [`FieldType`] fails to compile until it gets a row.
@@ -823,11 +845,8 @@ fn allowed_field_properties(field_type: FieldType) -> &'static [FieldProperty] {
 pub fn field_property_allowed(field_type: FieldType, property: FieldProperty) -> bool {
     match property {
         // Single source of truth: a type accepts `aggregate:` exactly
-        // when it has aggregate functions defined, and `pull:` reduces
-        // with those same functions over a forward link.
-        FieldProperty::Aggregate | FieldProperty::Pull => {
-            allowed_aggregate_functions(field_type).is_some()
-        }
+        // when it has aggregate functions defined.
+        FieldProperty::Aggregate => allowed_aggregate_functions(field_type).is_some(),
         other => allowed_field_properties(field_type).contains(&other),
     }
 }
@@ -889,16 +908,17 @@ pub fn field_types_allowing_generator(generator: Generator) -> impl Iterator<Ite
 
 /// Configuration of a pull field (`pull:` in `schema.yaml`): read
 /// `field` from the items this item's `over` link points at — forward
-/// direction, one hop — and reduce the collected values with
-/// `function`. Cross-item and cross-field, the forward counterpart to
-/// [`AggregateConfig`]'s reverse-link rollup. Transitivity emerges
-/// from recursion (b pulls from a, c pulls from b), never from
-/// walking.
+/// direction, one hop — and, over a `links`, reduce the collected
+/// values with `function`; over a `link` there is one source item and
+/// the value is copied as is. Cross-item and cross-field, the forward
+/// counterpart to [`AggregateConfig`]'s reverse-link rollup.
+/// Transitivity emerges from recursion (b pulls from a, c pulls from
+/// b), never from walking.
 ///
 /// Reference resolution (does `over` name an acyclic link field, does
-/// `field` exist, do the types line up) happens in `compute_check`,
-/// to the same one-diagnostic-disables-the-field standard as compute
-/// expressions.
+/// `field` exist, do the types line up, is `function` present exactly
+/// when `over` is a `links`) happens in `compute_check`, to the same
+/// one-diagnostic-disables-the-field standard as compute expressions.
 ///
 /// Also the wire type the schema editor reads and writes the block as,
 /// like [`AggregateConfig`]: served inside
@@ -915,8 +935,13 @@ pub struct PullConfig {
     /// The field read on each linked item.
     pub field: String,
 
-    /// The reduction applied to the collected values.
-    pub function: AggregateFunction,
+    /// The reduction applied to the collected values. Present exactly
+    /// when `over` is a `links`: a `link` has one source item, whose
+    /// value is copied, so there is nothing to name. The config check
+    /// enforces both directions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub function: Option<AggregateFunction>,
 
     /// Whether a linked item without the source value gets a
     /// diagnostic instead of the pull silently yielding nothing.
@@ -1141,5 +1166,21 @@ mod tests {
         );
         assert!(pull_functions(FieldType::Choice, FieldType::Integer).is_empty());
         assert!(pull_functions(FieldType::Integer, FieldType::Date).is_empty());
+    }
+
+    #[test]
+    fn pull_copy_fits_the_same_type_or_a_whole_number_into_a_float_never_a_relation() {
+        use strum::VariantArray;
+        for &field_type in FieldType::VARIANTS {
+            assert_eq!(
+                pull_copy_fits(field_type, field_type),
+                pull_allowed(field_type),
+                "{field_type} copies into itself exactly when it may be pulled at all"
+            );
+        }
+        assert!(pull_copy_fits(FieldType::Integer, FieldType::Float));
+        assert!(!pull_copy_fits(FieldType::Float, FieldType::Integer));
+        assert!(!pull_copy_fits(FieldType::Choice, FieldType::String));
+        assert!(!pull_copy_fits(FieldType::Link, FieldType::Link));
     }
 }

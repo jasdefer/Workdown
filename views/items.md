@@ -85,7 +85,8 @@
 | [project-load-cache](../workdown-items/project-load-cache.md) | on_hold | [misc-work](../workdown-items/misc-work.md) |  |
 | [project-tour](../workdown-items/project-tour.md) | done |  |  |
 | [publish-branch-from-push](../workdown-items/publish-branch-from-push.md) | done | [full-git-loop](../workdown-items/full-git-loop.md) |  |
-| [pull-copy-over-link](../workdown-items/pull-copy-over-link.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [pull-fields](../workdown-items/pull-fields.md) |
+| [pull-copy-over-link](../workdown-items/pull-copy-over-link.md) | in_progress | [schema-expressions](../workdown-items/schema-expressions.md) | [pull-fields](../workdown-items/pull-fields.md) |
+| [pull-copy-type-conversion](../workdown-items/pull-copy-type-conversion.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [pull-copy-over-link](../workdown-items/pull-copy-over-link.md) |
 | [pull-fields](../workdown-items/pull-fields.md) | done | [schema-expressions](../workdown-items/schema-expressions.md) | [computed-fields](../workdown-items/computed-fields.md), [aggregate-rollup](../workdown-items/aggregate-rollup.md) |
 | [pull-root-anchor](../workdown-items/pull-root-anchor.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [pull-fields](../workdown-items/pull-fields.md) |
 | [query-value-consolidation](../workdown-items/query-value-consolidation.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |

@@ -1077,7 +1077,8 @@ fn when_entry(branches: &[WhenBranchData]) -> serde_yaml::Value {
 }
 
 /// The `pull:` block as the file spells it, in the shortest form the
-/// parser reads: `error_on_missing` only when set. Exhaustive like
+/// parser reads: `function` only over a `links` (a copy over a `link`
+/// names none), `error_on_missing` only when set. Exhaustive like
 /// [`aggregate_entry`], for the same reason.
 fn pull_entry(pull: &PullConfig) -> serde_yaml::Value {
     let PullConfig {
@@ -1089,7 +1090,9 @@ fn pull_entry(pull: &PullConfig) -> serde_yaml::Value {
     let mut entry = serde_yaml::Mapping::new();
     entry.insert(yaml_key("over"), yaml_key(over));
     entry.insert(yaml_key("field"), yaml_key(field));
-    entry.insert(yaml_key("function"), yaml_key(&function.to_string()));
+    if let Some(function) = function {
+        entry.insert(yaml_key("function"), yaml_key(&function.to_string()));
+    }
     if *error_on_missing {
         entry.insert(yaml_key("error_on_missing"), serde_yaml::Value::Bool(true));
     }
@@ -1381,7 +1384,7 @@ rules:
         full.recipe = Some(FieldRecipe::Pull(PullConfig {
             over: "depends_on".to_owned(),
             field: "points".to_owned(),
-            function: AggregateFunction::Count,
+            function: Some(AggregateFunction::Count),
             error_on_missing: false,
         }));
         assert_eq!(
@@ -1454,7 +1457,7 @@ rules:
         let plain = pull_entry(&PullConfig {
             over: "depends_on".to_owned(),
             field: "end".to_owned(),
-            function: AggregateFunction::Max,
+            function: Some(AggregateFunction::Max),
             error_on_missing: false,
         });
         assert_eq!(
@@ -1465,12 +1468,23 @@ rules:
         let strict = pull_entry(&PullConfig {
             over: "depends_on".to_owned(),
             field: "end".to_owned(),
-            function: AggregateFunction::Max,
+            function: Some(AggregateFunction::Max),
             error_on_missing: true,
         });
         assert_eq!(
             serde_yaml::to_string(&strict).unwrap(),
             "over: depends_on\nfield: end\nfunction: max\nerror_on_missing: true\n"
+        );
+
+        let copied = pull_entry(&PullConfig {
+            over: "parent".to_owned(),
+            field: "reference".to_owned(),
+            function: None,
+            error_on_missing: false,
+        });
+        assert_eq!(
+            serde_yaml::to_string(&copied).unwrap(),
+            "over: parent\nfield: reference\n"
         );
     }
 

@@ -689,8 +689,10 @@ fn without_an_override_the_evaluation_date_is_today() {
 // See `validation-phase-boundaries` for the standing question of
 // whether that check should be split at all.
 
-/// A required date pulled one hop forward over `parent`. `depends_on`
-/// cannot carry a pull — the config demands `allow_cycles: false`.
+/// A required date pulled one hop forward over `parent` — a `link`, so
+/// the one parent's value is copied and no function is named.
+/// `depends_on` cannot carry a pull — the config demands
+/// `allow_cycles: false`.
 fn pulled_target_date_schema(error_on_missing: bool) -> String {
     format!(
         "{COMMON_FIELDS}  target_date:
@@ -699,7 +701,6 @@ fn pulled_target_date_schema(error_on_missing: bool) -> String {
     pull:
       over: parent
       field: target_date
-      function: max
       error_on_missing: {error_on_missing}
 "
     )
