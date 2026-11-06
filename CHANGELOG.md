@@ -5,6 +5,25 @@ tagged version into the top of that version's GitHub release page, so
 entries are written for people using workdown, not for people reading
 its source — internal refactors are deliberately absent.
 
+## Unreleased
+
+### Added
+
+- A field of any type but `link`/`links` can inherit its value from
+  the item a `link` points at: `pull: { over: parent, field: reference }`
+  with no `function` copies the parent's value down the chain. The
+  schema editor hides "Combine with" for such a pull. An existing pull
+  over a `link` that names a `function` is now a schema error: remove
+  the `function` line, the value was the one target's anyway.
+
+### Fixed
+
+- `eq_field` now compares `choice` values (and every other type). A
+  rule such as `eq_field: parent.format` used to pass silently on a
+  choice field; it now reports the mismatch. The rule editor offers
+  "equals" on every type and the ordered comparisons only where the
+  type has an order.
+
 ## 0.2.10 - 2026-11-05
 
 ### Added

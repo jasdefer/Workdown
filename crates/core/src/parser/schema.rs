@@ -13,10 +13,11 @@ use crate::model::date::parse_date;
 use crate::model::message::one_of;
 use crate::model::schema::{
     allowed_aggregate_functions, allowed_generators, field_property_allowed, field_types_allowing,
-    field_types_allowing_generator, is_defined_inverse, is_relation_anchor, when_allowed,
-    Assertion, CompiledPattern, ComputeConfig, Condition, ConditionValue, CountConstraint,
-    DefaultValue, FieldDefinition, FieldProperty, FieldType, FieldTypeConfig, NegationValue,
-    RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema, WhenBranch, WhenConfig,
+    field_types_allowing_generator, is_defined_inverse, is_relation_anchor, pull_allowed,
+    when_allowed, Assertion, CompiledPattern, ComputeConfig, Condition, ConditionValue,
+    CountConstraint, DefaultValue, FieldDefinition, FieldProperty, FieldType, FieldTypeConfig,
+    NegationValue, RawFieldDefinition, RawRule, RawSchema, RoundMode, Rule, Schema, WhenBranch,
+    WhenConfig,
 };
 use crate::model::views::COLOR_NONE_SENTINEL;
 use strum::VariantArray;
@@ -554,12 +555,15 @@ fn validate_compute_config(
 }
 
 /// Validate a field's `pull:` config structurally: combinations with
-/// other options. Whether the field's type may carry `pull:` at all is
-/// the property table's call, reported by
-/// [`validate_type_specific_properties`]. Reference resolution (`over`,
-/// `field`, function/type fit) needs the whole field map settled and
-/// lives in `compute_check`, where a finding disables the one field
-/// instead of failing the load.
+/// other options, and the one type it can never sit on. A pulled
+/// relation is rejected for the reason a conditional one is: a derived
+/// link would be invisible to reverse links and reference checks.
+/// Whether the pulling field's type can take what the source holds
+/// depends on the relation followed (a copy over a `link`, a reduction
+/// over a `links`), so it is not the property table's call. Reference
+/// resolution (`over`, `field`, function/type fit) needs the whole
+/// field map settled and lives in `compute_check`, where a finding
+/// disables the one field instead of failing the load.
 fn validate_pull_compatibility(
     name: &str,
     field: &RawFieldDefinition,
@@ -569,6 +573,15 @@ fn validate_pull_compatibility(
         return;
     }
 
+    if !pull_allowed(field.field_type) {
+        errors.push(field_error(
+            name,
+            format!(
+                "'pull' is not supported on {} fields — a derived relation would be invisible to reverse links and reference checks",
+                field.field_type
+            ),
+        ));
+    }
     if field.compute.is_some() {
         errors.push(field_error(
             name,
@@ -732,7 +745,6 @@ fn property_is_set(field: &RawFieldDefinition, property: FieldProperty) -> bool 
         FieldProperty::Aggregate => field.aggregate.is_some(),
         FieldProperty::Inverse => field.inverse.is_some(),
         FieldProperty::Compute => field.compute.is_some(),
-        FieldProperty::Pull => field.pull.is_some(),
     }
 }
 
@@ -2301,8 +2313,28 @@ fields:
         let pull = schema.fields["start"].pull.as_ref().unwrap();
         assert_eq!(pull.over, "depends_on");
         assert_eq!(pull.field, "end");
-        assert_eq!(pull.function, AggregateFunction::Max);
+        assert_eq!(pull.function, Some(AggregateFunction::Max));
         assert!(!pull.error_on_missing);
+    }
+
+    #[test]
+    fn pull_without_function_parses() {
+        // Over a `link` there is nothing to reduce; whether leaving the
+        // function out matches the relation is the config check's call.
+        let yaml = "\
+fields:
+  parent:
+    type: link
+    allow_cycles: false
+  reference:
+    type: string
+    pull:
+      over: parent
+      field: reference
+";
+        let schema = parse_schema(yaml).unwrap();
+        let pull = schema.fields["reference"].pull.as_ref().unwrap();
+        assert_eq!(pull.function, None);
     }
 
     #[test]
@@ -2368,23 +2400,24 @@ fields:
     }
 
     #[test]
-    fn pull_on_unsupported_type_rejected() {
+    fn pull_on_relation_rejected() {
+        // The one type `pull` never sits on, for `when`'s reason: a
+        // derived relation is a phantom edge. Every other type parses;
+        // whether the source fits is the config check's call.
         let yaml = "\
 fields:
-  depends_on:
-    type: links
+  parent:
+    type: link
     allow_cycles: false
-  status:
-    type: choice
-    values: [open, done]
+  owner:
+    type: link
     pull:
-      over: depends_on
-      field: status
-      function: count
+      over: parent
+      field: owner
 ";
         assert_validation_error_contains(
             yaml,
-            "'pull' is not valid for type 'choice' (valid on: integer, float, date, duration, boolean)",
+            "'pull' is not supported on link fields — a derived relation would be invisible to reverse links and reference checks",
         );
     }
 

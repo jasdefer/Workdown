@@ -16,7 +16,8 @@ Hierarchical outline following `parent` upward to roots.
   - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — status: to_do
 - [Derived field expressions](../workdown-items/schema-expressions.md) — status: in_progress
   - [`and` / `or` / `not` in the expression grammar](../workdown-items/expression-logical-combinators.md) — status: on_hold
-  - [Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice](../workdown-items/pull-copy-over-link.md) — status: to_do
+  - [Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice](../workdown-items/pull-copy-over-link.md) — status: in_progress
+  - [Copy into a field of a different type (`pull` over a `link` with conversion)](../workdown-items/pull-copy-type-conversion.md) — status: to_do
   - [A project-level start for unanchored roots, without a synthetic milestone item](../workdown-items/pull-root-anchor.md) — status: to_do
   - [Compare a field with a literal in a rule's match block](../workdown-items/rule-literal-comparisons.md) — status: to_do
   - [`map:` — lookup-table shorthand over the `when:` evaluator](../workdown-items/when-map-shorthand.md) — status: on_hold

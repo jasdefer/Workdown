@@ -10,7 +10,7 @@ Cards grouped into columns by `status`.
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
-- [Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice](../workdown-items/pull-copy-over-link.md)
+- [Copy into a field of a different type (`pull` over a `link` with conversion)](../workdown-items/pull-copy-type-conversion.md)
 - [A project-level start for unanchored roots, without a synthetic milestone item](../workdown-items/pull-root-anchor.md)
 - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md)
 - [Check comparison references in rules at schema load](../workdown-items/rule-comparison-reference-check.md)
@@ -20,6 +20,7 @@ Cards grouped into columns by `status`.
 
 ## in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
+- [Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice](../workdown-items/pull-copy-over-link.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
 
 ## on_hold

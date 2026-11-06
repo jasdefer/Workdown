@@ -8,4 +8,4 @@
 | [git-status-event-loop](../workdown-items/git-status-event-loop.md) | done |  |
 | [graph-item-open](../workdown-items/graph-item-open.md) | done |  |
 | [item-body-links-dead](../workdown-items/item-body-links-dead.md) | done |  |
-| [pull-copy-over-link](../workdown-items/pull-copy-over-link.md) | to_do | [pull-fields](../workdown-items/pull-fields.md) |
+| [pull-copy-over-link](../workdown-items/pull-copy-over-link.md) | in_progress | [pull-fields](../workdown-items/pull-fields.md) |

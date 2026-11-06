@@ -4,6 +4,7 @@ import type { RuleShape } from '$lib/api/generated/RuleShape';
 import {
 	anchorsOf,
 	comparableFields,
+	comparisonsFor,
 	emptyMatchRow,
 	emptyRequireRow,
 	initialRuleDraft,
@@ -163,7 +164,8 @@ describe('which tests a reference takes', () => {
 			'required',
 			'forbidden',
 			'values',
-			'not'
+			'not',
+			'compare'
 		]);
 		expect(requireTestKinds('single', 'date', tables)).toEqual([
 			'required',
@@ -172,9 +174,18 @@ describe('which tests a reference takes', () => {
 			'not',
 			'compare'
 		]);
-		expect(requireTestKinds('many', 'color', tables)).toEqual(['required', 'forbidden']);
+		// A color is compared field to field (equality holds on every
+		// type), never tested by value.
+		expect(requireTestKinds('many', 'color', tables)).toEqual(['required', 'forbidden', 'compare']);
 		expect(requireTestKinds('many_bare', null, tables)).toEqual(['min_count', 'max_count']);
 		expect(requireTestKinds('incomplete', null, tables)).toEqual([]);
+	});
+
+	it('offers equality on every type and an order only where the engine has one', () => {
+		expect(comparisonsFor('choice', tables)).toEqual(['eq']);
+		expect(comparisonsFor('duration', tables)).toEqual(['eq']);
+		expect(comparisonsFor('date', tables)).toEqual(['eq', 'lt', 'lte', 'gt', 'gte']);
+		expect(comparisonsFor(null, tables)).toEqual([]);
 	});
 
 	it('compares with the other fields of the same type, plus $today for dates', () => {

@@ -151,7 +151,7 @@ fn check_operator(
 
     // Field-to-field comparisons — skip when either operand is null.
     if let Some(ref other_ref) = operator.eq_field {
-        if let Some(detail) = check_field_comparison(item, field_ref, other_ref, "==", ctx) {
+        if let Some(detail) = check_field_equality(item, field_ref, other_ref, ctx) {
             return Some(detail);
         }
     }
@@ -209,26 +209,25 @@ fn check_operator(
 
 // ── Field-to-field comparison ───────────────────────────────────────
 
-/// Compare two field values for equality. Returns a violation detail if
-/// they are not equal, or `None` if they are equal or either is null.
-fn check_field_comparison(
+/// Test two field values for equality (`eq_field`). Returns a violation
+/// detail if they are not equal, or `None` if they are equal or either
+/// is null. The ordered operators are [`check_field_ordering`].
+fn check_field_equality(
     item: &WorkItem,
     field_ref: &str,
     other_ref: &str,
-    operator_str: &str,
     ctx: &EvalContext,
 ) -> Option<String> {
     let this_value = resolve_single_value(item, field_ref, ctx)?;
     let other_value = resolve_single_value(item, other_ref, ctx)?;
 
-    match compare_field_values(this_value, other_value) {
-        Some(Ordering::Equal) => None,
-        Some(_) => Some(format!(
-            "'{field_ref}' must {operator_str} '{}'",
-            display_operand(other_ref, other_value),
-        )),
-        None => None, // incompatible types — skip
+    if field_values_equal(this_value, other_value) {
+        return None;
     }
+    Some(format!(
+        "'{field_ref}' must == '{}'",
+        display_operand(other_ref, other_value),
+    ))
 }
 
 /// Compare two field values with an ordering predicate. Returns a violation
@@ -286,6 +285,22 @@ fn resolve_single_value<'a>(
     }
 }
 
+/// Whether two field values are equal for `eq_field`: by value, with
+/// an integer and a float compared numerically (the one pairing the
+/// file can spell two ways). Defined for every type, so the rules
+/// editor offers equality unconditionally and no served list says
+/// where; only the ordered comparisons need [`ordering_defined`].
+/// Values of two other types are never equal — there is no silent skip
+/// for a type reason; a comparison that can never hold is a schema
+/// mistake for the load check to report, not for the evaluator to hide.
+pub(crate) fn field_values_equal(left: &FieldValue, right: &FieldValue) -> bool {
+    match (left, right) {
+        (FieldValue::Integer(left), FieldValue::Float(right)) => (*left as f64) == *right,
+        (FieldValue::Float(left), FieldValue::Integer(right)) => *left == (*right as f64),
+        _ => left == right,
+    }
+}
+
 /// Whether two values of `field_type` have an order, so that a
 /// field-to-field comparison (`lt_field` and the rest) means something:
 /// every type [`compare_field_values`] has an arm for. The rules editor
@@ -309,11 +324,12 @@ pub(crate) fn ordering_defined(field_type: FieldType) -> bool {
     }
 }
 
-/// Compare two field values for rule assertions (`gt`, `lt`, etc.).
+/// Order two field values for the ordered rule assertions (`gt_field`,
+/// `lt_field` and the rest; equality is [`field_values_equal`]).
 ///
 /// Returns `None` for pairs without a defined ordering (Choice,
-/// Multichoice, List, Link, Links) so the assertion fails loudly
-/// instead of silently lex-comparing.
+/// Multichoice, Color, List, Link, Links, and any two types that do
+/// not share one) — the caller skips those, as the schema docs say.
 ///
 /// Supports Integer, Float, Date, Duration, String, Boolean — the
 /// types [`ordering_defined`] names. Cross-type Integer vs Float is
@@ -386,6 +402,37 @@ mod tests {
                 "{field_type}: the list and the comparison disagree"
             );
         }
+    }
+
+    // ── field_values_equal ──────────────────────────────────────
+
+    #[test]
+    fn field_values_equal_by_value_with_integer_and_float_compared_numerically() {
+        assert!(field_values_equal(
+            &FieldValue::Choice("memo".into()),
+            &FieldValue::Choice("memo".into())
+        ));
+        assert!(!field_values_equal(
+            &FieldValue::Choice("memo".into()),
+            &FieldValue::Choice("report".into())
+        ));
+        assert!(field_values_equal(
+            &FieldValue::Integer(3),
+            &FieldValue::Float(3.0)
+        ));
+        assert!(field_values_equal(
+            &FieldValue::Float(3.0),
+            &FieldValue::Integer(3)
+        ));
+        assert!(!field_values_equal(
+            &FieldValue::Integer(3),
+            &FieldValue::Float(3.5)
+        ));
+        // Two other types are unequal, never skipped.
+        assert!(!field_values_equal(
+            &FieldValue::String("3".into()),
+            &FieldValue::Integer(3)
+        ));
     }
 
     // ── compare_field_values ────────────────────────────────────

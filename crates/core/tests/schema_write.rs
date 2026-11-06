@@ -183,7 +183,7 @@ fn pulled(field: &str) -> FieldDefinitionWrite {
     earliest.recipe = Some(FieldRecipe::Pull(PullConfig {
         over: "depends_on".to_owned(),
         field: field.to_owned(),
-        function: AggregateFunction::Min,
+        function: Some(AggregateFunction::Min),
         error_on_missing: false,
     }));
     earliest
@@ -564,7 +564,7 @@ fn add_field_with_a_pull_writes_the_block_and_clearing_the_recipe_removes_it() {
         Some(PullConfig {
             over: "depends_on".to_owned(),
             field: "created".to_owned(),
-            function: AggregateFunction::Min,
+            function: Some(AggregateFunction::Min),
             error_on_missing: false,
         })
     );

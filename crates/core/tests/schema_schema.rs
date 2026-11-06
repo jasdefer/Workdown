@@ -207,7 +207,6 @@ fn representative_value(field_type: FieldType, property: FieldProperty) -> &'sta
         // The string form: a mapping with `round` would be rejected for
         // its shape on every non-date type, not for the property.
         FieldProperty::Compute => "other + 1",
-        FieldProperty::Pull => "{ over: parent, field: other, function: count }",
     }
 }
 

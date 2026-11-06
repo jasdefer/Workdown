@@ -12,8 +12,10 @@
 // what it points at (one value, many, the related items themselves),
 // and by its target type through the lists the definition payload
 // serves from the rule engine (`rule_value_test_types`,
-// `rule_comparable_types`). Nothing here knows a type's rules.
+// `rule_comparable_types`). Nothing here knows a type's rules; the
+// one fact it carries is that equality holds for every type.
 
+import type { Comparison } from '$lib/api/generated/Comparison';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import type { FieldType } from '$lib/api/generated/FieldType';
 import type { FieldValue } from '$lib/api/generated/FieldValue';
@@ -240,8 +242,9 @@ export type RuleTables = Pick<
 /**
  * The require tests a reference can take, by what it points at and
  * the target field's type: presence always; a value set where the
- * engine tests the type by value; a comparison where it has an order
- * for the type; a count only on the related items themselves.
+ * engine tests the type by value; a comparison on every known type
+ * (`comparisonsFor` says which); a count only on the related items
+ * themselves.
  */
 export function requireTestKinds(
 	kind: ReferenceKind,
@@ -259,12 +262,24 @@ export function requireTestKinds(
 			if (targetType !== null && tables.rule_value_test_types.includes(targetType)) {
 				kinds.push('values', 'not');
 			}
-			if (targetType !== null && tables.rule_comparable_types.includes(targetType)) {
+			if (comparisonsFor(targetType, tables).length > 0) {
 				kinds.push('compare');
 			}
 			return kinds;
 		}
 	}
+}
+
+/**
+ * The comparisons a field of `targetType` may make with another field,
+ * in the grammar's order: equality on every type (the engine tests any
+ * value by value, so no served list says where), the ordered ones
+ * where it has an order for the type. Empty for an unknown target.
+ */
+export function comparisonsFor(targetType: FieldType | null, tables: RuleTables): Comparison[] {
+	if (targetType === null) return [];
+	const ordered = tables.rule_comparable_types.includes(targetType);
+	return ordered ? ['eq', 'lt', 'lte', 'gt', 'gte'] : ['eq'];
 }
 
 /**

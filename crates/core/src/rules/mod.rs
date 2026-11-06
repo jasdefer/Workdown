@@ -427,6 +427,70 @@ mod tests {
         chrono::NaiveDate::from_ymd_opt(2026, 7, 29).unwrap()
     }
 
+    // ── eq_field across types ───────────────────────────────────
+
+    /// "An item's type matches its parent's": equality on a `choice`
+    /// field, through a link — the case that used to pass silently
+    /// because the comparison helper had no choice arm.
+    fn same_type_as_parent_rule() -> Rule {
+        Rule {
+            name: "same-type-as-parent".into(),
+            description: None,
+            severity: Severity::Error,
+            match_conditions: IndexMap::new(),
+            require: {
+                let mut assertions = IndexMap::new();
+                assertions.insert(
+                    "type_field".into(),
+                    Assertion::Operator(crate::model::schema::AssertionOperator {
+                        required: None,
+                        forbidden: None,
+                        values: None,
+                        not: None,
+                        eq_field: Some("parent.type_field".into()),
+                        lt_field: None,
+                        lte_field: None,
+                        gt_field: None,
+                        gte_field: None,
+                        min_count: None,
+                        max_count: None,
+                    }),
+                );
+                assertions
+            },
+            count: None,
+        }
+    }
+
+    #[test]
+    fn eq_field_compares_choice_values_through_a_link() {
+        let schema = test_schema_with_rules(vec![same_type_as_parent_rule()]);
+        let (_dir, path) = setup_items(vec![
+            ("epic.md", "---\nstatus: open\ntype_field: epic\n---\n"),
+            (
+                "same.md",
+                "---\nstatus: open\ntype_field: epic\nparent: epic\n---\n",
+            ),
+            (
+                "differs.md",
+                "---\nstatus: open\ntype_field: task\nparent: epic\n---\n",
+            ),
+        ]);
+        let store = Store::load(&path, &schema).unwrap();
+        let diagnostics = evaluate(&store, &schema);
+
+        let violations: Vec<_> = diagnostics
+            .iter()
+            .filter(|diagnostic| is_rule_violation(diagnostic))
+            .collect();
+        assert_eq!(violations.len(), 1, "got: {violations:?}");
+        assert!(
+            violations[0].to_string().contains("differs"),
+            "got: {}",
+            violations[0]
+        );
+    }
+
     #[test]
     fn today_reference_flags_a_past_start_date() {
         let schema = test_schema_with_rules(vec![future_start_rule()]);

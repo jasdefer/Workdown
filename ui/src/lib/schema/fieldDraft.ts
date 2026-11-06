@@ -68,6 +68,7 @@ export type TypeTables = Pick<
 	| 'pull_sources_by_type'
 	| 'expression_readable_types'
 	| 'conditional_types'
+	| 'pull_types'
 	| 'condition_literal_types'
 >;
 
@@ -143,16 +144,18 @@ export function retype(tables: TypeTables, draft: FieldDraft, fieldType: FieldTy
 
 /**
  * Whether a field of `fieldType` may carry `recipe`: a `when` where the
- * server lists the type as conditional (the parser polices `when` with
- * its own check, so it is not a property of the type), the others
- * where the type lists the property.
+ * server lists the type as conditional, a `pull` where it lists it as
+ * pullable (the parser polices both with its own check, so neither is
+ * a property of the type), a `compute` where the type lists the
+ * property.
  */
 export function takesRecipe(
 	tables: TypeTables,
 	fieldType: FieldType,
 	recipe: FieldRecipe
 ): boolean {
-	if (recipe.kind === 'when') return tables.conditional_types.includes(fieldType);
+	if (recipe.kind === 'when') return takesWhen(tables, fieldType);
+	if (recipe.kind === 'pull') return takesPull(tables, fieldType);
 	return propertiesOf(tables, fieldType).includes(recipe.kind);
 }
 
@@ -258,80 +261,144 @@ export function newRollup(
 	return { function: firstFunction, error_on_missing: false, over: firstRelation };
 }
 
-/** Whether a field of `fieldType` may pull its value from linked items (`pull:`). */
+/** Whether a field of `fieldType` may pull its value from linked items (`pull:`): the server lists the types. */
 export function takesPull(tables: TypeTables, fieldType: FieldType): boolean {
-	return propertiesOf(tables, fieldType).includes('pull');
+	return tables.pull_types.includes(fieldType);
 }
 
 /**
- * The names of the relations a pull may follow: the `link` and `links`
- * fields that forbid cycles, in declaration order. A pull follows a
- * link forward, one hop, so a many-valued relation is fine; one that
- * allows cycles has no acyclic graph to evaluate in, and the load
- * disables the field, so the picker leaves it out.
+ * The relations a pull may follow: the `link` and `links` fields that
+ * forbid cycles, in declaration order. A pull follows a link forward,
+ * one hop, so a many-valued relation is fine; one that allows cycles
+ * has no acyclic graph to evaluate in, and the load disables the
+ * field, so the picker leaves it out.
  */
-export function pullRelations(fields: FieldDefinitionData[]): string[] {
-	return fields
-		.filter(
-			(field) =>
-				(field.field_type === 'link' || field.field_type === 'links') &&
-				field.shape.kind === 'relation' &&
-				field.shape.allow_cycles === false
-		)
-		.map((field) => field.name);
+function followableRelations(fields: FieldDefinitionData[]): FieldDefinitionData[] {
+	return fields.filter(
+		(field) =>
+			(field.field_type === 'link' || field.field_type === 'links') &&
+			field.shape.kind === 'relation' &&
+			field.shape.allow_cycles === false
+	);
 }
 
-/** A field a pull may read, with the functions that reduce it into the pulling field's type. */
+/** The names of the relations a pull may follow (see `followableRelations`). */
+export function pullRelations(fields: FieldDefinitionData[]): string[] {
+	return followableRelations(fields).map((field) => field.name);
+}
+
+/**
+ * What a pull does with what it finds, decided by the relation it
+ * follows: over a `link` there is one target and its value is copied
+ * as it is, no function; over a `links` the values are reduced with
+ * one.
+ */
+export type PullRelationKind = 'link' | 'links';
+
+/** The kind of the followable relation named `over`; `null` when no such relation is. */
+export function pullRelationKind(
+	fields: FieldDefinitionData[],
+	over: string
+): PullRelationKind | null {
+	const relation = followableRelations(fields).find((field) => field.name === over);
+	if (relation === undefined) return null;
+	return relation.field_type === 'link' ? 'link' : 'links';
+}
+
+/**
+ * A field a pull may read, with the functions that reduce it into the
+ * pulling field's type — none over a `link`, where the value is copied.
+ */
 export interface PullSourceField {
 	name: string;
 	functions: AggregateFunction[];
 }
 
 /**
- * The fields a pull into a `fieldType` field may read, in declaration
- * order: every field whose type the served table lists as a source,
- * each with the functions whose result the pulling field holds. The
- * rule — which function over which type yields which type, and that a
- * whole number fits a `float` field — is the server's; this only joins
- * its table with the schema's fields.
+ * The fields a pull into a `fieldType` field may read through a
+ * relation of `kind`, in declaration order: over a `link`, every field
+ * whose type the served table lists as copied into this type; over a
+ * `links`, every field whose type it lists as a source, each with the
+ * functions whose result the pulling field holds. The rule — which
+ * type copies into which, which function over which type yields which
+ * type, and that a whole number fits a `float` field — is the
+ * server's; this only joins its table with the schema's fields. No
+ * followable relation, nothing to read.
  */
 export function pullSources(
 	tables: TypeTables,
 	fields: FieldDefinitionData[],
-	fieldType: FieldType
+	fieldType: FieldType,
+	kind: PullRelationKind | null
 ): PullSourceField[] {
-	const sources =
-		tables.pull_sources_by_type.find((entry) => entry.field_type === fieldType)?.sources ?? [];
+	const row = tables.pull_sources_by_type.find((entry) => entry.field_type === fieldType);
+	if (row === undefined || kind === null) return [];
+	if (kind === 'link') {
+		return fields
+			.filter((field) => row.copy_sources.includes(field.field_type))
+			.map((field) => ({ name: field.name, functions: [] }));
+	}
 	return fields.flatMap((field) => {
-		const source = sources.find((entry) => entry.field_type === field.field_type);
+		const source = row.reduction_sources.find((entry) => entry.field_type === field.field_type);
 		return source === undefined ? [] : [{ name: field.name, functions: source.functions }];
 	});
 }
 
+/** `value` without a function: the form a copy over a `link` takes. */
+function withoutFunction(value: PullConfig): PullConfig {
+	const { over, field, error_on_missing } = value;
+	return { over, field, error_on_missing };
+}
+
 /**
- * The pull the panel starts with when it is chosen: the first relation,
- * the first readable field and that field's first function, so the
- * draft is whole at once. `null` when there is nothing to choose from —
- * no relation forbids cycles, or no field can be reduced into the
- * type.
+ * The pull the panel starts with when it is chosen: the first relation
+ * and the first field readable through it — with that field's first
+ * function over a `links`, without one over a `link` — so the draft is
+ * whole at once. `null` when there is nothing to choose from — no
+ * relation forbids cycles, or no field can be read through the first
+ * one into the type.
  */
 export function newPull(
 	tables: TypeTables,
 	fields: FieldDefinitionData[],
 	fieldType: FieldType
 ): PullConfig | null {
-	const [firstRelation] = pullRelations(fields);
-	const [firstSource] = pullSources(tables, fields, fieldType);
-	const firstFunction = firstSource?.functions[0];
-	if (firstRelation === undefined || firstSource === undefined || firstFunction === undefined) {
-		return null;
-	}
-	return {
-		over: firstRelation,
+	const [firstRelation] = followableRelations(fields);
+	if (firstRelation === undefined) return null;
+	const kind = pullRelationKind(fields, firstRelation.name);
+	const [firstSource] = pullSources(tables, fields, fieldType, kind);
+	if (firstSource === undefined) return null;
+	const start: PullConfig = {
+		over: firstRelation.name,
 		field: firstSource.name,
-		function: firstFunction,
 		error_on_missing: false
 	};
+	if (kind === 'link') return start;
+	const [firstFunction] = firstSource.functions;
+	return firstFunction === undefined ? null : { ...start, function: firstFunction };
+}
+
+/**
+ * The pull after its relation changed to `over`: what can be read
+ * through the new relation may differ from the old (a `link` copies,
+ * a `links` reduces), so the field is kept where the new relation
+ * offers it and replaced by the first it offers otherwise, and the
+ * function follows the field as `withPullSource` has it. A relation
+ * offering nothing keeps the field as it is, marked by the picker.
+ */
+export function withPullRelation(
+	tables: TypeTables,
+	fields: FieldDefinitionData[],
+	fieldType: FieldType,
+	value: PullConfig,
+	over: string
+): PullConfig {
+	const moved = { ...value, over };
+	const sources = pullSources(tables, fields, fieldType, pullRelationKind(fields, over));
+	const [firstSource] = sources;
+	if (firstSource === undefined) return moved;
+	const kept = sources.some((source) => source.name === value.field);
+	return withPullSource(moved, sources, kept ? value.field : firstSource.name);
 }
 
 /** The `compute:` recipe as the panel edits it: the formula as text and its options. */
@@ -492,9 +559,19 @@ export function withPullSource(
 	sources: PullSourceField[],
 	name: string
 ): PullConfig {
-	const functions = sources.find((source) => source.name === name)?.functions ?? [];
-	const kept = functions.includes(value.function) ? value.function : functions[0];
-	return { ...value, field: name, function: kept ?? value.function };
+	const source = sources.find((entry) => entry.name === name);
+	// A source without functions is copied: a `link` relation. One not
+	// offered at all keeps whatever the file says, marked by the picker.
+	if (source?.functions.length === 0) {
+		return withoutFunction({ ...value, field: name });
+	}
+	const functions = source?.functions ?? [];
+	const kept =
+		value.function !== undefined && functions.includes(value.function)
+			? value.function
+			: functions[0];
+	const next = { ...value, field: name };
+	return kept === undefined ? next : { ...next, function: kept };
 }
 
 /** The `when:` recipe as the panel edits it: the branches in order, first match wins. */

@@ -616,10 +616,11 @@ enum PullOutcome {
 }
 
 /// Read the pull's source field from every forward link target and
-/// reduce the values. No targets means no value (the item is a root of
-/// the pull graph and carries a manual anchor instead); an incomplete
-/// target means no value either — a partial reduction would be a
-/// silent guess.
+/// reduce the values — or, with no function (a `link` source, one
+/// target), copy the one value as it is. No targets means no value
+/// (the item is a root of the pull graph and carries a manual anchor
+/// instead); an incomplete target means no value either — a partial
+/// reduction would be a silent guess.
 fn evaluate_pull(
     pull: &PullConfig,
     declared_type: FieldType,
@@ -646,13 +647,19 @@ fn evaluate_pull(
         return PullOutcome::MissingInputs(missing_inputs);
     }
 
-    match rollup::apply_aggregate(pull.function, &values) {
+    let pulled = match pull.function {
+        Some(function) => rollup::apply_aggregate(function, &values),
+        // The config check admits a missing function only over a
+        // `link`, so this is the one target's value.
+        None => values.into_iter().next(),
+    };
+    match pulled {
         // The one widening the schema-level check allows: an integer
-        // reduction (count) landing in a float field.
+        // (a count, or a copied integer) landing in a float field.
         Some(FieldValue::Integer(value)) if declared_type == FieldType::Float => {
             PullOutcome::Value(FieldValue::Float(value as f64))
         }
-        Some(reduced) => PullOutcome::Value(reduced),
+        Some(pulled) => PullOutcome::Value(pulled),
         None => PullOutcome::Skip,
     }
 }
@@ -1633,6 +1640,118 @@ fields:
         assert_eq!(
             field(&items, "c", "dependency_weight_count"),
             Some(&FieldValue::Float(2.0))
+        );
+    }
+
+    /// Inheritance down a `parent` chain: a root writes `reference` and
+    /// `format` once, every descendant copies them from its parent.
+    const INHERITANCE_SCHEMA: &str = "\
+fields:
+  parent:
+    type: link
+    allow_cycles: false
+  reference:
+    type: string
+    pull:
+      over: parent
+      field: reference
+  format:
+    type: choice
+    values: [memo, report]
+    pull:
+      over: parent
+      field: format
+";
+
+    fn link_value(id: &str) -> FieldValue {
+        FieldValue::Link(WorkItemId::from(id.to_owned()))
+    }
+
+    #[test]
+    fn pull_over_a_link_copies_the_parents_value_down_the_chain() {
+        let mut items = HashMap::from([
+            item(
+                "root",
+                vec![
+                    ("reference", FieldValue::String("R-1".into())),
+                    ("format", FieldValue::Choice("memo".into())),
+                ],
+            ),
+            item("child", vec![("parent", link_value("root"))]),
+            item("grandchild", vec![("parent", link_value("child"))]),
+        ]);
+        let diagnostics = run_derive(&mut items, INHERITANCE_SCHEMA, "");
+
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+        for id in ["child", "grandchild"] {
+            assert_eq!(
+                field(&items, id, "reference"),
+                Some(&FieldValue::String("R-1".into()))
+            );
+            assert_eq!(
+                field(&items, id, "format"),
+                Some(&FieldValue::Choice("memo".into()))
+            );
+        }
+    }
+
+    #[test]
+    fn pull_copy_hand_written_value_wins_and_feeds_its_own_descendants() {
+        let mut items = HashMap::from([
+            item(
+                "root",
+                vec![("reference", FieldValue::String("R-1".into()))],
+            ),
+            item(
+                "child",
+                vec![
+                    ("parent", link_value("root")),
+                    ("reference", FieldValue::String("R-2".into())),
+                ],
+            ),
+            item("grandchild", vec![("parent", link_value("child"))]),
+        ]);
+        let diagnostics = run_derive(&mut items, INHERITANCE_SCHEMA, "");
+
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+        assert_eq!(
+            field(&items, "child", "reference"),
+            Some(&FieldValue::String("R-2".into()))
+        );
+        assert_eq!(
+            field(&items, "grandchild", "reference"),
+            Some(&FieldValue::String("R-2".into()))
+        );
+        // The root has no parent and no `format`: nothing to copy,
+        // nothing reported without `required` or `error_on_missing`.
+        assert_eq!(field(&items, "grandchild", "format"), None);
+    }
+
+    #[test]
+    fn pull_copy_widens_an_integer_into_a_float_field() {
+        let schema_yaml = "\
+fields:
+  parent:
+    type: link
+    allow_cycles: false
+  weight:
+    type: integer
+  inherited_weight:
+    type: float
+    pull:
+      over: parent
+      field: weight
+";
+        let mut items = HashMap::from([
+            item("root", vec![("weight", FieldValue::Integer(3))]),
+            item("child", vec![("parent", link_value("root"))]),
+        ]);
+        let diagnostics = run_derive(&mut items, schema_yaml, "");
+
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+        assert_eq!(
+            field(&items, "child", "inherited_weight"),
+            Some(&FieldValue::Float(3.0))
         );
     }
 

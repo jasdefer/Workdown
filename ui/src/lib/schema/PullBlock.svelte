@@ -1,42 +1,58 @@
 <!--
   The pull pickers of the field editor's "Value" section, shown once
   "Pulled from linked items" is chosen: through which relation, which
-  field is read on the items it points at, and how the collected values
-  are combined, plus the `error_on_missing` box
-  (`schema-derived-field-editor`, decision 6).
+  field is read on the items it points at, and — over a `links` — how
+  the collected values are combined, plus the `error_on_missing` box
+  (`schema-derived-field-editor`, decision 6). Over a `link` there is
+  one target and its value is copied, so the function picker goes
+  (`pull-copy-over-link`, decision 8).
 
   The pickers offer only what the load accepts: the `link` and `links`
   fields that forbid cycles (`pullRelations`), the fields whose type the
-  server's table lists as a source for this field's type, and for the
-  chosen field the functions that reduce it into this type
-  (`pullSources`). A choice the file names but the pickers cannot offer
-  stays in the options, marked, so the panel shows what the file says;
-  the preview reports the problem and Save stays grey.
+  server's table lists as readable through the chosen relation into
+  this field's type, and for the chosen field the functions that reduce
+  it into this type (`pullSources`). A choice the file names but the
+  pickers cannot offer stays in the options, marked, so the panel shows
+  what the file says; the preview reports the problem and Save stays
+  grey.
 
   Owns no state: the draft's pull is the value, and a change goes up
-  as the whole new config.
+  as the whole new config. A field change is conformed here
+  (`withPullSource`, from the `sources` given); a relation change goes
+  up as is and the panel's `onPullChange` conforms it, because the
+  fields readable through the new relation are not known here.
 -->
 <script lang="ts">
 	import type { AggregateFunction } from '$lib/api/generated/AggregateFunction';
 	import type { PullConfig } from '$lib/api/generated/PullConfig';
-	import { withPullSource, type PullSourceField } from './fieldDraft';
+	import { withPullSource, type PullRelationKind, type PullSourceField } from './fieldDraft';
 
 	interface Props {
 		value: PullConfig;
 		/** The `link` and `links` fields that forbid cycles, in declaration order. */
 		relations: string[];
-		/** The fields a pull into this type may read, each with its functions. */
+		/** What the chosen relation is, or `null` when it is not followable. */
+		relationKind: PullRelationKind | null;
+		/** The fields a pull into this type may read through the chosen relation, each with its functions. */
 		sources: PullSourceField[];
 		disabled?: boolean;
 		onchange: (value: PullConfig) => void;
 	}
 
-	let { value, relations, sources, disabled = false, onchange }: Props = $props();
+	let { value, relations, relationKind, sources, disabled = false, onchange }: Props = $props();
 
+	const copies = $derived(relationKind === 'link');
 	const strayRelation = $derived(relations.includes(value.over) ? null : value.over);
 	const source = $derived(sources.find((entry) => entry.name === value.field) ?? null);
 	const functions = $derived(source?.functions ?? []);
-	const strayFunction = $derived(functions.includes(value.function) ? null : value.function);
+	// A function the relation cannot take: any over a `link`, one the
+	// source does not reduce with over a `links`.
+	const strayFunction = $derived(
+		value.function !== undefined && (copies || !functions.includes(value.function))
+			? value.function
+			: null
+	);
+	const missingFunction = $derived(!copies && value.function === undefined);
 
 	function onRelationChange(event: Event & { currentTarget: HTMLSelectElement }): void {
 		onchange({ ...value, over: event.currentTarget.value });
@@ -56,7 +72,7 @@
 </script>
 
 <div class="block">
-	<div class="pickers">
+	<div class="pickers" class:two={copies}>
 		<label class="row">
 			<span class="label">Through</span>
 			<select value={value.over} {disabled} onchange={onRelationChange}>
@@ -79,30 +95,54 @@
 				{/if}
 			</select>
 		</label>
-		<label class="row">
-			<span class="label">Combine with</span>
-			<select value={value.function} {disabled} onchange={onFunctionChange}>
-				{#each functions as name (name)}
-					<option value={name}>{name}</option>
-				{/each}
-				{#if strayFunction !== null}
-					<option value={strayFunction}>{strayFunction} (does not fit)</option>
-				{/if}
-			</select>
-		</label>
+		{#if !copies}
+			<label class="row">
+				<span class="label">Combine with</span>
+				<select value={value.function ?? ''} {disabled} onchange={onFunctionChange}>
+					{#each functions as name (name)}
+						<option value={name}>{name}</option>
+					{/each}
+					{#if strayFunction !== null}
+						<option value={strayFunction}>{strayFunction} (does not fit)</option>
+					{/if}
+					{#if missingFunction}
+						<option value="" disabled>Function…</option>
+					{/if}
+				</select>
+			</label>
+		{/if}
 	</div>
 	{#if strayRelation !== null}
 		<span class="hint warning">
 			<code>{strayRelation}</code> is not a <code>link</code> or <code>links</code> field that forbids
 			cycles.
 		</span>
+	{:else if source === null && copies}
+		<span class="hint warning">
+			<code>{value.field}</code> cannot be copied into this field's type.
+		</span>
 	{:else if source === null}
 		<span class="hint warning">
 			No function reduces <code>{value.field}</code> into this field's type.
 		</span>
+	{:else if strayFunction !== null && copies}
+		<span class="hint warning">
+			<code>{value.over}</code> points at one item, whose <code>{value.field}</code> is copied as it
+			is — there is nothing to <code>{strayFunction}</code>.
+		</span>
 	{:else if strayFunction !== null}
 		<span class="hint warning">
 			<code>{strayFunction}</code> of <code>{value.field}</code> does not produce this field's type.
+		</span>
+	{:else if missingFunction}
+		<span class="hint warning">
+			<code>{value.over}</code> points at many items; pick how their <code>{value.field}</code> values
+			are combined.
+		</span>
+	{:else if copies}
+		<span class="hint">
+			An item's value is <code>{value.field}</code> on the item its <code>{value.over}</code> points at;
+			a value written by hand wins.
 		</span>
 	{:else}
 		<span class="hint">
@@ -149,6 +189,10 @@
 		display: grid;
 		grid-template-columns: 1fr 1fr 1fr;
 		gap: var(--space-3);
+	}
+
+	.pickers.two {
+		grid-template-columns: 1fr 1fr;
 	}
 
 	select {
