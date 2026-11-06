@@ -35,7 +35,6 @@ export const load: PageLoad = async ({ params, url }) => {
 
 	return {
 		viewId: params.id,
-		itemId: url.searchParams.get('item'),
 		filter,
 		displayOverride,
 		result

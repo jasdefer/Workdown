@@ -5,6 +5,21 @@ tagged version into the top of that version's GitHub release page, so
 entries are written for people using workdown, not for people reading
 its source — internal refactors are deliberately absent.
 
+## Unreleased
+
+### Added
+
+- The item detail can dock to the side of the view for clicking
+  through many items: "Dock to side" in the detail's header opens it
+  as a panel beside the view, the view stays in sight and the next
+  card is one click away. "Open as dialog" switches back to the
+  centered modal. The choice is remembered in the browser.
+
+### Fixed
+
+- Opening or closing an item from a view no longer refetches the whole
+  view first.
+
 ## 0.2.11 - 2026-11-06
 
 ### Added

@@ -6,7 +6,6 @@ Cards grouped into columns by `status`.
 - [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md)
 - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
-- [Let the item detail open at the side again for quick browsing](../workdown-items/item-detail-side-placement.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
@@ -19,6 +18,7 @@ Cards grouped into columns by `status`.
 - [Major upgrades of the web UI's lint and SvelteKit toolchain](../workdown-items/ui-toolchain-upgrade.md)
 
 ## in_progress
+- [Let the item detail open at the side again for quick browsing](../workdown-items/item-detail-side-placement.md)
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice](../workdown-items/pull-copy-over-link.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)

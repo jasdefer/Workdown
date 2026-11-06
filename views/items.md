@@ -65,7 +65,7 @@
 | [init-install-hooks](../workdown-items/init-install-hooks.md) | done | [polish](../workdown-items/polish.md) |  |
 | [item-body-links-dead](../workdown-items/item-body-links-dead.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [item-detail-hide-optional-fields](../workdown-items/item-detail-hide-optional-fields.md) | done | [misc-work](../workdown-items/misc-work.md) | [item-overlay-redesign](../workdown-items/item-overlay-redesign.md) |
-| [item-detail-side-placement](../workdown-items/item-detail-side-placement.md) | to_do | [misc-work](../workdown-items/misc-work.md) | [item-overlay-redesign](../workdown-items/item-overlay-redesign.md) |
+| [item-detail-side-placement](../workdown-items/item-detail-side-placement.md) | in_progress | [misc-work](../workdown-items/misc-work.md) | [item-overlay-redesign](../workdown-items/item-overlay-redesign.md) |
 | [item-mutations](../workdown-items/item-mutations.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md) |
 | [item-overlay-redesign](../workdown-items/item-overlay-redesign.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [live-updates](../workdown-items/live-updates.md) | done | [server](../workdown-items/server.md) | [walking-skeleton](../workdown-items/walking-skeleton.md) |
