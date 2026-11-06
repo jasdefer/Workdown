@@ -6,7 +6,22 @@
   panel is open — for a form whose source should stay in view, like
   the schema field editor beside the table of fields. What opens and
   closes it is the host's URL state, so `onclose` is the host's to
-  interpret.
+  interpret; every way the reader can close it routes there, as in
+  `ModalDialog`: the close button, and Escape.
+
+  There is no native dialog here, so Escape is wired by hand, once, for
+  every host: while a panel is open, Escape anywhere on the page closes
+  it — the reader works in the page beside the panel (a card, a row),
+  so focus is rarely inside it. Not when something nearer already took
+  the key: a listener that marks its Escape handled (the timer menus
+  call `preventDefault`), or an open `<dialog>` (a confirmation
+  popover), whose own Escape it is.
+
+  The row itself is the host's: a flex row with the page as a shrinking
+  `flex: 1; min-width: 0` column and this panel beside it, the same few
+  lines on the schema page and the view page. Two copies were judged
+  cheaper than a shared class for a rule this small; a third host makes
+  it worth sharing.
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
@@ -27,7 +42,17 @@
 	}
 
 	let { label, onclose, size = 'narrow', header, children }: Props = $props();
+
+	function onkeydown(event: KeyboardEvent): void {
+		if (event.key !== 'Escape' || event.defaultPrevented) return;
+		const target = event.target;
+		if (target instanceof Element && target.closest('dialog[open]') !== null) return;
+		event.preventDefault();
+		onclose();
+	}
 </script>
+
+<svelte:window {onkeydown} />
 
 <aside class="panel" class:wide={size === 'wide'} aria-label={label}>
 	<header>

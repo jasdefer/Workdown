@@ -60,12 +60,16 @@
 		void schemaStore.load();
 	});
 
-	// The mode menu closes on any outside click or Escape.
+	// The mode menu closes on any outside click or Escape. The Escape is
+	// marked handled so a docked panel around the slot, which also
+	// listens for it, does not close with the menu.
 	$effect(() => {
 		if (!menuOpen) return undefined;
 		const close = () => (menuOpen = false);
 		const onKeydown = (event: KeyboardEvent) => {
-			if (event.key === 'Escape') close();
+			if (event.key !== 'Escape') return;
+			event.preventDefault();
+			close();
 		};
 		document.addEventListener('click', close);
 		document.addEventListener('keydown', onKeydown);

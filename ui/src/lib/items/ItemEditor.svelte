@@ -1,6 +1,7 @@
 <!--
-  The item editing surface, shared by the item dialog and the
-  standalone `/items/:id` page. Self-sufficient: given an id it fetches
+  The item editing surface, shared by the item dialog, the docked item
+  panel and the standalone `/items/:id` page. Self-sufficient: given an
+  id it fetches
   the item (`GET /api/items/:id`) and the schema (once, cached), renders
   a per-field editor for every schema field, and shows the body
   read-only.

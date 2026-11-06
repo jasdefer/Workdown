@@ -1,9 +1,11 @@
-// Where an item's detail opens: the dialog over the current view, or
+// Where an item's detail opens: in the current view (the centered
+// modal or the docked panel, whichever the reader's placement is), or
 // the standalone page.
 //
-// The dialog is driven by the `?item=` query param on the current view
-// route, so navigation is just a relative URL change — SvelteKit keeps
-// the path and re-runs the view's load, which mounts the dialog.
+// In a view the detail is driven by the `?item=` query param on the
+// current route, so navigation is just a relative URL change — the
+// view page reads the param and mounts the chrome, and the view's own
+// load, which does not depend on it, is left alone.
 // `itemHref` is for real `<a>` links (table cells, tree titles);
 // `openItem` is for elements that can't be anchors (the draggable board
 // card, an SVG rectangle, a canvas-drawn graph node), and

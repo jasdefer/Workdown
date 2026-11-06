@@ -96,3 +96,31 @@ toggle is only the first shape that came to mind.
    read, write, unknown value, no storage). Nothing for the panel
    mechanics. A browser click-through in the container is the visual
    check before the commit.
+
+## Decisions from the review (2026-11-06)
+
+8. **Escape belongs to `DockedPanel`.** The item panel had wired it
+   alone, and the timer menus (the mode menu inside the editor, the
+   expanded pill in the header) listen for the same key without marking
+   it handled, so closing a menu with Escape closed the panel too. The
+   chrome now owns Escape once, for every host — the schema's field and
+   rule editors close on it as well — with the two guards in one place:
+   an event already handled (the timer menus now call
+   `preventDefault`) and an open `<dialog>`. Every way to close routes
+   to `onclose`, as `ModalDialog` has it.
+9. **The schema page reads its panel params the same way.** Decision 5
+   moved `?item=` out of the view page's `load()`; the schema page kept
+   `?field=`, `?add`, `?rule=` and `?add-rule` in its `load()` and
+   refetched the definition on every open and close. Both pages now
+   read the params in the component from `page.url`; the load depends
+   on nothing but the data.
+10. **One storage stub for the tests.** The placement test had copied
+    the display override test's localStorage stub; both now import it
+    from `lib/testing/storageStub.ts`, which also has the throwing
+    variant for the privacy-mode case.
+11. **Comments the change had outdated** are updated: the item link
+    module no longer says the item param re-runs the view's load, the
+    editor names its three hosts, the placement module names the
+    display override as its storage precedent (not the theme, which
+    persists differently), and the docked chrome says the row layout is
+    the host's and why its two copies are not shared.

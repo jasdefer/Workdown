@@ -12,21 +12,16 @@
 // the page for free, while the store is never re-fetched by the ping. No
 // other page needs this payload.
 //
-// The editors' state is the URL, as the item panel's is on a view page:
-// `?field=<name>` opens the field panel on that field, `?add` opens it
-// empty, `?rule=<name>` and `?add-rule` do the same for the rule panel.
-// All four are read here so the page re-runs when they change.
+// The editors' state is the URL (`?field=`, `?add`, `?rule=`,
+// `?add-rule`), but the page component reads it, not this load: the
+// payload does not depend on which panel is open, and a load that read
+// the params would refetch the definition on every open and close. The
+// same split as the item detail on a view page.
 
 import { api } from '$lib/api/client';
 import type { PageLoad } from './$types';
 
-export const load: PageLoad = async ({ url }) => {
+export const load: PageLoad = async () => {
 	const result = await api.getSchemaDefinition();
-	return {
-		result,
-		fieldName: url.searchParams.get('field'),
-		adding: url.searchParams.has('add'),
-		ruleName: url.searchParams.get('rule'),
-		addingRule: url.searchParams.has('add-rule')
-	};
+	return { result };
 };

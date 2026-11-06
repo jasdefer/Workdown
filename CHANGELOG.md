@@ -18,7 +18,10 @@ its source — internal refactors are deliberately absent.
 ### Fixed
 
 - Opening or closing an item from a view no longer refetches the whole
-  view first.
+  view first; opening or closing a field or rule editor on the schema
+  page no longer refetches the schema first.
+- The field and rule editors on the schema page close on Escape, as
+  the item detail does.
 
 ## 0.2.11 - 2026-11-06
 

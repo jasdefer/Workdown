@@ -4,8 +4,9 @@
 // sight and the next card one click away).
 //
 // The choice is the reader's, project-wide, and kept in localStorage
-// like the theme — not in the URL, because a placement is a reading
-// habit, not a location. `?item=` stays the one truth about which
+// the way the display override is (`views/displayOverride.ts`: a pure
+// load/save pair, a `workdown.`-prefixed key) — not in the URL, because
+// a placement is a reading habit, not a location. `?item=` stays the one truth about which
 // item is open; this only says where. Unknown or missing storage
 // values fall back to the modal so a stale key can never leave the
 // detail unreachable.
