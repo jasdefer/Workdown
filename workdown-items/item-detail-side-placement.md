@@ -1,7 +1,7 @@
 ---
 id: item-detail-side-placement
 title: Let the item detail open at the side again for quick browsing
-status: in_progress
+status: done
 parent: misc-work
 depends_on: [item-overlay-redesign]
 tags: [web-ui]

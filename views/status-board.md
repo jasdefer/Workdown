@@ -18,7 +18,6 @@ Cards grouped into columns by `status`.
 - [Major upgrades of the web UI's lint and SvelteKit toolchain](../workdown-items/ui-toolchain-upgrade.md)
 
 ## in_progress
-- [Let the item detail open at the side again for quick browsing](../workdown-items/item-detail-side-placement.md)
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice](../workdown-items/pull-copy-over-link.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
@@ -86,6 +85,7 @@ Cards grouped into columns by `status`.
 - [Optional --install-hooks for pre-commit render](../workdown-items/init-install-hooks.md)
 - [Links to other work items do not work in the item detail](../workdown-items/item-body-links-dead.md)
 - [Let the reader hide optional fields in the item detail](../workdown-items/item-detail-hide-optional-fields.md)
+- [Let the item detail open at the side again for quick browsing](../workdown-items/item-detail-side-placement.md)
 - [Item mutations](../workdown-items/item-mutations.md)
 - [Redesign the work item overlay in the web UI](../workdown-items/item-overlay-redesign.md)
 - [File watcher and SSE for live updates](../workdown-items/live-updates.md)

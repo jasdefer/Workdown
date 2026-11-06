@@ -9,7 +9,6 @@ flowchart TD
     end
     subgraph misc-work ["Miscellaneous improvements"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
-        item-detail-side-placement["Let the item detail open at the side again for quick browsing"]
         prepare-commit-msg-hook["Prefill terminal commits with the generated message"]
         project-load-cache["Cache the project load in the server (when it starts to hurt)"]
         recording-dot-extraction["Extract the recording indicator the six item-presenting views each rebuilt"]
