@@ -70,8 +70,12 @@
 				timerStore.panelOpen = false;
 			}
 		};
+		// Marked handled so a docked panel on the page, which also listens
+		// for Escape, does not close with the expanded pill.
 		const onKeydown = (event: KeyboardEvent) => {
-			if (event.key === 'Escape') timerStore.panelOpen = false;
+			if (event.key !== 'Escape') return;
+			event.preventDefault();
+			timerStore.panelOpen = false;
 		};
 		document.addEventListener('click', onClick);
 		document.addEventListener('keydown', onKeydown);

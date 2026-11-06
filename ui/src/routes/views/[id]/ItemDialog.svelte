@@ -1,9 +1,11 @@
 <!--
   The item detail as a centered modal: the shared `ModalDialog` chrome
-  (workspace size) around the shared `ItemEditor`, with an open-standalone
-  link in the header. Opened by `/views/:id?item=:itemId`; closing
-  removes the query param (the host page's `onclose`), where Escape, the
-  backdrop and the close button all route. `onmutate` lets the host
+  (workspace size) around the shared `ItemEditor`, with the shared
+  header actions (standalone link, placement switch) and a close button
+  in the header. Opened by `/views/:id?item=:itemId` when the reader's
+  placement is the modal (`ItemPanel` is the other chrome); closing
+  removes the query param (the host page's `onclose`), where Escape,
+  the backdrop and the close button all route. `onmutate` lets the host
   refetch the underlying view after an edit.
 
   The body is a size container: the editor lays its two areas out by
@@ -12,8 +14,9 @@
 -->
 <script lang="ts">
 	import ItemEditor from '$lib/items/ItemEditor.svelte';
-	import { itemHref, standaloneItemHref } from '$lib/items/itemLink';
+	import { itemHref } from '$lib/items/itemLink';
 	import ModalDialog from '$lib/ui/ModalDialog.svelte';
+	import ItemDetailActions from './ItemDetailActions.svelte';
 
 	interface Props {
 		itemId: string;
@@ -27,7 +30,7 @@
 <ModalDialog label="Item detail" size="workspace" {onclose}>
 	<div class="content">
 		<header>
-			<a class="standalone" href={standaloneItemHref(itemId)}>Open standalone ↗</a>
+			<ItemDetailActions {itemId} />
 			<button type="button" class="close" aria-label="Close item detail" onclick={onclose}>×</button
 			>
 		</header>
@@ -54,11 +57,6 @@
 		padding: var(--space-2) var(--space-4);
 		border-bottom: 1px solid var(--color-border);
 		background-color: var(--color-surface);
-	}
-
-	.standalone {
-		font-size: var(--text-sm);
-		color: var(--color-fg-muted);
 	}
 
 	.close {

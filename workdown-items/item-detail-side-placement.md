@@ -1,7 +1,7 @@
 ---
 id: item-detail-side-placement
 title: Let the item detail open at the side again for quick browsing
-status: to_do
+status: in_progress
 parent: misc-work
 depends_on: [item-overlay-redesign]
 tags: [web-ui]
@@ -57,3 +57,70 @@ off. Points to consider if it goes that way:
 
 Any other approach that makes quick browsing cheap is fine too; the
 toggle is only the first shape that came to mind.
+
+## Decisions taken (2026-11-06)
+
+1. **A switch, the modal stays the default.** The centered modal is
+   unchanged. A button in the detail's header docks the item to the
+   side; from then on every item opens there until the reader switches
+   back. The side placement is `DockedPanel` (`narrow`, 28rem) in a
+   flex row beside the whole view page, toolbar and bars included, so
+   the view shrinks and nothing is covered. A non-modal dialog and a
+   next/previous navigation inside the modal were considered and
+   dropped: the first is a worse docked panel, the second solves the
+   gesture count but not the covered view and needs an item order per
+   view kind.
+2. **Where the choice lives.** In the detail's header, in both
+   placements, and in localStorage project-wide (one key, not per
+   view, like the theme). Not in the URL: a placement is a reading
+   habit, not a location. Switching with an item open moves that item
+   into the other chrome at once; `?item=` stays the one truth.
+3. **Order in the side panel: header, fields, body.** The frontmatter
+   fields stay above the body: `collapsed: true` already trims them to
+   the important ones, and the body can be very long. That is the
+   editor's existing stacked layout below 52rem, so `ItemEditor` is
+   untouched.
+4. **Closing the panel.** The close button, and Escape while the panel
+   is open, unless the key went to an open `<dialog>` (the timer's
+   confirmation popover). Both route through the URL as in the modal.
+5. **No view refetch on open.** `?item=` moves out of the page's
+   `load()` into the page component (`page.url`), so opening or closing
+   an item no longer refetches and re-renders the whole view before the
+   detail starts loading. This was in the path for the old slide-over
+   too; whether it is what made the modal feel slow is not measured. If
+   the modal still feels slow after the click-through, a new item
+   records the remaining finding.
+6. **Both chromes share one header part** (standalone link, placement
+   switch); the close button is the dialog's own or the panel's own.
+7. **Tests.** A Vitest unit test for the placement module (default,
+   read, write, unknown value, no storage). Nothing for the panel
+   mechanics. A browser click-through in the container is the visual
+   check before the commit.
+
+## Decisions from the review (2026-11-06)
+
+8. **Escape belongs to `DockedPanel`.** The item panel had wired it
+   alone, and the timer menus (the mode menu inside the editor, the
+   expanded pill in the header) listen for the same key without marking
+   it handled, so closing a menu with Escape closed the panel too. The
+   chrome now owns Escape once, for every host — the schema's field and
+   rule editors close on it as well — with the two guards in one place:
+   an event already handled (the timer menus now call
+   `preventDefault`) and an open `<dialog>`. Every way to close routes
+   to `onclose`, as `ModalDialog` has it.
+9. **The schema page reads its panel params the same way.** Decision 5
+   moved `?item=` out of the view page's `load()`; the schema page kept
+   `?field=`, `?add`, `?rule=` and `?add-rule` in its `load()` and
+   refetched the definition on every open and close. Both pages now
+   read the params in the component from `page.url`; the load depends
+   on nothing but the data.
+10. **One storage stub for the tests.** The placement test had copied
+    the display override test's localStorage stub; both now import it
+    from `lib/testing/storageStub.ts`, which also has the throwing
+    variant for the privacy-mode case.
+11. **Comments the change had outdated** are updated: the item link
+    module no longer says the item param re-runs the view's load, the
+    editor names its three hosts, the placement module names the
+    display override as its storage precedent (not the theme, which
+    persists differently), and the docked chrome says the row layout is
+    the host's and why its two copies are not shared.

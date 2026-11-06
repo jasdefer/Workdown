@@ -7,8 +7,11 @@
   rule entry opens the rule editor (`RulePanel`) the same way, Add rule
   opens it empty. All four are URL state (`?field=<name>`, `?add`,
   `?rule=<name>`, `?add-rule`), so the panel survives the watcher's
-  refetch and the back button closes it. A save closes the panel and
-  leaves its warnings above the table until the next save.
+  refetch and the back button closes it. The params are read here from
+  `page.url`, not in `load()`, so opening or closing a panel does not
+  refetch the definition — the same split as the item detail on a view
+  page. A save closes the panel and leaves its warnings above the table
+  until the next save.
   The Up and Down buttons on a row move the field one place in the
   file: one write per click, then a refetch, as on the board. `id` has
   no buttons and nothing moves above it.
@@ -27,6 +30,7 @@
 -->
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
+	import { page } from '$app/state';
 	import { tick } from 'svelte';
 	import type { PageData } from './$types';
 	import type { Diagnostic } from '$lib/api/generated/Diagnostic';
@@ -53,7 +57,14 @@
 	const fields = $derived(definition === null ? [] : idFirst(definition.fields));
 	const failure = $derived(definition === null ? loadFailure(data.result) : null);
 
-	const panel = $derived(panelTarget(data));
+	const panel = $derived(
+		panelTarget({
+			fieldName: page.url.searchParams.get('field'),
+			adding: page.url.searchParams.has('add'),
+			ruleName: page.url.searchParams.get('rule'),
+			addingRule: page.url.searchParams.has('add-rule')
+		})
+	);
 
 	// The warnings the last save produced, shown until the next save. Page
 	// state rather than load data: the page component stays mounted across
@@ -68,8 +79,8 @@
 		return `/schema?rule=${encodeURIComponent(name)}`;
 	}
 
-	// Closing the panel drops the query — load() depends on it, so this
-	// re-runs and unmounts the panel.
+	// Closing the panel drops the query; the params are read above, so
+	// this unmounts the panel without refetching the definition.
 	function closePanel(): void {
 		void goto('/schema', { keepFocus: true, noScroll: true });
 	}

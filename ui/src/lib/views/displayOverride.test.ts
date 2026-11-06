@@ -5,21 +5,9 @@ import {
 	loadDisplayOverride,
 	saveDisplayOverride
 } from './displayOverride';
+import { installStorageStub, removeStorageStub } from '$lib/testing/storageStub';
 
-// Node has no localStorage — install a minimal stub on globalThis.
-function installStorageStub(): Map<string, string> {
-	const backing = new Map<string, string>();
-	(globalThis as Record<string, unknown>).localStorage = {
-		getItem: (key: string) => backing.get(key) ?? null,
-		setItem: (key: string, value: string) => void backing.set(key, value),
-		removeItem: (key: string) => void backing.delete(key)
-	};
-	return backing;
-}
-
-afterEach(() => {
-	delete (globalThis as Record<string, unknown>).localStorage;
-});
+afterEach(removeStorageStub);
 
 describe('isEmptyOverride', () => {
 	it('treats no roles and empty fields as empty', () => {
