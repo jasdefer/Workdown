@@ -19,3 +19,10 @@ install-updater = true
 # before `cargo build`. Used to ensure `ui/dist/` is populated for
 # rust-embed to bake into the release binary.
 github-build-setup = "../build-setup.yml"
+
+# GitHub retired the macos-14 image dist 0.31 picks for arm64 macOS
+# ("The configuration 'macos-14-arm64-us-default' is not supported",
+# 2026-11-06); pin the current arm64 image until the dist version
+# bump picks it by itself.
+[dist.github-custom-runners]
+aarch64-apple-darwin = "macos-15"
