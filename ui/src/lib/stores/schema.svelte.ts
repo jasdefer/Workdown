@@ -1,6 +1,6 @@
 // Schema store — the project's editing vocabulary, fetched once from
-// `GET /api/schema` and reused across the detail panel and the create
-// form.
+// `GET /api/schema` and reused across the detail panel, the create
+// form and the cards of a view.
 //
 // Lazily loaded: the first `load()` fetches; concurrent callers share
 // the in-flight promise; later callers are a no-op once cached. The item

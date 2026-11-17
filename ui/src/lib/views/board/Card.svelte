@@ -80,9 +80,7 @@
 		<div class="subtitle">{card.subtitle}</div>
 	{/if}
 	{#if card.body.trim().length > 0}
-		<!-- Following a reference swaps the detail like a card click does:
-		     the view stays where it is scrolled. -->
-		<div class="body" data-sveltekit-noscroll data-sveltekit-keepfocus>
+		<div class="body">
 			<Markdown content={card.body} compact extensions={bodyExtensions} />
 		</div>
 	{/if}

@@ -51,7 +51,9 @@
 	}
 </script>
 
-<div class="view-layout">
+<!-- Every link in here that opens an item (`itemHref`) only swaps the
+     detail: scroll and focus stay put, as they do for `openItem`. -->
+<div class="view-layout" data-sveltekit-noscroll data-sveltekit-keepfocus>
 	<div class="view-page">
 		{#key data.viewId}
 			<ViewToolbar viewId={data.viewId} />
