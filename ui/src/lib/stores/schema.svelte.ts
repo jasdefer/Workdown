@@ -21,6 +21,9 @@ let data = $state<SchemaData | null>(null);
 let loadError = $state<string | null>(null);
 let inFlight: Promise<void> | null = null;
 
+// Built once per load, not once per reader: every card on a board asks.
+const itemIds = $derived(data === null ? null : new Set(data.items));
+
 async function fetchSchema(): Promise<void> {
 	const result = await api.getSchema();
 	if (result.data !== undefined) {
@@ -54,6 +57,14 @@ export const schemaStore = {
 	/** All work-item ids, sorted — the option set for link/links pickers. */
 	get items(): string[] {
 		return data?.items ?? [];
+	},
+	/**
+	 * The same ids as a set, or `null` before the first successful load —
+	 * what decides whether a reference to an item is live or dead, where
+	 * "not known yet" must not read as "no such item".
+	 */
+	get itemIds(): ReadonlySet<string> | null {
+		return itemIds;
 	},
 	/**
 	 * The built-in color palette (name + pinned hex) — the option set for

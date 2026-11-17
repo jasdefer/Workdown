@@ -1,12 +1,15 @@
 <!--
   Single kanban card. Title (or prettified id) prominent, id badge
   muted top-right, optional Markdown body preview with a CSS mask
-  fade-out for the "more below" hint.
+  fade-out for the "more below" hint. Links in the preview work: a
+  reference to another item opens that item, not this card's.
 -->
 <script lang="ts">
 	import type { Card } from '$lib/api/generated/Card';
 	import { draggable } from '$lib/dnd/dnd';
-	import { activateOnKey, openItem } from '$lib/items/itemLink';
+	import { itemLinkExtension } from '$lib/items/bodyLinks';
+	import { activateOnKey, itemHref, openItem } from '$lib/items/itemLink';
+	import { schemaStore } from '$lib/stores/schema.svelte';
 	import { selectionStore } from '$lib/stores/selection.svelte';
 	import { timerStore } from '$lib/stores/timer.svelte';
 	import RecordingDot from '$lib/timer/RecordingDot.svelte';
@@ -36,6 +39,18 @@
 	function open(): void {
 		openItem(card.id);
 	}
+
+	// References in the preview resolve as they do in the item detail and
+	// open the referenced item in this view's detail (`bodyLinks.ts`).
+	const bodyExtensions = $derived([
+		itemLinkExtension({ knownIds: schemaStore.itemIds, hrefFor: itemHref })
+	]);
+
+	// A link in the preview is its own target: following it must not also
+	// open the card it sits on.
+	function isOnLink(event: Event): boolean {
+		return event.target instanceof Element && event.target.closest('a') !== null;
+	}
 </script>
 
 <div
@@ -47,9 +62,11 @@
 	use:draggable={{ id: card.id, enabled: dragEnabled }}
 	role="button"
 	tabindex="0"
-	onclick={open}
+	onclick={(event) => {
+		if (!isOnLink(event)) open();
+	}}
 	onkeydown={(event) => {
-		activateOnKey(event, open);
+		if (!isOnLink(event)) activateOnKey(event, open);
 	}}
 >
 	<header class="card-header">
@@ -63,8 +80,10 @@
 		<div class="subtitle">{card.subtitle}</div>
 	{/if}
 	{#if card.body.trim().length > 0}
-		<div class="body">
-			<Markdown content={card.body} compact />
+		<!-- Following a reference swaps the detail like a card click does:
+		     the view stays where it is scrolled. -->
+		<div class="body" data-sveltekit-noscroll data-sveltekit-keepfocus>
+			<Markdown content={card.body} compact extensions={bodyExtensions} />
 		</div>
 	{/if}
 </div>

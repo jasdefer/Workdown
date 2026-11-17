@@ -4,6 +4,7 @@
 | --- | --- | --- |
 | [add-missing-items-directory](../workdown-items/add-missing-items-directory.md) | done |  |
 | [board-drop-multichoice](../workdown-items/board-drop-multichoice.md) | done |  |
+| [card-preview-links-dead](../workdown-items/card-preview-links-dead.md) | done |  |
 | [expression-comparison-corner-cases](../workdown-items/expression-comparison-corner-cases.md) | done | [conditional-field-value](../workdown-items/conditional-field-value.md) |
 | [git-status-event-loop](../workdown-items/git-status-event-loop.md) | done |  |
 | [graph-item-open](../workdown-items/graph-item-open.md) | done |  |

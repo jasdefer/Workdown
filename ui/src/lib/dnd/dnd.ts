@@ -32,9 +32,14 @@ export const draggable: Action<HTMLElement, DraggableOptions> = (node, initial) 
 	let options = initial;
 
 	function onDragStart(event: DragEvent): void {
-		if (!event.dataTransfer) return;
+		// A link or image inside the element is draggable on its own and
+		// its `dragstart` bubbles here. Wherever the drag began, it is the
+		// element that moves — or nothing, when it is not a drag source.
+		if (!event.dataTransfer || !(options.enabled ?? true)) return;
 		event.dataTransfer.setData(MIME, options.id);
 		event.dataTransfer.effectAllowed = 'move';
+		const box = node.getBoundingClientRect();
+		event.dataTransfer.setDragImage(node, event.clientX - box.left, event.clientY - box.top);
 		node.style.opacity = '0.4';
 	}
 	function onDragEnd(): void {
