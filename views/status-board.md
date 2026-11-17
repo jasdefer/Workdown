@@ -36,6 +36,7 @@ Cards grouped into columns by `status`.
 - [Grab bag of small consistency fixes from the review](../workdown-items/assorted-small-fixes.md)
 - [Dragging a card on a multichoice board wipes its other values](../workdown-items/board-drop-multichoice.md)
 - [Put the project name in the browser tab title](../workdown-items/browser-tab-project-title.md)
+- [Links to other work items are broken in the card preview](../workdown-items/card-preview-links-dead.md)
 - [Make the terminal chart renderers share what they each rebuilt](../workdown-items/chart-renderer-sharing.md)
 - [Fail CI when a test file exists but did not run](../workdown-items/ci-test-run-completeness.md)
 - [Run the whole workspace in CI](../workdown-items/ci-workspace-coverage.md)
