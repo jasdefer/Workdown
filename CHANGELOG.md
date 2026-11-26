@@ -14,6 +14,23 @@ its source — internal refactors are deliberately absent.
   matches a substring ignoring case. `--search-regex <PATTERN>` does
   the same with a regular expression. Both are repeatable and combine
   with each other and with `--where` by AND.
+- A graph says what its arrows mean: the rendered file's caption and a
+  line in the corner of the web UI's graph read "An arrow from A to B
+  means B is in A's `depends_on`."
+- The view form offers a relation's inverse name for a graph's
+  relation.
+
+### Changed
+
+- A graph view whose `field` is the inverse name of a relation draws
+  the arrows reversed. `field: dependents` (the inverse of
+  `depends_on`) puts a prerequisite above the items that wait for it,
+  so a dependency graph reads in the order of work. Until now an
+  inverse name drew the same arrows as the relation itself; a view
+  that already names one turns around. Views that name the relation
+  are unchanged.
+- `workdown init` sets up the `dependencies` graph with
+  `field: dependents`. Existing projects keep their view as it is.
 
 ## 0.2.13 - 2026-11-17
 

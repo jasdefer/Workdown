@@ -328,43 +328,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<WorkloadUnit>();
 
     exports.write_all(&target_dir)?;
-    write_view_slot_types(&target_dir)
+    write_view_slots(&target_dir)
 }
 
 /// The imports and doc comment above the generated slot table.
 const SLOT_TABLE_HEADER: &str = r#"import type { FieldType } from './FieldType';
 import type { ViewType } from './ViewType';
 
+/** What one structural slot of a view kind takes. */
+export interface ViewSlot {
+	/** The field types the slot accepts. An empty list means any field. */
+	readonly accepts: readonly FieldType[];
+	/**
+	 * Whether the slot also takes the inverse name a relation declares
+	 * (`dependents` for `depends_on`) in place of a field of its own.
+	 */
+	readonly inverseNames: boolean;
+}
+
 /**
- * The field types each view kind's structural slots accept, keyed by the
- * slot name used in `views.yaml`. An empty list means any field.
+ * Each view kind's structural slots, keyed by the slot name used in
+ * `views.yaml`.
  *
  * Generated from `crates/core/src/model/view_slots.rs`, which is the same
- * table `views_check` validates a saved view against — so the fields the
- * create form offers are the fields the CLI accepts. A view kind with no
+ * table `views_check` validates a saved view against — so the names the
+ * create form offers are the names the CLI accepts. A view kind with no
  * structural slots (`table`) has an empty entry.
  *
- * A slot's rule can be narrower than its type list: a gantt's input modes
+ * A slot's rule can be narrower than its entry: a gantt's input modes
  * are mutually exclusive, and an aggregate's `value` set depends on the
  * function chosen. Those are cross-slot rules, checked on save.
  */
-export const VIEW_SLOT_TYPES = {
+export const VIEW_SLOTS = {
 "#;
 
 /// Closes the generated table. The `satisfies` clause makes a missing view
 /// kind a TypeScript error, and `as const` keeps the slot keys literal, so
 /// a form control naming a slot the table lacks fails `npm run check`.
 const SLOT_TABLE_FOOTER: &str =
-    "} as const satisfies Record<ViewType, Readonly<Record<string, readonly FieldType[]>>>;\n";
+    "} as const satisfies Record<ViewType, Readonly<Record<string, ViewSlot>>>;\n";
 
-/// Emit the view-slot type table as a TypeScript constant.
+/// Emit the view-slot table as a TypeScript constant.
 ///
 /// Not a ts-rs export: this is *data*, not a type. The web UI's view create
-/// form needs to know which fields each slot accepts, and
+/// form needs to know which names each slot takes, and
 /// `crates/core/src/model/view_slots.rs` is where that is written — so it is
 /// generated here rather than hand-maintained beside the form, where it
 /// used to drift (two slots were quietly narrower than the CLI's rule).
-fn write_view_slot_types(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn write_view_slots(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let mut entries = String::new();
     for (kind_index, &kind) in ViewType::VARIANTS.iter().enumerate() {
         let slots = view_slots::slots_of(kind);
@@ -381,9 +392,10 @@ fn write_view_slot_types(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
                 .map(|field_type| format!("'{field_type}'"))
                 .collect();
             entries.push_str(&format!(
-                "\t\t{}: [{}]{}\n",
+                "\t\t{}: {{ accepts: [{}], inverseNames: {} }}{}\n",
                 slot.name,
                 accepts.join(", "),
+                slot.inverse_names,
                 separator(slot_index, slots.len())
             ));
         }
@@ -391,7 +403,7 @@ fn write_view_slot_types(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let content = format!("{FILE_HEADER}{SLOT_TABLE_HEADER}{entries}{SLOT_TABLE_FOOTER}");
-    let path = dir.join("viewSlotTypes.ts");
+    let path = dir.join("viewSlots.ts");
     std::fs::write(&path, &content)
         .map_err(|error| format!("write {}: {error}", path.display()))?;
     eprintln!("gen-types: wrote {}", path.display());

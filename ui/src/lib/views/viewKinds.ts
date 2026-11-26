@@ -5,32 +5,35 @@
 // order, under what label, and which of them are optional. Those are form
 // decisions with no counterpart in the CLI.
 //
-// What does *not* live here is which field types each slot accepts — that
-// is `crates/core/src/model/view_slots.rs`, reaching the UI as the
-// generated `VIEW_SLOT_TYPES` table below. It used to be hand-copied here,
-// and two slots had quietly drifted narrower than the rule the server
-// enforces. Read a slot's `accepts` from the table; never retype the list.
+// What does *not* live here is which names each slot takes — the field
+// types it accepts, and whether a relation's inverse name may stand in.
+// That is `crates/core/src/model/view_slots.rs`, reaching the UI as the
+// generated `VIEW_SLOTS` table below. It used to be hand-copied here, and
+// two slots had quietly drifted narrower than the rule the server
+// enforces. Hand a control its `slot` from the table; never retype it.
 //
 // The kinds themselves are not served either: they are baked into the Rust
 // `ViewType` enum and identical for every project (unlike fields and
 // operators, which are schema-driven and do come from the server).
 
+import type { FieldSchema } from '$lib/api/generated/FieldSchema';
 import type { FieldType } from '$lib/api/generated/FieldType';
 import type { ViewType } from '$lib/api/generated/ViewType';
-import { VIEW_SLOT_TYPES } from '$lib/api/generated/viewSlotTypes';
+import { VIEW_SLOTS, type ViewSlot } from '$lib/api/generated/viewSlots';
 
 /** A control in a kind's create form. */
 export type Control =
-	// A single schema-field reference, constrained by type (empty `accepts`
-	// = any field). `optional` slots may be left unset.
+	// A single schema-field reference; `slot` says which names it takes.
+	// `optional` slots may be left unset.
 	| {
 			control: 'field';
 			key: string;
 			label: string;
-			accepts: readonly FieldType[];
+			slot: ViewSlot;
 			optional?: boolean;
 	  }
-	// An ordered list of field names (table/tree columns).
+	// An ordered list of field names (table/tree columns), constrained by
+	// type (empty `accepts` = any field).
 	| {
 			control: 'fieldList';
 			key: string;
@@ -60,20 +63,20 @@ export const VIEW_KIND_CONTROLS: Record<ViewType, Control[]> = {
 			control: 'field',
 			key: 'field',
 			label: 'Group by',
-			accepts: VIEW_SLOT_TYPES.board.field
+			slot: VIEW_SLOTS.board.field
 		}
 	],
 	tree: [
-		{ control: 'field', key: 'field', label: 'Parent link', accepts: VIEW_SLOT_TYPES.tree.field },
+		{ control: 'field', key: 'field', label: 'Parent link', slot: VIEW_SLOTS.tree.field },
 		{ control: 'fieldList', key: 'columns', label: 'Columns', accepts: ANY_FIELD, optional: true }
 	],
 	graph: [
-		{ control: 'field', key: 'field', label: 'Relation', accepts: VIEW_SLOT_TYPES.graph.field },
+		{ control: 'field', key: 'field', label: 'Relation', slot: VIEW_SLOTS.graph.field },
 		{
 			control: 'field',
 			key: 'group_by',
 			label: 'Group by',
-			accepts: VIEW_SLOT_TYPES.graph.group_by,
+			slot: VIEW_SLOTS.graph.group_by,
 			optional: true
 		}
 	],
@@ -89,7 +92,7 @@ export const VIEW_KIND_CONTROLS: Record<ViewType, Control[]> = {
 			control: 'field',
 			key: 'group',
 			label: 'Group by',
-			accepts: VIEW_SLOT_TYPES.gantt.group,
+			slot: VIEW_SLOTS.gantt.group,
 			optional: true
 		}
 	],
@@ -99,7 +102,7 @@ export const VIEW_KIND_CONTROLS: Record<ViewType, Control[]> = {
 			control: 'field',
 			key: 'root_link',
 			label: 'Initiative link',
-			accepts: VIEW_SLOT_TYPES.gantt_by_initiative.root_link
+			slot: VIEW_SLOTS.gantt_by_initiative.root_link
 		}
 	],
 	gantt_by_depth: [
@@ -108,7 +111,7 @@ export const VIEW_KIND_CONTROLS: Record<ViewType, Control[]> = {
 			control: 'field',
 			key: 'depth_link',
 			label: 'Depth link',
-			accepts: VIEW_SLOT_TYPES.gantt_by_depth.depth_link
+			slot: VIEW_SLOTS.gantt_by_depth.depth_link
 		}
 	],
 	bar_chart: [
@@ -116,14 +119,14 @@ export const VIEW_KIND_CONTROLS: Record<ViewType, Control[]> = {
 			control: 'field',
 			key: 'group_by',
 			label: 'Group by',
-			accepts: VIEW_SLOT_TYPES.bar_chart.group_by
+			slot: VIEW_SLOTS.bar_chart.group_by
 		},
 		{ control: 'aggregate', key: 'aggregate', label: 'Aggregate' },
 		{
 			control: 'field',
 			key: 'value',
 			label: 'Value',
-			accepts: VIEW_SLOT_TYPES.bar_chart.value,
+			slot: VIEW_SLOTS.bar_chart.value,
 			optional: true
 		}
 	],
@@ -132,37 +135,37 @@ export const VIEW_KIND_CONTROLS: Record<ViewType, Control[]> = {
 			control: 'field',
 			key: 'x',
 			label: 'X axis',
-			accepts: VIEW_SLOT_TYPES.line_chart.x
+			slot: VIEW_SLOTS.line_chart.x
 		},
-		{ control: 'field', key: 'y', label: 'Y axis', accepts: VIEW_SLOT_TYPES.line_chart.y },
+		{ control: 'field', key: 'y', label: 'Y axis', slot: VIEW_SLOTS.line_chart.y },
 		{
 			control: 'field',
 			key: 'group',
 			label: 'Series',
-			accepts: VIEW_SLOT_TYPES.line_chart.group,
+			slot: VIEW_SLOTS.line_chart.group,
 			optional: true
 		}
 	],
 	workload: [
-		{ control: 'field', key: 'start', label: 'Start', accepts: VIEW_SLOT_TYPES.workload.start },
-		{ control: 'field', key: 'end', label: 'End', accepts: VIEW_SLOT_TYPES.workload.end },
-		{ control: 'field', key: 'effort', label: 'Effort', accepts: VIEW_SLOT_TYPES.workload.effort },
+		{ control: 'field', key: 'start', label: 'Start', slot: VIEW_SLOTS.workload.start },
+		{ control: 'field', key: 'end', label: 'End', slot: VIEW_SLOTS.workload.end },
+		{ control: 'field', key: 'effort', label: 'Effort', slot: VIEW_SLOTS.workload.effort },
 		{ control: 'workingDays', key: 'working_days', label: 'Working days' }
 	],
 	metric: [{ control: 'metrics' }],
 	treemap: [
-		{ control: 'field', key: 'group', label: 'Group by', accepts: VIEW_SLOT_TYPES.treemap.group },
-		{ control: 'field', key: 'size', label: 'Size', accepts: VIEW_SLOT_TYPES.treemap.size }
+		{ control: 'field', key: 'group', label: 'Group by', slot: VIEW_SLOTS.treemap.group },
+		{ control: 'field', key: 'size', label: 'Size', slot: VIEW_SLOTS.treemap.size }
 	],
 	heatmap: [
-		{ control: 'field', key: 'x', label: 'X axis', accepts: VIEW_SLOT_TYPES.heatmap.x },
-		{ control: 'field', key: 'y', label: 'Y axis', accepts: VIEW_SLOT_TYPES.heatmap.y },
+		{ control: 'field', key: 'x', label: 'X axis', slot: VIEW_SLOTS.heatmap.x },
+		{ control: 'field', key: 'y', label: 'Y axis', slot: VIEW_SLOTS.heatmap.y },
 		{ control: 'aggregate', key: 'aggregate', label: 'Aggregate' },
 		{
 			control: 'field',
 			key: 'value',
 			label: 'Value',
-			accepts: VIEW_SLOT_TYPES.heatmap.value,
+			slot: VIEW_SLOTS.heatmap.value,
 			optional: true
 		},
 		{ control: 'bucket', key: 'bucket', label: 'Bucket', optional: true }
@@ -219,6 +222,33 @@ export const WEEKDAYS = [
 /** Whether a field of `fieldType` is acceptable for a slot's `accepts` list. */
 export function fieldFits(fieldType: FieldType, accepts: readonly FieldType[]): boolean {
 	return accepts.length === 0 || accepts.includes(fieldType);
+}
+
+/** One entry of a field slot's picker: the name saved, and how it reads. */
+export interface SlotOption {
+	value: string;
+	label: string;
+}
+
+/**
+ * The names a slot's picker offers: every field of an accepted type, in
+ * schema order. In a slot that takes inverse names, a relation that
+ * declares an inverse is followed by that inverse name — the same links,
+ * read from the other end — labelled so the two can be told apart.
+ */
+export function slotOptions(
+	fields: readonly Pick<FieldSchema, 'name' | 'field_type' | 'inverse'>[],
+	slot: ViewSlot
+): SlotOption[] {
+	const options: SlotOption[] = [];
+	for (const field of fields) {
+		if (!fieldFits(field.field_type, slot.accepts)) continue;
+		options.push({ value: field.name, label: field.name });
+		if (slot.inverseNames && field.inverse !== null) {
+			options.push({ value: field.inverse, label: `${field.inverse} (${field.name}, reversed)` });
+		}
+	}
+	return options;
 }
 
 /** Narrow an unknown slot value to a plain object. */

@@ -13,8 +13,8 @@
 	import type { Clause } from '$lib/api/generated/Clause';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import FilterBuilder from '$lib/filters/FilterBuilder.svelte';
-	import { VIEW_SLOT_TYPES } from '$lib/api/generated/viewSlotTypes';
-	import { AGGREGATES, fieldFits } from './viewKinds';
+	import { VIEW_SLOTS } from '$lib/api/generated/viewSlots';
+	import { AGGREGATES, slotOptions } from './viewKinds';
 
 	interface Props {
 		/** Persisted `metrics:` entries to seed from (edit mode). */
@@ -102,12 +102,6 @@
 		rows = rows.filter((row) => row.localId !== localId);
 		emit();
 	}
-
-	function valueFieldOptions() {
-		return schemaStore.fields.filter((field) =>
-			fieldFits(field.field_type, VIEW_SLOT_TYPES.metric.value)
-		);
-	}
 </script>
 
 <div class="metrics">
@@ -139,8 +133,8 @@
 					}}
 				>
 					<option value="">— no value —</option>
-					{#each valueFieldOptions() as field (field.name)}
-						<option value={field.name}>{field.name}</option>
+					{#each slotOptions(schemaStore.fields, VIEW_SLOTS.metric.value) as option (option.value)}
+						<option value={option.value}>{option.label}</option>
 					{/each}
 				</select>
 				<button

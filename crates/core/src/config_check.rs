@@ -104,7 +104,8 @@ struct FieldRoleReference<'a> {
     /// this list rather than written beside it.
     allowed: &'static [FieldType],
     /// Whether an inverse relation name (declared via `inverse:` on a
-    /// link field) may stand in for a field of its own.
+    /// link field) may stand in for a field of its own. Read from the
+    /// matching view slot like `allowed`, for the same reason.
     inverse_names_allowed: bool,
 }
 
@@ -134,22 +135,19 @@ fn field_roles(defaults: &ViewDefaults) -> Vec<FieldRoleReference<'_>> {
             slot: "defaults.board_field",
             field_name: board_field,
             allowed: view_slots::BOARD_FIELD.accepts,
-            inverse_names_allowed: false,
+            inverse_names_allowed: view_slots::BOARD_FIELD.inverse_names,
         },
         FieldRoleReference {
             slot: "defaults.tree_field",
             field_name: tree_field,
             allowed: view_slots::TREE_FIELD.accepts,
-            inverse_names_allowed: false,
+            inverse_names_allowed: view_slots::TREE_FIELD.inverse_names,
         },
         FieldRoleReference {
             slot: "defaults.graph_field",
             field_name: graph_field,
-            // Inverse names resolve to their original field at
-            // extraction time, exactly as the graph view's own slot
-            // accepts them.
             allowed: view_slots::GRAPH_FIELD.accepts,
-            inverse_names_allowed: true,
+            inverse_names_allowed: view_slots::GRAPH_FIELD.inverse_names,
         },
     ];
 

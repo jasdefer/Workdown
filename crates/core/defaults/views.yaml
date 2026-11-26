@@ -14,4 +14,7 @@ views:
 
   - id: dependencies
     type: graph
-    field: depends_on
+    # The inverse name of `depends_on`: arrows follow the order of work,
+    # from an item to the items that wait for it. `field: depends_on`
+    # draws the same links the other way round.
+    field: dependents

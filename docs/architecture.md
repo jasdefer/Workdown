@@ -143,17 +143,17 @@ Thirteen kinds exist today. A fourteenth touches the places below. The right-han
 |---|---|---|
 | 1 | `ViewKind` and `ViewType` — `crates/core/src/model/views.rs` | compiler (the enum everything else matches on) |
 | 2 | `RawView` slot and `convert_view` — `crates/core/src/parser/views.rs` | compiler |
-| 3 | The kind's structural slots and the field types each accepts — `crates/core/src/model/view_slots.rs` | compiler (`slots_of` is an exhaustive match on `ViewType`) |
+| 3 | The kind's structural slots: the field types each accepts, and whether it takes inverse relation names — `crates/core/src/model/view_slots.rs` | compiler (`slots_of` is an exhaustive match on `ViewType`) |
 | 4 | Slot and type rules — `crates/core/src/views_check.rs`, reading the slots from row 3 | compiler (exhaustive match on `ViewKind`) |
 | 5 | Extractor module plus `ViewData` variant — `crates/core/src/view_data/` | compiler |
 | 6 | Markdown renderer — `crates/cli/src/render/`, dispatched by `render_view_data` and counted by `emit_unplaced_warnings` in `crates/cli/src/commands/render.rs` | compiler (both matches are exhaustive) |
 | 7 | View subtitle — `crates/cli/src/render/description.rs` | compiler |
 | 8 | Whether the kind lists its items in the view's order (`sort:` keys, else id) or has an order of its own — `ViewKind::lists_in_view_order` in `crates/core/src/model/views.rs`, which decides whether the subtitle names the order | compiler (exhaustive match) |
-| 9 | Wire types — one `exports.add::<T>()` line per new struct in `crates/core/examples/gen_types.rs`, then `cargo xtask gen-types` (which also re-emits the row 3 table as `ui/src/lib/api/generated/viewSlotTypes.ts`) | the UI type check, indirectly — a forgotten type has no `.ts` file, so `npm run check` fails on the dangling import in whatever references it |
+| 9 | Wire types — one `exports.add::<T>()` line per new struct in `crates/core/examples/gen_types.rs`, then `cargo xtask gen-types` (which also re-emits the row 3 table as `ui/src/lib/api/generated/viewSlots.ts`) | the UI type check, indirectly — a forgotten type has no `.ts` file, so `npm run check` fails on the dangling import in whatever references it |
 | 10 | `crates/core/defaults/views.schema.json` (editor autocomplete) | `crates/core/tests/views_schema.rs` — `schema_accepts_exactly_the_enum_view_types` compares the schema's `view.oneOf` branches against `ViewType::VARIANTS`, and `full_example_covers_every_view_type` keeps the fixture the shape tests run through complete |
 | 11 | `VIEW_KIND_CONTROLS` — `ui/src/lib/views/viewKinds.ts` | TypeScript: `Record<ViewType, …>` is exhaustive over the generated union — but only once row 9 has regenerated `ViewType` |
 | 12 | `KIND_LABELS` in the same file, whose keys *are* the picker list (`VIEW_KINDS` is derived from them) | TypeScript: another `Record<ViewType, …>` |
-| 13 | Nothing — the accepted field types come from the row 3 table via `VIEW_SLOT_TYPES` | TypeScript: a control naming a slot the table lacks is an error, and the list itself cannot be retyped by hand |
+| 13 | Nothing — the accepted field types, and whether a slot takes inverse relation names, come from the row 3 table via `VIEW_SLOTS` | TypeScript: a control naming a slot the table lacks is an error, and the list itself cannot be retyped by hand |
 | 14 | Component plus branch in `ui/src/lib/views/ViewRenderer.svelte` | TypeScript: the `{:else}` branch passes `data` to `unrenderedKind(data: never)`, which only type-checks while the chain is exhaustive |
 | 15 | The view-kind table in [docs/views.md](views.md) | `crates/core/tests/docs_guides.rs` |
 | 16 | Item-state marks, if the kind presents items: the recording dot (compare each item against `timerStore.runningItemId`) and the selection ring (ask `selectionStore.markOf(id)` for `open`, `last` or none, and style both) | **nothing**, and both are reimplemented independently in six components today (board `Card`, `GanttChart`, `GraphView`, `TableView`, `TreeNode`, `TreemapView`), each in the view's own idiom. A new kind has to copy them — tracked as `recording-dot-extraction`, since the fix is an extraction rather than a guard |
