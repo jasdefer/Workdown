@@ -118,7 +118,7 @@ fn derivations(item: &WorkItem, store: &Store, schema: &Schema) -> Vec<FieldDeri
         .fields
         .iter()
         .filter_map(|(name, definition)| {
-            let in_charge = || store.mechanism_in_charge(&item.id, definition);
+            let in_charge = || store.mechanism_in_charge(&item.id, name, definition);
             let (mechanism, state) = match item.fields.origin_of(name) {
                 Some(ValueOrigin::Derived(mechanism)) => (mechanism, DerivationState::Derived),
                 Some(ValueOrigin::Written) => (in_charge()?, DerivationState::Overridden),
@@ -369,5 +369,41 @@ fields:
                 DerivationState::Empty
             )]
         );
+    }
+
+    #[test]
+    fn a_written_but_invalid_value_leaves_no_mechanism_in_charge() {
+        // `end` was written, only not as a date. The formula does not
+        // replace it, so the field is not the formula's to answer for.
+        let files = vec![(
+            "task.md",
+            "---\nstart: 2026-01-05\nduration: 7d\nend: someday\n---\n",
+        )];
+
+        assert_eq!(derivations_of(files, "task"), vec![]);
+    }
+
+    #[test]
+    fn a_formula_that_failed_the_schema_check_is_not_in_charge() {
+        // The constant does not exist (the store loads without
+        // resources), so the formula never runs on any item.
+        let schema = parse_schema(
+            "\
+fields:
+  effort:
+    type: integer
+  cost:
+    type: integer
+    compute: effort * $constants.rate
+",
+        )
+        .expect("test schema must parse");
+        let (_directory, store) =
+            make_store_with_files(&schema, vec![("task.md", "---\neffort: 3\n---\n")]);
+        let item = store.get("task").expect("item loads");
+
+        let detail = build(item, &store, &schema, &DisplayConfig::default());
+
+        assert_eq!(detail.derivations, vec![]);
     }
 }

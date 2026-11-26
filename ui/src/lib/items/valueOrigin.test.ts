@@ -23,6 +23,7 @@ describe('originBadge', () => {
 
 	it('marks a written value that overrides a mechanism, and offers the way back', () => {
 		const badge = originBadge(derivation('computed', 'overridden'));
+		expect(badge?.state).toBe('overridden');
 		expect(badge?.label).toBe('written');
 		expect(badge?.title).toContain('computed by a formula');
 		expect(badge?.restoreLabel).toBe('Use the computed value');

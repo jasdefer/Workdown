@@ -9,6 +9,8 @@ import type { FillMechanism } from '$lib/api/generated/FillMechanism';
 
 /** What the detail shows next to one field's name. */
 export interface OriginBadge {
+	/** The field's state, as the server decided it. */
+	state: FieldDerivation['state'];
 	/** The badge's text. */
 	label: string;
 	/** The explanation behind it, shown on hover. */
@@ -36,18 +38,21 @@ export function originBadge(derivation: FieldDerivation | undefined): OriginBadg
 	switch (state) {
 		case 'derived':
 			return {
+				state,
 				label: mechanism,
 				title: `Not written on this item: ${how}.`,
 				restoreLabel: null
 			};
 		case 'overridden':
 			return {
+				state,
 				label: 'written',
 				title: `Written on this item. Without it the value would be ${how}.`,
 				restoreLabel: `Use the ${mechanism} value`
 			};
 		case 'empty':
 			return {
+				state,
 				label: `${mechanism} · no value`,
 				title: `Nothing written, and nothing to derive yet. The value is normally ${how}.`,
 				restoreLabel: null

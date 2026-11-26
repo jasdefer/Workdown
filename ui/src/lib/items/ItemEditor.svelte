@@ -184,7 +184,7 @@
 							>
 							{#if field.required}<span class="req" title="required">*</span>{/if}
 							{#if badge}
-								<span class="note" class:override={badge.restoreLabel !== null} title={badge.title}
+								<span class="note" class:override={badge.state === 'overridden'} title={badge.title}
 									>{badge.label}</span
 								>
 							{/if}

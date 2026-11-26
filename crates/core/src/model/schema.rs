@@ -246,6 +246,22 @@ impl FieldDefinition {
         !self.fill_mechanisms().is_empty()
     }
 
+    /// The field's recipe: the one mechanism that fills a blank from
+    /// the item itself or its link targets (`compute`, `when` or
+    /// `pull`, which exclude one another), as opposed to the rollup
+    /// that fills it from the items below. `None` for a field that
+    /// only aggregates or has no mechanism at all. Matches
+    /// exhaustively so a new mechanism must declare which side it
+    /// falls on.
+    pub fn recipe_mechanism(&self) -> Option<FillMechanism> {
+        self.fill_mechanisms()
+            .into_iter()
+            .find(|mechanism| match mechanism {
+                FillMechanism::Compute | FillMechanism::Pull | FillMechanism::When => true,
+                FillMechanism::Aggregate => false,
+            })
+    }
+
     /// Whether this field's value is derived same-item — by a `compute:`
     /// expression or a `when:` config. (`aggregate` and `pull` are
     /// cross-item and deliberately not included.) Matches exhaustively

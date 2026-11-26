@@ -66,6 +66,7 @@ use crate::walker::{target_of_link, targets_of};
 
 use super::compute;
 use super::conditional;
+use super::conversion_failed;
 use super::rollup;
 
 /// Run every derive pass. Mutates `items` in place; returns all
@@ -416,18 +417,6 @@ struct EvaluationInputs<'run> {
     /// Coercion's per-item record of written-but-invalid fields —
     /// slots no pass may fill.
     conversion_failures: &'run HashMap<WorkItemId, HashSet<String>>,
-}
-
-/// Whether coercion recorded this item's field as written but invalid
-/// — a slot no pass may fill.
-fn conversion_failed(
-    conversion_failures: &HashMap<WorkItemId, HashSet<String>>,
-    item_id: &WorkItemId,
-    field_name: &str,
-) -> bool {
-    conversion_failures
-        .get(item_id)
-        .is_some_and(|failed_fields| failed_fields.contains(field_name))
 }
 
 /// Mutable evaluation state, indexed by node id.

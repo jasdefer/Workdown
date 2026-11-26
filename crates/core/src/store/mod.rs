@@ -72,6 +72,13 @@ pub struct Store {
     reverse_links: HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
     /// All diagnostics collected during loading.
     diagnostics: Vec<Diagnostic>,
+    /// The fields whose recipe failed the schema-level check and never
+    /// ran, kept so [`Store::mechanism_in_charge`] answers as the
+    /// fill-in phase behaved.
+    disabled_compute_fields: HashSet<String>,
+    /// Coercion's per-item record of written-but-invalid fields, kept
+    /// for the same reason: no mechanism fills such a slot.
+    conversion_failures: HashMap<WorkItemId, HashSet<String>>,
 }
 
 impl Store {
@@ -177,6 +184,8 @@ impl Store {
             items,
             reverse_links,
             diagnostics,
+            disabled_compute_fields,
+            conversion_failures,
         })
     }
 
@@ -224,33 +233,27 @@ impl Store {
     }
 
     /// The fill mechanism responsible for this field on this item, were
-    /// the file to carry no value: the rollup on an item with children
-    /// along the aggregate's `over` link, the field's same-item or pull
-    /// recipe everywhere else. `None` where nothing would fill the
-    /// field — a plain field, or the leaf of a field that only
-    /// aggregates, whose value can only be written.
-    ///
-    /// The same split the fill-in phase makes (the rollup owns
-    /// everything above the leaves), asked of the same index.
+    /// the file to carry no value; `None` where nothing would fill it.
+    /// The rule is the free `mechanism_in_charge` below, the one the
+    /// required check asks too. On top of it, a written-but-invalid
+    /// value leaves nobody in charge: no mechanism replaces what the
+    /// author wrote.
     pub fn mechanism_in_charge(
         &self,
         item_id: &WorkItemId,
+        field_name: &str,
         field_definition: &FieldDefinition,
     ) -> Option<FillMechanism> {
-        let rolls_up_here = field_definition
-            .aggregate
-            .as_ref()
-            .is_some_and(|aggregate| !is_leaf(&self.reverse_links, item_id, &aggregate.over));
-        if rolls_up_here {
-            return Some(FillMechanism::Aggregate);
+        if conversion_failed(&self.conversion_failures, item_id, field_name) {
+            return None;
         }
-        field_definition
-            .fill_mechanisms()
-            .into_iter()
-            .find(|mechanism| match mechanism {
-                FillMechanism::Compute | FillMechanism::Pull | FillMechanism::When => true,
-                FillMechanism::Aggregate => false,
-            })
+        mechanism_in_charge(
+            &self.reverse_links,
+            &self.disabled_compute_fields,
+            item_id,
+            field_name,
+            field_definition,
+        )
     }
 
     /// All diagnostics collected during loading.
@@ -386,6 +389,49 @@ pub(super) fn is_leaf(
         .get(over_field)
         .and_then(|by_target| by_target.get(item_id))
         .is_none_or(|sources| sources.is_empty())
+}
+
+/// The fill mechanism responsible for a field on an item, were the
+/// file to carry no value: the rollup on an item with children along
+/// the aggregate's `over` link, the field's recipe everywhere else —
+/// unless that recipe failed the schema-level check and never runs.
+/// `None` where nothing would fill the field: a plain field, a broken
+/// recipe, or the leaf of a field that only aggregates, whose value
+/// can only be written.
+///
+/// The split the fill-in phase makes (the rollup owns everything above
+/// the leaves), stated once for everything that asks after the fact:
+/// the required check and the item detail.
+pub(super) fn mechanism_in_charge(
+    reverse_links: &ReverseLinks,
+    disabled_compute_fields: &HashSet<String>,
+    item_id: &WorkItemId,
+    field_name: &str,
+    field_definition: &FieldDefinition,
+) -> Option<FillMechanism> {
+    let rolls_up_here = field_definition
+        .aggregate
+        .as_ref()
+        .is_some_and(|aggregate| !is_leaf(reverse_links, item_id, &aggregate.over));
+    if rolls_up_here {
+        return Some(FillMechanism::Aggregate);
+    }
+    if disabled_compute_fields.contains(field_name) {
+        return None;
+    }
+    field_definition.recipe_mechanism()
+}
+
+/// Whether coercion recorded this item's field as written but invalid
+/// — a slot no mechanism may fill.
+pub(super) fn conversion_failed(
+    conversion_failures: &HashMap<WorkItemId, HashSet<String>>,
+    item_id: &WorkItemId,
+    field_name: &str,
+) -> bool {
+    conversion_failures
+        .get(item_id)
+        .is_some_and(|failed_fields| failed_fields.contains(field_name))
 }
 
 /// Pipeline phase 3: build the reverse-link index and report
