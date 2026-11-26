@@ -69,6 +69,7 @@
 | [item-detail-side-placement](../workdown-items/item-detail-side-placement.md) | done | [misc-work](../workdown-items/misc-work.md) | [item-overlay-redesign](../workdown-items/item-overlay-redesign.md) |
 | [item-mutations](../workdown-items/item-mutations.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md) |
 | [item-overlay-redesign](../workdown-items/item-overlay-redesign.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
+| [item-value-origin](../workdown-items/item-value-origin.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
 | [live-updates](../workdown-items/live-updates.md) | done | [server](../workdown-items/server.md) | [walking-skeleton](../workdown-items/walking-skeleton.md) |
 | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | done |  |  |
 | [message-style-consistency](../workdown-items/message-style-consistency.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) |

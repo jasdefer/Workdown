@@ -7,6 +7,7 @@ Cards grouped into columns by `status`.
 - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
 - [Arrows in a dependency graph point against the order of work](../workdown-items/graph-arrow-direction.md)
+- [The item detail does not say whether a value was written or derived](../workdown-items/item-value-origin.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
