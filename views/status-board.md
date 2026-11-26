@@ -16,10 +16,13 @@ Cards grouped into columns by `status`.
 - [Compare a field with a literal in a rule's match block](../workdown-items/rule-literal-comparisons.md)
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md)
 - [Major upgrades of the web UI's lint and SvelteKit toolchain](../workdown-items/ui-toolchain-upgrade.md)
+- [Views show colors without saying what they mean](../workdown-items/view-color-legend.md)
+- [The same view once per person fills up the navigation](../workdown-items/view-per-value-variants.md)
 
 ## in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice](../workdown-items/pull-copy-over-link.md)
+- [Query for text in an item's body](../workdown-items/query-body-text.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
 
 ## on_hold
