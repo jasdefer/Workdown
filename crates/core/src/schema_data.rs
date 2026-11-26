@@ -154,6 +154,10 @@ pub struct FieldSchema {
     /// `true` for computed fields (an `aggregate` config). The UI marks
     /// these so the user knows the value rolls up the link chain.
     pub aggregate: bool,
+    /// The name of the reverse relation, for a `link` / `links` field
+    /// that declares one; `None` otherwise. A graph view accepts it in
+    /// place of the field's own name to draw the links reversed.
+    pub inverse: Option<String>,
 }
 
 impl FieldSchema {
@@ -195,6 +199,7 @@ impl FieldSchema {
             pattern,
             resource: definition.resource.clone(),
             aggregate: definition.aggregate.is_some(),
+            inverse: definition.inverse().map(str::to_owned),
         }
     }
 }

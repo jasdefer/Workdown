@@ -68,12 +68,17 @@ fn kind_description(view: &View) -> String {
         ViewKind::Tree { field, .. } => {
             format!("Hierarchical outline following `{field}` upward to roots.")
         }
-        ViewKind::Graph { field, group_by } => match group_by {
-            Some(group) => {
-                format!("Directed graph of items connected through `{field}`, nested by `{group}`.")
+        ViewKind::Graph { field, group_by } => {
+            // The second sentence is the legend: the same reading holds
+            // for a field and for its inverse name, so it needs no schema.
+            let legend = format!("An arrow from A to B means A's `{field}` includes B.");
+            match group_by {
+                Some(group) => format!(
+                    "Directed graph of items connected through `{field}`, nested by `{group}`. {legend}"
+                ),
+                None => format!("Directed graph of items connected through `{field}`. {legend}"),
             }
-            None => format!("Directed graph of items connected through `{field}`."),
-        },
+        }
         ViewKind::Table | ViewKind::Metric { .. } => String::new(),
         ViewKind::Gantt {
             start,
@@ -273,7 +278,7 @@ mod tests {
         });
         assert_eq!(
             description_for(&v),
-            "Directed graph of items connected through `depends_on`."
+            "Directed graph of items connected through `depends_on`. An arrow from A to B means A's `depends_on` includes B."
         );
     }
 
@@ -285,7 +290,7 @@ mod tests {
         });
         assert_eq!(
             description_for(&v),
-            "Directed graph of items connected through `depends_on`, nested by `parent`."
+            "Directed graph of items connected through `depends_on`, nested by `parent`. An arrow from A to B means A's `depends_on` includes B."
         );
     }
 

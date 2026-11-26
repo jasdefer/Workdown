@@ -173,7 +173,7 @@
 
     "graph": {
       "type": "object",
-      "description": "Directed graph following a links field (e.g. depends_on). Optionally nests nodes inside Mermaid subgraphs by walking a single-target Link field (e.g. parent).",
+      "description": "Directed graph following a link/links field (e.g. depends_on): an arrow runs from the item that has the relation to the item it names. Naming the relation's inverse instead (e.g. dependents) draws the same links reversed. Optionally nests nodes inside Mermaid subgraphs by walking a single-target Link field (e.g. parent).",
       "properties": {
         "id":       { "$ref": "#/$defs/view_id" },
         "type":     { "const": "graph" },

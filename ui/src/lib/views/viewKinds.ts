@@ -15,6 +15,7 @@
 // `ViewType` enum and identical for every project (unlike fields and
 // operators, which are schema-driven and do come from the server).
 
+import type { FieldSchema } from '$lib/api/generated/FieldSchema';
 import type { FieldType } from '$lib/api/generated/FieldType';
 import type { ViewType } from '$lib/api/generated/ViewType';
 import { VIEW_SLOT_TYPES } from '$lib/api/generated/viewSlotTypes';
@@ -22,13 +23,15 @@ import { VIEW_SLOT_TYPES } from '$lib/api/generated/viewSlotTypes';
 /** A control in a kind's create form. */
 export type Control =
 	// A single schema-field reference, constrained by type (empty `accepts`
-	// = any field). `optional` slots may be left unset.
+	// = any field). `optional` slots may be left unset. `inverseNames`
+	// slots also take the inverse name a fitting relation declares.
 	| {
 			control: 'field';
 			key: string;
 			label: string;
 			accepts: readonly FieldType[];
 			optional?: boolean;
+			inverseNames?: boolean;
 	  }
 	// An ordered list of field names (table/tree columns).
 	| {
@@ -68,7 +71,13 @@ export const VIEW_KIND_CONTROLS: Record<ViewType, Control[]> = {
 		{ control: 'fieldList', key: 'columns', label: 'Columns', accepts: ANY_FIELD, optional: true }
 	],
 	graph: [
-		{ control: 'field', key: 'field', label: 'Relation', accepts: VIEW_SLOT_TYPES.graph.field },
+		{
+			control: 'field',
+			key: 'field',
+			label: 'Relation',
+			accepts: VIEW_SLOT_TYPES.graph.field,
+			inverseNames: true
+		},
 		{
 			control: 'field',
 			key: 'group_by',
@@ -219,6 +228,34 @@ export const WEEKDAYS = [
 /** Whether a field of `fieldType` is acceptable for a slot's `accepts` list. */
 export function fieldFits(fieldType: FieldType, accepts: readonly FieldType[]): boolean {
 	return accepts.length === 0 || accepts.includes(fieldType);
+}
+
+/** One entry of a field slot's picker: the name saved, and how it reads. */
+export interface SlotOption {
+	value: string;
+	label: string;
+}
+
+/**
+ * The names a field slot offers: every field of an accepted type, in
+ * schema order. With `inverseNames`, a relation that declares an inverse
+ * is followed by that inverse name — the same links, drawn reversed —
+ * labelled so the two can be told apart.
+ */
+export function slotOptions(
+	fields: readonly Pick<FieldSchema, 'name' | 'field_type' | 'inverse'>[],
+	accepts: readonly FieldType[],
+	inverseNames = false
+): SlotOption[] {
+	const options: SlotOption[] = [];
+	for (const field of fields) {
+		if (!fieldFits(field.field_type, accepts)) continue;
+		options.push({ value: field.name, label: field.name });
+		if (inverseNames && field.inverse !== null) {
+			options.push({ value: field.inverse, label: `${field.inverse} (${field.name}, reversed)` });
+		}
+	}
+	return options;
 }
 
 /** Narrow an unknown slot value to a plain object. */

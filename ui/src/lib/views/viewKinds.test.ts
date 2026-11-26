@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { VIEW_KIND_CONTROLS, VIEW_KINDS, fieldFits, isDefinitionComplete } from './viewKinds';
+import {
+	VIEW_KIND_CONTROLS,
+	VIEW_KINDS,
+	fieldFits,
+	isDefinitionComplete,
+	slotOptions
+} from './viewKinds';
 
 describe('VIEW_KINDS', () => {
 	// Completeness is a compile-time matter now: the picker list is derived
@@ -21,6 +27,29 @@ describe('fieldFits', () => {
 	it('constrains to the listed types otherwise', () => {
 		expect(fieldFits('choice', ['choice', 'string'])).toBe(true);
 		expect(fieldFits('date', ['choice', 'string'])).toBe(false);
+	});
+});
+
+describe('slotOptions', () => {
+	const fields = [
+		{ name: 'status', field_type: 'choice', inverse: null },
+		{ name: 'depends_on', field_type: 'links', inverse: 'dependents' },
+		{ name: 'related_to', field_type: 'links', inverse: null }
+	] as const;
+
+	it('offers the fields of an accepted type, in schema order', () => {
+		expect(slotOptions(fields, ['link', 'links']).map((option) => option.value)).toEqual([
+			'depends_on',
+			'related_to'
+		]);
+	});
+
+	it('adds a declared inverse name after its relation when the slot takes them', () => {
+		expect(slotOptions(fields, ['link', 'links'], true)).toEqual([
+			{ value: 'depends_on', label: 'depends_on' },
+			{ value: 'dependents', label: 'dependents (depends_on, reversed)' },
+			{ value: 'related_to', label: 'related_to' }
+		]);
 	});
 });
 

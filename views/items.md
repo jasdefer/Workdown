@@ -62,7 +62,7 @@
 | [git-status-event-loop](../workdown-items/git-status-event-loop.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [git-sync-controls](../workdown-items/git-sync-controls.md) | done | [full-git-loop](../workdown-items/full-git-loop.md) |  |
 | [github-render-action](../workdown-items/github-render-action.md) | removed | [polish](../workdown-items/polish.md) |  |
-| [graph-arrow-direction](../workdown-items/graph-arrow-direction.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
+| [graph-arrow-direction](../workdown-items/graph-arrow-direction.md) | in_progress | [misc-work](../workdown-items/misc-work.md) |  |
 | [graph-item-open](../workdown-items/graph-item-open.md) | done |  |  |
 | [init-install-hooks](../workdown-items/init-install-hooks.md) | done | [polish](../workdown-items/polish.md) |  |
 | [item-body-links-dead](../workdown-items/item-body-links-dead.md) | done | [misc-work](../workdown-items/misc-work.md) |  |

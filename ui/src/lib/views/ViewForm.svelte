@@ -31,10 +31,10 @@
 		VIEW_KINDS,
 		VIEW_KIND_CONTROLS,
 		WEEKDAYS,
-		fieldFits,
 		isDefinitionComplete,
 		isRecord,
-		kindLabel
+		kindLabel,
+		slotOptions
 	} from './viewKinds';
 
 	interface Props {
@@ -131,10 +131,6 @@
 		chooseKind(event.currentTarget.value as ViewType);
 	}
 
-	function fieldOptions(accepts: readonly import('$lib/api/generated/FieldType').FieldType[]) {
-		return schemaStore.fields.filter((field) => fieldFits(field.field_type, accepts));
-	}
-
 	// A kind switch resets the slots; a freshly mounted `MetricRowsEditor`
 	// or `GanttInput` re-seeds its own part of the definition. Returning
 	// to the seeded kind restores the persisted slots, so browsing other
@@ -228,8 +224,8 @@
 					}}
 				>
 					<option value="">{control.optional ? '— none —' : 'Select field…'}</option>
-					{#each fieldOptions(control.accepts) as field (field.name)}
-						<option value={field.name}>{field.name}</option>
+					{#each slotOptions(schemaStore.fields, control.accepts, control.inverseNames) as option (option.value)}
+						<option value={option.value}>{option.label}</option>
 					{/each}
 				</select>
 			</label>

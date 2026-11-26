@@ -17,7 +17,8 @@ describe('specOfFieldSchema', () => {
 				duration_max: null,
 				pattern: null,
 				resource: null,
-				aggregate: false
+				aggregate: false,
+				inverse: null
 			})
 		).toEqual({ fieldType: 'integer', required: true, values: [], min: 0, max: 10 });
 	});

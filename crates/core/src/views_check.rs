@@ -493,8 +493,8 @@ fn check_slot(
 
 /// Graph-specific slot check: accepts a direct Link/Links field, or an
 /// inverse name (declared via `inverse:` on a link/links field and thus
-/// present in `schema.inverse_table`). Inverse names resolve to their
-/// original field at extraction time; the underlying data is the same.
+/// present in `schema.inverse_table`). An inverse name draws the same
+/// links as its original field, reversed.
 fn check_graph_field(
     ctx: &ViewCheckContext,
     locus: SlotLocus,

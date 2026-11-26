@@ -1,7 +1,9 @@
 <!--
   Graph view. Renders GraphData — one node per filtered item, one
-  directed edge per outgoing link on the view's `field` — as an
-  interactive Cytoscape graph. When the view sets `group_by`, the
+  directed edge per link on the view's `field` — as an interactive
+  Cytoscape graph. The edges arrive already turned the way the view
+  reads them (an inverse name reverses them, see the extractor), and a
+  legend in the corner says what an arrow means. When the view sets `group_by`, the
   `groups` tree maps to Cytoscape compound (parent) nodes, so members
   nest inside a labelled box; otherwise the graph is flat. `nodes` and
   `groups` cover the same item set (see GraphData), so the hover lookup
@@ -328,6 +330,7 @@
 			role="region"
 			aria-label="Graph view"
 		></div>
+		<p class="legend">A → B: A's <code>{data.field}</code> includes B</p>
 		{#if hovered}
 			<div class="tooltip" style="left: {hovered.x}px; top: {hovered.y}px;">
 				<Card card={hovered.card} />
@@ -365,6 +368,19 @@
 
 	.graph:active {
 		cursor: grabbing;
+	}
+
+	/* What an arrow means, in a corner of the canvas. The same reading
+	   holds for a relation and for its inverse name, so it is built from
+	   the view's field alone. Clicks pass through to the canvas. */
+	.legend {
+		position: absolute;
+		left: var(--space-2);
+		bottom: var(--space-2);
+		margin: 0;
+		font-size: var(--text-sm);
+		color: var(--color-fg-muted);
+		pointer-events: none;
 	}
 
 	.tooltip {

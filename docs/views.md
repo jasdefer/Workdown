@@ -43,7 +43,7 @@ Every view type also accepts the cross-cutting optional slots `where:`, `sort:` 
 | `heatmap` | `x`, `y`, `aggregate` | `value`, `bucket` | shipped | Inline SVG (color grid + colorbar) + pivoted `## Values` table |
 
 Slot semantics:
-- **`field`** — a single schema field name. Type per view: `choice`/`multichoice`/`string` for board, `link` for tree, `links` for graph.
+- **`field`** — a single schema field name. Type per view: `choice`/`multichoice`/`string` for board, `link` for tree, `link`/`links` for graph. A graph also takes the inverse name of a relation (see [Arrow direction in a graph](#arrow-direction-in-a-graph)).
 - **`start` / `end`** — `date` fields. **`duration`** — `duration` field; mutually exclusive with `end`. **`after`** — `link`/`links` field naming each item's predecessors (predecessor mode); requires `duration`, forbids `end`. Predecessor fields must have `allow_cycles: false` and not be inverse names.
 - **`group_by`** — categorical field for bar chart grouping; `link` field for graph subgraph nesting. **`group`** — field for in-chart sectioning (gantt only). **`root_link`** — single `link` field whose chain identifies each item's top-level ancestor (`gantt_by_initiative`). **`depth_link`** — single `link` field whose chain depth places each item in a level (`gantt_by_depth`). Both must have `allow_cycles: false` and not be inverse names.
 - **`value`** — the field to aggregate: integer, float, or duration, plus date for `min`/`max`/`avg`. Must be omitted when `aggregate: count`; setting both is an error.
@@ -195,6 +195,33 @@ Every view writes a single Markdown file. Filenames are `<id>.md`, written into 
 Filenames are not customizable — they always derive from `id`. The directory is. `workdown render` creates the directory if it does not exist. Re-running without item changes produces identical files (CI-diff clean) — unless the schema derives values from `$today`, in which case the output is a function of the calendar too; pin with `--as-of <YYYY-MM-DD>` for byte-identical renders.
 
 The live server does not consume these files — it re-runs the renderers against the current working tree. Static files are for committed, shareable snapshots (READMEs, GitHub previews, CI artifacts).
+
+## Arrow direction in a graph
+
+An arrow in a graph always reads the same way: it runs from the item that has the relation to the item the relation names. With `field: depends_on`, an item that depends on another points at it:
+
+```
+type-conversion --> over-link      # type-conversion depends on over-link
+```
+
+That puts the item that has to wait above the one that has to be done first. To read the graph in the order of work, name the relation's inverse instead. Given
+
+```yaml
+# schema.yaml
+depends_on:
+  type: links
+  inverse: dependents
+```
+
+a view with `field: dependents` draws the same links reversed:
+
+```
+over-link --> type-conversion      # over-link's dependents include type-conversion
+```
+
+The prerequisite is now on top and the arrow leads to what it unblocks. The same works for any relation: `field: children` (the inverse of `parent`) draws a parent above its children.
+
+A relation can only be reversed if it declares an `inverse:` name in `schema.yaml`. The rendered file and the web UI both state the reading next to the graph: "An arrow from A to B means A's `dependents` includes B."
 
 ## Example
 

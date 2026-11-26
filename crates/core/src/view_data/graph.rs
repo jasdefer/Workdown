@@ -1,11 +1,17 @@
 //! Graph view extractor.
 //!
-//! Produces one node per filter-matched item plus one edge per outgoing
-//! link on the view's `field`. The field name may be either a direct
-//! Link/Links field or an inverse name (e.g. `children` when `parent`
-//! declares `inverse: children`) — inverse names resolve to the original
-//! field via [`Schema::inverse_table`] and the underlying edges are the
-//! same.
+//! Produces one node per filter-matched item plus one edge per link on
+//! the view's `field`. An edge always reads the same way: it runs from
+//! the item that has the relation to the item the relation names.
+//!
+//! The field name may be a direct Link/Links field or an inverse name
+//! (e.g. `dependents` when `depends_on` declares `inverse: dependents`,
+//! resolved via [`Schema::inverse_table`]). The links are the same either
+//! way; the name picks the direction they are drawn in. With
+//! `depends_on`, an item that depends on another points at it. With
+//! `dependents`, the item that is depended on points at the one waiting
+//! for it, so the graph reads in the order of work. Reversing is only
+//! available to a field that names its inverse.
 //!
 //! Edges to targets outside the filtered set are dropped silently (the
 //! store already reported broken references at load time). Duplicate
@@ -54,7 +60,7 @@ pub fn extract_graph(view: &View, store: &Store, schema: &Schema) -> GraphData {
     };
     let items = filtered_items(view, store, schema);
     let filtered_ids: HashSet<&str> = items.iter().map(|item| item.id.as_str()).collect();
-    let source_field = resolve_field(field, schema);
+    let (source_field, direction) = resolve_field(field, schema);
 
     let nodes: Vec<Card> = items
         .iter()
@@ -68,7 +74,10 @@ pub fn extract_graph(view: &View, store: &Store, schema: &Schema) -> GraphData {
             if !filtered_ids.contains(target.as_str()) {
                 continue;
             }
-            let key = (item.id.clone(), target.clone());
+            let key = match direction {
+                Direction::Forward => (item.id.clone(), target.clone()),
+                Direction::Inverse => (target.clone(), item.id.clone()),
+            };
             if seen.insert(key.clone()) {
                 edges.push(Edge {
                     from: key.0,
@@ -97,11 +106,23 @@ pub fn extract_graph(view: &View, store: &Store, schema: &Schema) -> GraphData {
     }
 }
 
-fn resolve_field<'schema>(name: &'schema str, schema: &'schema Schema) -> &'schema str {
+/// Which way a view's `field` reads the stored links.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Direction {
+    /// The view names the field itself: holder to target.
+    Forward,
+    /// The view names the field's inverse: target to holder.
+    Inverse,
+}
+
+fn resolve_field<'schema>(
+    name: &'schema str,
+    schema: &'schema Schema,
+) -> (&'schema str, Direction) {
     if schema.fields.contains_key(name) {
-        name
+        (name, Direction::Forward)
     } else if let Some(original) = schema.inverse_table.get(name) {
-        original.as_str()
+        (original.as_str(), Direction::Inverse)
     } else {
         panic!("views_check validates graph field reference");
     }
@@ -210,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn inverse_name_resolves_to_original_field() {
+    fn inverse_name_draws_the_same_links_reversed() {
         let schema = deps_schema();
         let store = make_store(
             &schema,
@@ -235,7 +256,7 @@ mod tests {
             .iter()
             .map(|edge| (edge.from.as_str(), edge.to.as_str()))
             .collect();
-        assert_eq!(edge_pairs, vec![("b", "a")]);
+        assert_eq!(edge_pairs, vec![("a", "b")]);
     }
 
     #[test]

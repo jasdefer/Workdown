@@ -1,6 +1,6 @@
 ---
 title: Arrows in a dependency graph point against the order of work
-status: to_do
+status: in_progress
 parent: misc-work
 tags: [views]
 ---
@@ -42,6 +42,30 @@ fields.
 
 A reader of a graph view can tell what an arrow means, and a dependency
 graph can be read in the order the work has to happen.
+
+## Decisions taken
+
+1. **The inverse name reverses the arrows.** An arrow always runs from
+   the item that has the relation to the item the relation names. A
+   graph over `depends_on` is drawn as before; a graph over its inverse
+   `dependents` draws the same links the other way round, prerequisite
+   on top. Until now an inverse name was accepted and drew the same
+   arrows as the relation, so the name had no effect.
+2. **No `reverse` flag.** A relation without an `inverse:` name cannot
+   be reversed until it is given one in the schema. A flag would be a
+   second way to say the same thing, and the legend needs the name of
+   the reverse reading anyway.
+3. **A generated legend** states the reading in both outputs: "An arrow
+   from A to B means A's `<field>` includes B". One sentence fits a
+   relation and its inverse.
+4. **The view form offers inverse names** for the graph's relation.
+5. **The shipped default view** `dependencies` uses `field: dependents`.
+   Existing projects are not touched.
+6. **This repo's own view** switches to `dependents` once the release
+   that carries the change is installed locally.
+7. **No arrowhead for relations without a direction** is not part of
+   this item. The schema has no notion of an undirected relation, so
+   every edge has an arrowhead today, `related_to` included.
 
 ## Ideas (suggestions, not decisions)
 

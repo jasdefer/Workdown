@@ -93,8 +93,8 @@ pub const BOARD_FIELD: SlotSpec = SlotSpec::new("field", BOARD_GROUPABLE);
 pub const TREE_FIELD: SlotSpec = SlotSpec::new("field", SINGLE_LINK);
 
 /// The relation a graph draws edges for. Inverse relation names are also
-/// accepted here and resolve to their declaring field at extraction; that
-/// is a name-resolution rule, not a type, so `views_check` owns it.
+/// accepted here and draw their declaring field's links reversed; that is
+/// a name-resolution rule, not a type, so `views_check` owns it.
 pub const GRAPH_FIELD: SlotSpec = SlotSpec::new("field", ANY_LINK);
 
 /// The relation whose chain becomes graph subgraph nesting. Single-target,
