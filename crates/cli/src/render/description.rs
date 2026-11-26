@@ -71,7 +71,7 @@ fn kind_description(view: &View) -> String {
         ViewKind::Graph { field, group_by } => {
             // The second sentence is the legend: the same reading holds
             // for a field and for its inverse name, so it needs no schema.
-            let legend = format!("An arrow from A to B means A's `{field}` includes B.");
+            let legend = format!("An arrow from A to B means B is in A's `{field}`.");
             match group_by {
                 Some(group) => format!(
                     "Directed graph of items connected through `{field}`, nested by `{group}`. {legend}"
@@ -278,7 +278,7 @@ mod tests {
         });
         assert_eq!(
             description_for(&v),
-            "Directed graph of items connected through `depends_on`. An arrow from A to B means A's `depends_on` includes B."
+            "Directed graph of items connected through `depends_on`. An arrow from A to B means B is in A's `depends_on`."
         );
     }
 
@@ -290,7 +290,7 @@ mod tests {
         });
         assert_eq!(
             description_for(&v),
-            "Directed graph of items connected through `depends_on`, nested by `parent`. An arrow from A to B means A's `depends_on` includes B."
+            "Directed graph of items connected through `depends_on`, nested by `parent`. An arrow from A to B means B is in A's `depends_on`."
         );
     }
 

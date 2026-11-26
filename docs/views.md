@@ -221,7 +221,7 @@ over-link --> type-conversion      # over-link's dependents include type-convers
 
 The prerequisite is now on top and the arrow leads to what it unblocks. The same works for any relation: `field: children` (the inverse of `parent`) draws a parent above its children.
 
-A relation can only be reversed if it declares an `inverse:` name in `schema.yaml`. The rendered file and the web UI both state the reading next to the graph: "An arrow from A to B means A's `dependents` includes B."
+A relation can only be reversed if it declares an `inverse:` name in `schema.yaml`. The rendered file and the web UI both state the reading next to the graph: "An arrow from A to B means B is in A's `dependents`."
 
 ## Example
 

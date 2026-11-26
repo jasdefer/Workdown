@@ -38,14 +38,16 @@ describe('slotOptions', () => {
 	] as const;
 
 	it('offers the fields of an accepted type, in schema order', () => {
-		expect(slotOptions(fields, ['link', 'links']).map((option) => option.value)).toEqual([
+		const slot = { accepts: ['link', 'links'], inverseNames: false } as const;
+		expect(slotOptions(fields, slot).map((option) => option.value)).toEqual([
 			'depends_on',
 			'related_to'
 		]);
 	});
 
 	it('adds a declared inverse name after its relation when the slot takes them', () => {
-		expect(slotOptions(fields, ['link', 'links'], true)).toEqual([
+		const slot = { accepts: ['link', 'links'], inverseNames: true } as const;
+		expect(slotOptions(fields, slot)).toEqual([
 			{ value: 'depends_on', label: 'depends_on' },
 			{ value: 'dependents', label: 'dependents (depends_on, reversed)' },
 			{ value: 'related_to', label: 'related_to' }

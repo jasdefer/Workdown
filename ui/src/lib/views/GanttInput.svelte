@@ -8,14 +8,13 @@
 -->
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
-	import type { FieldType } from '$lib/api/generated/FieldType';
-	import { VIEW_SLOT_TYPES } from '$lib/api/generated/viewSlotTypes';
+	import { VIEW_SLOTS } from '$lib/api/generated/viewSlots';
 	import { schemaStore } from '$lib/stores/schema.svelte';
-	import { fieldFits } from './viewKinds';
+	import { slotOptions } from './viewKinds';
 
 	// The three gantt kinds share these input slots, so their generated
 	// entries carry identical lists; `gantt` is the one they all mirror.
-	const SLOTS = VIEW_SLOT_TYPES.gantt;
+	const SLOTS = VIEW_SLOTS.gantt;
 
 	type GanttMode = 'end' | 'duration' | 'after';
 
@@ -57,10 +56,6 @@
 		}
 	});
 
-	function fieldOptions(accepts: readonly FieldType[]) {
-		return schemaStore.fields.filter((field) => fieldFits(field.field_type, accepts));
-	}
-
 	function setMode(next: GanttMode): void {
 		mode = next;
 		onslot('end', undefined);
@@ -78,8 +73,8 @@
 		}}
 	>
 		<option value="">Select field…</option>
-		{#each fieldOptions(SLOTS.start) as field (field.name)}
-			<option value={field.name}>{field.name}</option>
+		{#each slotOptions(schemaStore.fields, SLOTS.start) as option (option.value)}
+			<option value={option.value}>{option.label}</option>
 		{/each}
 	</select>
 </label>
@@ -127,8 +122,8 @@
 			}}
 		>
 			<option value="">Select field…</option>
-			{#each fieldOptions(SLOTS.end) as field (field.name)}
-				<option value={field.name}>{field.name}</option>
+			{#each slotOptions(schemaStore.fields, SLOTS.end) as option (option.value)}
+				<option value={option.value}>{option.label}</option>
 			{/each}
 		</select>
 	</label>
@@ -142,8 +137,8 @@
 			}}
 		>
 			<option value="">Select field…</option>
-			{#each fieldOptions(SLOTS.duration) as field (field.name)}
-				<option value={field.name}>{field.name}</option>
+			{#each slotOptions(schemaStore.fields, SLOTS.duration) as option (option.value)}
+				<option value={option.value}>{option.label}</option>
 			{/each}
 		</select>
 	</label>
@@ -157,8 +152,8 @@
 				}}
 			>
 				<option value="">Select field…</option>
-				{#each fieldOptions(SLOTS.after) as field (field.name)}
-					<option value={field.name}>{field.name}</option>
+				{#each slotOptions(schemaStore.fields, SLOTS.after) as option (option.value)}
+					<option value={option.value}>{option.label}</option>
 				{/each}
 			</select>
 		</label>

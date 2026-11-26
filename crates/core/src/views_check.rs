@@ -254,7 +254,7 @@ fn check_view(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
             check_slot(ctx, locus, view_slots::TREE_FIELD, field, out);
         }
         ViewKind::Graph { field, group_by } => {
-            check_graph_field(ctx, locus, field, out);
+            check_slot(ctx, locus, view_slots::GRAPH_FIELD, field, out);
             if let Some(group_by) = group_by {
                 check_link_slot(ctx, locus, view_slots::GRAPH_GROUP_BY, group_by, out);
             }
@@ -452,6 +452,10 @@ fn check_sort(view: &View, ctx: &ViewCheckContext, out: &mut Vec<Diagnostic>) {
 ///
 /// A slot whose `accepts` is empty takes any field, so the check is
 /// existence-only — the bar chart's `group_by`, the heatmap's `x`/`y`.
+///
+/// A slot with [`SlotSpec::inverse_names`] also passes a name from
+/// `schema.inverse_table`. An inverse is only ever declared on a
+/// link/links field, so it needs no type check of its own.
 fn check_slot(
     ctx: &ViewCheckContext,
     locus: SlotLocus,
@@ -467,6 +471,9 @@ fn check_slot(
     }
 
     let Some(def) = ctx.schema.fields.get(field_name) else {
+        if slot.inverse_names && ctx.schema.inverse_table.contains_key(field_name) {
+            return;
+        }
         out.push(ctx.error(ConfigDiagnosticKind::ViewUnknownField {
             location: locus.at(slot.name),
             field_name: field_name.to_owned(),
@@ -487,49 +494,6 @@ fn check_slot(
             expected: view_slots::describe(slot.accepts),
         }));
     }
-}
-
-// ── Graph field helper ───────────────────────────────────────────────
-
-/// Graph-specific slot check: accepts a direct Link/Links field, or an
-/// inverse name (declared via `inverse:` on a link/links field and thus
-/// present in `schema.inverse_table`). An inverse name draws the same
-/// links as its original field, reversed.
-fn check_graph_field(
-    ctx: &ViewCheckContext,
-    locus: SlotLocus,
-    field_name: &str,
-    out: &mut Vec<Diagnostic>,
-) {
-    if field_name == "id" {
-        out.push(ctx.error(ConfigDiagnosticKind::ViewVirtualIdNotAllowed {
-            location: locus.at("field"),
-        }));
-        return;
-    }
-
-    let slot = view_slots::GRAPH_FIELD;
-    if let Some(def) = ctx.schema.fields.get(field_name) {
-        let actual = def.field_type();
-        if !slot.accepts.contains(&actual) {
-            out.push(ctx.error(ConfigDiagnosticKind::ViewFieldTypeMismatch {
-                location: locus.at(slot.name),
-                field_name: field_name.to_owned(),
-                actual_type: actual,
-                expected: view_slots::describe(slot.accepts),
-            }));
-        }
-        return;
-    }
-
-    if ctx.schema.inverse_table.contains_key(field_name) {
-        return;
-    }
-
-    out.push(ctx.error(ConfigDiagnosticKind::ViewUnknownField {
-        location: locus.at("field"),
-        field_name: field_name.to_owned(),
-    }));
 }
 
 // ── Link-slot helper ─────────────────────────────────────────────────

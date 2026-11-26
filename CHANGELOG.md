@@ -16,7 +16,7 @@ its source — internal refactors are deliberately absent.
   with each other and with `--where` by AND.
 - A graph says what its arrows mean: the rendered file's caption and a
   line in the corner of the web UI's graph read "An arrow from A to B
-  means A's `depends_on` includes B."
+  means B is in A's `depends_on`."
 - The view form offers a relation's inverse name for a graph's
   relation.
 

@@ -224,7 +224,7 @@
 					}}
 				>
 					<option value="">{control.optional ? '— none —' : 'Select field…'}</option>
-					{#each slotOptions(schemaStore.fields, control.accepts, control.inverseNames) as option (option.value)}
+					{#each slotOptions(schemaStore.fields, control.slot) as option (option.value)}
 						<option value={option.value}>{option.label}</option>
 					{/each}
 				</select>

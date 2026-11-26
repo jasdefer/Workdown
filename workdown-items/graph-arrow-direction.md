@@ -56,7 +56,7 @@ graph can be read in the order the work has to happen.
    second way to say the same thing, and the legend needs the name of
    the reverse reading anyway.
 3. **A generated legend** states the reading in both outputs: "An arrow
-   from A to B means A's `<field>` includes B". One sentence fits a
+   from A to B means B is in A's `<field>`". One sentence fits a
    relation and its inverse.
 4. **The view form offers inverse names** for the graph's relation.
 5. **The shipped default view** `dependencies` uses `field: dependents`.

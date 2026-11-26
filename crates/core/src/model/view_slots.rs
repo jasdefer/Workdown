@@ -14,7 +14,8 @@
 //!
 //! Before this table each of the three carried its own copy — the web UI's
 //! was quietly narrower than the CLI's in two places. A slot's accepted
-//! types are written here and nowhere else.
+//! types are written here and nowhere else, and so is whether it takes a
+//! relation's inverse name in place of a field.
 //!
 //! Only *structural* slots live here: the ones naming a schema field.
 //! Cross-slot rules (a gantt's mutually exclusive input modes, a `bucket`
@@ -35,11 +36,28 @@ pub struct SlotSpec {
     /// The field types the slot accepts. Empty means any field: a slot
     /// that only needs *a* field, like a chart's grouping axis.
     pub accepts: &'static [FieldType],
+    /// Whether the slot also takes the inverse name a relation declares
+    /// (`dependents` for `depends_on`) in place of a field of its own.
+    /// What the inverse name then means is the view kind's business; a
+    /// graph draws the relation's links reversed.
+    pub inverse_names: bool,
 }
 
 impl SlotSpec {
     const fn new(name: &'static str, accepts: &'static [FieldType]) -> Self {
-        Self { name, accepts }
+        Self {
+            name,
+            accepts,
+            inverse_names: false,
+        }
+    }
+
+    /// The same slot, also taking inverse relation names.
+    const fn with_inverse_names(self) -> Self {
+        Self {
+            inverse_names: true,
+            ..self
+        }
     }
 }
 
@@ -92,10 +110,9 @@ pub const BOARD_FIELD: SlotSpec = SlotSpec::new("field", BOARD_GROUPABLE);
 /// The parent relation a tree nests by.
 pub const TREE_FIELD: SlotSpec = SlotSpec::new("field", SINGLE_LINK);
 
-/// The relation a graph draws edges for. Inverse relation names are also
-/// accepted here and draw their declaring field's links reversed; that is
-/// a name-resolution rule, not a type, so `views_check` owns it.
-pub const GRAPH_FIELD: SlotSpec = SlotSpec::new("field", ANY_LINK);
+/// The relation a graph draws edges for. An inverse relation name is
+/// accepted too and draws its declaring field's links reversed.
+pub const GRAPH_FIELD: SlotSpec = SlotSpec::new("field", ANY_LINK).with_inverse_names();
 
 /// The relation whose chain becomes graph subgraph nesting. Single-target,
 /// so each item lands in exactly one box.

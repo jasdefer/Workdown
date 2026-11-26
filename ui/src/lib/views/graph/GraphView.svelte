@@ -330,7 +330,7 @@
 			role="region"
 			aria-label="Graph view"
 		></div>
-		<p class="legend">A → B: A's <code>{data.field}</code> includes B</p>
+		<p class="legend">A → B: B is in A's <code>{data.field}</code></p>
 		{#if hovered}
 			<div class="tooltip" style="left: {hovered.x}px; top: {hovered.y}px;">
 				<Card card={hovered.card} />
