@@ -6,11 +6,15 @@ Hierarchical outline following `parent` upward to roots.
   - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md) — status: to_do
 - [Miscellaneous improvements](../workdown-items/misc-work.md) — status: in_progress
   - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md) — status: to_do
+  - [Arrows in a dependency graph point against the order of work](../workdown-items/graph-arrow-direction.md) — status: to_do
+  - [The item detail does not say whether a value was written or derived](../workdown-items/item-value-origin.md) — status: to_do
   - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md) — status: to_do
   - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md) — status: on_hold
   - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md) — status: to_do
   - [Check comparison references in rules at schema load](../workdown-items/rule-comparison-reference-check.md) — status: to_do
   - [Major upgrades of the web UI's lint and SvelteKit toolchain](../workdown-items/ui-toolchain-upgrade.md) — status: to_do
+  - [Views show colors without saying what they mean](../workdown-items/view-color-legend.md) — status: to_do
+  - [The same view once per person fills up the navigation](../workdown-items/view-per-value-variants.md) — status: to_do
 - [Multi-project support](../workdown-items/multi-project-support.md) — status: to_do
   - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md) — status: to_do
 - [Derived field expressions](../workdown-items/schema-expressions.md) — status: in_progress

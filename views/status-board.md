@@ -6,6 +6,8 @@ Cards grouped into columns by `status`.
 - [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md)
 - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
+- [Arrows in a dependency graph point against the order of work](../workdown-items/graph-arrow-direction.md)
+- [The item detail does not say whether a value was written or derived](../workdown-items/item-value-origin.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
@@ -16,6 +18,8 @@ Cards grouped into columns by `status`.
 - [Compare a field with a literal in a rule's match block](../workdown-items/rule-literal-comparisons.md)
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md)
 - [Major upgrades of the web UI's lint and SvelteKit toolchain](../workdown-items/ui-toolchain-upgrade.md)
+- [Views show colors without saying what they mean](../workdown-items/view-color-legend.md)
+- [The same view once per person fills up the navigation](../workdown-items/view-per-value-variants.md)
 
 ## in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
@@ -102,6 +106,7 @@ Cards grouped into columns by `status`.
 - [Animated project tour in the web UI](../workdown-items/project-tour.md)
 - [Let Push publish an unpublished branch instead of greying out](../workdown-items/publish-branch-from-push.md)
 - [Pull fields — cross-item derivation over forward links](../workdown-items/pull-fields.md)
+- [Query for text in an item's body](../workdown-items/query-body-text.md)
 - [Deduplicate the filter engine's comparison and formatting logic](../workdown-items/query-value-consolidation.md)
 - [README: document the visualization workflow](../workdown-items/readme-visualization-update.md)
 - [Move the in-file operations tests to core's tests directory](../workdown-items/relocate-operations-tests.md)

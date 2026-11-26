@@ -5,6 +5,16 @@ tagged version into the top of that version's GitHub release page, so
 entries are written for people using workdown, not for people reading
 its source — internal refactors are deliberately absent.
 
+## Unreleased
+
+### Added
+
+- `workdown query --search <TEXT>` finds items by what they say: it
+  looks in the body, the id and every field of type `string`, and
+  matches a substring ignoring case. `--search-regex <PATTERN>` does
+  the same with a regular expression. Both are repeatable and combine
+  with each other and with `--where` by AND.
+
 ## 0.2.13 - 2026-11-17
 
 ### Fixed

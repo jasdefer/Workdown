@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::model::schema::FieldType;
+use crate::query::search::SearchTerm;
 
 // ── Predicate model ─────────────────────────────────────────────────
 
@@ -253,11 +254,16 @@ pub fn operators_for(field_type: FieldType) -> Vec<Operator> {
 
 // ── Query request ───────────────────────────────────────────────────
 
-/// A complete query: optional filter, sort order, and column selection.
+/// A complete query: optional filter, text search, sort order, and column
+/// selection.
 #[derive(Debug, Clone)]
 pub struct QueryRequest {
     /// Filter predicate. `None` means "match all items".
     pub predicate: Option<Predicate>,
+    /// Text search terms, all of which an item must contain somewhere in
+    /// its searchable text (see [`crate::query::search`]). Empty means
+    /// "no search". Combined with the predicate by AND.
+    pub search: Vec<SearchTerm>,
     /// Sort specifications, applied in order; the item id breaks the
     /// ties they leave. Empty means plain id order.
     pub sort: Vec<SortSpec>,

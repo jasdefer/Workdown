@@ -9,11 +9,15 @@ flowchart TD
     end
     subgraph misc-work ["Miscellaneous improvements"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
+        graph-arrow-direction["Arrows in a dependency graph point against the order of work"]
+        item-value-origin["The item detail does not say whether a value was written or derived"]
         prepare-commit-msg-hook["Prefill terminal commits with the generated message"]
         project-load-cache["Cache the project load in the server (when it starts to hurt)"]
         recording-dot-extraction["Extract the recording indicator the six item-presenting views each rebuilt"]
         rule-comparison-reference-check["Check comparison references in rules at schema load"]
         ui-toolchain-upgrade["Major upgrades of the web UI's lint and SvelteKit toolchain"]
+        view-color-legend["Views show colors without saying what they mean"]
+        view-per-value-variants["The same view once per person fills up the navigation"]
     end
     subgraph multi-project-support ["Multi-project support"]
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]

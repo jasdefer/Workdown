@@ -64,6 +64,7 @@ fn run_filter<'store>(
         .collect();
     let request = QueryRequest {
         predicate: build_predicate(where_clauses),
+        search: vec![],
         sort,
         fields: vec![],
     };

@@ -62,6 +62,7 @@
 | [git-status-event-loop](../workdown-items/git-status-event-loop.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [git-sync-controls](../workdown-items/git-sync-controls.md) | done | [full-git-loop](../workdown-items/full-git-loop.md) |  |
 | [github-render-action](../workdown-items/github-render-action.md) | removed | [polish](../workdown-items/polish.md) |  |
+| [graph-arrow-direction](../workdown-items/graph-arrow-direction.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
 | [graph-item-open](../workdown-items/graph-item-open.md) | done |  |  |
 | [init-install-hooks](../workdown-items/init-install-hooks.md) | done | [polish](../workdown-items/polish.md) |  |
 | [item-body-links-dead](../workdown-items/item-body-links-dead.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
@@ -69,6 +70,7 @@
 | [item-detail-side-placement](../workdown-items/item-detail-side-placement.md) | done | [misc-work](../workdown-items/misc-work.md) | [item-overlay-redesign](../workdown-items/item-overlay-redesign.md) |
 | [item-mutations](../workdown-items/item-mutations.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [foundation](../workdown-items/foundation.md) |
 | [item-overlay-redesign](../workdown-items/item-overlay-redesign.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
+| [item-value-origin](../workdown-items/item-value-origin.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
 | [live-updates](../workdown-items/live-updates.md) | done | [server](../workdown-items/server.md) | [walking-skeleton](../workdown-items/walking-skeleton.md) |
 | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | done |  |  |
 | [message-style-consistency](../workdown-items/message-style-consistency.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [metric-row-check-unification](../workdown-items/metric-row-check-unification.md) |
@@ -90,6 +92,7 @@
 | [pull-copy-type-conversion](../workdown-items/pull-copy-type-conversion.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [pull-copy-over-link](../workdown-items/pull-copy-over-link.md) |
 | [pull-fields](../workdown-items/pull-fields.md) | done | [schema-expressions](../workdown-items/schema-expressions.md) | [computed-fields](../workdown-items/computed-fields.md), [aggregate-rollup](../workdown-items/aggregate-rollup.md) |
 | [pull-root-anchor](../workdown-items/pull-root-anchor.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [pull-fields](../workdown-items/pull-fields.md) |
+| [query-body-text](../workdown-items/query-body-text.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [query-value-consolidation](../workdown-items/query-value-consolidation.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [readme-visualization-update](../workdown-items/readme-visualization-update.md) | done | [polish](../workdown-items/polish.md) |  |
 | [recording-dot-extraction](../workdown-items/recording-dot-extraction.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
@@ -157,6 +160,7 @@
 | [validation-phase-boundaries](../workdown-items/validation-phase-boundaries.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [derived-field-single-predicate](../workdown-items/derived-field-single-predicate.md) |
 | [value-coercion-layering](../workdown-items/value-coercion-layering.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [view-authoring](../workdown-items/view-authoring.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [server](../workdown-items/server.md) |
+| [view-color-legend](../workdown-items/view-color-legend.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
 | [view-creation](../workdown-items/view-creation.md) | done | [view-authoring](../workdown-items/view-authoring.md) | [view-write-backend](../workdown-items/view-write-backend.md), [schema-metadata-api](../workdown-items/schema-metadata-api.md), [view-filter-editor](../workdown-items/view-filter-editor.md), [app-shell-navigation](../workdown-items/app-shell-navigation.md) |
 | [view-data-intermediate](../workdown-items/view-data-intermediate.md) | done | [renderers](../workdown-items/renderers.md) | [field-value-native-date](../workdown-items/field-value-native-date.md), [views-title-slot](../workdown-items/views-title-slot.md) |
 | [view-display-config](../workdown-items/view-display-config.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [remaining-read-views](../workdown-items/remaining-read-views.md) |
@@ -164,6 +168,7 @@
 | [view-filter-editor](../workdown-items/view-filter-editor.md) | done | [view-authoring](../workdown-items/view-authoring.md) | [remaining-read-views](../workdown-items/remaining-read-views.md), [schema-metadata-api](../workdown-items/schema-metadata-api.md), [view-write-backend](../workdown-items/view-write-backend.md) |
 | [view-kind-sync-guards](../workdown-items/view-kind-sync-guards.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [render-flow-doc](../workdown-items/render-flow-doc.md) |
 | [view-order-in-extractor](../workdown-items/view-order-in-extractor.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
+| [view-per-value-variants](../workdown-items/view-per-value-variants.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
 | [view-presentation](../workdown-items/view-presentation.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [server](../workdown-items/server.md) |
 | [view-sort-slot](../workdown-items/view-sort-slot.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [view-write-backend](../workdown-items/view-write-backend.md) | done | [view-authoring](../workdown-items/view-authoring.md) |  |
