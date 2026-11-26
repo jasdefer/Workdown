@@ -79,18 +79,14 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                 delimiter: *delimiter,
                 no_header: *no_header,
             };
-            commands::query::run_query(
-                &config,
-                root,
-                &cli.config,
+            let selection = cli::QuerySelection {
                 where_clauses,
-                search,
-                search_regex,
-                sort,
-                fields.as_deref(),
-                output,
-                *as_of,
-            )?;
+                search_texts: search,
+                search_patterns: search_regex,
+                sort_arguments: sort,
+                fields_argument: fields.as_deref(),
+            };
+            commands::query::run_query(&config, root, &cli.config, selection, output, *as_of)?;
             Ok(ExitCode::SUCCESS)
         }
 

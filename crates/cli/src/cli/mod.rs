@@ -325,6 +325,22 @@ pub enum QueryFormat {
     Csv,
 }
 
+/// Bundle of the flags that say which items `workdown query` returns and
+/// how: `--where`, `--search`, `--search-regex`, `--sort` and `--fields`,
+/// still as the text the user typed.
+///
+/// Four of the five are lists of strings. Naming them here keeps two of
+/// them from being swapped at the `run_query` call, which positional
+/// arguments of the same type would allow without a compile error.
+#[derive(Debug, Clone, Copy)]
+pub struct QuerySelection<'a> {
+    pub where_clauses: &'a [String],
+    pub search_texts: &'a [String],
+    pub search_patterns: &'a [String],
+    pub sort_arguments: &'a [String],
+    pub fields_argument: Option<&'a str>,
+}
+
 /// Bundle of output-rendering options for `workdown query`.
 ///
 /// Grouping `format`, `delimiter`, and `no_header` keeps the `run_query`

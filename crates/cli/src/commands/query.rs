@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::cli::{self, QueryFormat, QueryOutput};
+use crate::cli::{self, QueryFormat, QueryOutput, QuerySelection};
 use workdown_core::model::config::Config;
 use workdown_core::model::schema::Schema;
 use workdown_core::project::load_project;
@@ -19,19 +19,22 @@ const LIST_SEPARATOR: char = ';';
 /// Run the query command: filter, sort, and display work items.
 /// `as_of` pins what `$today` resolves to in computed fields; `None`
 /// means the current local date.
-#[allow(clippy::too_many_arguments)]
 pub fn run_query(
     config: &Config,
     project_root: &Path,
     config_path: &Path,
-    where_clauses: &[String],
-    search_texts: &[String],
-    search_patterns: &[String],
-    sort_arguments: &[String],
-    fields_argument: Option<&str>,
+    selection: QuerySelection<'_>,
     output: QueryOutput,
     as_of: Option<chrono::NaiveDate>,
 ) -> anyhow::Result<()> {
+    let QuerySelection {
+        where_clauses,
+        search_texts,
+        search_patterns,
+        sort_arguments,
+        fields_argument,
+    } = selection;
+
     let project = load_project(config, project_root, config_path, as_of)
         .map_err(|error| anyhow::anyhow!("{error}"))?;
 
