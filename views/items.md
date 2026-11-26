@@ -89,7 +89,7 @@
 | [pull-copy-type-conversion](../workdown-items/pull-copy-type-conversion.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [pull-copy-over-link](../workdown-items/pull-copy-over-link.md) |
 | [pull-fields](../workdown-items/pull-fields.md) | done | [schema-expressions](../workdown-items/schema-expressions.md) | [computed-fields](../workdown-items/computed-fields.md), [aggregate-rollup](../workdown-items/aggregate-rollup.md) |
 | [pull-root-anchor](../workdown-items/pull-root-anchor.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [pull-fields](../workdown-items/pull-fields.md) |
-| [query-body-text](../workdown-items/query-body-text.md) | in_progress | [misc-work](../workdown-items/misc-work.md) |  |
+| [query-body-text](../workdown-items/query-body-text.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [query-value-consolidation](../workdown-items/query-value-consolidation.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) |  |
 | [readme-visualization-update](../workdown-items/readme-visualization-update.md) | done | [polish](../workdown-items/polish.md) |  |
 | [recording-dot-extraction](../workdown-items/recording-dot-extraction.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |

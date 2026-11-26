@@ -22,7 +22,6 @@ Cards grouped into columns by `status`.
 ## in_progress
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
 - [Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice](../workdown-items/pull-copy-over-link.md)
-- [Query for text in an item's body](../workdown-items/query-body-text.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
 
 ## on_hold
@@ -104,6 +103,7 @@ Cards grouped into columns by `status`.
 - [Animated project tour in the web UI](../workdown-items/project-tour.md)
 - [Let Push publish an unpublished branch instead of greying out](../workdown-items/publish-branch-from-push.md)
 - [Pull fields — cross-item derivation over forward links](../workdown-items/pull-fields.md)
+- [Query for text in an item's body](../workdown-items/query-body-text.md)
 - [Deduplicate the filter engine's comparison and formatting logic](../workdown-items/query-value-consolidation.md)
 - [README: document the visualization workflow](../workdown-items/readme-visualization-update.md)
 - [Move the in-file operations tests to core's tests directory](../workdown-items/relocate-operations-tests.md)

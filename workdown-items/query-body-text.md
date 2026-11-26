@@ -1,6 +1,6 @@
 ---
 title: Query for text in an item's body
-status: in_progress
+status: done
 parent: misc-work
 tags: [cli, query]
 ---

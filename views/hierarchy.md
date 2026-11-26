@@ -8,7 +8,6 @@ Hierarchical outline following `parent` upward to roots.
   - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md) — status: to_do
   - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md) — status: to_do
   - [Cache the project load in the server (when it starts to hurt)](../workdown-items/project-load-cache.md) — status: on_hold
-  - [Query for text in an item's body](../workdown-items/query-body-text.md) — status: in_progress
   - [Extract the recording indicator the six item-presenting views each rebuilt](../workdown-items/recording-dot-extraction.md) — status: to_do
   - [Check comparison references in rules at schema load](../workdown-items/rule-comparison-reference-check.md) — status: to_do
   - [Major upgrades of the web UI's lint and SvelteKit toolchain](../workdown-items/ui-toolchain-upgrade.md) — status: to_do
