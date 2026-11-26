@@ -20,15 +20,13 @@
 //! remaining type-level error paths below are defensive mappings to
 //! silent skips.
 
-use std::collections::HashMap;
-
 use chrono::NaiveDate;
 use indexmap::IndexMap;
 
 use crate::expression::{evaluate, EvaluateError, Value, ValueContext};
 use crate::model::diagnostic::{Diagnostic, ItemDiagnosticKind};
 use crate::model::schema::{ComputeConfig, FieldType, RoundMode, Severity};
-use crate::model::{FieldValue, WorkItem};
+use crate::model::{FieldValue, ItemFields, WorkItem};
 
 const SECONDS_PER_DAY: i64 = 86_400;
 
@@ -115,7 +113,7 @@ pub(super) fn missing_inputs(item: &WorkItem, config: &ComputeConfig) -> Vec<Str
 /// [`ValueContext`] over one item's fields plus the project constants
 /// and the evaluation date. Shared with the conditional pass.
 pub(super) struct ItemValueContext<'a> {
-    pub(super) fields: &'a HashMap<String, FieldValue>,
+    pub(super) fields: &'a ItemFields,
     pub(super) constants: &'a IndexMap<String, FieldValue>,
     /// The evaluation date as a midnight timestamp — what `$today`
     /// resolves to for every item in this pass.

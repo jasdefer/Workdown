@@ -189,6 +189,41 @@ async fn get_item_returns_fields_in_schema_order_and_body() {
 }
 
 #[tokio::test]
+async fn get_item_says_which_values_were_derived_and_which_override() {
+    let (directory, state) = temp_project();
+    let root = directory.path();
+    fs::write(
+        root.join(".workdown/schema.yaml"),
+        "fields:\n  start:\n    type: date\n  duration:\n    type: duration\n  end:\n    type: date\n    compute: start + duration\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("workdown-items/task-1.md"),
+        "---\nstart: 2026-01-05\nduration: 7d\n---\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("workdown-items/task-2.md"),
+        "---\nstart: 2026-01-05\nduration: 7d\nend: 2026-03-01\n---\n",
+    )
+    .unwrap();
+
+    // The wire vocabulary the editor's badges read: the mechanism in
+    // the schema page's words, the state in snake case.
+    let derived = body_json(get(state.clone(), "/api/items/task-1").await).await;
+    assert_eq!(
+        derived["data"]["derivations"],
+        json!([{ "field": "end", "mechanism": "computed", "state": "derived" }])
+    );
+
+    let overridden = body_json(get(state, "/api/items/task-2").await).await;
+    assert_eq!(
+        overridden["data"]["derivations"],
+        json!([{ "field": "end", "mechanism": "computed", "state": "overridden" }])
+    );
+}
+
+#[tokio::test]
 async fn get_unknown_item_returns_404() {
     let (_directory, state) = temp_project();
     let response = get(state, "/api/items/does-not-exist").await;

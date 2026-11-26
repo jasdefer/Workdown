@@ -153,18 +153,22 @@ pub struct FieldDefinition {
 /// site that has not been taught about it — the guarantee that
 /// replaced the two hand-mirrored mechanism lists the required check
 /// once kept (see ADR-012).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, ts_rs::TS)]
 pub enum FillMechanism {
     /// `aggregate:` — rolled up cross-item from the bearers below,
     /// along the aggregate's `over` link (same field).
+    #[serde(rename = "aggregated")]
     Aggregate,
     /// `compute:` — evaluated from the same item's other fields and
     /// project constants.
+    #[serde(rename = "computed")]
     Compute,
     /// `pull:` — read from a forward link target's field and reduced
     /// (cross-item, cross-field).
+    #[serde(rename = "pulled")]
     Pull,
     /// `when:` — the first matching condition's value (same item).
+    #[serde(rename = "conditional")]
     When,
 }
 

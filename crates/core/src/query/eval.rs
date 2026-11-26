@@ -475,7 +475,7 @@ mod tests {
         map.insert("id".to_owned(), FieldValue::String(id.to_owned()));
         WorkItem {
             id: WorkItemId::from(id.to_owned()),
-            fields: map,
+            fields: map.into(),
             body: String::new(),
             source_path: PathBuf::from(format!("{id}.md")),
         }

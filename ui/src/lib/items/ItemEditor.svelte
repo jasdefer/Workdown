@@ -17,6 +17,12 @@
   is opened and opened by a save whose warnings name one of them
   (`collapsedFields.ts`). Once open they are editors like any other.
 
+  A field a fill mechanism is responsible for carries an origin badge
+  next to its name: the mechanism that derived the value, `written`
+  where a hand-written value overrides it, or the mechanism with "no
+  value" (`valueOrigin.ts`). An override also offers the way back,
+  which unsets the field so the mechanism applies again.
+
   Each field edit POSTs through `api.setField` and, on success, refetches
   the item so computed/cascading values reflect reality (and tells the
   host via `onmutate` so an underlying view can refresh too). Hard
@@ -42,6 +48,7 @@
 		type ItemLinkResolver
 	} from '$lib/items/bodyLinks';
 	import { foldLabel, foldOpensFor } from '$lib/items/collapsedFields';
+	import { originBadge, type OriginBadge } from '$lib/items/valueOrigin';
 	import { schemaStore } from '$lib/stores/schema.svelte';
 	import TimerSlot from '$lib/timer/TimerSlot.svelte';
 	import DiagnosticList from '$lib/ui/DiagnosticList.svelte';
@@ -92,6 +99,11 @@
 
 	function valueOf(name: string): FieldValue | null {
 		return item?.fields.find((field) => field.name === name)?.value ?? null;
+	}
+
+	// The origin badge for a field; `null` for a plain one.
+	function badgeOf(name: string): OriginBadge | null {
+		return originBadge(item?.derivations.find((derivation) => derivation.field === name));
 	}
 
 	// A cleared optional value unsets the field; everything else is an
@@ -163,6 +175,7 @@
 			<div class="fields card">
 				<dl class="field-grid">
 					{#each visibleFields as field (field.name)}
+						{@const badge = badgeOf(field.name)}
 						<dt>
 							<span
 								class="field-name"
@@ -170,7 +183,11 @@
 								title={field.description}>{field.name}</span
 							>
 							{#if field.required}<span class="req" title="required">*</span>{/if}
-							{#if field.aggregate}<span class="note">computed</span>{/if}
+							{#if badge}
+								<span class="note" class:override={badge.restoreLabel !== null} title={badge.title}
+									>{badge.label}</span
+								>
+							{/if}
 						</dt>
 						<dd>
 							<ValueEditor
@@ -184,6 +201,16 @@
 									void commit(field.name, mutationFor(value));
 								}}
 							/>
+							{#if badge?.restoreLabel}
+								<button
+									type="button"
+									class="quiet-action"
+									disabled={busy}
+									onclick={() => void commit(field.name, { op: 'unset' })}
+								>
+									{badge.restoreLabel}
+								</button>
+							{/if}
 							{#if field.resource}<small class="muted">values from “{field.resource}”</small>{/if}
 							{#if field.field_type === 'link' || field.field_type === 'links'}
 								{@const targets = stringsOf(valueOf(field.name))}
@@ -212,7 +239,7 @@
 					     fields follow the shown ones, this row moves below them. -->
 					<button
 						type="button"
-						class="fold"
+						class="quiet-action"
 						aria-expanded={foldOpen}
 						onclick={() => (foldOpen = !foldOpen)}
 					>
@@ -316,9 +343,9 @@
 		align-items: start;
 	}
 
-	/* The fold row reads as a quiet link, not a button: it only reveals
-	   what is already there. */
-	.fold {
+	/* The fold row and the way back from an override read as quiet
+	   links, not buttons: they reveal or restore what is already there. */
+	.quiet-action {
 		align-self: flex-start;
 		background: none;
 		border: 0;
@@ -329,14 +356,15 @@
 		cursor: pointer;
 	}
 
-	.fold:hover,
-	.fold:focus-visible {
+	.quiet-action:hover,
+	.quiet-action:focus-visible {
 		color: var(--color-fg);
 		text-decoration: underline;
 	}
 
 	dt {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: baseline;
 		gap: 0.25rem;
 		font-size: var(--text-sm);
@@ -376,6 +404,14 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-sm);
 		padding: 0 0.25rem;
+		cursor: help;
+	}
+
+	/* A hand-written value standing in for a mechanism is the state to
+	   notice; a derived one is the quiet default. */
+	.note.override {
+		color: var(--color-fg);
+		border-style: dashed;
 	}
 
 	.body h3 {

@@ -237,7 +237,7 @@ mod tests {
         }
         WorkItem {
             id: WorkItemId::from(id.to_owned()),
-            fields: map,
+            fields: map.into(),
             body: String::new(),
             source_path: PathBuf::from(format!("{id}.md")),
         }

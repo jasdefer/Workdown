@@ -50,7 +50,7 @@ use crate::model::diagnostic::{
     Diagnostic, FileDiagnosticKind, FilesDiagnosticKind, ItemDiagnosticKind,
 };
 use crate::model::resources::Resources;
-use crate::model::schema::{Schema, Severity};
+use crate::model::schema::{FieldDefinition, FillMechanism, Schema, Severity};
 use crate::model::{WorkItem, WorkItemId};
 use crate::parser;
 use crate::walker::targets_of;
@@ -142,9 +142,10 @@ impl Store {
         // dependency order. Compute fields whose config fails the
         // cross-file check are skipped entirely — the check's findings
         // are schema diagnostics (surfaced by `compute_check::evaluate`
-        // at project load), not per-item ones. Mutates `items` in place
-        // so downstream consumers see manual + derived values
-        // indistinguishably.
+        // at project load), not per-item ones. Mutates `items` in place:
+        // downstream consumers read written and derived values the
+        // same way, and each value keeps its origin for the few that
+        // ask (`ItemFields::origin_of`).
         let disabled_compute_fields = crate::compute_check::failed_fields(schema, resources);
         diagnostics.extend(derive::run(
             &mut items,
@@ -220,6 +221,36 @@ impl Store {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// The fill mechanism responsible for this field on this item, were
+    /// the file to carry no value: the rollup on an item with children
+    /// along the aggregate's `over` link, the field's same-item or pull
+    /// recipe everywhere else. `None` where nothing would fill the
+    /// field — a plain field, or the leaf of a field that only
+    /// aggregates, whose value can only be written.
+    ///
+    /// The same split the fill-in phase makes (the rollup owns
+    /// everything above the leaves), asked of the same index.
+    pub fn mechanism_in_charge(
+        &self,
+        item_id: &WorkItemId,
+        field_definition: &FieldDefinition,
+    ) -> Option<FillMechanism> {
+        let rolls_up_here = field_definition
+            .aggregate
+            .as_ref()
+            .is_some_and(|aggregate| !is_leaf(&self.reverse_links, item_id, &aggregate.over));
+        if rolls_up_here {
+            return Some(FillMechanism::Aggregate);
+        }
+        field_definition
+            .fill_mechanisms()
+            .into_iter()
+            .find(|mechanism| match mechanism {
+                FillMechanism::Compute | FillMechanism::Pull | FillMechanism::When => true,
+                FillMechanism::Aggregate => false,
+            })
     }
 
     /// All diagnostics collected during loading.
@@ -323,7 +354,7 @@ fn parse_and_coerce(paths: &[PathBuf], schema: &Schema) -> ParsedItems {
             raw.id.clone(),
             WorkItem {
                 id: raw.id,
-                fields: outcome.fields,
+                fields: outcome.fields.into(),
                 body: raw.body,
                 source_path: raw.source_path,
             },

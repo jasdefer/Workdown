@@ -9,6 +9,7 @@ pub mod date;
 pub mod diagnostic;
 pub mod duration;
 pub mod field_value;
+pub mod item_fields;
 pub mod message;
 pub mod resources;
 pub mod rule;
@@ -20,4 +21,5 @@ pub mod weekday;
 pub mod work_item;
 
 pub use field_value::FieldValue;
+pub use item_fields::{ItemFields, ValueOrigin};
 pub use work_item::{WorkItem, WorkItemId};
