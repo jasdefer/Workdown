@@ -10,9 +10,9 @@
   mode is for item detail panels where the body has full vertical room.
 
   `extensions` are `marked` extensions the host adds for its surface —
-  the item editor's item-link extension, which turns `[[id]]` and
-  `[text](id.md)` into links. Without any, the content renders as plain
-  Markdown on the shared default parser.
+  such as the item-link extension (`bodyLinks.ts`), which turns `[[id]]`
+  and `[text](id.md)` into links. Without any, the content renders as
+  plain Markdown on the shared default parser.
 -->
 <script lang="ts">
 	import { Marked, marked, type MarkedExtension } from 'marked';

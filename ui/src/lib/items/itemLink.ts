@@ -6,7 +6,8 @@
 // current route, so navigation is just a relative URL change — the
 // view page reads the param and mounts the chrome, and the view's own
 // load, which does not depend on it, is left alone.
-// `itemHref` is for real `<a>` links (table cells, tree titles);
+// `itemHref` is for real `<a>` links (table cells, tree titles,
+// references in a Markdown body);
 // `openItem` is for elements that can't be anchors (the draggable board
 // card, an SVG rectangle, a canvas-drawn graph node), and
 // `activateOnKey` gives those the keyboard half of the same gesture.

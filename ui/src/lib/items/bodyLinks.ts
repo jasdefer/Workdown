@@ -11,9 +11,10 @@
 // follow row under a link field uses the same functions, so a body link
 // and a `parent` value point — and fail — the same way.
 //
-// Where a link leads is the host's business: in the item dialog it
-// swaps the dialog's item (`?item=`), on the standalone page it
-// navigates to `/items/:id`. The host says so through `hrefFor`. Which
+// Where a link leads is the host's business: in a view — the item
+// detail and a card's preview — it opens the item in the view's detail
+// (`?item=`), on the standalone page it navigates to `/items/:id`. The
+// host says so through `hrefFor`. Which
 // ids exist comes from the schema store's item index, `null` while that
 // has not loaded; then every reference is taken to exist rather than
 // flashing dead until the index arrives.

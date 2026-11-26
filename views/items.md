@@ -11,6 +11,7 @@
 | [browser-tab-project-title](../workdown-items/browser-tab-project-title.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [burndown-chart](../workdown-items/burndown-chart.md) | to_do |  |  |
 | [burndown-chart-design](../workdown-items/burndown-chart-design.md) | to_do | [burndown-chart](../workdown-items/burndown-chart.md) |  |
+| [card-preview-links-dead](../workdown-items/card-preview-links-dead.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [chart-renderer-sharing](../workdown-items/chart-renderer-sharing.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [view-order-in-extractor](../workdown-items/view-order-in-extractor.md) |
 | [ci-test-run-completeness](../workdown-items/ci-test-run-completeness.md) | done | [testing-strategy](../workdown-items/testing-strategy.md) |  |
 | [ci-workspace-coverage](../workdown-items/ci-workspace-coverage.md) | done |  |  |

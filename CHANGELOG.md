@@ -5,7 +5,7 @@ tagged version into the top of that version's GitHub release page, so
 entries are written for people using workdown, not for people reading
 its source — internal refactors are deliberately absent.
 
-## 0.2.13 - 2026-11-26
+## Unreleased
 
 ### Added
 
@@ -14,6 +14,18 @@ its source — internal refactors are deliberately absent.
   matches a substring ignoring case. `--search-regex <PATTERN>` does
   the same with a regular expression. Both are repeatable and combine
   with each other and with `--where` by AND.
+
+## 0.2.13 - 2026-11-17
+
+### Fixed
+
+- A reference to another work item in a card's preview works: `[[id]]`
+  and `[text](id.md)` open the referenced item in the view's detail
+  instead of leading to a 404, and a reference to an id no item has
+  reads as dead text. Clicking a link in the preview no longer opens
+  the card it sits on as well.
+- Grabbing a card by a link or image in its preview drags the whole
+  card.
 
 ## 0.2.12 - 2026-11-06
 

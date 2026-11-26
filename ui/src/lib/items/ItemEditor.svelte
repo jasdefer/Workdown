@@ -125,10 +125,10 @@
 	// schema order, so a field never changes place while the fold toggles.
 	const visibleFields = $derived(foldOpen ? [...shownFields, ...collapsedFields] : shownFields);
 
-	// Which ids exist, from the schema's item index — `null` until it has
-	// loaded, so references are not flashed dead in the meantime.
+	// How a reference resolves here: which ids exist, and where the host
+	// sends a live one.
 	const linkResolver = $derived<ItemLinkResolver>({
-		knownIds: schemaStore.value === null ? null : new Set(schemaStore.items),
+		knownIds: schemaStore.itemIds,
 		hrefFor
 	});
 	const bodyExtensions = $derived([itemLinkExtension(linkResolver)]);
