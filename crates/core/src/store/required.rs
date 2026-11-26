@@ -71,10 +71,7 @@ pub(crate) fn check(
             if item.fields.contains_key(field_name) {
                 continue;
             }
-            if conversion_failures
-                .get(item_id)
-                .is_some_and(|failed_fields| failed_fields.contains(field_name))
-            {
+            if super::conversion_failed(conversion_failures, item_id, field_name) {
                 // Written but invalid: the invalid-value diagnostic
                 // already stands, and "missing" would be false.
                 continue;
@@ -114,37 +111,27 @@ fn finding(
         field: field_name.to_owned(),
     };
 
-    // A schema-check-failed config never ran; the check's schema
-    // diagnostic carries the cause, so the item reports the plain
-    // blank without guessing at inputs of a pass that never happened.
-    if disabled_compute_fields.contains(field_name) {
+    // Whoever was responsible for the blank explains it. Nobody is
+    // where nothing fills the field here, and where the recipe failed
+    // the schema check and never ran: that check's schema diagnostic
+    // carries the cause, so the item reports the plain blank without
+    // guessing at inputs of a pass that never happened.
+    let Some(mechanism) = super::mechanism_in_charge(
+        reverse_links,
+        disabled_compute_fields,
+        &item.id,
+        field_name,
+        field_definition,
+    ) else {
         return Finding::Report(generic);
-    }
+    };
 
-    // On a non-leaf of an aggregating field the same-item/pull pass
-    // never runs — the rollup owns everything above the leaves, and it
-    // found nothing to aggregate. There is no per-input cause to name.
-    let mechanisms = field_definition.fill_mechanisms();
-    let has_same_item_or_pull = mechanisms.iter().any(|mechanism| match mechanism {
-        FillMechanism::Compute | FillMechanism::Pull | FillMechanism::When => true,
-        FillMechanism::Aggregate => false,
-    });
-    let same_item_pass_skipped = has_same_item_or_pull
-        && field_definition
-            .aggregate
-            .as_ref()
-            .is_some_and(|aggregate| !super::is_leaf(reverse_links, &item.id, &aggregate.over));
-    if same_item_pass_skipped {
-        return Finding::Report(generic);
-    }
-
-    // Per-mechanism cause, first one that has something to say wins.
     // The match is exhaustive on purpose: a new mechanism must decide
     // here what its blank-but-required story is before this compiles.
-    for mechanism in mechanisms {
-        let cause = match mechanism {
-            // Cross-item with no same-item source: the rollup found no
-            // bearers below. Nothing per-item to name.
+    let cause =
+        match mechanism {
+            // The rollup owns everything above the leaves, and it found
+            // no bearers below. Nothing per-item to name.
             FillMechanism::Aggregate => None,
             FillMechanism::Compute => field_definition.compute.as_ref().and_then(|config| {
                 let missing_inputs = compute::missing_inputs(item, config);
@@ -159,7 +146,7 @@ fn finding(
             }),
             FillMechanism::Pull => {
                 let Some(pull) = &field_definition.pull else {
-                    continue;
+                    return Finding::Report(generic);
                 };
                 let missing_inputs = pull_missing_inputs(item, pull, items);
                 if missing_inputs.is_empty() {
@@ -187,12 +174,8 @@ fn finding(
                 }
             }),
         };
-        if let Some(kind) = cause {
-            return Finding::Report(kind);
-        }
-    }
 
-    Finding::Report(generic)
+    Finding::Report(cause.unwrap_or(generic))
 }
 
 /// The pull's link targets that have no source value, as

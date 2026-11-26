@@ -681,7 +681,7 @@ mod tests {
         }
         WorkItem {
             id: WorkItemId::from(id.to_owned()),
-            fields,
+            fields: fields.into(),
             body: String::new(),
             source_path: PathBuf::from(format!("{id}.md")),
         }
@@ -694,7 +694,7 @@ mod tests {
         let mut reverse_links: HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>> =
             HashMap::new();
         for item in items.values() {
-            for (field_name, value) in &item.fields {
+            for (field_name, value) in item.fields.iter() {
                 if let FieldValue::Link(target) = value {
                     reverse_links
                         .entry(field_name.clone())

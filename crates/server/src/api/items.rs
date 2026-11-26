@@ -56,6 +56,7 @@ async fn get_item(
     match project.store.get(&id) {
         Some(item) => ApiResponse::ok(item_data::build(
             item,
+            &project.store,
             &project.schema,
             &state.config.defaults.display,
         )),

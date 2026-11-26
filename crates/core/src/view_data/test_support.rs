@@ -22,7 +22,7 @@ pub(crate) fn make_item(id: &str, fields: Vec<(&str, FieldValue)>, body: &str) -
     map.insert("id".to_owned(), FieldValue::String(id.to_owned()));
     WorkItem {
         id: WorkItemId::from(id.to_owned()),
-        fields: map,
+        fields: map.into(),
         body: body.to_owned(),
         source_path: PathBuf::from(format!("{id}.md")),
     }
@@ -36,7 +36,7 @@ pub(crate) fn make_schema(fields: Vec<(&str, FieldTypeConfig)>) -> Schema {
     Schema::new(map, vec![])
 }
 
-pub(super) fn make_store(schema: &Schema, items: Vec<WorkItem>) -> Store {
+pub(crate) fn make_store(schema: &Schema, items: Vec<WorkItem>) -> Store {
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let mut store = Store::load(temp_dir.path(), schema).expect("empty store loads");
     for item in items {
@@ -52,7 +52,7 @@ pub(super) fn make_store(schema: &Schema, items: Vec<WorkItem>) -> Store {
 ///
 /// The returned [`tempfile::TempDir`] must be kept alive for the duration
 /// of the test; dropping it deletes the underlying files.
-pub(super) fn make_store_with_files(
+pub(crate) fn make_store_with_files(
     schema: &Schema,
     files: Vec<(&str, &str)>,
 ) -> (tempfile::TempDir, Store) {

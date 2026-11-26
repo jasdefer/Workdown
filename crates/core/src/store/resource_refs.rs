@@ -38,7 +38,7 @@ pub(super) fn check(
     let mut diagnostics = Vec::new();
     for item in items.values() {
         for (field_name, field) in &validatable {
-            let Some(value) = item.fields.get(*field_name) else {
+            let Some(value) = item.fields.get(field_name) else {
                 continue;
             };
             for candidate in referenced_values(value) {

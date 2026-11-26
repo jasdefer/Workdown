@@ -1,12 +1,11 @@
 //! Work-item identity and the parsed work-item record.
 
 use std::borrow::Borrow;
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use super::FieldValue;
+use super::ItemFields;
 
 // ── WorkItemId ──────────────────────────────────────────────────────
 
@@ -101,8 +100,9 @@ pub(crate) fn is_valid_id(id: &str) -> bool {
 pub struct WorkItem {
     /// Resolved ID: from frontmatter `id` field if present, otherwise filename without `.md`.
     pub id: WorkItemId,
-    /// Field names to their typed values, coerced according to the schema.
-    pub fields: HashMap<String, FieldValue>,
+    /// Field names to their typed values, coerced according to the
+    /// schema, each with whether it was written or derived.
+    pub fields: ItemFields,
     /// Everything below the closing `---` delimiter — freeform Markdown.
     pub body: String,
     /// The file this was parsed from, kept for error messages downstream.

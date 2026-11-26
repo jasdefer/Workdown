@@ -153,18 +153,22 @@ pub struct FieldDefinition {
 /// site that has not been taught about it — the guarantee that
 /// replaced the two hand-mirrored mechanism lists the required check
 /// once kept (see ADR-012).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, ts_rs::TS)]
 pub enum FillMechanism {
     /// `aggregate:` — rolled up cross-item from the bearers below,
     /// along the aggregate's `over` link (same field).
+    #[serde(rename = "aggregated")]
     Aggregate,
     /// `compute:` — evaluated from the same item's other fields and
     /// project constants.
+    #[serde(rename = "computed")]
     Compute,
     /// `pull:` — read from a forward link target's field and reduced
     /// (cross-item, cross-field).
+    #[serde(rename = "pulled")]
     Pull,
     /// `when:` — the first matching condition's value (same item).
+    #[serde(rename = "conditional")]
     When,
 }
 
@@ -240,6 +244,22 @@ impl FieldDefinition {
     /// load time.
     pub fn has_fill_mechanism(&self) -> bool {
         !self.fill_mechanisms().is_empty()
+    }
+
+    /// The field's recipe: the one mechanism that fills a blank from
+    /// the item itself or its link targets (`compute`, `when` or
+    /// `pull`, which exclude one another), as opposed to the rollup
+    /// that fills it from the items below. `None` for a field that
+    /// only aggregates or has no mechanism at all. Matches
+    /// exhaustively so a new mechanism must declare which side it
+    /// falls on.
+    pub fn recipe_mechanism(&self) -> Option<FillMechanism> {
+        self.fill_mechanisms()
+            .into_iter()
+            .find(|mechanism| match mechanism {
+                FillMechanism::Compute | FillMechanism::Pull | FillMechanism::When => true,
+                FillMechanism::Aggregate => false,
+            })
     }
 
     /// Whether this field's value is derived same-item — by a `compute:`

@@ -50,7 +50,7 @@ use crate::model::diagnostic::{
     Diagnostic, FileDiagnosticKind, FilesDiagnosticKind, ItemDiagnosticKind,
 };
 use crate::model::resources::Resources;
-use crate::model::schema::{Schema, Severity};
+use crate::model::schema::{FieldDefinition, FillMechanism, Schema, Severity};
 use crate::model::{WorkItem, WorkItemId};
 use crate::parser;
 use crate::walker::targets_of;
@@ -72,6 +72,13 @@ pub struct Store {
     reverse_links: HashMap<String, HashMap<WorkItemId, Vec<WorkItemId>>>,
     /// All diagnostics collected during loading.
     diagnostics: Vec<Diagnostic>,
+    /// The fields whose recipe failed the schema-level check and never
+    /// ran, kept so [`Store::mechanism_in_charge`] answers as the
+    /// fill-in phase behaved.
+    disabled_compute_fields: HashSet<String>,
+    /// Coercion's per-item record of written-but-invalid fields, kept
+    /// for the same reason: no mechanism fills such a slot.
+    conversion_failures: HashMap<WorkItemId, HashSet<String>>,
 }
 
 impl Store {
@@ -142,9 +149,10 @@ impl Store {
         // dependency order. Compute fields whose config fails the
         // cross-file check are skipped entirely — the check's findings
         // are schema diagnostics (surfaced by `compute_check::evaluate`
-        // at project load), not per-item ones. Mutates `items` in place
-        // so downstream consumers see manual + derived values
-        // indistinguishably.
+        // at project load), not per-item ones. Mutates `items` in place:
+        // downstream consumers read written and derived values the
+        // same way, and each value keeps its origin for the few that
+        // ask (`ItemFields::origin_of`).
         let disabled_compute_fields = crate::compute_check::failed_fields(schema, resources);
         diagnostics.extend(derive::run(
             &mut items,
@@ -176,6 +184,8 @@ impl Store {
             items,
             reverse_links,
             diagnostics,
+            disabled_compute_fields,
+            conversion_failures,
         })
     }
 
@@ -220,6 +230,30 @@ impl Store {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// The fill mechanism responsible for this field on this item, were
+    /// the file to carry no value; `None` where nothing would fill it.
+    /// The rule is the free `mechanism_in_charge` below, the one the
+    /// required check asks too. On top of it, a written-but-invalid
+    /// value leaves nobody in charge: no mechanism replaces what the
+    /// author wrote.
+    pub fn mechanism_in_charge(
+        &self,
+        item_id: &WorkItemId,
+        field_name: &str,
+        field_definition: &FieldDefinition,
+    ) -> Option<FillMechanism> {
+        if conversion_failed(&self.conversion_failures, item_id, field_name) {
+            return None;
+        }
+        mechanism_in_charge(
+            &self.reverse_links,
+            &self.disabled_compute_fields,
+            item_id,
+            field_name,
+            field_definition,
+        )
     }
 
     /// All diagnostics collected during loading.
@@ -323,7 +357,7 @@ fn parse_and_coerce(paths: &[PathBuf], schema: &Schema) -> ParsedItems {
             raw.id.clone(),
             WorkItem {
                 id: raw.id,
-                fields: outcome.fields,
+                fields: outcome.fields.into(),
                 body: raw.body,
                 source_path: raw.source_path,
             },
@@ -355,6 +389,49 @@ pub(super) fn is_leaf(
         .get(over_field)
         .and_then(|by_target| by_target.get(item_id))
         .is_none_or(|sources| sources.is_empty())
+}
+
+/// The fill mechanism responsible for a field on an item, were the
+/// file to carry no value: the rollup on an item with children along
+/// the aggregate's `over` link, the field's recipe everywhere else —
+/// unless that recipe failed the schema-level check and never runs.
+/// `None` where nothing would fill the field: a plain field, a broken
+/// recipe, or the leaf of a field that only aggregates, whose value
+/// can only be written.
+///
+/// The split the fill-in phase makes (the rollup owns everything above
+/// the leaves), stated once for everything that asks after the fact:
+/// the required check and the item detail.
+pub(super) fn mechanism_in_charge(
+    reverse_links: &ReverseLinks,
+    disabled_compute_fields: &HashSet<String>,
+    item_id: &WorkItemId,
+    field_name: &str,
+    field_definition: &FieldDefinition,
+) -> Option<FillMechanism> {
+    let rolls_up_here = field_definition
+        .aggregate
+        .as_ref()
+        .is_some_and(|aggregate| !is_leaf(reverse_links, item_id, &aggregate.over));
+    if rolls_up_here {
+        return Some(FillMechanism::Aggregate);
+    }
+    if disabled_compute_fields.contains(field_name) {
+        return None;
+    }
+    field_definition.recipe_mechanism()
+}
+
+/// Whether coercion recorded this item's field as written but invalid
+/// — a slot no mechanism may fill.
+pub(super) fn conversion_failed(
+    conversion_failures: &HashMap<WorkItemId, HashSet<String>>,
+    item_id: &WorkItemId,
+    field_name: &str,
+) -> bool {
+    conversion_failures
+        .get(item_id)
+        .is_some_and(|failed_fields| failed_fields.contains(field_name))
 }
 
 /// Pipeline phase 3: build the reverse-link index and report

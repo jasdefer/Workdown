@@ -32,7 +32,7 @@ use workdown_core::git_data::{
     GitChangeKind, GitChangedFile, GitCommitPreview, GitCommitRequest, GitCommitResult,
     GitPullResult, GitPullStep, GitPushResult, GitPushStep, GitStatus,
 };
-use workdown_core::item_data::ItemDetail;
+use workdown_core::item_data::{DerivationState, FieldDerivation, ItemDetail};
 use workdown_core::model::config::PathRole;
 use workdown_core::model::diagnostic::{
     CollectionDiagnostic, CollectionDiagnosticKind, ConfigDiagnostic, ConfigDiagnosticKind,
@@ -41,6 +41,7 @@ use workdown_core::model::diagnostic::{
 };
 use workdown_core::model::field_value::FieldValue;
 use workdown_core::model::rule::CountConstraint;
+use workdown_core::model::schema::FillMechanism;
 use workdown_core::model::schema::{
     AggregateConfig, AggregateFunction, FieldProperty, FieldType, Generator, PullConfig, RoundMode,
     Severity,
@@ -285,6 +286,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Single-item read projection (GET /api/items/:id).
     exports.add::<ItemDetail>();
+    exports.add::<FieldDerivation>();
+    exports.add::<DerivationState>();
+    exports.add::<FillMechanism>();
 
     // ViewData enum and common building blocks.
     exports.add::<ViewData>();

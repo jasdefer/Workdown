@@ -58,12 +58,15 @@ use indexmap::IndexMap;
 
 use crate::expression::Value;
 use crate::model::diagnostic::{Diagnostic, DiagnosticBody, ItemDiagnosticKind};
-use crate::model::schema::{FieldDefinition, FieldType, PullConfig, Schema, Severity};
+use crate::model::schema::{
+    FieldDefinition, FieldType, FillMechanism, PullConfig, Schema, Severity,
+};
 use crate::model::{FieldValue, WorkItem, WorkItemId};
 use crate::walker::{target_of_link, targets_of};
 
 use super::compute;
 use super::conditional;
+use super::conversion_failed;
 use super::rollup;
 
 /// Run every derive pass. Mutates `items` in place; returns all
@@ -416,18 +419,6 @@ struct EvaluationInputs<'run> {
     conversion_failures: &'run HashMap<WorkItemId, HashSet<String>>,
 }
 
-/// Whether coercion recorded this item's field as written but invalid
-/// — a slot no pass may fill.
-fn conversion_failed(
-    conversion_failures: &HashMap<WorkItemId, HashSet<String>>,
-    item_id: &WorkItemId,
-    field_name: &str,
-) -> bool {
-    conversion_failures
-        .get(item_id)
-        .is_some_and(|failed_fields| failed_fields.contains(field_name))
-}
-
 /// Mutable evaluation state, indexed by node id.
 struct EvaluationState {
     /// What each aggregate-field node passes to the item's parent: its
@@ -471,7 +462,7 @@ fn evaluate_node(
     // everything above), and never where coercion recorded a
     // written-but-invalid value (the author wrote something; the file
     // must be fixed, not silently overridden).
-    let mut derived_value: Option<FieldValue> = None;
+    let mut derived_value: Option<(FieldValue, FillMechanism)> = None;
     if !had_value
         && !conversion_failed(inputs.conversion_failures, item_id, derive_field.name)
         && (derive_field.same_item_enabled || derive_field.pull_enabled)
@@ -482,7 +473,9 @@ fn evaluate_node(
                 // Pull: mutually exclusive with compute and when.
                 if let Some(pull) = &derive_field.definition.pull {
                     match evaluate_pull(pull, derive_field.definition.field_type(), item, items) {
-                        PullOutcome::Value(value) => derived_value = Some(value),
+                        PullOutcome::Value(value) => {
+                            derived_value = Some((value, FillMechanism::Pull));
+                        }
                         PullOutcome::MissingInputs(missing_inputs) => {
                             if pull.error_on_missing {
                                 state.same_item_diagnostics[slot].push(Diagnostic::item(
@@ -508,7 +501,9 @@ fn evaluate_node(
                     inputs.constants,
                     &inputs.today,
                 ) {
-                    compute::SameItemOutcome::Value(value) => derived_value = Some(value),
+                    compute::SameItemOutcome::Value(value) => {
+                        derived_value = Some((value, FillMechanism::Compute));
+                    }
                     compute::SameItemOutcome::Report(diagnostic) => {
                         state.same_item_diagnostics[slot].push(diagnostic);
                     }
@@ -523,16 +518,17 @@ fn evaluate_node(
                     &inputs.today,
                 );
                 state.same_item_diagnostics[slot].append(&mut warnings);
-                derived_value = value;
+                derived_value = value.map(|value| (value, FillMechanism::When));
             }
         }
-        if let Some(value) = &derived_value {
+        if let Some((value, mechanism)) = &derived_value {
             if let Some(item) = items.get_mut(item_id) {
                 item.fields
-                    .insert(derive_field.name.to_owned(), value.clone());
+                    .insert_derived(derive_field.name.to_owned(), value.clone(), *mechanism);
             }
         }
     }
+    let derived_value = derived_value.map(|(value, _)| value);
 
     let Some(aggregate) = &derive_field.definition.aggregate else {
         return;
@@ -586,7 +582,11 @@ fn evaluate_node(
         let values: Vec<FieldValue> = gathered.iter().map(|(_, value)| value.clone()).collect();
         if let Some(reduced) = rollup::apply_aggregate(aggregate.function, &values) {
             if let Some(item) = items.get_mut(item_id) {
-                item.fields.insert(derive_field.name.to_owned(), reduced);
+                item.fields.insert_derived(
+                    derive_field.name.to_owned(),
+                    reduced,
+                    FillMechanism::Aggregate,
+                );
             }
         }
     }
@@ -1984,5 +1984,96 @@ fields:
 
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
         assert_eq!(field(&items, "task", "finish"), Some(&date(2026, 1, 7)));
+    }
+
+    // ── Value origins ─────────────────────────────────────────────────
+
+    #[test]
+    fn every_value_records_whether_it_was_written_or_which_mechanism_derived_it() {
+        use crate::model::ValueOrigin;
+
+        let schema_yaml = "\
+fields:
+  parent:
+    type: link
+    allow_cycles: false
+  depends_on:
+    type: links
+    allow_cycles: false
+  duration:
+    type: duration
+  status:
+    type: choice
+    values: [open, done]
+  status_color:
+    type: color
+    when:
+      - if: status == \"done\"
+        then: green
+  start:
+    type: date
+    pull:
+      over: depends_on
+      field: end
+      function: max
+  end:
+    type: date
+    compute: start + duration
+    aggregate:
+      function: max
+      over: parent
+";
+        let milestone = || FieldValue::Link(WorkItemId::from("m".to_owned()));
+        let mut items = HashMap::from([
+            item(
+                "a",
+                vec![
+                    ("parent", milestone()),
+                    ("start", date(2026, 1, 5)),
+                    ("duration", duration_days(7)),
+                    ("status", FieldValue::Choice("done".into())),
+                ],
+            ),
+            item(
+                "b",
+                vec![
+                    ("parent", milestone()),
+                    ("depends_on", links_value(&["a"])),
+                    ("duration", duration_days(7)),
+                    // Written where the formula would have run.
+                    ("end", date(2026, 3, 1)),
+                ],
+            ),
+            item("m", vec![]),
+        ]);
+        let diagnostics = run_derive(&mut items, schema_yaml, "");
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+
+        let origin = |id: &str, name: &str| {
+            items[&WorkItemId::from(id.to_owned())]
+                .fields
+                .origin_of(name)
+        };
+        assert_eq!(origin("a", "start"), Some(ValueOrigin::Written));
+        assert_eq!(
+            origin("a", "end"),
+            Some(ValueOrigin::Derived(FillMechanism::Compute))
+        );
+        assert_eq!(
+            origin("a", "status_color"),
+            Some(ValueOrigin::Derived(FillMechanism::When))
+        );
+        assert_eq!(
+            origin("b", "start"),
+            Some(ValueOrigin::Derived(FillMechanism::Pull))
+        );
+        // The file's value won: it stays a written one.
+        assert_eq!(origin("b", "end"), Some(ValueOrigin::Written));
+        assert_eq!(
+            origin("m", "end"),
+            Some(ValueOrigin::Derived(FillMechanism::Aggregate))
+        );
+        // No branch held, so there is no value and no origin.
+        assert_eq!(origin("b", "status_color"), None);
     }
 }

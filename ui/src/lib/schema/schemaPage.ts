@@ -13,6 +13,7 @@
 import type { ApiResult } from '$lib/api/client';
 import type { FieldDefinitionData } from '$lib/api/generated/FieldDefinitionData';
 import type { FieldShape } from '$lib/api/generated/FieldShape';
+import type { FillMechanism } from '$lib/api/generated/FillMechanism';
 import type { SchemaDefinitionData } from '$lib/api/generated/SchemaDefinitionData';
 import { formatNumber } from '$lib/views/format';
 
@@ -57,9 +58,10 @@ export function movedFieldOrder(
 /**
  * Where a field's value comes from when nobody types it: the fill
  * mechanisms the field declares. The "Filled by" column lists them;
- * blank means the value is written by hand.
+ * blank means the value is written by hand. The vocabulary is the
+ * server's, shared with the origin badges in the item detail.
  */
-export type FillMechanism = 'computed' | 'conditional' | 'pulled' | 'aggregated';
+export type { FillMechanism };
 
 /**
  * The fill mechanisms a field declares: its recipe, then its rollup.
