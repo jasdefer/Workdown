@@ -5,7 +5,7 @@ tagged version into the top of that version's GitHub release page, so
 entries are written for people using workdown, not for people reading
 its source — internal refactors are deliberately absent.
 
-## Unreleased
+## 0.2.14 - 2026-11-26
 
 ### Added
 
@@ -19,6 +19,12 @@ its source — internal refactors are deliberately absent.
   means B is in A's `depends_on`."
 - The view form offers a relation's inverse name for a graph's
   relation.
+- The item detail says where a field's value comes from. A derived
+  value carries a badge naming the mechanism (`computed`,
+  `conditional`, `pulled`, `aggregated`). A hand-written value that
+  overrides a mechanism is marked `written` and offers "Use the …
+  value", which removes the written value so the mechanism applies
+  again.
 
 ### Changed
 
