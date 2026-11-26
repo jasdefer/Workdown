@@ -63,6 +63,8 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
 
         cli::Command::Query {
             where_clauses,
+            search,
+            search_regex,
             sort,
             fields,
             format,
@@ -82,6 +84,8 @@ fn run(cli: &cli::Cli) -> anyhow::Result<ExitCode> {
                 root,
                 &cli.config,
                 where_clauses,
+                search,
+                search_regex,
                 sort,
                 fields.as_deref(),
                 output,

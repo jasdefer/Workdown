@@ -8,6 +8,7 @@ use crate::model::field_value::format_field_value;
 use crate::model::schema::Schema;
 use crate::model::WorkItem;
 use crate::query::eval::{matches_predicate, QueryEvalError};
+use crate::query::search::matches_search;
 use crate::query::sort::sort_items;
 use crate::query::types::{QueryRequest, QueryResult, QueryRow};
 use crate::store::Store;
@@ -31,7 +32,7 @@ pub fn execute(
     Ok(QueryResult { columns, items })
 }
 
-/// Run the filter, sort, and column-selection stages of a query.
+/// Run the filter, search, sort, and column-selection stages of a query.
 ///
 /// Returns the chosen column names and the matched items in sorted order,
 /// without formatting any field values. Callers that need raw typed values
@@ -48,7 +49,7 @@ pub fn filter_and_sort<'a>(
             Some(predicate) => matches_predicate(item, predicate, schema, store)?,
             None => true,
         };
-        if matches {
+        if matches && matches_search(item, &request.search, schema) {
             matched_items.push(item);
         }
     }

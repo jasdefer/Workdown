@@ -10,6 +10,7 @@ use workdown_core::parser::schema::load_schema;
 use workdown_core::query::engine;
 use workdown_core::query::format::{render_delimited, DelimitedError, DelimitedOptions};
 use workdown_core::query::parse::parse_where;
+use workdown_core::query::search::SearchTerm;
 use workdown_core::query::types::{Predicate, QueryRequest, SortDirection, SortSpec};
 use workdown_core::store::Store;
 
@@ -120,6 +121,21 @@ fn run_query(
     sort: &[SortSpec],
     fields: &[&str],
 ) -> workdown_core::query::types::QueryResult {
+    run_request(root, where_clauses, vec![], sort, fields)
+}
+
+/// Helper: the ids matching the given search terms and where clauses.
+fn search_ids(root: &Path, search: Vec<SearchTerm>, where_clauses: &[&str]) -> Vec<String> {
+    sorted_ids(&run_request(root, where_clauses, search, &[], &[]))
+}
+
+fn run_request(
+    root: &Path,
+    where_clauses: &[&str],
+    search: Vec<SearchTerm>,
+    sort: &[SortSpec],
+    fields: &[&str],
+) -> workdown_core::query::types::QueryResult {
     let config = load_test_config(root);
     let schema = load_schema(&root.join(&config.schema)).unwrap();
     let store = Store::load(&root.join(&config.paths.work_items), &schema).unwrap();
@@ -136,6 +152,7 @@ fn run_query(
 
     let request = QueryRequest {
         predicate,
+        search,
         sort: sort.to_vec(),
         fields: fields.iter().map(|field| field.to_string()).collect(),
     };
@@ -401,6 +418,75 @@ fn query_default_columns_include_id_and_required() {
     assert!(!result.columns.contains(&"points".to_owned()));
 }
 
+// ── Text search ─────────────────────────────────────────────────────
+
+fn text(term: &str) -> SearchTerm {
+    SearchTerm::text(term).unwrap()
+}
+
+#[test]
+fn search_finds_text_in_the_body() {
+    let (_directory, root) = setup_project();
+    // Only epic-d's body says "initiative"; no field does.
+    assert_eq!(search_ids(&root, vec![text("INITIATIVE")], &[]), ["epic-d"]);
+}
+
+#[test]
+fn search_finds_text_in_a_string_field() {
+    let (_directory, root) = setup_project();
+    // bug-c's title is "Crash on Save"; its body words it differently.
+    assert_eq!(
+        search_ids(&root, vec![text("crash on save")], &[]),
+        ["bug-c"]
+    );
+}
+
+#[test]
+fn search_finds_the_id_but_not_a_link_to_it() {
+    let (_directory, root) = setup_project();
+    // task-e names epic-d as its parent; a link is not searched.
+    assert_eq!(search_ids(&root, vec![text("epic-d")], &[]), ["epic-d"]);
+}
+
+#[test]
+fn search_skips_fields_that_are_not_strings() {
+    let (_directory, root) = setup_project();
+    // task-e's status is `done`, a choice; `8` is bug-c's points.
+    assert!(search_ids(&root, vec![text("done")], &[]).is_empty());
+    assert!(search_ids(&root, vec![text("8")], &[]).is_empty());
+}
+
+#[test]
+fn search_terms_are_anded_and_may_hit_different_places() {
+    let (_directory, root) = setup_project();
+    // "crash on" is in bug-c's title, "saving" in its body.
+    assert_eq!(
+        search_ids(&root, vec![text("crash on"), text("saving")], &[]),
+        ["bug-c"]
+    );
+    assert!(search_ids(&root, vec![text("login"), text("logout")], &[]).is_empty());
+}
+
+#[test]
+fn search_is_anded_with_where_clauses() {
+    let (_directory, root) = setup_project();
+    assert_eq!(
+        search_ids(&root, vec![text("flow")], &[]),
+        ["task-a", "task-e"]
+    );
+    assert_eq!(
+        search_ids(&root, vec![text("flow")], &["status=done"]),
+        ["task-e"]
+    );
+}
+
+#[test]
+fn search_regex_matches_a_pattern() {
+    let (_directory, root) = setup_project();
+    let pattern = SearchTerm::regex(r"^Fix the log(in|out) flow\.$").unwrap();
+    assert_eq!(search_ids(&root, vec![pattern], &[]), ["task-a", "task-e"]);
+}
+
 // ── Delimited output (CSV/TSV) ──────────────────────────────────────
 
 fn filtered(
@@ -428,6 +514,7 @@ fn filtered(
 
     let request = QueryRequest {
         predicate,
+        search: vec![],
         sort: sort.to_vec(),
         fields: fields.iter().map(|field| field.to_string()).collect(),
     };

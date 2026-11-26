@@ -41,6 +41,49 @@ fn repeated_where_flags_are_anded() {
 }
 
 #[test]
+fn search_flag_finds_text_in_the_body() {
+    // "First task." is `task-1`'s body; no field says "first".
+    let output = Project::new().run(&["query", "--search", "first", "--format", "json"]);
+    output.assert_code(0);
+    let rows = output.stdout_json();
+    let rows = rows.as_array().expect("a JSON array");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["id"], "task-1");
+}
+
+#[test]
+fn search_regex_flag_matches_a_pattern() {
+    let output = Project::new().run(&[
+        "query",
+        "--search-regex",
+        "^Task [2-9]$",
+        "--format",
+        "json",
+    ]);
+    output.assert_code(0);
+    let rows = output.stdout_json();
+    let rows = rows.as_array().expect("a JSON array");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["id"], "task-2");
+}
+
+#[test]
+fn search_flag_rejects_an_empty_text() {
+    Project::new()
+        .run(&["query", "--search", ""])
+        .assert_code(1)
+        .assert_stderr_contains("--search '': the search text must not be empty");
+}
+
+#[test]
+fn search_regex_flag_rejects_an_invalid_pattern() {
+    Project::new()
+        .run(&["query", "--search-regex", "task-(1"])
+        .assert_code(1)
+        .assert_stderr_contains("--search-regex 'task-(1': invalid regex");
+}
+
+#[test]
 fn sort_flag_orders_and_desc_reverses() {
     let ascending = Project::new().run(&["query", "--sort", "title", "--format", "json"]);
     let ids = |output: &common::Output| -> Vec<String> {

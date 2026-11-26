@@ -69,6 +69,18 @@ pub enum Command {
         #[arg(long = "where", value_name = "EXPR")]
         where_clauses: Vec<String>,
 
+        /// Find items containing this text (repeatable, combined with AND).
+        /// Looks in the body, the id and every field of type string;
+        /// matches a substring, ignoring case.
+        #[arg(long = "search", value_name = "TEXT")]
+        search: Vec<String>,
+
+        /// Like --search, but with a regular expression (repeatable).
+        /// Case-sensitive unless the pattern starts with (?i); ^ and $
+        /// match at the start and end of each line.
+        #[arg(long = "search-regex", value_name = "PATTERN")]
+        search_regex: Vec<String>,
+
         /// Sort by field (repeatable for multi-sort). Format: field, field:asc or field:desc.
         /// Same grammar as the `sort:` slot of a view in views.yaml.
         #[arg(long = "sort", value_name = "FIELD[:dir]")]

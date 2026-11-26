@@ -9,5 +9,6 @@ pub mod engine;
 pub mod eval;
 pub mod format;
 pub mod parse;
+pub mod search;
 pub mod sort;
 pub mod types;

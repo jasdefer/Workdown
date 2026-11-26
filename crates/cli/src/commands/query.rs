@@ -9,6 +9,7 @@ use workdown_core::project::load_project;
 use workdown_core::query;
 use workdown_core::query::format::DelimitedOptions;
 use workdown_core::query::parse::parse_sort;
+use workdown_core::query::search::SearchTerm;
 use workdown_core::query::types::{Predicate, QueryRequest, SortSpec};
 use workdown_core::where_check;
 
@@ -24,6 +25,8 @@ pub fn run_query(
     project_root: &Path,
     config_path: &Path,
     where_clauses: &[String],
+    search_texts: &[String],
+    search_patterns: &[String],
     sort_arguments: &[String],
     fields_argument: Option<&str>,
     output: QueryOutput,
@@ -59,6 +62,8 @@ pub fn run_query(
         }
     }
 
+    let search = parse_search_arguments(search_texts, search_patterns)?;
+
     // Parse --sort arguments into sort specs. A key the grammar rejects
     // or a field the schema lacks is an error, exactly as it is for a
     // view's `sort:` slot — the two share the grammar and the rules.
@@ -69,6 +74,7 @@ pub fn run_query(
 
     let request = QueryRequest {
         predicate,
+        search,
         sort,
         fields,
     };
@@ -155,6 +161,28 @@ fn parse_where_clauses(clauses: &[String], schema: &Schema) -> anyhow::Result<Op
         1 => Some(predicates.remove(0)),
         _ => Some(Predicate::And(predicates)),
     })
+}
+
+/// Build the search terms from --search and --search-regex. Each
+/// argument is built on its own so the message can name the one at fault.
+fn parse_search_arguments(
+    texts: &[String],
+    patterns: &[String],
+) -> anyhow::Result<Vec<SearchTerm>> {
+    let mut terms = Vec::new();
+    for text in texts {
+        terms.push(
+            SearchTerm::text(text)
+                .map_err(|error| anyhow::anyhow!("--search '{text}': {error}"))?,
+        );
+    }
+    for pattern in patterns {
+        terms.push(
+            SearchTerm::regex(pattern)
+                .map_err(|error| anyhow::anyhow!("--search-regex '{pattern}': {error}"))?,
+        );
+    }
+    Ok(terms)
 }
 
 /// Parse --sort arguments into sort specifications, refusing a key the
