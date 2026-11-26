@@ -6,6 +6,7 @@ Cards grouped into columns by `status`.
 - [A chart that shows progress over time (burndown or similar)](../workdown-items/burndown-chart.md)
 - [Decide where the burndown's time axis comes from](../workdown-items/burndown-chart-design.md)
 - [One clock read per invocation, writes included](../workdown-items/evaluation-date-single-read.md)
+- [Arrows in a dependency graph point against the order of work](../workdown-items/graph-arrow-direction.md)
 - [Design multi-project support — set decisions and break out follow-up work](../workdown-items/multi-project-design.md)
 - [Multi-project support](../workdown-items/multi-project-support.md)
 - [Prefill terminal commits with the generated message](../workdown-items/prepare-commit-msg-hook.md)
