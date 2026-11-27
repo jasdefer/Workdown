@@ -14,7 +14,7 @@ views:
   type: graph
   where:
   - status not in done,removed
-  field: depends_on
+  field: dependents
   group_by: parent
 - id: items
   type: table

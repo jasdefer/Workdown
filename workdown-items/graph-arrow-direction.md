@@ -1,6 +1,6 @@
 ---
 title: Arrows in a dependency graph point against the order of work
-status: in_progress
+status: done
 parent: misc-work
 tags: [views]
 ---

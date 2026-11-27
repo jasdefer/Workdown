@@ -1,6 +1,6 @@
-# Graph: depends_on
+# Graph: dependents
 
-Directed graph of items connected through `depends_on`, nested by `parent`.
+Directed graph of items connected through `dependents`, nested by `parent`. An arrow from A to B means B is in A's `dependents`.
 
 ```mermaid
 flowchart TD
@@ -9,21 +9,19 @@ flowchart TD
     end
     subgraph misc-work ["Miscellaneous improvements"]
         evaluation-date-single-read["One clock read per invocation, writes included"]
-        graph-arrow-direction["Arrows in a dependency graph point against the order of work"]
         prepare-commit-msg-hook["Prefill terminal commits with the generated message"]
         project-load-cache["Cache the project load in the server (when it starts to hurt)"]
         recording-dot-extraction["Extract the recording indicator the six item-presenting views each rebuilt"]
         rule-comparison-reference-check["Check comparison references in rules at schema load"]
         ui-toolchain-upgrade["Major upgrades of the web UI's lint and SvelteKit toolchain"]
-        view-color-legend["Views show colors without saying what they mean"]
         view-per-value-variants["The same view once per person fills up the navigation"]
+        workdown-logo["Workdown has no logo of its own"]
     end
     subgraph multi-project-support ["Multi-project support"]
         multi-project-design["Design multi-project support — set decisions and break out follow-up work"]
     end
     subgraph schema-expressions ["Derived field expressions"]
         expression-logical-combinators["`and` / `or` / `not` in the expression grammar"]
-        pull-copy-over-link["Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice"]
         pull-copy-type-conversion["Copy into a field of a different type (`pull` over a `link` with conversion)"]
         pull-root-anchor["A project-level start for unanchored roots, without a synthetic milestone item"]
         rule-literal-comparisons["Compare a field with a literal in a rule's match block"]
@@ -31,5 +29,4 @@ flowchart TD
         when-then-value-expressions["`then:` values beyond literals — `$today`, fields, expressions"]
     end
     status-transition-dates["Fill in a date when a status changes, instead of typing it by hand"]
-    pull-copy-type-conversion --> pull-copy-over-link
 ```
