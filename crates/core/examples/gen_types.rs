@@ -75,11 +75,12 @@ use workdown_core::timer_data::{
     TimerStopResult, TimerWrite,
 };
 use workdown_core::view_data::{
-    BarChartBar, BarChartData, BoardColumn, BoardData, Card, CardField, ChartValue, Column, Edge,
-    GanttBar, GanttByDepthData, GanttByInitiativeData, GanttData, GraphData, HeatmapCell,
-    HeatmapData, Initiative, ItemRef, Level, LineChartData, LinePoint, LineSeries, MetricData,
-    MetricRowData, SizeValue, TableData, TableRow, TreeData, TreeNode, TreemapData, TreemapNode,
-    UnplacedCard, UnplacedReason, ViewData, WorkloadBucket, WorkloadData, WorkloadUnit,
+    BarChartBar, BarChartData, BoardColumn, BoardData, Card, CardField, ChartValue, ColorCount,
+    ColorLegend, ColorMeaning, Column, ConditionEntry, Edge, GanttBar, GanttByDepthData,
+    GanttByInitiativeData, GanttData, GraphData, HeatmapCell, HeatmapData, Initiative, ItemRef,
+    Level, LineChartData, LinePoint, LineSeries, MetricData, MetricRowData, SizeValue, TableData,
+    TableRow, TreeData, TreeNode, TreemapData, TreemapNode, UnplacedCard, UnplacedReason, ViewData,
+    ViewPage, WorkloadBucket, WorkloadData, WorkloadUnit,
 };
 
 const FILE_HEADER: &str =
@@ -292,6 +293,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // ViewData enum and common building blocks.
     exports.add::<ViewData>();
+    exports.add::<ViewPage>();
+    exports.add::<ColorLegend>();
+    exports.add::<ColorMeaning>();
+    exports.add::<ConditionEntry>();
+    exports.add::<ColorCount>();
     exports.add::<Card>();
     exports.add::<CardField>();
     exports.add::<UnplacedCard>();

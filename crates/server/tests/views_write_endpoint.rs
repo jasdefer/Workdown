@@ -342,7 +342,9 @@ async fn preview_filters_view_without_writing() {
     assert_eq!(response.status(), StatusCode::OK);
 
     let envelope = body_json(response).await;
-    let rows = envelope["data"]["rows"].as_array().expect("rows array");
+    let rows = envelope["data"]["view"]["rows"]
+        .as_array()
+        .expect("rows array");
     assert_eq!(rows.len(), 1, "ad-hoc filter should keep only done items");
     assert_eq!(rows[0]["id"], "task-done");
 }
@@ -396,7 +398,9 @@ async fn preview_with_unmatchable_value_still_renders_with_a_warning() {
 
     let envelope = body_json(response).await;
     // Tier 3, not tier 2: data is present.
-    let rows = envelope["data"]["rows"].as_array().expect("rows array");
+    let rows = envelope["data"]["view"]["rows"]
+        .as_array()
+        .expect("rows array");
     assert!(rows.is_empty(), "the filter genuinely matches nothing");
 
     let diagnostics = envelope["diagnostics"].as_array().unwrap();
@@ -414,7 +418,7 @@ async fn preview_with_unmatchable_value_still_renders_with_a_warning() {
 /// Column names of a table response, for the display-role tests below.
 async fn column_names(response: axum::http::Response<Body>) -> Vec<String> {
     let envelope = body_json(response).await;
-    envelope["data"]["columns"]
+    envelope["data"]["view"]["columns"]
         .as_array()
         .expect("columns array")
         .iter()
@@ -496,7 +500,9 @@ async fn preview_replaces_stale_persisted_filter_diagnostics() {
     assert_eq!(response.status(), StatusCode::OK);
 
     let envelope = body_json(response).await;
-    let rows = envelope["data"]["rows"].as_array().expect("rows array");
+    let rows = envelope["data"]["view"]["rows"]
+        .as_array()
+        .expect("rows array");
     assert_eq!(
         rows.len(),
         1,

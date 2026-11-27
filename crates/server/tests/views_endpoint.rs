@@ -97,7 +97,7 @@ async fn get_table_view_returns_table_data_with_resolved_link_titles() {
     assert_eq!(response.status(), StatusCode::OK);
 
     let envelope = body_json(response).await;
-    let data = &envelope["data"];
+    let data = &envelope["data"]["view"];
     assert_eq!(data["type"], "table");
 
     let columns = data["columns"].as_array().expect("columns is array");
@@ -119,6 +119,10 @@ async fn get_table_view_returns_table_data_with_resolved_link_titles() {
     // sidecar resolves task-a's title via the view's `title:` slot.
     let items = data["items"].as_object().expect("items is object");
     assert_eq!(items["task-a"]["title"], "Wire OAuth provider");
+
+    // The legend rides beside the view data; this project tints with
+    // no recipe-backed color field, so there is nothing to explain.
+    assert!(envelope["data"]["color_legend"].is_null());
 }
 
 #[tokio::test]
@@ -161,7 +165,9 @@ async fn display_override_replaces_table_columns() {
     assert_eq!(response.status(), StatusCode::OK);
 
     let envelope = body_json(response).await;
-    let columns = envelope["data"]["columns"].as_array().expect("columns");
+    let columns = envelope["data"]["view"]["columns"]
+        .as_array()
+        .expect("columns");
     let column_names: Vec<&str> = columns
         .iter()
         .map(|column| column["name"].as_str().unwrap())

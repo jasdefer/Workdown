@@ -1,6 +1,6 @@
 ---
 title: Views show colors without saying what they mean
-status: to_do
+status: done
 parent: misc-work
 tags: [web-ui, views]
 ---
@@ -29,6 +29,51 @@ stated meaning:
 
 A reader of a colored view can find out what the colors mean without
 leaving the view.
+
+## Decisions taken
+
+Taken 2026-11-27.
+
+1. **The legend is read from the schema, not guessed from the items.**
+   A color cannot be calculated: `compute` and `aggregate` are not
+   valid on a color field, and no operator of the expression language
+   yields a color. A color is written by hand, chosen by a `when` list
+   or copied by a `pull`. A `then:` is always a literal, so a `when`
+   field is a finite table from conditions to colors.
+2. **Only colors on screen, with a count.** The recipe supplies the
+   wording, the items the view presents supply the selection.
+3. **No record of the matched branch is needed.** Because `then:` is a
+   literal, a derived color names its entry by itself. Branches with
+   the same color share one entry, and so does the `default`.
+4. **A hand-written color is listed apart** as "set by hand". The
+   origin of a value is known per item and field since
+   [[item-value-origin]].
+5. **Three levels by mechanism.** `when`: the full legend. `pull`: one
+   line naming the link the color is inherited over, because the
+   schema knows the source and not the meaning. No mechanism: nothing.
+   A mechanism added later must state which level it gets (the code
+   matches on the mechanisms exhaustively); until it can list its
+   colors it gets a line naming the fields it reads.
+6. **"Color by Status" when every condition tests the same field for
+   equality.** Each color is then labelled with the values that field
+   has on the items in the view, not with the branch values: gray is
+   `removed` and the `default` in this repo, and a view without removed
+   items reads "to_do", not "removed, other". Otherwise each condition
+   is spelled out; one that is more than a single plain comparison is
+   shown as written in the schema.
+7. **Always visible**, as one quiet row above the view. A collapsed
+   legend would not answer the question the item asks.
+8. **The legend travels beside the view data**, not inside it: the
+   view endpoint answers `{ view, color_legend }`. It is the same
+   question for every kind that tints, so no extractor carries it.
+
+Not part of this item:
+
+- A `label:` on a `when` branch, so the author names the meaning.
+- The reason for one item's color in the item detail (this one does
+  need the matched branch).
+- Clicking a legend entry to highlight or filter.
+- A legend in the Markdown files of `workdown render`.
 
 ## Ideas (suggestions, not decisions)
 
