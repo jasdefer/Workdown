@@ -184,6 +184,22 @@ Resolution per role, first match wins:
 - `defaults.display` role fields are validated against the schema (surfaced through `workdown validate` and the serve banner, pointing at `config.yaml`). Unlike a per-view role error — which makes that one view unrenderable — a bad project-wide default is reported but non-blocking: every view keeps rendering on its fallback, since one config typo shouldn't blank all views at once.
 - The field-role keys in `config.yaml` (`defaults.board_field`, `tree_field`, `graph_field`, and the optional `effort_field` the web UI's timer writes to) are checked the same way, but as warnings: each must name an existing schema field of a type that can play the role. `workdown validate` still exits zero on them — a typo there degrades one surface, not the rendered output.
 
+### Color legend
+
+The web app says what the tints of a view mean, in a row above the view, as far as the schema states it. What the row shows depends on how the color field is filled:
+
+| Color field | Legend row |
+|---|---|
+| `when:`, every condition tests the same field for equality | "Color by Status", then each color the view's items wear, labelled with the values that field has on those items, and the number of items |
+| `when:`, any other conditions | "Color", then each color with its conditions spelled out, and the number of items |
+| `pull:` | Only the link the color is inherited over; the schema knows the source, not the meaning |
+| No mechanism | No row |
+
+- Only colors on screen are listed. Branches with the same `then` share an entry, and so does the `default`.
+- The values are read off the items in the view, so a color the `default` shares with a branch names what is on screen rather than what the recipe allows.
+- A color written by hand on an item is no condition's doing and is listed apart as "set by hand".
+- Rendered Markdown files carry no legend.
+
 ## Output paths
 
 Every view writes a single Markdown file. Filenames are `<id>.md`, written into the directory named by the top-level `directory:` key (default `"views"`):

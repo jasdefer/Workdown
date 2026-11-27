@@ -5,6 +5,19 @@ tagged version into the top of that version's GitHub release page, so
 entries are written for people using workdown, not for people reading
 its source — internal refactors are deliberately absent.
 
+## Unreleased
+
+### Added
+
+- A colored view in the web UI says what its colors mean. When the
+  color field is filled by a `when:` list, a row above the view shows
+  each color on screen with its condition and the number of items
+  wearing it: "Color by Status" with the values found on those items
+  when every condition tests the same field, the conditions spelled
+  out otherwise. A color set by hand on an item is listed apart as
+  "set by hand". For a pulled color the row says which link it is
+  inherited over. A color field no mechanism fills has no legend.
+
 ## 0.2.14 - 2026-11-26
 
 ### Added

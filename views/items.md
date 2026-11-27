@@ -62,7 +62,7 @@
 | [git-status-event-loop](../workdown-items/git-status-event-loop.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [git-sync-controls](../workdown-items/git-sync-controls.md) | done | [full-git-loop](../workdown-items/full-git-loop.md) |  |
 | [github-render-action](../workdown-items/github-render-action.md) | removed | [polish](../workdown-items/polish.md) |  |
-| [graph-arrow-direction](../workdown-items/graph-arrow-direction.md) | in_progress | [misc-work](../workdown-items/misc-work.md) |  |
+| [graph-arrow-direction](../workdown-items/graph-arrow-direction.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [graph-item-open](../workdown-items/graph-item-open.md) | done |  |  |
 | [init-install-hooks](../workdown-items/init-install-hooks.md) | done | [polish](../workdown-items/polish.md) |  |
 | [item-body-links-dead](../workdown-items/item-body-links-dead.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
@@ -88,7 +88,7 @@
 | [project-load-cache](../workdown-items/project-load-cache.md) | on_hold | [misc-work](../workdown-items/misc-work.md) |  |
 | [project-tour](../workdown-items/project-tour.md) | done |  |  |
 | [publish-branch-from-push](../workdown-items/publish-branch-from-push.md) | done | [full-git-loop](../workdown-items/full-git-loop.md) |  |
-| [pull-copy-over-link](../workdown-items/pull-copy-over-link.md) | in_progress | [schema-expressions](../workdown-items/schema-expressions.md) | [pull-fields](../workdown-items/pull-fields.md) |
+| [pull-copy-over-link](../workdown-items/pull-copy-over-link.md) | done | [schema-expressions](../workdown-items/schema-expressions.md) | [pull-fields](../workdown-items/pull-fields.md) |
 | [pull-copy-type-conversion](../workdown-items/pull-copy-type-conversion.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [pull-copy-over-link](../workdown-items/pull-copy-over-link.md) |
 | [pull-fields](../workdown-items/pull-fields.md) | done | [schema-expressions](../workdown-items/schema-expressions.md) | [computed-fields](../workdown-items/computed-fields.md), [aggregate-rollup](../workdown-items/aggregate-rollup.md) |
 | [pull-root-anchor](../workdown-items/pull-root-anchor.md) | to_do | [schema-expressions](../workdown-items/schema-expressions.md) | [pull-fields](../workdown-items/pull-fields.md) |
@@ -160,7 +160,7 @@
 | [validation-phase-boundaries](../workdown-items/validation-phase-boundaries.md) | done | [maintenance-review-2026-08](../workdown-items/maintenance-review-2026-08.md) | [derived-field-single-predicate](../workdown-items/derived-field-single-predicate.md) |
 | [value-coercion-layering](../workdown-items/value-coercion-layering.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [view-authoring](../workdown-items/view-authoring.md) | done | [phase-04-visualization](../workdown-items/phase-04-visualization.md) | [server](../workdown-items/server.md) |
-| [view-color-legend](../workdown-items/view-color-legend.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
+| [view-color-legend](../workdown-items/view-color-legend.md) | done | [misc-work](../workdown-items/misc-work.md) |  |
 | [view-creation](../workdown-items/view-creation.md) | done | [view-authoring](../workdown-items/view-authoring.md) | [view-write-backend](../workdown-items/view-write-backend.md), [schema-metadata-api](../workdown-items/schema-metadata-api.md), [view-filter-editor](../workdown-items/view-filter-editor.md), [app-shell-navigation](../workdown-items/app-shell-navigation.md) |
 | [view-data-intermediate](../workdown-items/view-data-intermediate.md) | done | [renderers](../workdown-items/renderers.md) | [field-value-native-date](../workdown-items/field-value-native-date.md), [views-title-slot](../workdown-items/views-title-slot.md) |
 | [view-display-config](../workdown-items/view-display-config.md) | done | [view-presentation](../workdown-items/view-presentation.md) | [remaining-read-views](../workdown-items/remaining-read-views.md) |
@@ -187,4 +187,5 @@
 | [when-map-shorthand](../workdown-items/when-map-shorthand.md) | on_hold | [schema-expressions](../workdown-items/schema-expressions.md) | [conditional-field-value](../workdown-items/conditional-field-value.md) |
 | [when-then-value-expressions](../workdown-items/when-then-value-expressions.md) | on_hold | [schema-expressions](../workdown-items/schema-expressions.md) | [conditional-field-value](../workdown-items/conditional-field-value.md) |
 | [where-clause-value-validation](../workdown-items/where-clause-value-validation.md) | done | [polish](../workdown-items/polish.md) | [explicit-in-operator](../workdown-items/explicit-in-operator.md) |
+| [workdown-logo](../workdown-items/workdown-logo.md) | to_do | [misc-work](../workdown-items/misc-work.md) |  |
 | [workspace-refactor](../workdown-items/workspace-refactor.md) | done | [foundation](../workdown-items/foundation.md) |  |

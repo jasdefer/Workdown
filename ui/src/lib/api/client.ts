@@ -44,7 +44,7 @@ import type { TimerStartOutcome } from './generated/TimerStartOutcome';
 import type { TimerState } from './generated/TimerState';
 import type { TimerStopResult } from './generated/TimerStopResult';
 import type { UpdateView } from './generated/UpdateView';
-import type { ViewData } from './generated/ViewData';
+import type { ViewPage } from './generated/ViewPage';
 import type { ViewDefinition } from './generated/ViewDefinition';
 import type { ViewMutationResult } from './generated/ViewMutationResult';
 import type { ViewSummary } from './generated/ViewSummary';
@@ -125,7 +125,7 @@ export const api = {
 		if (filter !== undefined) params.set('filter', filter);
 		if (display !== undefined) params.set('display', display);
 		const query = params.toString();
-		return request<ViewData>(
+		return request<ViewPage>(
 			'GET',
 			`/api/views/${encodeURIComponent(id)}${query ? `?${query}` : ''}`
 		);

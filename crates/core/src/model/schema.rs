@@ -172,6 +172,28 @@ pub enum FillMechanism {
     When,
 }
 
+/// A field's recipe with the configuration it was declared with: the
+/// mechanism and its block as one value, so code that reads the block
+/// has no second lookup that could disagree with the first. See
+/// [`FieldDefinition::recipe`].
+#[derive(Debug, Clone, Copy)]
+pub enum Recipe<'schema> {
+    Compute(&'schema ComputeConfig),
+    Pull(&'schema PullConfig),
+    When(&'schema WhenConfig),
+}
+
+impl Recipe<'_> {
+    /// Which mechanism this recipe is.
+    pub fn mechanism(self) -> FillMechanism {
+        match self {
+            Recipe::Compute(_) => FillMechanism::Compute,
+            Recipe::Pull(_) => FillMechanism::Pull,
+            Recipe::When(_) => FillMechanism::When,
+        }
+    }
+}
+
 impl FieldDefinition {
     /// Create a new field definition with only type-specific config.
     /// All shared fields default to `None`/`false`.
@@ -254,11 +276,22 @@ impl FieldDefinition {
     /// exhaustively so a new mechanism must declare which side it
     /// falls on.
     pub fn recipe_mechanism(&self) -> Option<FillMechanism> {
+        self.recipe().map(Recipe::mechanism)
+    }
+
+    /// The field's recipe together with its configuration, for code
+    /// that reads what the recipe says rather than only which one it
+    /// is. `None` exactly where [`recipe_mechanism`] is.
+    ///
+    /// [`recipe_mechanism`]: FieldDefinition::recipe_mechanism
+    pub fn recipe(&self) -> Option<Recipe<'_>> {
         self.fill_mechanisms()
             .into_iter()
-            .find(|mechanism| match mechanism {
-                FillMechanism::Compute | FillMechanism::Pull | FillMechanism::When => true,
-                FillMechanism::Aggregate => false,
+            .find_map(|mechanism| match mechanism {
+                FillMechanism::Compute => self.compute.as_ref().map(Recipe::Compute),
+                FillMechanism::Pull => self.pull.as_ref().map(Recipe::Pull),
+                FillMechanism::When => self.when.as_ref().map(Recipe::When),
+                FillMechanism::Aggregate => None,
             })
     }
 

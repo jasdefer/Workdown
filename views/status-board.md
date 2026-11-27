@@ -16,13 +16,11 @@ Cards grouped into columns by `status`.
 - [Compare a field with a literal in a rule's match block](../workdown-items/rule-literal-comparisons.md)
 - [Fill in a date when a status changes, instead of typing it by hand](../workdown-items/status-transition-dates.md)
 - [Major upgrades of the web UI's lint and SvelteKit toolchain](../workdown-items/ui-toolchain-upgrade.md)
-- [Views show colors without saying what they mean](../workdown-items/view-color-legend.md)
 - [The same view once per person fills up the navigation](../workdown-items/view-per-value-variants.md)
+- [Workdown has no logo of its own](../workdown-items/workdown-logo.md)
 
 ## in_progress
-- [Arrows in a dependency graph point against the order of work](../workdown-items/graph-arrow-direction.md)
 - [Miscellaneous improvements](../workdown-items/misc-work.md)
-- [Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice](../workdown-items/pull-copy-over-link.md)
 - [Derived field expressions](../workdown-items/schema-expressions.md)
 
 ## on_hold
@@ -85,6 +83,7 @@ Cards grouped into columns by `status`.
 - [Gantt predecessor input mode](../workdown-items/gantt-predecessor-mode.md)
 - [The live-update watchers pinged on reads, so a Linux tab reloaded itself in a loop](../workdown-items/git-status-event-loop.md)
 - [Git sync controls in the web UI](../workdown-items/git-sync-controls.md)
+- [Arrows in a dependency graph point against the order of work](../workdown-items/graph-arrow-direction.md)
 - [Clicking an item in the graph view does not open it](../workdown-items/graph-item-open.md)
 - [Optional --install-hooks for pre-commit render](../workdown-items/init-install-hooks.md)
 - [Links to other work items do not work in the item detail](../workdown-items/item-body-links-dead.md)
@@ -105,6 +104,7 @@ Cards grouped into columns by `status`.
 - [Project-level constants in resources.yaml](../workdown-items/project-constants.md)
 - [Animated project tour in the web UI](../workdown-items/project-tour.md)
 - [Let Push publish an unpublished branch instead of greying out](../workdown-items/publish-branch-from-push.md)
+- [Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice](../workdown-items/pull-copy-over-link.md)
 - [Pull fields — cross-item derivation over forward links](../workdown-items/pull-fields.md)
 - [Query for text in an item's body](../workdown-items/query-body-text.md)
 - [Deduplicate the filter engine's comparison and formatting logic](../workdown-items/query-value-consolidation.md)
@@ -166,6 +166,7 @@ Cards grouped into columns by `status`.
 - [Decide where the required-field check belongs in the load pipeline](../workdown-items/validation-phase-boundaries.md)
 - [Move value coercion out of the store to break the parser↔store cycle](../workdown-items/value-coercion-layering.md)
 - [Author and edit views from the UI](../workdown-items/view-authoring.md)
+- [Views show colors without saying what they mean](../workdown-items/view-color-legend.md)
 - [Create a new view from the UI](../workdown-items/view-creation.md)
 - [Design ViewData and extractors](../workdown-items/view-data-intermediate.md)
 - [Per-view-kind display configuration (which fields show where)](../workdown-items/view-display-config.md)

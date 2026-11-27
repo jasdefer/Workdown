@@ -1,7 +1,7 @@
 ---
 id: pull-copy-over-link
 title: Inherit any field type from a linked parent (`pull` over a `link` copies), and `eq_field` on choice
-status: in_progress
+status: done
 parent: schema-expressions
 depends_on: [pull-fields]
 tags: [enhancement, bug]

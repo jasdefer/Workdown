@@ -26,7 +26,7 @@ export const load: PageLoad = async ({ parent }) => {
 	const data = new Map<string, ViewData>();
 	results.forEach((result, index) => {
 		const id = ids[index];
-		if (result.data !== undefined && id !== undefined) data.set(id, result.data);
+		if (result.data !== undefined && id !== undefined) data.set(id, result.data.view);
 	});
 
 	return { plan, data, views: layout.views, project: layout.project };

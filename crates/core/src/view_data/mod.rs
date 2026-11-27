@@ -20,6 +20,7 @@
 mod aggregate;
 pub mod bar_chart;
 pub mod board;
+pub mod color_legend;
 pub mod common;
 pub mod filter;
 pub mod gantt;
@@ -49,6 +50,9 @@ use crate::store::Store;
 
 pub use bar_chart::{BarChartBar, BarChartData};
 pub use board::{BoardColumn, BoardData};
+pub use color_legend::{
+    color_legend, ColorCount, ColorLegend, ColorMeaning, ConditionEntry, ValueEntry,
+};
 pub use common::{
     build_card, effective_fields, resolve_color_field, resolve_subtitle, resolve_title,
     resolved_background, Card, CardField, ChartValue, Column, ItemRef, SizeValue, UnplacedCard,
@@ -83,6 +87,30 @@ pub enum ViewData {
     Tree(TreeData),
     Treemap(TreemapData),
     Workload(WorkloadData),
+}
+
+/// A view as the web app's view page receives it: the extracted data
+/// and what frames it. The legend sits beside the data rather than in
+/// it because it is the same question for every kind that tints its
+/// items, answered from the schema; an extractor has nothing to add.
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+pub struct ViewPage {
+    pub view: ViewData,
+    /// What the view's tints mean; `None` when there is nothing to
+    /// explain. See [`color_legend`](color_legend::color_legend).
+    pub color_legend: Option<ColorLegend>,
+}
+
+/// [`extract`], plus the frame the view page shows around the data.
+pub fn extract_page(
+    checked: CheckedView<'_>,
+    store: &Store,
+    schema: &Schema,
+    config_calendar: &WorkingCalendar,
+) -> ViewPage {
+    let view = extract(checked, store, schema, config_calendar);
+    let color_legend = color_legend(checked.view(), &view, store, schema);
+    ViewPage { view, color_legend }
 }
 
 /// A view that `views_check` has cleared for extraction.

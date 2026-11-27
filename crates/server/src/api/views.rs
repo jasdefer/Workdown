@@ -13,8 +13,9 @@
 //!   pinned to it (a warning pinned to a view rides along in tier 3
 //!   instead) → 200 with empty `data` and the full diagnostic list
 //!   (tier 2). The view can't render; the banner explains.
-//! - Project loaded, view is valid → 200 with `ViewData` and the full
-//!   project diagnostic list (tier 3). The UI groups primary/secondary.
+//! - Project loaded, view is valid → 200 with a `ViewPage` (the
+//!   `ViewData` and its color legend) and the full project diagnostic
+//!   list (tier 3). The UI groups primary/secondary.
 //!
 //! `GET /api/views/{id}` also accepts two optional, non-persisting
 //! query params, both validated up front (malformed JSON → 422, even
@@ -45,7 +46,7 @@ use workdown_core::operations::view_write::{
 use workdown_core::parser::views::load_views;
 use workdown_core::project::Project;
 use workdown_core::query::clause::{clauses_to_strings, decompose_clauses, Clause};
-use workdown_core::view_data::{self, CheckedView, ViewData};
+use workdown_core::view_data::{self, CheckedView, ViewPage};
 use workdown_core::views_check;
 
 use crate::envelope::ApiResponse;
@@ -101,7 +102,7 @@ async fn get_view(
     State(state): State<AppState>,
     Path(id): Path<String>,
     Query(query): Query<ViewQuery>,
-) -> ApiResponse<ViewData> {
+) -> ApiResponse<ViewPage> {
     let project = match load_state_project(&state) {
         Ok(project) => project,
         Err(response) => return response,
@@ -179,9 +180,9 @@ async fn get_view(
         return ApiResponse::unrenderable(diagnostics);
     };
 
-    // Tier 3: extract and return view data.
-    let data = view_data::extract(checked, &project.store, &project.schema, &project.calendar);
-    ApiResponse::ok_with(data, diagnostics)
+    // Tier 3: extract and return the view data with its color legend.
+    let page = view_data::extract_page(checked, &project.store, &project.schema, &project.calendar);
+    ApiResponse::ok_with(page, diagnostics)
 }
 
 /// The view to render, with the editor's draft `where:` in place of the

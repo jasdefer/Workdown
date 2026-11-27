@@ -1,7 +1,8 @@
 <!--
   Single-view page: a toolbar with the view's authoring actions, the
-  diagnostic banner, then the `<ViewRenderer>` which dispatches on
-  `data.result.data.type`. `?item=...` in the URL opens that item's
+  diagnostic banner, the color legend when the view's tints have a
+  stated meaning, then the `<ViewRenderer>` which dispatches on
+  `data.result.data.view.type`. `?item=...` in the URL opens that item's
   detail and makes it the selected one, so the view marks it. Where the
   detail opens is the reader's placement: the centered modal
   (`ItemDialog`) or a panel docked beside the whole page (`ItemPanel`),
@@ -19,6 +20,7 @@
 	import type { PageData } from './$types';
 	import DiagnosticBanner from '$lib/ui/DiagnosticBanner.svelte';
 	import FilterBar from '$lib/filters/FilterBar.svelte';
+	import ColorLegend from '$lib/views/ColorLegend.svelte';
 	import DisplayBar from '$lib/views/DisplayBar.svelte';
 	import ViewRenderer from '$lib/views/ViewRenderer.svelte';
 	import ViewToolbar from '$lib/views/ViewToolbar.svelte';
@@ -63,13 +65,16 @@
 
 		<DiagnosticBanner
 			diagnostics={data.result.diagnostics}
-			viewData={data.result.data}
+			viewData={data.result.data?.view}
 			currentViewId={data.viewId}
 		/>
 
 		{#if data.result.data}
+			{#if data.result.data.color_legend}
+				<ColorLegend legend={data.result.data.color_legend} />
+			{/if}
 			<div class="view-body">
-				<ViewRenderer data={data.result.data} />
+				<ViewRenderer data={data.result.data.view} />
 			</div>
 		{:else}
 			<div class="view-empty">
