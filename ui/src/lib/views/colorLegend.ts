@@ -7,11 +7,13 @@
 // Field names are prettified and values are shown as the schema spells
 // them, as a board's column headers do.
 
+import type { ColorCount } from '$lib/api/generated/ColorCount';
 import type { ColorLegend } from '$lib/api/generated/ColorLegend';
 import type { ComparisonOperator } from '$lib/api/generated/ComparisonOperator';
 import type { ConditionEntry } from '$lib/api/generated/ConditionEntry';
 import type { ConditionShape } from '$lib/api/generated/ConditionShape';
 import type { Operand } from '$lib/api/generated/Operand';
+import type { ValueEntry } from '$lib/api/generated/ValueEntry';
 import { noValueLabel, prettifyId } from './prettify';
 
 /** One swatch of the legend with what it stands for. */
@@ -41,35 +43,41 @@ const OPERATOR_SIGNS: Record<ComparisonOperator, string> = {
 export function legendModel(legend: ColorLegend): LegendModel {
 	const meaning = legend.meaning;
 	switch (meaning.kind) {
-		case 'conditions': {
-			const subject = meaning.subject;
-			const entries: LegendEntry[] = meaning.entries.map((entry) => ({
-				color: entry.color,
-				label: subject === null ? conditionsLabel(entry) : valuesLabel(entry, subject),
-				count: entry.count
-			}));
-			for (const written of meaning.written) {
-				entries.push({ color: written.color, label: 'set by hand', count: written.count });
-			}
+		case 'by_value':
 			return {
-				caption: subject === null ? 'Color' : `Color by ${prettifyId(subject)}`,
-				entries
+				caption: `Color by ${prettifyId(meaning.subject)}`,
+				entries: [
+					...meaning.entries.map((entry) => ({
+						color: entry.color,
+						label: valuesLabel(entry, meaning.subject),
+						count: entry.count
+					})),
+					...writtenEntries(meaning.written)
+				]
 			};
-		}
+		case 'by_condition':
+			return {
+				caption: 'Color',
+				entries: [
+					...meaning.entries.map((entry) => ({
+						color: entry.color,
+						label: conditionsLabel(entry),
+						count: entry.count
+					})),
+					...writtenEntries(meaning.written)
+				]
+			};
 		case 'inherited': {
 			const source =
 				meaning.source_field === legend.field ? '' : ` (${prettifyId(meaning.source_field)})`;
 			return { caption: `Color inherited from ${prettifyId(meaning.over)}${source}`, entries: [] };
 		}
-		case 'depends_on':
-			return {
-				caption:
-					meaning.fields.length === 0
-						? 'Color is derived'
-						: `Color depends on ${meaning.fields.map(prettifyId).join(', ')}`,
-				entries: []
-			};
 	}
+}
+
+/** Colors written by hand on items, which no condition explains. */
+function writtenEntries(written: ColorCount[]): LegendEntry[] {
+	return written.map(({ color, count }) => ({ color, label: 'set by hand', count }));
 }
 
 /**
@@ -78,7 +86,7 @@ export function legendModel(legend: ColorLegend): LegendModel {
  * on screen, so a color shared by a branch and the default names what
  * is there rather than what the recipe allows.
  */
-function valuesLabel(entry: ConditionEntry, subject: string): string {
+function valuesLabel(entry: ValueEntry, subject: string): string {
 	return entry.values.map((value) => value ?? noValueLabel(subject)).join(', ');
 }
 
@@ -99,8 +107,9 @@ function operandText(operand: Operand): string {
 	switch (operand.kind) {
 		case 'field':
 			return prettifyId(operand.name);
+		// Spelled as the schema spells it, so it is not taken for a field.
 		case 'constant':
-			return prettifyId(operand.name);
+			return `$constants.${operand.name}`;
 		case 'today':
 			return 'today';
 		case 'literal':

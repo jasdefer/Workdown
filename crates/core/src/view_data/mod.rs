@@ -50,7 +50,9 @@ use crate::store::Store;
 
 pub use bar_chart::{BarChartBar, BarChartData};
 pub use board::{BoardColumn, BoardData};
-pub use color_legend::{color_legend, ColorCount, ColorLegend, ColorMeaning, ConditionEntry};
+pub use color_legend::{
+    color_legend, ColorCount, ColorLegend, ColorMeaning, ConditionEntry, ValueEntry,
+};
 pub use common::{
     build_card, effective_fields, resolve_color_field, resolve_subtitle, resolve_title,
     resolved_background, Card, CardField, ChartValue, Column, ItemRef, SizeValue, UnplacedCard,

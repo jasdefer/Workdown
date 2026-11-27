@@ -12,29 +12,37 @@ function fieldIs(field: string, value: string): ConditionShape {
 	};
 }
 
-interface EntryInput {
-	color: string;
-	conditions?: ConditionShape[];
-	otherwise?: boolean;
-	values?: (string | null)[];
-}
+type Written = { color: string; count: number }[];
 
-function conditions(
-	subject: string | null,
-	entries: EntryInput[],
-	written: { color: string; count: number }[] = []
+function byValue(
+	subject: string,
+	entries: { color: string; values: (string | null)[] }[],
+	written: Written = []
 ): ColorLegend {
 	return {
 		field: 'color',
 		meaning: {
-			kind: 'conditions',
+			kind: 'by_value',
 			subject,
+			entries: entries.map((entry) => ({ ...entry, count: 1 })),
+			written
+		}
+	};
+}
+
+function byCondition(
+	entries: { color: string; conditions?: ConditionShape[]; otherwise?: boolean }[],
+	written: Written = []
+): ColorLegend {
+	return {
+		field: 'color',
+		meaning: {
+			kind: 'by_condition',
 			entries: entries.map((entry) => ({
 				color: entry.color,
 				count: 1,
 				conditions: entry.conditions ?? [],
-				otherwise: entry.otherwise ?? false,
-				values: entry.values ?? []
+				otherwise: entry.otherwise ?? false
 			})),
 			written
 		}
@@ -44,15 +52,10 @@ function conditions(
 describe('legendModel', () => {
 	it('names the subject field and labels each entry with the values on screen', () => {
 		const model = legendModel(
-			conditions('status', [
-				{ color: '#22c55e', conditions: [fieldIs('status', 'done')], values: ['done'] },
+			byValue('status', [
+				{ color: '#22c55e', values: ['done'] },
 				// Gray is `removed` and the default; only to-do items wear it.
-				{
-					color: '#6b7280',
-					conditions: [fieldIs('status', 'removed')],
-					otherwise: true,
-					values: ['to_do']
-				}
+				{ color: '#6b7280', values: ['to_do'] }
 			])
 		);
 		expect(model.caption).toBe('Color by Status');
@@ -61,9 +64,7 @@ describe('legendModel', () => {
 
 	it('joins several values of one color and names a missing one', () => {
 		const model = legendModel(
-			conditions('status', [
-				{ color: '#6b7280', otherwise: true, values: ['to_do', 'removed', null] }
-			])
+			byValue('status', [{ color: '#6b7280', values: ['to_do', 'removed', null] }])
 		);
 		expect(model.entries[0]?.label).toBe('to_do, removed, (no Status)');
 	});
@@ -76,7 +77,7 @@ describe('legendModel', () => {
 			right: { kind: 'today' }
 		};
 		const model = legendModel(
-			conditions(null, [
+			byCondition([
 				{ color: '#22c55e', conditions: [fieldIs('status', 'done')] },
 				{ color: '#ef4444', conditions: [overdue], otherwise: true },
 				{ color: '#6b7280', otherwise: true }
@@ -92,7 +93,7 @@ describe('legendModel', () => {
 
 	it('shows a condition that is not one plain comparison as written', () => {
 		const model = legendModel(
-			conditions(null, [
+			byCondition([
 				{ color: '#ef4444', conditions: [{ kind: 'text', source: 'effort * 2 > budget' }] }
 			])
 		);
@@ -101,13 +102,20 @@ describe('legendModel', () => {
 
 	it('lists hand-written colors after the conditions', () => {
 		const model = legendModel(
-			conditions(
-				'status',
-				[{ color: '#22c55e', conditions: [fieldIs('status', 'done')], values: ['done'] }],
-				[{ color: '#ef4444', count: 3 }]
-			)
+			byValue('status', [{ color: '#22c55e', values: ['done'] }], [{ color: '#ef4444', count: 3 }])
 		);
 		expect(model.entries[1]).toEqual({ color: '#ef4444', label: 'set by hand', count: 3 });
+	});
+
+	it('spells a constant as the schema does, so it is not taken for a field', () => {
+		const overLimit: ConditionShape = {
+			kind: 'row',
+			left: { kind: 'field', name: 'effort' },
+			operator: 'greater_than',
+			right: { kind: 'constant', name: 'limit' }
+		};
+		const model = legendModel(byCondition([{ color: '#ef4444', conditions: [overLimit] }]));
+		expect(model.entries[0]?.label).toBe('Effort > $constants.limit');
 	});
 
 	it('says where a pulled color comes from, without entries', () => {
@@ -122,13 +130,5 @@ describe('legendModel', () => {
 			meaning: { kind: 'inherited', over: 'parent', source_field: 'team_color' }
 		});
 		expect(other.caption).toBe('Color inherited from Parent (Team Color)');
-	});
-
-	it('names the fields a recipe without a listable mapping reads', () => {
-		const model = legendModel({
-			field: 'color',
-			meaning: { kind: 'depends_on', fields: ['status', 'end_date'] }
-		});
-		expect(model).toEqual({ caption: 'Color depends on Status, End Date', entries: [] });
 	});
 });

@@ -38,7 +38,7 @@ use crate::condition_shape::{ConditionShape, Operand};
 use crate::expression::ComparisonOperator;
 use crate::model::color::resolve_color_to_hex;
 use crate::model::field_value::format_field_value;
-use crate::model::schema::{FieldTypeConfig, FillMechanism, Schema, WhenConfig};
+use crate::model::schema::{FieldTypeConfig, Recipe, Schema, WhenConfig};
 use crate::model::views::View;
 use crate::model::{FieldValue, WorkItem};
 use crate::store::Store;
@@ -59,34 +59,57 @@ pub struct ColorLegend {
 }
 
 /// How much the schema can say about a color field's values.
+///
+/// A `when:` field takes one of the first two forms. Which one is
+/// decided once for the whole legend, so a reader never meets a row
+/// that mixes values and conditions.
 #[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ColorMeaning {
-    /// A `when:` field: every derived color has its conditions.
-    Conditions {
-        /// The field every condition on screen tests for equality with
-        /// a literal, when they all test the same one: the legend then
-        /// reads "Color by Status" and each entry is labelled with its
-        /// `values`. `None` when the conditions differ in field or
-        /// form.
-        subject: Option<String>,
+    /// Every condition on screen tests `subject` for equality with a
+    /// literal: the legend reads "Color by Status" and each color is
+    /// labelled with the values that field has on its items.
+    ByValue {
+        subject: String,
+        /// One entry per derived color on screen, in the order the
+        /// recipe first names the color.
+        entries: Vec<ValueEntry>,
+        /// Colors written by hand on items of the view, which no
+        /// condition explains. In the view's item order.
+        written: Vec<ColorCount>,
+    },
+    /// The conditions differ in field or form, so each color is
+    /// labelled with the conditions that produce it.
+    ByCondition {
         /// One entry per derived color on screen, in the order the
         /// recipe first names the color.
         entries: Vec<ConditionEntry>,
-        /// Colors written by hand on items of the view, which no
-        /// condition explains. In the view's item order.
+        /// As in [`ColorMeaning::ByValue`].
         written: Vec<ColorCount>,
     },
     /// A `pull:` field: the color is the one `source_field` has on the
     /// item `over` points at.
     Inherited { over: String, source_field: String },
-    /// A recipe that reads `fields` and whose mapping to colors cannot
-    /// be listed. No mechanism produces this for a color field today;
-    /// it is the answer a future one gets until it can do better.
-    DependsOn { fields: Vec<String> },
 }
 
-/// One color of a `when:` field and what makes an item take it.
+/// One color of a `when:` field, labelled with what its items hold.
+#[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
+pub struct ValueEntry {
+    /// Resolved `#rrggbb`, the same form as an item's `background`.
+    pub color: String,
+    /// Items of the view that derived this color.
+    pub count: usize,
+    /// The values the subject field has on the counted items, `None`
+    /// for an item without one. This is what is on screen, not what
+    /// the recipe allows, so a view filtered down to the items of the
+    /// `default` names their values instead of the branch that shares
+    /// the color. In the field's declared order for a `choice`, else
+    /// as the view lists them; a missing value last.
+    pub values: Vec<Option<String>>,
+}
+
+/// One color of a `when:` field, labelled with what makes an item
+/// take it.
 #[derive(Debug, Clone, PartialEq, Serialize, ts_rs::TS)]
 pub struct ConditionEntry {
     /// Resolved `#rrggbb`, the same form as an item's `background`.
@@ -99,14 +122,6 @@ pub struct ConditionEntry {
     /// Whether the recipe's `default` is this color as well, so items
     /// that matched no branch are among the counted ones.
     pub otherwise: bool,
-    /// With a subject: the values that field has on the counted items,
-    /// `None` for an item without one. This is what is on screen, not
-    /// what the recipe allows, so a view filtered down to the items of
-    /// the `default` names their values instead of the branch that
-    /// shares the color. In the field's declared order for a `choice`,
-    /// else as the view lists them; a missing value last. Empty
-    /// without a subject.
-    pub values: Vec<Option<String>>,
 }
 
 /// A color and the number of items of the view wearing it.
@@ -133,35 +148,23 @@ pub fn color_legend(
 ) -> Option<ColorLegend> {
     let field_name = resolve_color_field(schema, Some(&view.display))?;
     let definition = schema.fields.get(field_name)?;
-    let mechanism = definition.recipe_mechanism()?;
+    let recipe = definition.recipe()?;
 
     let tints = presented_tints(data, store, field_name);
     if tints.is_empty() {
         return None;
     }
 
-    // Exhaustive, so a new mechanism has to say what it can tell a
-    // reader about its colors before it compiles.
-    let meaning = match mechanism {
-        FillMechanism::When => conditions_meaning(definition.when.as_ref()?, &tints, schema),
-        FillMechanism::Pull => {
-            let pull = definition.pull.as_ref()?;
-            ColorMeaning::Inherited {
-                over: pull.over.clone(),
-                source_field: pull.field.clone(),
-            }
-        }
-        FillMechanism::Compute => {
-            let mut fields: Vec<String> = Vec::new();
-            for name in definition.derived_references() {
-                if !fields.iter().any(|known| known == name) {
-                    fields.push(name.to_owned());
-                }
-            }
-            ColorMeaning::DependsOn { fields }
-        }
-        // A rollup is not a recipe; `recipe_mechanism` never names it.
-        FillMechanism::Aggregate => return None,
+    // Exhaustive, so a new recipe has to say what it can tell a reader
+    // about its colors before it compiles.
+    let meaning = match recipe {
+        Recipe::When(when) => when_meaning(when, &tints, schema),
+        Recipe::Pull(pull) => ColorMeaning::Inherited {
+            over: pull.over.clone(),
+            source_field: pull.field.clone(),
+        },
+        // The parser refuses `compute` on a color field.
+        Recipe::Compute(_) => return None,
     };
 
     Some(ColorLegend {
@@ -191,11 +194,8 @@ fn presented_tints<'store>(
         .filter(|id| seen.insert(*id))
         .filter_map(|id| {
             let item = store.get(id)?;
-            let FieldValue::Color(canonical) = item.fields.get(field_name)? else {
-                return None;
-            };
             Some(Tint {
-                hex: resolve_color_to_hex(canonical)?,
+                hex: hex_of(item.fields.get(field_name)?)?,
                 written: item.fields.is_written(field_name),
                 item,
             })
@@ -268,77 +268,141 @@ fn collect_treemap_ids<'data>(node: &'data TreemapNode, ids: &mut Vec<&'data str
     }
 }
 
-/// The legend of a `when:` field: the recipe's colors with their
-/// conditions, narrowed to the colors in `tints` and counted.
-fn conditions_meaning(when: &WhenConfig, tints: &[Tint<'_>], schema: &Schema) -> ColorMeaning {
-    let mut entries: Vec<ConditionEntry> = Vec::new();
-    for branch in &when.branches {
-        if let Some(hex) = hex_of(&branch.value) {
-            let index = entry_index(&mut entries, hex);
-            entries[index].conditions.push(ConditionShape::of(
-                &branch.condition,
-                &branch.condition_source,
-            ));
-        }
-    }
-    if let Some(hex) = when.default.as_ref().and_then(hex_of) {
-        let index = entry_index(&mut entries, hex);
-        entries[index].otherwise = true;
-    }
+/// One color a `when:` recipe can produce: what produces it, and the
+/// presented items that derived it.
+struct RecipeColor<'store> {
+    hex: String,
+    /// The conditions of every branch whose `then` is this color.
+    conditions: Vec<ConditionShape>,
+    /// Whether the `default` is this color as well.
+    otherwise: bool,
+    items: Vec<&'store WorkItem>,
+}
 
+/// The legend of a `when:` field: the recipe's colors, narrowed to the
+/// ones `tints` wear, and labelled by value where the conditions allow
+/// it, else by condition.
+fn when_meaning(when: &WhenConfig, tints: &[Tint<'_>], schema: &Schema) -> ColorMeaning {
+    let mut colors = recipe_colors(when);
     let mut written: Vec<ColorCount> = Vec::new();
     for tint in tints {
         if tint.written {
-            match written.iter_mut().find(|known| known.color == tint.hex) {
-                Some(known) => known.count += 1,
-                None => written.push(ColorCount {
-                    color: tint.hex.clone(),
-                    count: 1,
-                }),
-            }
-        } else if let Some(entry) = entries.iter_mut().find(|entry| entry.color == tint.hex) {
-            entry.count += 1;
+            count_written(&mut written, &tint.hex);
+        } else if let Some(color) = colors.iter_mut().find(|color| color.hex == tint.hex) {
+            color.items.push(tint.item);
         }
     }
-    entries.retain(|entry| entry.count > 0);
+    colors.retain(|color| !color.items.is_empty());
 
-    let subject = shared_subject(&entries).map(str::to_owned);
-    if let Some(subject) = &subject {
-        for tint in tints.iter().filter(|tint| !tint.written) {
-            let Some(entry) = entries.iter_mut().find(|entry| entry.color == tint.hex) else {
-                continue;
-            };
-            let value = tint.item.fields.get(subject).map(format_field_value);
-            if !entry.values.contains(&value) {
-                entry.values.push(value);
+    match shared_subject(&colors).map(str::to_owned) {
+        Some(subject) => {
+            let entries = colors
+                .iter()
+                .map(|color| ValueEntry {
+                    color: color.hex.clone(),
+                    count: color.items.len(),
+                    values: values_on(&color.items, &subject, schema),
+                })
+                .collect();
+            ColorMeaning::ByValue {
+                subject,
+                entries,
+                written,
             }
         }
-        let declared = declared_values(schema, subject);
-        for entry in &mut entries {
-            // Stable, so values the field does not declare keep the
-            // view's order among themselves.
-            entry.values.sort_by_key(|value| match value {
-                Some(value) => declared
-                    .iter()
-                    .position(|known| known == value)
-                    .unwrap_or(declared.len()),
-                None => usize::MAX,
-            });
+        None => {
+            let entries = colors
+                .into_iter()
+                .map(|color| ConditionEntry {
+                    count: color.items.len(),
+                    color: color.hex,
+                    conditions: color.conditions,
+                    otherwise: color.otherwise,
+                })
+                .collect();
+            ColorMeaning::ByCondition { entries, written }
         }
-    }
-
-    ColorMeaning::Conditions {
-        subject,
-        entries,
-        written,
     }
 }
 
-/// The field every condition of `entries` tests for equality with a
+/// Every color the recipe names, in the order it first names it, with
+/// no items yet. Two branches with the same `then` share a color, and
+/// so does the `default`.
+fn recipe_colors<'store>(when: &WhenConfig) -> Vec<RecipeColor<'store>> {
+    let mut colors: Vec<RecipeColor<'store>> = Vec::new();
+    for branch in &when.branches {
+        if let Some(hex) = hex_of(&branch.value) {
+            let condition = ConditionShape::of(&branch.condition, &branch.condition_source);
+            recipe_color(&mut colors, hex).conditions.push(condition);
+        }
+    }
+    if let Some(hex) = when.default.as_ref().and_then(hex_of) {
+        recipe_color(&mut colors, hex).otherwise = true;
+    }
+    colors
+}
+
+/// The entry of `hex`, appended empty when the recipe has not named
+/// the color before.
+fn recipe_color<'colors, 'store>(
+    colors: &'colors mut Vec<RecipeColor<'store>>,
+    hex: String,
+) -> &'colors mut RecipeColor<'store> {
+    let index = match colors.iter().position(|color| color.hex == hex) {
+        Some(index) => index,
+        None => {
+            colors.push(RecipeColor {
+                hex,
+                conditions: Vec::new(),
+                otherwise: false,
+                items: Vec::new(),
+            });
+            colors.len() - 1
+        }
+    };
+    &mut colors[index]
+}
+
+/// Count one more item wearing the hand-written `hex`.
+fn count_written(written: &mut Vec<ColorCount>, hex: &str) {
+    match written.iter_mut().find(|known| known.color == hex) {
+        Some(known) => known.count += 1,
+        None => written.push(ColorCount {
+            color: hex.to_owned(),
+            count: 1,
+        }),
+    }
+}
+
+/// The distinct values `subject` has on `items`: in the field's
+/// declared order for a `choice`, else as the view lists them; a
+/// missing value last.
+fn values_on(items: &[&WorkItem], subject: &str, schema: &Schema) -> Vec<Option<String>> {
+    let mut values: Vec<Option<String>> = Vec::new();
+    for item in items {
+        let value = item.fields.get(subject).map(format_field_value);
+        if !values.contains(&value) {
+            values.push(value);
+        }
+    }
+    let declared = declared_values(schema, subject);
+    // Stable, so values the field does not declare keep the view's
+    // order among themselves.
+    values.sort_by_key(|value| match value {
+        Some(value) => declared
+            .iter()
+            .position(|known| known == value)
+            .unwrap_or(declared.len()),
+        None => usize::MAX,
+    });
+    values
+}
+
+/// The field every condition of `colors` tests for equality with a
 /// literal, when there is a condition and they all test the same one.
-fn shared_subject(entries: &[ConditionEntry]) -> Option<&str> {
+fn shared_subject<'colors>(colors: &'colors [RecipeColor<'_>]) -> Option<&'colors str> {
     let mut subject: Option<&str> = None;
-    for condition in entries.iter().flat_map(|entry| &entry.conditions) {
+    for condition in colors.iter().flat_map(|color| &color.conditions) {
         let tested = equality_subject(condition)?;
         if subject.is_some_and(|known| known != tested) {
             return None;
@@ -378,24 +442,6 @@ fn declared_values<'schema>(schema: &'schema Schema, field_name: &str) -> &'sche
     }
 }
 
-/// The position of `hex`'s entry, appended empty when the recipe has
-/// not named the color before.
-fn entry_index(entries: &mut Vec<ConditionEntry>, hex: String) -> usize {
-    match entries.iter().position(|entry| entry.color == hex) {
-        Some(index) => index,
-        None => {
-            entries.push(ConditionEntry {
-                color: hex,
-                count: 0,
-                conditions: Vec::new(),
-                otherwise: false,
-                values: Vec::new(),
-            });
-            entries.len() - 1
-        }
-    }
-}
-
 /// A color value as resolved `#rrggbb`; `None` for any other value.
 fn hex_of(value: &FieldValue) -> Option<String> {
     match value {
@@ -410,7 +456,6 @@ fn hex_of(value: &FieldValue) -> Option<String> {
 mod tests {
     use super::*;
 
-    use crate::condition_shape::ConditionLiteral;
     use crate::model::views::{ColorRole, DisplayConfig, ViewKind};
     use crate::parser::schema::parse_schema;
     use crate::view_data::test_support::make_store_with_files;
@@ -473,20 +518,8 @@ fields:
         color_legend(view, &data, &store, &schema)
     }
 
-    fn status_is(value: &str) -> ConditionShape {
-        ConditionShape::Row {
-            left: Operand::Field {
-                name: "status".to_owned(),
-            },
-            operator: ComparisonOperator::Equal,
-            right: Operand::Literal {
-                value: ConditionLiteral::Text(value.to_owned()),
-            },
-        }
-    }
-
     #[test]
-    fn a_when_field_lists_only_the_colors_on_screen_with_their_conditions() {
+    fn a_when_field_testing_one_field_lists_the_colors_on_screen_by_value() {
         let legend = table_legend(
             STATUS_SCHEMA,
             &[
@@ -504,21 +537,17 @@ fields:
         // comes from a branch and from the default: one entry.
         assert_eq!(
             legend.meaning,
-            ColorMeaning::Conditions {
-                subject: Some("status".to_owned()),
+            ColorMeaning::ByValue {
+                subject: "status".to_owned(),
                 entries: vec![
-                    ConditionEntry {
+                    ValueEntry {
                         color: GREEN.to_owned(),
                         count: 2,
-                        conditions: vec![status_is("done")],
-                        otherwise: false,
                         values: vec![Some("done".to_owned())],
                     },
-                    ConditionEntry {
+                    ValueEntry {
                         color: GRAY.to_owned(),
                         count: 2,
-                        conditions: vec![status_is("removed")],
-                        otherwise: true,
                         values: vec![Some("to_do".to_owned()), Some("removed".to_owned())],
                     },
                 ],
@@ -539,13 +568,14 @@ fields:
         )
         .expect("legend");
 
-        let ColorMeaning::Conditions { entries, .. } = legend.meaning else {
-            panic!("a when field yields conditions");
+        let ColorMeaning::ByValue { entries, .. } = legend.meaning else {
+            panic!("conditions on one field are labelled by value");
         };
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].color, GRAY);
         assert_eq!(entries[0].values, vec![Some("to_do".to_owned()), None]);
     }
+
     #[test]
     fn a_hand_written_color_is_counted_apart_from_the_conditions() {
         // `b` is in progress and would derive blue; it wears a written
@@ -563,13 +593,11 @@ fields:
 
         assert_eq!(
             legend.meaning,
-            ColorMeaning::Conditions {
-                subject: Some("status".to_owned()),
-                entries: vec![ConditionEntry {
+            ColorMeaning::ByValue {
+                subject: "status".to_owned(),
+                entries: vec![ValueEntry {
                     color: BLUE.to_owned(),
                     count: 1,
-                    conditions: vec![status_is("in_progress")],
-                    otherwise: false,
                     values: vec![Some("in_progress".to_owned())],
                 }],
                 written: vec![
@@ -587,7 +615,9 @@ fields:
     }
 
     #[test]
-    fn a_condition_that_is_not_one_plain_comparison_travels_as_text() {
+    fn conditions_that_share_no_subject_are_listed_by_condition() {
+        // The one branch is not a plain comparison, so it travels as
+        // text; gray is the default's alone and has no condition.
         let schema = "\
 fields:
   effort:
@@ -599,27 +629,37 @@ fields:
     when:
       - if: effort * 2 > budget
         then: red
+    default: gray
 ";
         let legend = table_legend(
             schema,
-            &[("a.md", "effort: 5\nbudget: 8\n")],
+            &[
+                ("a.md", "effort: 5\nbudget: 8\n"),
+                ("b.md", "effort: 1\nbudget: 8\n"),
+            ],
             &view_of(ViewKind::Table),
         )
         .expect("legend");
 
         assert_eq!(
             legend.meaning,
-            ColorMeaning::Conditions {
-                subject: None,
-                entries: vec![ConditionEntry {
-                    color: RED.to_owned(),
-                    count: 1,
-                    conditions: vec![ConditionShape::Text {
-                        source: "effort * 2 > budget".to_owned(),
-                    }],
-                    otherwise: false,
-                    values: vec![],
-                }],
+            ColorMeaning::ByCondition {
+                entries: vec![
+                    ConditionEntry {
+                        color: RED.to_owned(),
+                        count: 1,
+                        conditions: vec![ConditionShape::Text {
+                            source: "effort * 2 > budget".to_owned(),
+                        }],
+                        otherwise: false,
+                    },
+                    ConditionEntry {
+                        color: GRAY.to_owned(),
+                        count: 1,
+                        conditions: vec![],
+                        otherwise: true,
+                    },
+                ],
                 written: vec![],
             }
         );
@@ -721,8 +761,8 @@ fields:
         let data = ViewData::Tree(tree::extract_tree(&view, &store, &schema));
 
         let legend = color_legend(&view, &data, &store, &schema).expect("legend");
-        let ColorMeaning::Conditions { entries, .. } = legend.meaning else {
-            panic!("a when field yields conditions");
+        let ColorMeaning::ByValue { entries, .. } = legend.meaning else {
+            panic!("conditions on one field are labelled by value");
         };
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].count, 3);

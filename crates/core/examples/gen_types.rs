@@ -79,8 +79,8 @@ use workdown_core::view_data::{
     ColorLegend, ColorMeaning, Column, ConditionEntry, Edge, GanttBar, GanttByDepthData,
     GanttByInitiativeData, GanttData, GraphData, HeatmapCell, HeatmapData, Initiative, ItemRef,
     Level, LineChartData, LinePoint, LineSeries, MetricData, MetricRowData, SizeValue, TableData,
-    TableRow, TreeData, TreeNode, TreemapData, TreemapNode, UnplacedCard, UnplacedReason, ViewData,
-    ViewPage, WorkloadBucket, WorkloadData, WorkloadUnit,
+    TableRow, TreeData, TreeNode, TreemapData, TreemapNode, UnplacedCard, UnplacedReason,
+    ValueEntry, ViewData, ViewPage, WorkloadBucket, WorkloadData, WorkloadUnit,
 };
 
 const FILE_HEADER: &str =
@@ -297,6 +297,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     exports.add::<ColorLegend>();
     exports.add::<ColorMeaning>();
     exports.add::<ConditionEntry>();
+    exports.add::<ValueEntry>();
     exports.add::<ColorCount>();
     exports.add::<Card>();
     exports.add::<CardField>();
